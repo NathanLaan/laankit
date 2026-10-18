@@ -1,0 +1,15 @@
+[package]
+name = "spike-common"
+version = "0.1.0"
+description = "Shared helpers for the Option C (egui) spikes: eframe launcher, screenshot diagnostics, timing stats."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+env_logger.workspace = true
+image.workspace = true
+log.workspace = true

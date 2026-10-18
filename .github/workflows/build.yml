@@ -50,3 +50,27 @@ jobs:
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
+
+  # Option C spikes (pure Rust, egui) on every target platform.
+  # See docs/plans/plan-native-rust-egui.md, Phase 0.
+  spikes:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Lint
+        run: cargo clippy -p spike-common -p spike-editor -p spike-richtext -p spike-article -p spike-epub -p spike-pdf -p spike-export --all-targets -- -D warnings
+      - name: Test
+        run: cargo test -p spike-common -p spike-editor -p spike-richtext -p spike-article -p spike-epub -p spike-pdf -p spike-export

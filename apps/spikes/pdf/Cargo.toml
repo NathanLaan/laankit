@@ -1,0 +1,31 @@
+[package]
+name = "spike-pdf"
+version = "0.1.0"
+description = "Option C spike 3: a PDF reader on hayro (pure Rust) in egui."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "spike-pdf"
+path = "src/main.rs"
+
+[dependencies]
+spike-common.workspace = true
+eframe.workspace = true
+egui.workspace = true
+log.workspace = true
+image.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+hayro = "0.8"
+hayro-interpret = "0.8"
+marina-core.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+pageliner-core = { path = "../../../crates/pageliner-core" }
+tempfile = "3"

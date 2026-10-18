@@ -1,0 +1,157 @@
+//! The rich-text model: what's left of an HTML document once it's been reduced to things a native
+//! reader can lay out. Articles (spike 2) and EPUB chapters (spike 4) share it.
+
+use std::collections::HashMap;
+
+/// A converted document.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Document {
+    pub blocks: Vec<Block>,
+    /// Element ids (`<a id>`, `<h2 id>`, …) → the top-level block that contains them, for
+    /// internal links (`#note-3`, `chapter2.xhtml#sec1`).
+    pub anchors: HashMap<String, usize>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Block {
+    Text {
+        kind: TextKind,
+        spans: Vec<Span>,
+        align: Align,
+    },
+    List {
+        ordered: bool,
+        start: u32,
+        items: Vec<Vec<Block>>,
+    },
+    Quote(Vec<Block>),
+    Code(String),
+    /// `title` is the hover text (xkcd's punchline lives there).
+    Image {
+        src: String,
+        alt: String,
+        title: String,
+        width: Option<f32>,
+        height: Option<f32>,
+    },
+    Rule,
+    /// Rows of cells; each cell is inline text (block content inside a cell is flattened).
+    Table {
+        rows: Vec<Vec<Vec<Span>>>,
+        header_rows: usize,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextKind {
+    Paragraph,
+    /// `h1`–`h6`.
+    Heading(u8),
+    /// `figcaption`.
+    Caption,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Align {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// A run of text with one style.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Span {
+    pub text: String,
+    pub style: Style,
+    /// The resolved link target.
+    pub link: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Style {
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub strike: bool,
+    pub code: bool,
+    pub small: bool,
+}
+
+impl Block {
+    /// The block's text, for search, statistics and positions.
+    pub fn plain_text(&self) -> String {
+        let mut out = String::new();
+        self.push_text(&mut out, true);
+        out
+    }
+
+    fn push_text(&self, out: &mut String, alt_text: bool) {
+        let sep = |out: &mut String| {
+            if !out.is_empty() && !out.ends_with(char::is_whitespace) {
+                out.push(' ');
+            }
+        };
+        match self {
+            Block::Text { spans, .. } => {
+                sep(out);
+                spans.iter().for_each(|s| out.push_str(&s.text));
+            }
+            Block::List { items, .. } => items
+                .iter()
+                .flatten()
+                .for_each(|b| b.push_text(out, alt_text)),
+            Block::Quote(blocks) => blocks.iter().for_each(|b| b.push_text(out, alt_text)),
+            Block::Code(code) => {
+                sep(out);
+                out.push_str(code);
+            }
+            Block::Image { alt, .. } => {
+                if alt_text && !alt.is_empty() {
+                    sep(out);
+                    out.push_str(alt);
+                }
+            }
+            Block::Rule => {}
+            Block::Table { rows, .. } => {
+                for cell in rows.iter().flatten() {
+                    sep(out);
+                    cell.iter().for_each(|s| out.push_str(&s.text));
+                }
+            }
+        }
+    }
+
+    /// Image blocks inside this block (itself included).
+    pub fn image_count(&self) -> usize {
+        match self {
+            Block::Image { .. } => 1,
+            Block::List { items, .. } => items.iter().flatten().map(Block::image_count).sum(),
+            Block::Quote(blocks) => blocks.iter().map(Block::image_count).sum(),
+            _ => 0,
+        }
+    }
+}
+
+impl Document {
+    pub fn plain_text(&self) -> String {
+        self.blocks
+            .iter()
+            .map(Block::plain_text)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// The text without images' alt text (what the source showed as text).
+    pub fn text_without_alt(&self) -> String {
+        let mut out = String::new();
+        self.blocks
+            .iter()
+            .for_each(|b| b.push_text(&mut out, false));
+        out
+    }
+
+    pub fn image_count(&self) -> usize {
+        self.blocks.iter().map(Block::image_count).sum()
+    }
+}

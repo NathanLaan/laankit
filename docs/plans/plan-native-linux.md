@@ -1,7 +1,9 @@
 # Native Linux Apps — Migration Plan
 
-Status: **Option A implemented (2026-10-03); Option B next.** Decision
-recorded 2026-10-02: do A + B, completing all of A first. See
+Status: **Option A implemented (2026-10-03). Option C (pure Rust, egui)
+accepted 2026-10-17 and being prototyped; see
+[plan-native-rust-egui.md](plan-native-rust-egui.md).** Earlier decision
+(2026-10-02): do A + B, completing all of A first. See
 [Option A — implementation record](#option-a--implementation-record).
 
 Converts NoteLiner, ThreadLiner and PageLiner from Electron + Svelte into
@@ -97,7 +99,14 @@ A truly native GNOME app.
     effectively go away.
 - **Best if:** first-class GNOME apps and long-term performance are the goal.
 
-### Option C — Python + GTK4/libadwaita (PyGObject)
+### Option C — Pure Rust (egui)
+
+Added 2026-10-17, following ArtCraft's `artcraft-native`. Cross-platform
+(Linux, Windows, macOS), reusing the Option A core crates. See
+[plan-native-rust-egui.md](plan-native-rust-egui.md). It replaces the
+Python option below, which previously carried the letter C.
+
+### Withdrawn — Python + GTK4/libadwaita (PyGObject)
 
 The same native result and widgets as B (GtkSourceView, Poppler via GI,
 WebKitGTK), with `feedparser`, `markdown-it-py`, `python-docx`, `nh3`, and
@@ -136,7 +145,8 @@ Native, KDE-flavoured, cross-platform.
 
 ### Not recommended
 
-- **Iced, Slint, egui:** text editing, rich text and HTML rendering are too
+- **Iced, Slint, egui:** (egui reconsidered as Option C; see above) text
+  editing, rich text and HTML rendering are too
   weak for an outliner editor or an e-reader.
 - **Avalonia (C#):** native-ish, but has no good EPUB or HTML story.
 - **Wails (Go):** basically Tauri, with a weaker ecosystem.
@@ -147,15 +157,16 @@ Native, KDE-flavoured, cross-platform.
   It's quick, low-risk and keeps the cross-platform builds.
 - **If the goal is "genuinely native Linux apps":** Option B (Rust +
   GTK4/libadwaita + Relm4). It's the best long-term fit, and the backend logic
-  maps one-to-one onto mature crates. Choose C over B only if speed of
-  delivery beats runtime performance.
+  maps one-to-one onto mature crates. The Python/GTK option was the
+  alternative to B when speed of delivery beat runtime performance.
 
 A and B can be combined: do A first, then reuse its Rust backend crates as
 the core of B. No backend work is thrown away.
 
 ## Migration plan
 
-Written for A or B. C and D follow the same shape.
+Written for A or B. D follows the same shape; Option C has its own phases
+in [plan-native-rust-egui.md](plan-native-rust-egui.md).
 
 ### Phase 0 — Lock the contract (~1 week)
 

@@ -107,7 +107,7 @@ JSON and frontmatter), so you can switch between the two builds freely.
 
 ### Additional prerequisites
 
-- Rust 1.85+ (`rustup`)
+- Rust 1.92+ (`rustup`)
 - Tauri's system libraries:
 
   ```bash
