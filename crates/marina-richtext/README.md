@@ -32,14 +32,44 @@ save(view.position());
 | `from_xhtml(xhtml, &Options)`           | An EPUB chapter: `Options { base: Base::Path(..), stylesheet }`, internal links become archive paths |
 | `from_html(html, &Options)`             | Already-safe HTML                                                                        |
 | `Document`, `Block`, `Span`, `Style`    | The model: text, lists, quotes, code, images, rules, simple tables; `anchors` maps ids to blocks |
-| `css::StyleSheet`                       | The EPUB CSS subset: italic, bold, underline, strike, alignment, `display: none`, monospace |
-| `RichView`                              | Progressive layout in its own scroll area; `show`, `position`/`restore`, `scroll_to_anchor`, `scroll_to_offset`, `settled`, `last_frame`, `id_salt` |
-| `RichOutput`                            | Clicked links (`Action::Open`), scroll offset, viewport and content height (for paging) |
+| `css::StyleSheet`                       | The EPUB CSS subset (see below)                                                          |
+| `RichView`                              | Progressive layout in its own scroll area; `show`, `position`/`restore`, `restoring`, `scroll_to_anchor`, `scroll_to_offset`, `settled`, `last_frame`, `id_salt` |
+| `RichView` selection and marks          | `selection(&doc) -> Option<Selection>`, `select`, `clear_selection`; `set_marks(Vec<Mark>)`, `marks` |
+| `RichOutput`                            | Clicked links (`Action::Open`), scroll offset, viewport and content height (for paging), `clicked_mark`, `selection_changed` |
+| `Position`                              | Block + character offset, counted through the block's text parts (`Block::text_parts`, `Block::part_text`); ordered |
 | `RichStyle`                             | Size, face, column width, line height and colours; `from_ctx`/`from_palette` follow the six themes |
 | `Resolver`                              | `image(ctx, src) -> Option<uri>` and `link(target) -> LinkAction` (`Open`, `Anchor`, `Ignore`) |
 | `WebResolver`                           | `http(s)` images through egui_extras' HTTP loader, `data:` images decoded once           |
 | `BundleResolver::new(scope, read)`      | Images read from a bundle (the EPUB zip) on first use and registered as `bytes://scope/path` |
 | `fonts`                                 | The family names the view asks for, and its fallbacks                                    |
+
+### Selection and highlights
+
+Dragging selects text across blocks (paragraphs, list items, quotes, code, table cells); the
+view scrolls while the pointer is held past its top or bottom edge. Ctrl+C copies the selection
+(each text part on its own line) when no text field has focus, and Escape clears it. A
+`Selection` is `start..end` in document positions plus the text.
+
+`Mark`s (id, start, end, colour) are painted behind the text, like the selection, by
+`egui::text_selection::visuals::paint_text_selection`; a click (not a drag) on one is reported
+as `RichOutput::clicked_mark`. PageLiner uses them for highlights.
+
+### EPUB CSS
+
+Honoured, because books use them to carry meaning or structure: `font-style`, `font-weight`,
+`text-decoration`, monospace `font-family`; `text-align` including `justify`; `text-indent`,
+`margin-left`, `padding-left` and the `margin`/`padding` shorthands (left indents accumulate
+through nested blocks, capped at 6 em); `font-variant: small-caps` and
+`text-transform: uppercase` (applied letter for letter, so positions don't move);
+`vertical-align: super | sub` (as `<sup>`/`<sub>`: smaller and raised or lowered); image
+`width` in `%` or lengths; `display: none`.
+
+Ignored, because a reflowing reader shouldn't take them from the book: colours and backgrounds
+(the reading theme owns them), font sizes and line heights (the reader's setting), vertical
+margins, floats, positioning and `page-break-*`. Negative (hanging) `text-indent`s are dropped.
+`justify` is laid out ragged-right for now: egui's justification spreads space between every
+glyph, not between words, which reads worse. Row and column spans are padded with empty cells so
+columns line up.
 
 Images are handed to egui as URIs; fetching (`ehttp`) and decoding (`egui_extras`' image loader)
 happen off the UI thread, and the image block takes its real height when the texture arrives.
@@ -54,7 +84,7 @@ The view uses what `marina_egui::fonts::install` registers and never reads syste
 | italic  | the `sans-italic` family (`marina_egui::fonts::ITALIC`)                      |
 | bold    | Inter Bold / Bold Italic (static faces from `marina_egui::fonts`)            |
 | code    | `FontFamily::Monospace` (JetBrains Mono)                                     |
-| serif   | optional `serif` / `serif-italic` families for `Face::Serif`; none bundled yet, so books use the sans faces |
+| serif   | Source Serif 4 Regular, Italic, Bold, Bold Italic for `Face::Serif` (`marina_egui::fonts::SERIF*`) |
 
 Anything missing falls back to the regular face: italics slanted by egui, bold in the strong
 colour. The view never asks for a family that isn't registered.
@@ -102,6 +132,9 @@ average ≈ 7.5 (a busy desktop), so treat these as upper bounds.
 | article               | 88     | 34.8 ms           | 13.7 ms                 | 6                | 19.3 ms        |
 | article               | 67     | 37.6 ms           | 11.4 ms                 | 6                | 14.5 ms        |
 
+Re-measured after adding cross-block selection, marks and the wider CSS (Phase 3): the same
+within half a millisecond (2,000 blocks: 12.0 ms first frame; longest article 16.1 ms).
+
 The first frame no longer grows with the document (12 ms at 2,000 blocks, against 295 ms when
 measuring everything), and it's the slowest frame of each run.
 
@@ -125,15 +158,17 @@ faster still (6–8 ms), but have no bold or italic faces.
 - `#anchor` links scroll to their block.
 - `tests/render.rs`: an egui_kittest render in Light and Midnight, checked through the
   accessibility tree.
+- `tests/select.rs`: dragging a selection across three blocks, Ctrl+C, clearing it with a click,
+  and clicking a mark.
+- Conversion of row/column spans, book CSS (indents, justify, small caps, `sup`/`sub`, image
+  width) and text-part order.
 
 ## Not yet
 
-These are Phase 3 items (PageLiner):
-
-- **Selection across paragraphs.** Each paragraph is selectable on its own; EPUB highlights need
-  a selection layer spanning blocks.
-- **Table row spans.** Column spans are padded and row spans ignored.
-- **More EPUB CSS.** Margins, indents, font sizes, small caps and floats aren't applied, so
-  heavily styled books look plainer than in epub.js.
+- **Real justification.** `text-align: justify` is set ragged-right (see above).
+- **Hanging indents.** Negative `text-indent`s are dropped.
 - **Inline SVG, MathML and media embeds.** They're dropped; the plan is a card that links out.
-- **A serif face.** `Face::Serif` falls back to sans until a serif is bundled.
+- **Selection by keyboard and double-click.** Selection is by dragging only; there's no
+  Shift+arrow extension, word or paragraph selection yet.
+- **Floats and vertical margins.** Books that space paragraphs with margins instead of indents
+  get the reader's own paragraph gap.

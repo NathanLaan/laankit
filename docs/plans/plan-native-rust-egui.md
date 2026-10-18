@@ -3,10 +3,12 @@
 Status: **Accepted as Option C (2026-10-17). Phase 0 (spikes) passed on
 the `laan/egui` branch, all five go. Phase 1 (`marina-egui`,
 `marina-richtext`) done 2026-10-17. Phase 2 (ThreadLiner) built
-2026-10-17 and in its week of daily use before cutover; Phase 3
-(PageLiner) next.** See [Phase 0 results](#phase-0-results-2026-10-17),
-[Phase 1 record](#phase-1-record-2026-10-17) and
-[Phase 2 record](#phase-2-record-2026-10-17). Follows ArtCraft's `artcraft-native` approach
+2026-10-17 and in its week of daily use before cutover. Phase 3
+(PageLiner) built 2026-10-17; Phase 4 (NoteLiner) next.** See
+[Phase 0 results](#phase-0-results-2026-10-17),
+[Phase 1 record](#phase-1-record-2026-10-17),
+[Phase 2 record](#phase-2-record-2026-10-17) and
+[Phase 3 record](#phase-3-record-2026-10-17). Follows ArtCraft's `artcraft-native` approach
 for NoteLiner, ThreadLiner and PageLiner. Option C in
 [plan-native-linux.md](plan-native-linux.md) points here; it replaces the
 Python/GTK option that used to carry that letter.
@@ -336,6 +338,57 @@ that fills a temporary config and data folder from real feeds.
 - PDF reader from spike 3: page cache, zoom, highlights and annotations in
   the existing units.
 - EPUB reader using the spike 4 result.
+
+#### Phase 3 record (2026-10-17)
+
+`apps/pageliner/native` (`pageliner-native`, about 4,800 lines) plus the
+`crates/pageliner-epub` reader crate. Run it with
+`cargo run -p pageliner-native --release` or `npm run native:pageliner`.
+Its README has the architecture and parity tables and a `demo_data`
+example.
+
+- **Library:**
+  - All/EPUB/PDF filter, sorting, and a cover grid (covers decoded off-thread).
+  - Import by dialog or by dropping files on the window; remove with confirm.
+  - Settings, Git Sync (8 s auto-push, as in the Tauri host), About with the
+    update check, every shortcut, and a Ctrl+K palette that also finds books.
+- **PDF reader** (`hayro`):
+  - Two render workers per book and a 128 MB texture cache.
+  - Continuous scroll, zoom, fit width and a page field.
+  - A Contents pane from the PDF outline, read by our own parser, plus
+    Annotations and Search panes.
+  - Text selection and copy; highlights and bookmarks stored exactly in the
+    Svelte format and PDF units. Existing highlights carry over.
+- **EPUB reader** (`pageliner-epub`, no webview):
+  - Continuous scroll with paging, TOC, text size, reading themes, and a
+    serif/sans toggle (Source Serif 4 is now bundled in `marina-egui`; fonts
+    total about 4.2 MB).
+  - Bookmarks; highlights with selection across paragraphs.
+  - Positions reset as decided. Everything is stored under a `native` key,
+    so the Tauri build's `cfi`/`bookmarks`/`highlights` are never touched
+    (tested against `pageliner-core`'s merge).
+- **marina-richtext gained:**
+  - Selection across blocks with copy; highlight marks with click detection.
+  - Table row spans.
+  - More EPUB CSS: indent, margins, justify (drawn ragged-right, because
+    egui spaces glyphs rather than words), small caps, sup/sub, image widths.
+  - The first-frame performance is unchanged (11–16 ms).
+- **Partial / not yet:**
+  - Single-instance.
+  - Window geometry is kept in eframe's storage.
+  - A failed Sync Now shows only the error.
+  - EPUB paging keys may still act while a dialog without a text field is
+    open.
+- **Tests:** 18 in the app (including a kittest flow: import a generated PDF
+  → highlight → reopen with it restored → remove) and 8 in `pageliner-epub`
+  (select → highlight → reopen, bookmarks, TOC, state merge).
+- **Still to check by hand:**
+  - The file dialog and drag and drop on Windows, macOS and KDE.
+  - Git Sync against a real remote.
+  - PDFs with unusual outlines or encryption.
+  - Trackpad zoom at HiDPI.
+  - Drag-select auto-scroll and Ctrl+C in EPUBs.
+  - Heavily styled or fixed-layout EPUBs.
 
 ### Phase 4 — NoteLiner (~8–12 weeks, plus 3–4 if a custom editor is needed)
 

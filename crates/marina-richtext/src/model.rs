@@ -19,6 +19,7 @@ pub enum Block {
         kind: TextKind,
         spans: Vec<Span>,
         align: Align,
+        indent: Indent,
     },
     List {
         ordered: bool,
@@ -34,9 +35,12 @@ pub enum Block {
         title: String,
         width: Option<f32>,
         height: Option<f32>,
+        /// A CSS `width: N%`: the share of the column the image fills.
+        fraction: Option<f32>,
     },
     Rule,
     /// Rows of cells; each cell is inline text (block content inside a cell is flattened).
+    /// `colspan`s and `rowspan`s are padded with empty cells, so every row lines up.
     Table {
         rows: Vec<Vec<Vec<Span>>>,
         header_rows: usize,
@@ -58,6 +62,18 @@ pub enum Align {
     Left,
     Center,
     Right,
+    /// `text-align: justify`. Kept so the book's intent survives, but laid out ragged-right
+    /// for now (see `view::text_job`).
+    Justify,
+}
+
+/// A paragraph's CSS indents, in ems.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Indent {
+    /// `margin-left` + `padding-left`, of the paragraph and its block ancestors.
+    pub left: f32,
+    /// `text-indent` (first line only; negative "hanging" indents are dropped).
+    pub first_line: f32,
 }
 
 /// A run of text with one style.
@@ -77,6 +93,10 @@ pub struct Style {
     pub strike: bool,
     pub code: bool,
     pub small: bool,
+    /// `<sup>` / `vertical-align: super`.
+    pub sup: bool,
+    /// `<sub>` / `vertical-align: sub`.
+    pub sub: bool,
 }
 
 impl Block {
@@ -121,6 +141,36 @@ impl Block {
                 }
             }
         }
+    }
+
+    /// The block's runs of selectable text, in the order the view lays them out: one per
+    /// paragraph (nested ones included), code block and table cell. A position's offset inside a
+    /// block counts through them, one extra character between parts (see [`Self::part_text`]).
+    pub fn text_parts(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        self.push_parts(&mut out);
+        out
+    }
+
+    fn push_parts(&self, out: &mut Vec<String>) {
+        match self {
+            Block::Text { spans, .. } => out.push(spans.iter().map(|s| s.text.as_str()).collect()),
+            Block::List { items, .. } => items.iter().flatten().for_each(|b| b.push_parts(out)),
+            Block::Quote(blocks) => blocks.iter().for_each(|b| b.push_parts(out)),
+            Block::Code(code) => out.push(code.clone()),
+            Block::Table { rows, .. } => {
+                for cell in rows.iter().flatten() {
+                    out.push(cell.iter().map(|s| s.text.as_str()).collect());
+                }
+            }
+            Block::Image { .. } | Block::Rule => {}
+        }
+    }
+
+    /// The block's text parts joined by newlines: character `offset` of a position in this block
+    /// is character `offset` of this string.
+    pub fn part_text(&self) -> String {
+        self.text_parts().join("\n")
     }
 
     /// Image blocks inside this block (itself included).

@@ -20,7 +20,7 @@ pub mod view;
 
 pub use convert::{from_article_html, from_html, from_xhtml, Base, Options};
 pub use fonts::Face;
-pub use model::{Align, Block, Document, Span, Style, TextKind};
+pub use model::{Align, Block, Document, Indent, Span, Style, TextKind};
 pub use resolve::{BundleResolver, LinkAction, Resolver, WebResolver};
 pub use style::RichStyle;
-pub use view::{Action, FrameStats, Position, RichOutput, RichView};
+pub use view::{Action, FrameStats, Mark, Position, RichOutput, RichView, Selection};

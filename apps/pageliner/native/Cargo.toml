@@ -1,0 +1,38 @@
+[package]
+name = "pageliner-native"
+version = "2.0.1"
+description = "PageLiner in pure Rust: an egui UI over pageliner-core, with a hayro PDF reader (plan Option C, docs/plans/plan-native-rust-egui.md)."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "pageliner-native"
+path = "src/main.rs"
+
+[dependencies]
+marina-core.workspace = true
+marina-egui.workspace = true
+pageliner-core = { path = "../../../crates/pageliner-core" }
+pageliner-epub.workspace = true
+egui_extras.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+eframe.workspace = true
+egui.workspace = true
+env_logger.workspace = true
+image.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+hayro = "0.8"
+# 0.15, not 0.16: the Tauri dialog plugin enables 0.16's `gtk3` feature, which can't be
+# combined with `xdg-portal`. 0.15 stays a separate crate, on the pure-Rust portal backend.
+rfd = "0.15"
+
+[dev-dependencies]
+egui_kittest.workspace = true
+tempfile = "3"

@@ -4,20 +4,17 @@
 //! | Text          | Family                                                                  |
 //! |---------------|-------------------------------------------------------------------------|
 //! | sans          | the face `marina_egui::fonts::Style` picks: Inter Regular, Bold, Italic, Bold Italic |
-//! | serif         | [`SERIF`] / [`SERIF_ITALIC`] when [`Face::Serif`] and installed          |
+//! | serif         | Source Serif 4: `marina_egui::fonts::{SERIF, SERIF_ITALIC, SERIF_BOLD, SERIF_BOLD_ITALIC}` |
 //! | code          | JetBrains Mono Regular, Bold or Italic                                  |
 //!
-//! Whatever isn't installed falls back to a face that is: italics slanted by egui, and bold drawn
-//! in the strong text colour. So the view never asks egui for a family it doesn't have, which
-//! would panic.
+//! Whatever isn't installed falls back to a face that is (serif to sans): italics slanted by
+//! egui, and bold drawn in the strong text colour. So the view never asks egui for a family it
+//! doesn't have, which would panic.
 
 use egui::FontFamily;
 use marina_egui::fonts::Style;
 
-/// Serif regular, for books. Optional: Marina bundles no serif yet, so books fall back to sans.
-pub const SERIF: &str = "serif";
-/// Serif italic. Optional, like [`SERIF`].
-pub const SERIF_ITALIC: &str = "serif-italic";
+pub use marina_egui::fonts::{SERIF, SERIF_BOLD, SERIF_BOLD_ITALIC, SERIF_ITALIC};
 
 /// Which reading face.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -56,19 +53,14 @@ impl Families {
 
     /// The font for `face` in bold and/or italic, falling back as the module docs describe.
     pub fn resolve(&self, face: Face, bold: bool, italic: bool) -> Resolved {
-        let serif = FontFamily::Name(SERIF.into());
-        if face == Face::Serif && self.has(&serif) {
-            let serif_italic = FontFamily::Name(SERIF_ITALIC.into());
-            let has_italic = self.has(&serif_italic);
-            return Resolved {
-                family: if italic && has_italic {
-                    serif_italic
-                } else {
-                    serif
-                },
-                fake_bold: bold,
-                fake_italic: italic && !has_italic,
+        if face == Face::Serif && self.has(&FontFamily::Name(SERIF.into())) {
+            let name = |b: bool, i: bool| match (b, i) {
+                (false, false) => SERIF,
+                (false, true) => SERIF_ITALIC,
+                (true, false) => SERIF_BOLD,
+                (true, true) => SERIF_BOLD_ITALIC,
             };
+            return self.first_installed(bold, italic, |b, i| FontFamily::Name(name(b, i).into()));
         }
         self.pick(false, bold, italic)
     }
@@ -78,8 +70,25 @@ impl Families {
         self.pick(true, bold, italic)
     }
 
-    /// The best installed face for the style, trying to keep bold, then italic.
+    /// The best installed sans or mono face for the style.
     fn pick(&self, mono: bool, bold: bool, italic: bool) -> Resolved {
+        self.first_installed(bold, italic, |b, i| {
+            Style {
+                weight: b.then_some(marina_egui::fonts::BOLD),
+                italic: i,
+                mono,
+            }
+            .family()
+        })
+    }
+
+    /// The first installed of the style's faces, trying to keep bold, then italic.
+    fn first_installed(
+        &self,
+        bold: bool,
+        italic: bool,
+        family: impl Fn(bool, bool) -> FontFamily,
+    ) -> Resolved {
         let candidates = [
             (bold, italic),
             (bold, false),
@@ -87,21 +96,20 @@ impl Families {
             (false, false),
         ];
         for (b, i) in candidates {
-            let family = Style {
-                weight: b.then_some(marina_egui::fonts::BOLD),
-                italic: i,
-                mono,
-            }
-            .family();
-            if self.has(&family) {
+            let f = family(b, i);
+            if self.has(&f) {
                 return Resolved {
-                    family,
+                    family: f,
                     fake_bold: bold && !b,
                     fake_italic: italic && !i,
                 };
             }
         }
-        unreachable!("the regular face is always present")
+        Resolved {
+            family: FontFamily::Proportional,
+            fake_bold: bold,
+            fake_italic: italic,
+        }
     }
 }
 
@@ -137,10 +145,8 @@ mod tests {
             code.family,
             FontFamily::Name(marina_egui::fonts::MONO_BOLD.into())
         );
-        // No serif is bundled: books use the sans faces.
-        assert_eq!(
-            fams.resolve(Face::Serif, false, false).family,
-            FontFamily::Proportional
-        );
+        let serif = fams.resolve(Face::Serif, true, true);
+        assert_eq!(serif.family, FontFamily::Name(SERIF_BOLD_ITALIC.into()));
+        assert!(!serif.fake_bold && !serif.fake_italic);
     }
 }

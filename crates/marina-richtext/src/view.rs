@@ -18,20 +18,27 @@
 //!
 //! The view also reports the reading position (top block + character offset) and can scroll
 //! back to one, or to an `#anchor`.
+//!
+//! Text is selected across blocks by dragging (the view scrolls when the pointer leaves it), and
+//! copied with Ctrl+C. Positions inside a block count through its text parts
+//! ([`Block::text_parts`]): one per paragraph, code block or table cell, in layout order. The
+//! selection is reported as a [`Selection`]; [`Mark`]s (highlights) are painted behind the text,
+//! and a click on one is reported as [`RichOutput::clicked_mark`].
 
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use egui::text::{CCursor, LayoutJob};
+use egui::text::{CCursor, CCursorRange, LayoutJob};
+use egui::text_selection::visuals::paint_text_selection;
 use egui::{
-    Color32, CursorIcon, FontFamily, FontId, Galley, IdSalt, Label, Rect, ScrollArea, Sense,
-    Stroke, TextFormat, Ui, UiBuilder,
+    Color32, CursorIcon, FontFamily, FontId, Galley, IdSalt, Label, Pos2, Rect, ScrollArea, Sense,
+    Stroke, TextFormat, Ui, UiBuilder, Visuals,
 };
 
 use crate::fonts::Families;
-use crate::model::{Align, Block, Document, Span, TextKind};
+use crate::model::{Align, Block, Document, Indent, Span, TextKind};
 use crate::resolve::{LinkAction, Resolver};
 use crate::style::RichStyle;
 
@@ -52,12 +59,39 @@ const CODE_MARGIN: f32 = 8.0;
 const EST_CHAR_WIDTH: f32 = 0.5;
 /// An image of unknown size is estimated at this share of the column width.
 const EST_IMAGE_RATIO: f32 = 0.5;
+/// A press that moves less than this is a click, not a selection.
+const DRAG_THRESHOLD: f32 = 4.0;
+/// Scrolling while a selection is dragged past the view's edge, per point beyond it per frame.
+const AUTOSCROLL_RATE: f32 = 0.35;
+/// Superscripts and subscripts, relative to their text.
+const SCRIPT_SCALE: f32 = 0.7;
 
-/// A place in a document: the top-level block, and a character offset inside it (text blocks).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+/// A place in a document: the top-level block, and a character offset inside it, counted through
+/// the block's text parts ([`Block::part_text`]). Ordered by block, then offset.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Position {
     pub block: usize,
     pub offset: usize,
+}
+
+/// Selected text: `start` < `end`, and the text between them (parts and blocks on their own
+/// lines).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Selection {
+    pub start: Position,
+    pub end: Position,
+    pub text: String,
+}
+
+/// A highlighted range, painted behind the text.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Mark {
+    /// Reported back when the mark is clicked.
+    pub id: String,
+    pub start: Position,
+    pub end: Position,
+    /// Usually translucent, so the text stays readable.
+    pub color: Color32,
 }
 
 /// What [`RichView::show`] did this frame.
@@ -71,6 +105,10 @@ pub struct RichOutput {
     pub viewport_height: f32,
     /// The document's height (partly estimated until [`RichView::settled`]).
     pub content_height: f32,
+    /// The [`Mark`] clicked this frame (a click, not the end of a selection drag).
+    pub clicked_mark: Option<String>,
+    /// The selection started, changed or was cleared this frame.
+    pub selection_changed: bool,
 }
 
 /// Something the reader did that the app handles.
@@ -109,6 +147,32 @@ pub struct RichView {
     top: Position,
     pending: Option<Position>,
     last: FrameStats,
+    marks: Vec<Mark>,
+    /// (anchor, focus): where the drag started and where it is.
+    selection: Option<(Position, Position)>,
+    /// A press on text: where it started (document and screen), and whether it has moved.
+    drag: Option<Drag>,
+    /// The text laid out last frame, for hit-testing the pointer.
+    hits: Vec<TextHit>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Drag {
+    anchor: Position,
+    origin: Pos2,
+    moved: bool,
+}
+
+/// A text part laid out this frame, where it is on screen.
+#[derive(Clone)]
+struct TextHit {
+    block: usize,
+    /// The part's first character, as an offset in its block.
+    base: usize,
+    galley: Arc<Galley>,
+    /// Where the galley's origin is.
+    pos: Pos2,
+    rect: Rect,
 }
 
 impl Default for RichView {
@@ -133,6 +197,10 @@ impl RichView {
             top: Position::default(),
             pending: None,
             last: FrameStats::default(),
+            marks: Vec::new(),
+            selection: None,
+            drag: None,
+            hits: Vec::new(),
         }
     }
 
@@ -142,12 +210,40 @@ impl RichView {
         self
     }
 
-    /// Forgets everything about the current document (keeps the budget and id).
+    /// Forgets everything about the current document (keeps the budget, id and marks).
     pub fn reset(&mut self) {
         *self = Self {
             id_salt: self.id_salt,
+            marks: std::mem::take(&mut self.marks),
             ..Self::with_budget(self.budget)
         };
+    }
+
+    /// The highlights to paint (replacing the previous ones).
+    pub fn set_marks(&mut self, marks: Vec<Mark>) {
+        self.marks = marks;
+    }
+
+    pub fn marks(&self) -> &[Mark] {
+        &self.marks
+    }
+
+    /// The current selection of `doc`, if any text is selected.
+    pub fn selection(&self, doc: &Document) -> Option<Selection> {
+        let (a, b) = self.selection?;
+        let (start, end) = (a.min(b), a.max(b));
+        let text = selected_text(doc, start, end);
+        (start != end).then_some(Selection { start, end, text })
+    }
+
+    /// Selects `start..end` (e.g. to restore a selection, or in tests).
+    pub fn select(&mut self, start: Position, end: Position) {
+        self.selection = (start != end).then_some((start, end));
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.selection = None;
+        self.drag = None;
     }
 
     /// Scrolls to a content offset on the next frame (paging, "go to end").
@@ -176,6 +272,12 @@ impl RichView {
         }
     }
 
+    /// Whether a [`Self::restore`] or scroll is still to land: until then [`Self::position`] is
+    /// where the view was, not where it's going.
+    pub fn restoring(&self) -> bool {
+        self.pending.is_some() || self.next_offset.is_some()
+    }
+
     /// Whether every block has its real height (no estimates left) and no scroll is pending.
     pub fn settled(&self) -> bool {
         self.pending.is_none() && self.next_offset.is_none() && self.measured.iter().all(|m| *m)
@@ -200,6 +302,7 @@ impl RichView {
         resolver: &mut dyn Resolver,
     ) -> RichOutput {
         // Programmatic scrolls are this view's own corrections: they must land at once.
+        // Dragging selects text; it only scrolls on touch screens (egui's default).
         let mut area = ScrollArea::vertical()
             .id_salt(self.id_salt)
             .auto_shrink(false)
@@ -208,9 +311,12 @@ impl RichView {
             area = area.vertical_scroll_offset(y);
         }
         let mut links = Vec::new();
+        self.hits.clear();
         let out = area.show_viewport(ui, |ui, viewport| {
             self.layout(ui, viewport, doc, style, resolver, &mut links);
         });
+        let offset = out.state.clamped_offset().y;
+        let (clicked_mark, selection_changed) = self.pointer(ui, out.inner_rect, offset, doc);
         let mut actions = Vec::new();
         for target in links {
             match resolver.link(&target) {
@@ -223,10 +329,133 @@ impl RichView {
         }
         RichOutput {
             actions,
-            offset: out.state.clamped_offset().y,
+            offset,
             viewport_height: out.inner_rect.height(),
             content_height: out.content_size.y,
+            clicked_mark,
+            selection_changed,
         }
+    }
+
+    /// Selection by dragging, clicks on marks, Ctrl+C and Escape. `inner` is the viewport on
+    /// screen. Returns the clicked mark and whether the selection changed.
+    fn pointer(
+        &mut self,
+        ui: &Ui,
+        inner: Rect,
+        offset: f32,
+        doc: &Document,
+    ) -> (Option<String>, bool) {
+        let ctx = ui.ctx().clone();
+        let before = self.selection;
+        let mut clicked = None;
+        let (pressed, down, released, pos) = ctx.input(|i| {
+            (
+                i.pointer.primary_pressed(),
+                i.pointer.primary_down(),
+                i.pointer.primary_released(),
+                i.pointer.interact_pos(),
+            )
+        });
+        // Only presses meant for this view: not on a dialog or menu above it.
+        let ours = |p: Pos2| {
+            inner.contains(p)
+                && ctx
+                    .layer_id_at(p)
+                    .is_none_or(|l| l == ui.layer_id() || l.order == egui::Order::Tooltip)
+        };
+        if pressed {
+            if let Some(p) = pos.filter(|p| ours(*p)) {
+                self.selection = None;
+                self.drag = self.hit(p).map(|anchor| Drag {
+                    anchor,
+                    origin: p,
+                    moved: false,
+                });
+            }
+        }
+        if let (Some(drag), Some(p)) = (self.drag.as_mut(), pos) {
+            if down {
+                drag.moved |= p.distance(drag.origin) > DRAG_THRESHOLD;
+                if drag.moved {
+                    let anchor = drag.anchor;
+                    if let Some(focus) = self.hit(p) {
+                        self.selection = (focus != anchor).then_some((anchor, focus));
+                    }
+                    // Past the top or bottom edge: scroll towards the pointer.
+                    let beyond = if p.y < inner.top() {
+                        p.y - inner.top()
+                    } else if p.y > inner.bottom() {
+                        p.y - inner.bottom()
+                    } else {
+                        0.0
+                    };
+                    if beyond != 0.0 {
+                        self.next_offset = Some((offset + beyond * AUTOSCROLL_RATE).max(0.0));
+                        ctx.request_repaint();
+                    }
+                }
+            }
+        }
+        if released {
+            if let Some(drag) = self.drag.take() {
+                if !drag.moved {
+                    clicked = self
+                        .marks
+                        .iter()
+                        .rev()
+                        .find(|m| {
+                            m.start.min(m.end) <= drag.anchor && drag.anchor < m.end.max(m.start)
+                        })
+                        .map(|m| m.id.clone());
+                }
+            }
+        }
+        let focused = ctx.memory(|m| m.focused().is_some());
+        if !focused && self.selection.is_some() {
+            let (copy, escape) = ctx.input(|i| {
+                (
+                    i.events.iter().any(|e| matches!(e, egui::Event::Copy)),
+                    i.key_pressed(egui::Key::Escape),
+                )
+            });
+            if copy {
+                if let Some(sel) = self.selection(doc) {
+                    ctx.copy_text(sel.text);
+                }
+            }
+            if escape {
+                self.selection = None;
+            }
+        }
+        let changed = before != self.selection;
+        if changed {
+            ctx.request_repaint();
+        }
+        (clicked, changed)
+    }
+
+    /// The document position under (or nearest to) a screen point, from last layout.
+    fn hit(&self, p: Pos2) -> Option<Position> {
+        let row = self
+            .hits
+            .iter()
+            .filter(|h| h.rect.y_range().contains(p.y))
+            .min_by(|a, b| {
+                let dx = |h: &TextHit| (h.rect.left() - p.x).max(p.x - h.rect.right()).max(0.0);
+                dx(a).total_cmp(&dx(b))
+            });
+        let hit = row.or_else(|| {
+            self.hits.iter().min_by(|a, b| {
+                let dy = |h: &TextHit| (h.rect.top() - p.y).max(p.y - h.rect.bottom());
+                dy(a).total_cmp(&dy(b))
+            })
+        })?;
+        let c = hit.galley.cursor_from_pos(p - hit.pos).index.0;
+        Some(Position {
+            block: hit.block,
+            offset: hit.base + c,
+        })
     }
 
     /// Lays `doc` out in the scroll area's content `ui`; `viewport` is in content coordinates.
@@ -240,6 +469,7 @@ impl RichView {
         links: &mut Vec<String>,
     ) {
         let families = Families::of(ui.ctx());
+        let visuals = ui.visuals().clone();
         let full = ui.available_width();
         let width = full.min(style.max_width);
         let left = ui.max_rect().left() + ((full - width) / 2.0).max(0.0);
@@ -302,12 +532,21 @@ impl RichView {
                     };
                     let rect = ui
                         .scope_builder(builder, |ui| {
+                            let mut base = 0;
                             let mut cx = Cx {
                                 style,
                                 families: &families,
                                 resolver: &mut *resolver,
                                 links: &mut *links,
                                 galley: visible.then_some(&mut galley),
+                                block: i,
+                                base: &mut base,
+                                paint: Paint {
+                                    selection: self.selection.map(|(a, b)| (a.min(b), a.max(b))),
+                                    marks: &self.marks,
+                                    visuals: &visuals,
+                                },
+                                hits: visible.then_some(&mut self.hits),
                             };
                             block_ui(ui, block, i, &mut cx);
                         })
@@ -394,8 +633,22 @@ impl RichView {
             return 0.0;
         };
         let extra = match &doc.blocks[pos.block] {
-            Block::Text { kind, spans, align } if pos.offset > 0 => {
-                let (job, _) = text_job(spans, *kind, *align, style, families, self.width);
+            Block::Text {
+                kind,
+                spans,
+                align,
+                indent,
+            } if pos.offset > 0 => {
+                let left = indent_px(*indent, style);
+                let (job, _) = text_job(
+                    spans,
+                    *kind,
+                    *align,
+                    indent.first_line * style.size,
+                    style,
+                    families,
+                    self.width - left,
+                );
                 let galley = ui.fonts_mut(|f| f.layout_job(job));
                 heading_gap(*kind, style) + galley.pos_from_cursor(CCursor::new(pos.offset)).top()
             }
@@ -403,6 +656,29 @@ impl RichView {
         };
         top + extra
     }
+}
+
+/// The text from `start` to `end`: each block's parts on their own lines.
+fn selected_text(doc: &Document, start: Position, end: Position) -> String {
+    let mut out = Vec::new();
+    for b in start.block..=end.block.min(doc.blocks.len().saturating_sub(1)) {
+        let text = doc.blocks[b].part_text();
+        let from = if b == start.block { start.offset } else { 0 };
+        let to = if b == end.block {
+            end.offset
+        } else {
+            usize::MAX
+        };
+        let slice: String = text
+            .chars()
+            .skip(from)
+            .take(to.saturating_sub(from))
+            .collect();
+        if !slice.trim().is_empty() {
+            out.push(slice);
+        }
+    }
+    out.join("\n")
 }
 
 /// A block's height before it's laid out: its text spread over the column at an average glyph
@@ -458,6 +734,22 @@ struct Cx<'a> {
     links: &'a mut Vec<String>,
     /// Where a top-level text block reports its galley (for positions).
     galley: Option<&'a mut Option<(Arc<Galley>, f32)>>,
+    /// The top-level block being laid out.
+    block: usize,
+    /// The next text part's offset in the block.
+    base: &'a mut usize,
+    paint: Paint<'a>,
+    /// Where visible text parts are recorded for hit-testing (`None` while measuring).
+    hits: Option<&'a mut Vec<TextHit>>,
+}
+
+/// What's painted behind the text: the selection and the marks.
+#[derive(Clone, Copy)]
+struct Paint<'a> {
+    /// Sorted.
+    selection: Option<(Position, Position)>,
+    marks: &'a [Mark],
+    visuals: &'a Visuals,
 }
 
 impl Cx<'_> {
@@ -468,40 +760,117 @@ impl Cx<'_> {
             resolver: &mut *self.resolver,
             links: &mut *self.links,
             galley: None,
+            block: self.block,
+            base: &mut *self.base,
+            paint: self.paint,
+            hits: self.hits.as_deref_mut(),
         }
     }
+
+    /// Claims the next text part: its offset in the block. Paints the selection and marks into
+    /// `galley`.
+    fn part(&mut self, galley: &mut Arc<Galley>) -> usize {
+        let base = *self.base;
+        let len = galley.text().chars().count();
+        *self.base += len + 1;
+        let local = |start: Position, end: Position| -> Option<CCursorRange> {
+            let from = match start.block.cmp(&self.block) {
+                std::cmp::Ordering::Less => 0,
+                std::cmp::Ordering::Equal => start.offset,
+                std::cmp::Ordering::Greater => return None,
+            };
+            let to = match end.block.cmp(&self.block) {
+                std::cmp::Ordering::Greater => usize::MAX,
+                std::cmp::Ordering::Equal => end.offset,
+                std::cmp::Ordering::Less => return None,
+            };
+            let (a, b) = (
+                from.max(base) - base,
+                to.min(base + len).saturating_sub(base),
+            );
+            (a < b && from <= base + len)
+                .then(|| CCursorRange::two(CCursor::new(a), CCursor::new(b)))
+        };
+        for mark in self.paint.marks {
+            if let Some(range) = local(mark.start.min(mark.end), mark.end.max(mark.start)) {
+                let mut v = self.paint.visuals.clone();
+                v.selection.bg_fill = mark.color;
+                v.selection.stroke.color = self.style.text;
+                paint_text_selection(galley, &v, &range, None);
+            }
+        }
+        if let Some((start, end)) = self.paint.selection {
+            if let Some(range) = local(start, end) {
+                paint_text_selection(galley, self.paint.visuals, &range, None);
+            }
+        }
+        base
+    }
+
+    /// Records a laid-out text part for hit-testing.
+    fn record(&mut self, base: usize, galley: Arc<Galley>, pos: Pos2, rect: Rect) {
+        if let Some(hits) = self.hits.as_deref_mut() {
+            hits.push(TextHit {
+                block: self.block,
+                base,
+                galley,
+                pos,
+                rect,
+            });
+        }
+    }
+}
+
+/// A paragraph's left indent, in points (at most what a `Margin` holds).
+fn indent_px(indent: Indent, style: &RichStyle) -> f32 {
+    (indent.left * style.size).clamp(0.0, 120.0)
 }
 
 fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
     let style = cx.style;
     match block {
-        Block::Text { kind, spans, align } => {
+        Block::Text {
+            kind,
+            spans,
+            align,
+            indent,
+        } => {
             ui.add_space(heading_gap(*kind, style));
+            let left = indent_px(*indent, style);
             let (job, links) = text_job(
                 spans,
                 *kind,
                 *align,
+                indent.first_line * style.size,
                 style,
                 cx.families,
-                ui.available_width(),
+                ui.available_width() - left,
             );
-            let galley = ui.fonts_mut(|f| f.layout_job(job));
+            let mut galley = ui.fonts_mut(|f| f.layout_job(job));
+            let base = cx.part(&mut galley);
             let label = Label::new(egui::WidgetText::Galley(galley.clone()))
-                .selectable(true)
+                .selectable(false)
                 .sense(Sense::click());
-            let resp = match align {
-                Align::Left => ui.add(label),
-                Align::Center => ui.vertical_centered(|ui| ui.add(label)).inner,
-                Align::Right => {
-                    ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| ui.add(label))
-                        .inner
-                }
-            };
+            let resp = egui::Frame::new()
+                .inner_margin(egui::Margin {
+                    left: left as i8,
+                    ..Default::default()
+                })
+                .show(ui, |ui| match align {
+                    Align::Left | Align::Justify => ui.add(label),
+                    Align::Center => ui.vertical_centered(|ui| ui.add(label)).inner,
+                    Align::Right => {
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Max), |ui| ui.add(label))
+                            .inner
+                    }
+                })
+                .inner;
             let galley_pos = match align {
-                Align::Left => resp.rect.left_top(),
+                Align::Left | Align::Justify => resp.rect.left_top(),
                 Align::Center => resp.rect.center_top(),
                 Align::Right => resp.rect.right_top(),
             };
+            cx.record(base, galley.clone(), galley_pos, resp.rect);
             if let Some(slot) = cx.galley.take() {
                 *slot = Some((galley.clone(), resp.rect.top()));
             }
@@ -589,7 +958,13 @@ fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
                             );
                             let mut job = LayoutJob::single_section(code.clone(), format);
                             job.wrap.max_width = f32::INFINITY;
-                            ui.add(Label::new(job).selectable(true).extend());
+                            let mut galley = ui.fonts_mut(|f| f.layout_job(job));
+                            let base = cx.part(&mut galley);
+                            let resp = ui.add(
+                                Label::new(egui::WidgetText::Galley(galley.clone()))
+                                    .selectable(false),
+                            );
+                            cx.record(base, galley, resp.rect.left_top(), resp.rect);
                         });
                 });
             ui.add_space(style.size * PARAGRAPH_GAP);
@@ -599,10 +974,14 @@ fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
             alt,
             title,
             width,
+            fraction,
             ..
         } => match cx.resolver.image(ui.ctx(), src) {
             Some(uri) => {
-                let max = ui.available_width().min(width.unwrap_or(f32::INFINITY));
+                let column = ui.available_width();
+                let max = fraction
+                    .map_or(column, |f| column * f)
+                    .min(width.unwrap_or(f32::INFINITY));
                 // Covers and full-page plates fit the screen.
                 let max_height = ui.ctx().content_rect().height() * IMAGE_MAX_SCREEN;
                 ui.vertical_centered(|ui| {
@@ -657,16 +1036,19 @@ fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
                                         &spans,
                                         TextKind::Paragraph,
                                         Align::Left,
+                                        0.0,
                                         style,
                                         cx.families,
                                         cell_width,
                                     );
                                     // A galley keeps the cell's own wrap width (a job would be re-wrapped to the grid's).
-                                    let galley = ui.fonts_mut(|f| f.layout_job(job));
-                                    ui.add(
-                                        Label::new(egui::WidgetText::Galley(galley))
-                                            .selectable(true),
+                                    let mut galley = ui.fonts_mut(|f| f.layout_job(job));
+                                    let base = cx.part(&mut galley);
+                                    let resp = ui.add(
+                                        Label::new(egui::WidgetText::Galley(galley.clone()))
+                                            .selectable(false),
                                     );
+                                    cx.record(base, galley, resp.rect.left_top(), resp.rect);
                                 }
                                 ui.end_row();
                             }
@@ -697,11 +1079,13 @@ fn heading_scale(kind: TextKind) -> (f32, bool) {
     }
 }
 
-/// The layout job for a run of spans, and the character ranges that are links.
+/// The layout job for a run of spans, and the character ranges that are links. `first_line` is
+/// the first line's indent, in points.
 pub fn text_job(
     spans: &[Span],
     kind: TextKind,
     align: Align,
+    first_line: f32,
     style: &RichStyle,
     families: &Families,
     width: f32,
@@ -710,17 +1094,24 @@ pub fn text_job(
     let mut job = LayoutJob::default();
     job.wrap.max_width = width;
     job.halign = match align {
-        Align::Left => egui::Align::LEFT,
+        Align::Left | Align::Justify => egui::Align::LEFT,
         Align::Center => egui::Align::Center,
         Align::Right => egui::Align::RIGHT,
     };
+    // `Align::Justify` is set ragged-right: egui's justification spreads the space between every
+    // glyph rather than between words, which reads worse than no justification.
+    let mut leading = first_line.max(0.0);
     let mut links = Vec::new();
     let mut chars = 0;
     for span in spans {
         let st = span.style;
         let bold = st.bold || heading;
         let italic = st.italic || kind == TextKind::Caption;
-        let size = style.size * scale * if st.small { 0.8 } else { 1.0 };
+        let script = st.sup || st.sub;
+        let size = style.size
+            * scale
+            * if st.small { 0.8 } else { 1.0 }
+            * if script { SCRIPT_SCALE } else { 1.0 };
         let font = if st.code {
             families.code(bold, italic)
         } else {
@@ -759,7 +1150,13 @@ pub fn text_job(
             } else {
                 Stroke::NONE
             },
-            valign: egui::Align::Center,
+            valign: if st.sup {
+                egui::Align::TOP
+            } else if st.sub {
+                egui::Align::BOTTOM
+            } else {
+                egui::Align::Center
+            },
             ..Default::default()
         };
         let n = span.text.chars().count();
@@ -767,7 +1164,7 @@ pub fn text_job(
             links.push((chars..chars + n, link.clone()));
         }
         chars += n;
-        job.append(&span.text, 0.0, format);
+        job.append(&span.text, std::mem::take(&mut leading), format);
     }
     (job, links)
 }

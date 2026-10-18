@@ -11,8 +11,8 @@ use regex::Regex;
 use scraper::node::Node;
 use scraper::{ElementRef, Html};
 
-use crate::css::{Decls, StyleSheet};
-use crate::model::{Align, Block, Document, Span, Style, TextKind};
+use crate::css::{Decls, Length, StyleSheet};
+use crate::model::{Align, Block, Document, Indent, Span, Style, TextKind};
 
 /// ThreadLiner's `ContentViewer.svelte` `ALLOWED_TAGS`.
 const ALLOWED_TAGS: &[&str] = &[
@@ -57,6 +57,8 @@ const ALLOWED_ATTRS: &[&str] = &[
     "href", "src", "alt", "title", "class", "target", "rel", "width", "height", "srcset", "sizes",
     "loading", "media", "type",
 ];
+/// The widest left indent kept, in ems (deeply nested `div`s in some books add up).
+const MAX_INDENT: f32 = 6.0;
 /// Images at most this big (declared size) are treated as inline glyphs: their alt text is kept.
 const INLINE_IMAGE_MAX: f32 = 40.0;
 /// Elements whose content is never text.
@@ -179,6 +181,18 @@ struct Ctx<'a> {
 struct Inherit {
     style: Style,
     align: Align,
+    indent: Indent,
+    caps: Caps,
+}
+
+/// `text-transform: uppercase` / `font-variant: small-caps`, applied to the text itself.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Caps {
+    #[default]
+    None,
+    Upper,
+    /// Lower-case letters become small capitals.
+    Small,
 }
 
 /// Collects blocks, and the inline spans of the paragraph being built.
@@ -187,6 +201,7 @@ struct Builder {
     blocks: Vec<Block>,
     spans: Vec<Span>,
     align: Align,
+    indent: Indent,
     anchors: HashMap<String, usize>,
 }
 
@@ -197,6 +212,7 @@ impl Builder {
             blocks: Vec::new(),
             spans: Vec::new(),
             align: Align::Left,
+            indent: Indent::default(),
             anchors: HashMap::new(),
         }
     }
@@ -219,7 +235,7 @@ impl Builder {
             .is_none_or(char::is_whitespace)
     }
 
-    fn push_text(&mut self, text: &str, style: Style, link: Option<&str>) {
+    fn push_text(&mut self, text: &str, style: Style, caps: Caps, link: Option<&str>) {
         let mut collapsed = String::with_capacity(text.len());
         let mut space = self.at_space();
         for c in text.chars() {
@@ -233,7 +249,32 @@ impl Builder {
                 space = false;
             }
         }
-        self.push_raw(collapsed, style, link);
+        match caps {
+            Caps::None => self.push_raw(collapsed, style, link),
+            Caps::Upper => self.push_raw(upper(&collapsed), style, link),
+            Caps::Small => {
+                // Runs of lower-case letters, set as smaller capitals.
+                let mut run = String::new();
+                let mut run_small = false;
+                for c in collapsed.chars() {
+                    let small = c.is_lowercase() && single_upper(c).is_some();
+                    if small != run_small && !run.is_empty() {
+                        let st = Style {
+                            small: run_small || style.small,
+                            ..style
+                        };
+                        self.push_raw(std::mem::take(&mut run), st, link);
+                    }
+                    run_small = small;
+                    run.push(single_upper(c).unwrap_or(c));
+                }
+                let st = Style {
+                    small: run_small || style.small,
+                    ..style
+                };
+                self.push_raw(run, st, link);
+            }
+        }
     }
 
     fn push_raw(&mut self, text: String, style: Style, link: Option<&str>) {
@@ -270,6 +311,7 @@ impl Builder {
                     kind: TextKind::Paragraph,
                     spans,
                     align: self.align,
+                    indent: self.indent,
                 },
                 ctx,
             );
@@ -280,6 +322,20 @@ impl Builder {
     fn finish(mut self, ctx: &mut Ctx<'_>) -> Vec<Block> {
         self.flush(ctx);
         self.blocks
+    }
+}
+
+/// `s` in upper case, letter for letter (characters whose capital is longer, like `ß`, stay as
+/// they are, so positions inside the text don't move).
+fn upper(s: &str) -> String {
+    s.chars().map(|c| single_upper(c).unwrap_or(c)).collect()
+}
+
+fn single_upper(c: char) -> Option<char> {
+    let mut up = c.to_uppercase();
+    match (up.next(), up.next()) {
+        (Some(u), None) => Some(u),
+        _ => None,
     }
 }
 
@@ -307,7 +363,7 @@ fn take_spans(spans: &mut Vec<Span>) -> Vec<Span> {
 fn walk(el: ElementRef<'_>, inh: Inherit, link: Option<&str>, b: &mut Builder, ctx: &mut Ctx<'_>) {
     for child in el.children() {
         match child.value() {
-            Node::Text(t) => b.push_text(t, inh.style, link),
+            Node::Text(t) => b.push_text(t, inh.style, inh.caps, link),
             Node::Element(_) => {
                 if let Some(e) = ElementRef::wrap(child) {
                     element(e, inh, link, b, ctx);
@@ -368,6 +424,10 @@ fn element(
                         kind: TextKind::Heading(level),
                         spans,
                         align: inh.align,
+                        indent: Indent {
+                            first_line: 0.0,
+                            ..inh.indent
+                        },
                     },
                     ctx,
                 );
@@ -392,6 +452,7 @@ fn element(
                         kind: TextKind::Caption,
                         spans,
                         align: inh.align,
+                        indent: Indent::default(),
                     },
                     ctx,
                 );
@@ -410,6 +471,7 @@ fn element(
                     Some(li) if li.value().name().eq_ignore_ascii_case("li") => {
                         let mut sub = Builder::new(false);
                         sub.align = inh.align;
+                        sub.indent = Indent::default();
                         walk(li, inh, link, &mut sub, ctx);
                         sub.finish(ctx)
                     }
@@ -425,6 +487,7 @@ fn element(
                                 kind: TextKind::Paragraph,
                                 spans: vec![plain(t.trim(), inh.style)],
                                 align: inh.align,
+                                indent: Indent::default(),
                             }]
                         }
                         _ => Vec::new(),
@@ -469,7 +532,7 @@ fn element(
             register(ctx);
             b.push(Block::Rule, ctx);
         }
-        "img" => image(el, inh, link, b, ctx),
+        "img" => image(el, inh, decls.width, link, b, ctx),
         "svg" => {
             // EPUB covers: `<svg><image xlink:href="cover.jpg"/></svg>`. Other SVG is dropped.
             for img in el
@@ -493,6 +556,7 @@ fn element(
                             title: String::new(),
                             width: None,
                             height: None,
+                            fraction: None,
                         },
                         ctx,
                     );
@@ -508,11 +572,12 @@ fn element(
         _ if is_block(name) => {
             b.flush(ctx);
             register(ctx);
-            let saved = b.align;
+            let saved = (b.align, b.indent);
             b.align = inh.align;
+            b.indent = inh.indent;
             walk(el, inh, link, b, ctx);
             b.flush(ctx);
-            b.align = saved;
+            (b.align, b.indent) = saved;
         }
         _ => {
             register(ctx);
@@ -562,9 +627,30 @@ fn inherit(name: &str, mut inh: Inherit, decls: &Decls) -> Inherit {
         "u" | "ins" => s.underline = true,
         "s" | "strike" | "del" => s.strike = true,
         "code" | "kbd" | "samp" | "tt" => s.code = true,
-        "small" | "sub" | "sup" => s.small = true,
+        "small" => s.small = true,
+        "sup" => s.sup = true,
+        "sub" => s.sub = true,
         "center" => inh.align = Align::Center,
         _ => {}
+    }
+    if let Some(up) = decls.superscript {
+        (s.sup, s.sub) = (up, !up);
+    }
+    if let Some(left) = decls.indent_left {
+        if is_block(name) || matches!(name, "blockquote" | "ul" | "ol" | "figcaption") {
+            inh.indent.left = (inh.indent.left + left).clamp(0.0, MAX_INDENT);
+        }
+    }
+    if let Some(first) = decls.text_indent {
+        // A negative (hanging) indent would need the other lines indented instead.
+        inh.indent.first_line = first.clamp(0.0, MAX_INDENT);
+    }
+    if decls.small_caps == Some(true) {
+        inh.caps = Caps::Small;
+    } else if decls.uppercase == Some(true) {
+        inh.caps = Caps::Upper;
+    } else if decls.small_caps == Some(false) && decls.uppercase.is_some() {
+        inh.caps = Caps::None;
     }
     if let Some(v) = decls.bold {
         s.bold = v;
@@ -595,14 +681,29 @@ fn plain(text: &str, style: Style) -> Span {
     }
 }
 
-fn image(el: ElementRef<'_>, inh: Inherit, link: Option<&str>, b: &mut Builder, ctx: &mut Ctx<'_>) {
+fn image(
+    el: ElementRef<'_>,
+    inh: Inherit,
+    css_width: Option<Length>,
+    link: Option<&str>,
+    b: &mut Builder,
+    ctx: &mut Ctx<'_>,
+) {
     let e = el.value();
     let alt = e.attr("alt").unwrap_or("").trim().to_string();
     let dim = |a: &str| {
         e.attr(a)
             .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
     };
-    let (width, height) = (dim("width"), dim("height"));
+    let (mut width, height) = (dim("width"), dim("height"));
+    let fraction = match css_width {
+        Some(Length::Percent(p)) if p > 0.0 => Some((p / 100.0).min(1.0)),
+        Some(Length::Em(em)) if em > 0.0 => {
+            width = Some(em * 16.0);
+            None
+        }
+        _ => None,
+    };
     let emoji = e
         .classes()
         .any(|c| c.contains("emoji") || c.contains("smiley"));
@@ -612,7 +713,7 @@ fn image(el: ElementRef<'_>, inh: Inherit, link: Option<&str>, b: &mut Builder, 
     {
         // Tracking pixels and emoji: keep the alt text inline.
         if !alt.is_empty() {
-            b.push_text(&alt, inh.style, link);
+            b.push_text(&alt, inh.style, Caps::None, link);
         }
         return;
     }
@@ -630,6 +731,7 @@ fn image(el: ElementRef<'_>, inh: Inherit, link: Option<&str>, b: &mut Builder, 
             title,
             width,
             height,
+            fraction,
         },
         ctx,
     );
@@ -706,6 +808,8 @@ fn table(el: ElementRef<'_>, inh: Inherit, link: Option<&str>, b: &mut Builder, 
     b.flush(ctx);
     let mut out = Vec::new();
     let mut header_rows = 0;
+    // Rows still covered by a `rowspan` from above, per column.
+    let mut covered: Vec<usize> = Vec::new();
     for row in &rows {
         let cs = cells(*row);
         let in_head = row
@@ -715,8 +819,16 @@ fn table(el: ElementRef<'_>, inh: Inherit, link: Option<&str>, b: &mut Builder, 
         if out.len() == header_rows && (in_head || cs.iter().all(|c| c.value().name() == "th")) {
             header_rows += 1;
         }
-        let mut cells_out = Vec::new();
+        let mut cells_out: Vec<Vec<Span>> = Vec::new();
+        // Pads the columns a cell above still covers, from the current column on.
+        let pad = |cells_out: &mut Vec<Vec<Span>>, covered: &mut Vec<usize>| {
+            while covered.get(cells_out.len()).is_some_and(|n| *n > 0) {
+                covered[cells_out.len()] -= 1;
+                cells_out.push(Vec::new());
+            }
+        };
         for cell in cs {
+            pad(&mut cells_out, &mut covered);
             let mut sub = Builder::new(false);
             walk(cell, inh, link, &mut sub, ctx);
             let mut spans = take_spans(&mut sub.spans);
@@ -733,8 +845,26 @@ fn table(el: ElementRef<'_>, inh: Inherit, link: Option<&str>, b: &mut Builder, 
                 .and_then(|c| c.trim().parse::<usize>().ok())
                 .unwrap_or(1)
                 .clamp(1, 16);
+            let rows_down = cell
+                .value()
+                .attr("rowspan")
+                .and_then(|c| c.trim().parse::<usize>().ok())
+                .unwrap_or(1)
+                .clamp(1, 64);
+            let col = cells_out.len();
+            if covered.len() < col + span {
+                covered.resize(col + span, 0);
+            }
+            covered[col..col + span].fill(rows_down - 1);
             cells_out.push(spans);
             cells_out.extend(std::iter::repeat_n(Vec::new(), span - 1));
+        }
+        // Trailing columns covered from above.
+        while cells_out.len() < covered.len() {
+            if covered[cells_out.len()] > 0 {
+                covered[cells_out.len()] -= 1;
+            }
+            cells_out.push(Vec::new());
         }
         out.push(cells_out);
     }
@@ -905,7 +1035,8 @@ mod tests {
                 alt: "A".into(),
                 title: String::new(),
                 width: Some(800.0),
-                height: None
+                height: None,
+                fraction: None,
             }
         );
         assert!(matches!(
@@ -919,6 +1050,86 @@ mod tests {
         assert!(
             matches!(&doc.blocks[3], Block::Image { src, .. } if src == "https://ex.com/p/b.webp")
         );
+    }
+
+    #[test]
+    fn row_and_column_spans_line_up() {
+        let doc = from_html(
+            "<table><tr><th>A</th><th>B</th><th>C</th></tr>\
+             <tr><td rowspan=2>a</td><td colspan=2>bc</td></tr>\
+             <tr><td>b2</td><td>c2</td></tr></table>",
+            &Options::default(),
+        );
+        let Block::Table { rows, .. } = &doc.blocks[0] else {
+            panic!("{:?}", doc.blocks[0])
+        };
+        let text = |r: usize| -> Vec<String> {
+            rows[r]
+                .iter()
+                .map(|c| c.iter().map(|s| s.text.as_str()).collect::<String>())
+                .collect()
+        };
+        assert_eq!(text(1), ["a", "bc", ""]);
+        // The `rowspan` cell's column is padded, so `b2` stays under B.
+        assert_eq!(text(2), ["", "b2", "c2"]);
+    }
+
+    #[test]
+    fn book_css_indents_caps_and_scripts() {
+        let sheet = StyleSheet::parse(
+            "p.body { text-indent: 1.5em; text-align: justify } div.verse { margin-left: 2em } \
+             span.sc { font-variant: small-caps } span.fn { vertical-align: super }",
+        );
+        let opts = Options {
+            base: Base::None,
+            stylesheet: Some(&sheet),
+        };
+        let doc = from_html(
+            "<p class=body>Prose<span class=fn>1</span> <sup>2</sup> H<sub>2</sub>O</p>\
+             <div class=verse><p>Verse</p></div><p><span class=sc>Hello</span> World</p>\
+             <p><img src=a.png style='width: 50%'></p>",
+            &opts,
+        );
+        let Block::Text {
+            align,
+            indent,
+            spans,
+            ..
+        } = &doc.blocks[0]
+        else {
+            panic!()
+        };
+        assert_eq!(*align, Align::Justify);
+        assert_eq!(indent.first_line, 1.5);
+        assert!(spans.iter().any(|s| s.text == "1" && s.style.sup));
+        assert!(spans.iter().any(|s| s.text == "2" && s.style.sup));
+        assert!(spans.iter().any(|s| s.text == "2" && s.style.sub));
+        let Block::Text { indent, .. } = &doc.blocks[1] else {
+            panic!()
+        };
+        assert_eq!(indent.left, 2.0);
+        let Block::Text { spans, .. } = &doc.blocks[2] else {
+            panic!()
+        };
+        assert_eq!(doc.blocks[2].plain_text(), "HELLO World");
+        assert!(spans.iter().any(|s| s.text == "ELLO" && s.style.small));
+        assert!(matches!(
+            &doc.blocks[3],
+            Block::Image {
+                fraction: Some(f),
+                ..
+            } if (*f - 0.5).abs() < 1e-6
+        ));
+    }
+
+    #[test]
+    fn text_parts_follow_layout_order() {
+        let doc = from_html(
+            "<ul><li>one</li><li>two<blockquote>q</blockquote></li></ul>",
+            &Options::default(),
+        );
+        assert_eq!(doc.blocks[0].text_parts(), ["one", "two", "q"]);
+        assert_eq!(doc.blocks[0].part_text(), "one\ntwo\nq");
     }
 
     #[test]

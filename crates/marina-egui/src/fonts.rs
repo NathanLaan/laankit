@@ -15,6 +15,8 @@
 //! | `FontFamily::Monospace`        | JetBrains Mono Regular                              |
 //! | [`MONO_BOLD`]                  | JetBrains Mono Bold                                 |
 //! | [`MONO_ITALIC`]                | JetBrains Mono Italic                               |
+//! | [`SERIF`], [`SERIF_ITALIC`]    | Source Serif 4 Regular, Italic (books)              |
+//! | [`SERIF_BOLD`], [`SERIF_BOLD_ITALIC`] | Source Serif 4 Bold, Bold Italic             |
 //! | [`crate::icons::FAMILY`]       | Font Awesome 6 Free Solid                           |
 //!
 //! The faces are static instances, not variable fonts: shaping text the first
@@ -47,13 +49,18 @@ pub const BOLD_ITALIC: &str = "sans-bold-italic";
 pub const MONO_BOLD: &str = "mono-bold";
 /// JetBrains Mono Italic.
 pub const MONO_ITALIC: &str = "mono-italic";
+/// Source Serif 4, the reading face for books (`marina-richtext`'s serif option).
+pub const SERIF: &str = "serif";
+pub const SERIF_ITALIC: &str = "serif-italic";
+pub const SERIF_BOLD: &str = "serif-bold";
+pub const SERIF_BOLD_ITALIC: &str = "serif-bold-italic";
 
 /// CSS weights, for [`Style::weight`]. Each maps to the nearest bundled face.
 pub const REGULAR: f32 = 400.0;
 pub const SEMIBOLD: f32 = 600.0;
 pub const BOLD: f32 = 700.0;
 
-const FACES: [(&str, &[u8]); 9] = [
+const FACES: [(&str, &[u8]); 13] = [
     ("Inter", include_bytes!("../assets/fonts/Inter-Regular.ttf")),
     (
         "Inter-SemiBold",
@@ -82,6 +89,22 @@ const FACES: [(&str, &[u8]); 9] = [
     (
         "JetBrainsMono-Italic",
         include_bytes!("../assets/fonts/JetBrainsMono-Italic.ttf"),
+    ),
+    (
+        "SourceSerif4",
+        include_bytes!("../assets/fonts/SourceSerif4-Regular.ttf"),
+    ),
+    (
+        "SourceSerif4-Italic",
+        include_bytes!("../assets/fonts/SourceSerif4-It.ttf"),
+    ),
+    (
+        "SourceSerif4-Bold",
+        include_bytes!("../assets/fonts/SourceSerif4-Bold.ttf"),
+    ),
+    (
+        "SourceSerif4-BoldItalic",
+        include_bytes!("../assets/fonts/SourceSerif4-BoldIt.ttf"),
     ),
     (
         crate::icons::FAMILY,
@@ -122,6 +145,13 @@ pub fn definitions() -> FontDefinitions {
         (FontFamily::Monospace, "JetBrainsMono"),
         (FontFamily::Name(MONO_BOLD.into()), "JetBrainsMono-Bold"),
         (FontFamily::Name(MONO_ITALIC.into()), "JetBrainsMono-Italic"),
+        (FontFamily::Name(SERIF.into()), "SourceSerif4"),
+        (FontFamily::Name(SERIF_ITALIC.into()), "SourceSerif4-Italic"),
+        (FontFamily::Name(SERIF_BOLD.into()), "SourceSerif4-Bold"),
+        (
+            FontFamily::Name(SERIF_BOLD_ITALIC.into()),
+            "SourceSerif4-BoldItalic",
+        ),
     ];
     for (family, face) in families {
         defs.families.insert(family, chain(face));

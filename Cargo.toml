@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "apps/pageliner/src-tauri", "apps/threadliner/src-tauri", "apps/noteliner/src-tauri", "apps/spikes/*", "apps/threadliner/native"]
+members = ["crates/*", "apps/pageliner/src-tauri", "apps/threadliner/src-tauri", "apps/noteliner/src-tauri", "apps/spikes/*", "apps/threadliner/native", "apps/pageliner/native"]
 
 [workspace.package]
 edition = "2021"
@@ -12,6 +12,7 @@ marina-core = { path = "crates/marina-core" }
 marina-tauri = { path = "crates/marina-tauri" }
 marina-egui = { path = "crates/marina-egui" }
 marina-richtext = { path = "crates/marina-richtext" }
+pageliner-epub = { path = "crates/pageliner-epub" }
 anyhow = "1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }

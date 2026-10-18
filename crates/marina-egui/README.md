@@ -76,9 +76,10 @@ bundle one family so they look the same everywhere.
 | `Monospace`                | JetBrains Mono 2.304 Regular           | 267 KB  |
 | `fonts::MONO_BOLD`         | JetBrains Mono 2.304 Bold              | 271 KB  |
 | `fonts::MONO_ITALIC`       | JetBrains Mono 2.304 Italic            | 270 KB  |
+| `fonts::SERIF` (+ `_ITALIC`, `_BOLD`, `_BOLD_ITALIC`) | Source Serif 4.005 Regular, Italic, Bold, Bold Italic (books) | 893 KB |
 | `icons::FAMILY`            | Font Awesome Free 6.7.2 Solid          | 416 KB  |
 
-About 3.3 MB in all, embedded with `include_bytes!`. Pick a face with a
+About 4.2 MB in all, embedded with `include_bytes!`. Pick a face with a
 `fonts::Style` (`fonts::styled`, `fonts::bold`, `fonts::italic`,
 `fonts::weight` for `RichText`; `fonts::format` for `LayoutJob`s).
 

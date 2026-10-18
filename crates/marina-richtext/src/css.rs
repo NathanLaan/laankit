@@ -1,5 +1,19 @@
-//! Just enough CSS for EPUB books: the declarations a reader honours (italics, bold, underline,
-//! strike-through, alignment, `display: none`, monospace) matched by simple selectors.
+//! Just enough CSS for EPUB books, matched by simple selectors. Honoured, because books use them
+//! to carry meaning or structure:
+//!
+//! - `font-style`, `font-weight`, `text-decoration`, `font-family` (monospace only): emphasis.
+//! - `text-align` (including `justify`): centred titles, right-aligned signatures, justified prose.
+//! - `text-indent`, `margin-left`, `padding-left` (and the `margin`/`padding` shorthands):
+//!   indented paragraphs, block quotes and verse built from `div`s.
+//! - `font-variant: small-caps`, `text-transform: uppercase`: chapter openings and acronyms.
+//! - `vertical-align: super | sub`: footnote markers styled with classes instead of `<sup>`.
+//! - `width: N% | Npx` on images: frontispieces and inline figures sized by the book.
+//! - `display: none`.
+//!
+//! Ignored, because a reflowing reader shouldn't take them from the book: colours and
+//! backgrounds (the reading theme owns them), font sizes and line heights (the reader's own
+//! setting), vertical margins, floats, positioning, `page-break-*` (there are no pages) and
+//! everything else.
 //!
 //! Selectors are reduced to their last compound (`div.note p.first` → `p.first`), so a rule can
 //! over-match; pseudo-classes, attribute selectors and `@` rules are skipped.
@@ -7,7 +21,7 @@
 use crate::model::Align;
 
 /// The declarations the converter understands; `None` means "not set here".
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Decls {
     pub italic: Option<bool>,
     pub bold: Option<bool>,
@@ -16,6 +30,51 @@ pub struct Decls {
     pub monospace: Option<bool>,
     pub align: Option<Align>,
     pub hidden: bool,
+    /// `margin-left` + `padding-left`, in ems.
+    pub indent_left: Option<f32>,
+    /// `text-indent`, in ems.
+    pub text_indent: Option<f32>,
+    pub small_caps: Option<bool>,
+    pub uppercase: Option<bool>,
+    /// `vertical-align`: `Some(true)` super, `Some(false)` sub.
+    pub superscript: Option<bool>,
+    /// An image's `width`.
+    pub width: Option<Length>,
+}
+
+/// A CSS length the converter keeps.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Length {
+    /// Ems (`em`, `rem`; `px` and `pt` converted at 16 px / 12 pt to the em).
+    Em(f32),
+    /// A percentage of the containing block.
+    Percent(f32),
+}
+
+impl Length {
+    pub fn parse(value: &str) -> Option<Length> {
+        let v = value.trim();
+        let num = |suffix: &str| v.strip_suffix(suffix)?.trim().parse::<f32>().ok();
+        if let Some(n) = num("%") {
+            Some(Length::Percent(n))
+        } else if let Some(n) = num("rem").or_else(|| num("em")) {
+            Some(Length::Em(n))
+        } else if let Some(n) = num("px") {
+            Some(Length::Em(n / 16.0))
+        } else if let Some(n) = num("pt") {
+            Some(Length::Em(n / 12.0))
+        } else {
+            v.parse::<f32>().ok().filter(|n| *n == 0.0).map(Length::Em)
+        }
+    }
+
+    /// In ems, a percentage taken of a 40 em column.
+    pub fn ems(self) -> f32 {
+        match self {
+            Length::Em(n) => n,
+            Length::Percent(p) => p / 100.0 * 40.0,
+        }
+    }
 }
 
 impl Decls {
@@ -24,7 +83,20 @@ impl Decls {
         macro_rules! take {
             ($($f:ident),*) => { $(if other.$f.is_some() { self.$f = other.$f; })* };
         }
-        take!(italic, bold, underline, strike, monospace, align);
+        take!(
+            italic,
+            bold,
+            underline,
+            strike,
+            monospace,
+            align,
+            indent_left,
+            text_indent,
+            small_caps,
+            uppercase,
+            superscript,
+            width
+        );
         self.hidden |= other.hidden;
     }
 
@@ -61,11 +133,42 @@ impl Decls {
                     d.align = match value.as_str() {
                         "center" => Some(Align::Center),
                         "right" | "end" => Some(Align::Right),
-                        "left" | "start" | "justify" => Some(Align::Left),
+                        "left" | "start" => Some(Align::Left),
+                        "justify" => Some(Align::Justify),
                         _ => None,
                     }
                 }
                 "display" => d.hidden = value == "none",
+                "margin-left" | "padding-left" => {
+                    if let Some(l) = Length::parse(&value) {
+                        d.indent_left = Some(d.indent_left.unwrap_or(0.0) + l.ems());
+                    }
+                }
+                "margin" | "padding" => {
+                    // The left side: `a` (all), `a b`, `a b c` (left = b), `a b c d` (left = d).
+                    let parts: Vec<&str> = value.split_whitespace().collect();
+                    let left = match parts.len() {
+                        1 => parts.first(),
+                        2 | 3 => parts.get(1),
+                        _ => parts.get(3),
+                    };
+                    if let Some(l) = left.and_then(|v| Length::parse(v)) {
+                        d.indent_left = Some(d.indent_left.unwrap_or(0.0) + l.ems());
+                    }
+                }
+                "text-indent" => d.text_indent = Length::parse(&value).map(Length::ems),
+                "font-variant" | "font-variant-caps" => {
+                    d.small_caps = Some(value.contains("small-caps"))
+                }
+                "text-transform" => d.uppercase = Some(value == "uppercase"),
+                "vertical-align" => {
+                    d.superscript = match value.as_str() {
+                        "super" | "top" | "text-top" => Some(true),
+                        "sub" | "bottom" | "text-bottom" => Some(false),
+                        _ => None,
+                    }
+                }
+                "width" => d.width = Length::parse(&value),
                 "font-family" => {
                     d.monospace = Some(value.contains("mono") || value.contains("courier"))
                 }
@@ -243,5 +346,23 @@ mod tests {
         assert_eq!(d.bold, Some(true));
         assert!(d.hidden);
         assert_eq!((d.underline, d.strike), (Some(true), Some(true)));
+    }
+
+    #[test]
+    fn parses_book_layout() {
+        let d = Decls::parse(
+            "text-align: justify; text-indent: 1.5em; margin: 0 0 0 24px; padding-left: 1em; \
+             font-variant: small-caps; vertical-align: super; width: 50%; page-break-before: always",
+        );
+        assert_eq!(d.align, Some(Align::Justify));
+        assert_eq!(d.text_indent, Some(1.5));
+        assert_eq!(d.indent_left, Some(2.5));
+        assert_eq!(d.small_caps, Some(true));
+        assert_eq!(d.superscript, Some(true));
+        assert_eq!(d.width, Some(Length::Percent(50.0)));
+        assert_eq!(Length::parse("12pt"), Some(Length::Em(1.0)));
+        assert_eq!(Length::parse("0"), Some(Length::Em(0.0)));
+        assert_eq!(Length::parse("auto"), None);
+        assert_eq!(Decls::parse("margin: 1em 2em").indent_left, Some(2.0));
     }
 }

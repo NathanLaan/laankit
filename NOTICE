@@ -13,6 +13,10 @@ JetBrains Mono 2.304 (crates/marina-egui/assets/fonts/JetBrainsMono-*.ttf) — S
   Font License 1.1. Copyright 2020 The JetBrains Mono Project Authors.
   https://github.com/JetBrains/JetBrainsMono
   License: crates/marina-egui/assets/fonts/JetBrainsMono-OFL.txt
+Source Serif 4.005 (crates/marina-egui/assets/fonts/SourceSerif4-*.ttf) — SIL Open Font License
+  1.1. Copyright 2014 - 2023 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
+  https://github.com/adobe-fonts/source-serif
+  License: crates/marina-egui/assets/fonts/SourceSerif4-LICENSE.md
 Font Awesome Free 6.7.2 (crates/marina-egui/assets/fonts/fa-solid-900.ttf, and the codepoints in
   crates/marina-egui/src/icons.rs) — font under the SIL Open Font License 1.1, icons under
   CC BY 4.0. Copyright Fonticons, Inc. https://fontawesome.com/license/free
