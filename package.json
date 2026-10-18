@@ -12,6 +12,7 @@
     "tauri:noteliner":      "npm run tauri:dev -w noteliner",
     "electron:threadliner": "npm run electron:dev -w threadliner",
     "tauri:threadliner":    "npm run tauri:dev -w threadliner",
+    "native:threadliner":   "cargo run -p threadliner-native --release",
     "electron:pageliner":   "npm run electron:dev -w pageliner",
     "tauri:pageliner":      "npm run tauri:dev -w pageliner",
     "playground":           "npm run electron:dev -w @marina/desktop-ui-playground",

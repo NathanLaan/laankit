@@ -16,12 +16,14 @@
 //! | `settings`     | `settings/*`: `SettingsShell`, `SettingGroup`, `ThemeList`, …          |
 //! | `panes`        | `PaneHost.svelte`                                                      |
 //! | `about`        | `AboutModal.svelte`                                                    |
+//! | `dialog`       | compact and full modals, form inputs, buttons, confirmations           |
 //! | `not_ported`   | the "not in the native build yet" panel                                |
 //! | `diagnostics`  | `MARINA_SCREENSHOT` and friends                                        |
 
 pub mod about;
 pub mod commands;
 pub mod diagnostics;
+pub mod dialog;
 pub mod fonts;
 pub mod icons;
 pub mod not_ported;

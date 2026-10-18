@@ -337,10 +337,17 @@ pub fn setting_group<R>(
 /// its own theme's accent colours. Applies the choice to the context and
 /// returns `true` when it changed, so the app can persist it.
 pub fn theme_list(ui: &mut Ui, state: &mut ThemeState) -> bool {
+    theme_list_among(ui, state, &ThemeId::ALL)
+}
+
+/// [`theme_list`] limited to `themes`, for apps that ship a subset
+/// (`themeState.configure({ themes })`; ThreadLiner offers Light, Dark and
+/// Midnight).
+pub fn theme_list_among(ui: &mut Ui, state: &mut ThemeState, themes: &[ThemeId]) -> bool {
     let p = theme::palette(ui.ctx());
     let mut picked = None;
     dropdown(ui, &p, "Theme", state.theme.name(), |ui| {
-        for t in ThemeId::ALL {
+        for &t in themes {
             let tp = t.palette();
             if swatch_row(ui, t.name(), tp.accent, tp.accent_on, t == state.theme).clicked() {
                 picked = Some(t);
@@ -381,6 +388,30 @@ pub fn scale_list(ui: &mut Ui, state: &mut ThemeState) -> bool {
         }
         _ => false,
     }
+}
+
+/// A full-width `<select>` styled like [`scale_list`]: `options` are
+/// `(value, label)` pairs; returns the newly picked value.
+pub fn select(
+    ui: &mut Ui,
+    label: &str,
+    options: &[(&str, &str)],
+    selected: &str,
+) -> Option<String> {
+    let p = theme::palette(ui.ctx());
+    let current = options
+        .iter()
+        .find(|o| o.0 == selected)
+        .map_or(selected, |o| o.1);
+    let mut picked = None;
+    dropdown(ui, &p, label, current, |ui| {
+        for (value, text) in options {
+            if swatch_row(ui, text, p.bg_surface, p.text_primary, *value == selected).clicked() {
+                picked = Some(value.to_string());
+            }
+        }
+    });
+    picked.filter(|v| v != selected)
 }
 
 /// `.theme-select` / `.scale-select`: the closed select, opening a popup

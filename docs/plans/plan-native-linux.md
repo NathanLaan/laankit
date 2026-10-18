@@ -1,9 +1,10 @@
 # Native Linux Apps — Migration Plan
 
 Status: **Option A implemented (2026-10-03). Option C (pure Rust, egui)
-accepted 2026-10-17 and being prototyped; see
-[plan-native-rust-egui.md](plan-native-rust-egui.md).** Earlier decision
-(2026-10-02): do A + B, completing all of A first. See
+accepted 2026-10-17 and in progress; see
+[plan-native-rust-egui.md](plan-native-rust-egui.md). Option B dropped
+2026-10-17 in favour of C.** Earlier decision (2026-10-02): do A + B,
+completing all of A first. See
 [Option A — implementation record](#option-a--implementation-record).
 
 Converts NoteLiner, ThreadLiner and PageLiner from Electron + Svelte into
@@ -66,7 +67,7 @@ is.
 - **Best if:** "native" means a lean, installable Linux binary without
   Electron.
 
-### Option B — Rust + GTK4/libadwaita (gtk-rs + Relm4)
+### Option B — Rust + GTK4/libadwaita (gtk-rs + Relm4) — dropped 2026-10-17
 
 A truly native GNOME app.
 

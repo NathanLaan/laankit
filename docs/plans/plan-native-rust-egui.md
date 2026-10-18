@@ -2,9 +2,11 @@
 
 Status: **Accepted as Option C (2026-10-17). Phase 0 (spikes) passed on
 the `laan/egui` branch, all five go. Phase 1 (`marina-egui`,
-`marina-richtext`) done 2026-10-17; Phase 2 (ThreadLiner) next.** See
-[Phase 0 results](#phase-0-results-2026-10-17) and
-[Phase 1 record](#phase-1-record-2026-10-17). Follows ArtCraft's `artcraft-native` approach
+`marina-richtext`) done 2026-10-17. Phase 2 (ThreadLiner) built
+2026-10-17 and in its week of daily use before cutover; Phase 3
+(PageLiner) next.** See [Phase 0 results](#phase-0-results-2026-10-17),
+[Phase 1 record](#phase-1-record-2026-10-17) and
+[Phase 2 record](#phase-2-record-2026-10-17). Follows ArtCraft's `artcraft-native` approach
 for NoteLiner, ThreadLiner and PageLiner. Option C in
 [plan-native-linux.md](plan-native-linux.md) points here; it replaces the
 Python/GTK option that used to carry that letter.
@@ -19,8 +21,7 @@ Python/GTK option that used to carry that letter.
    all three.
 3. **EPUB CFI compatibility is not required.** PageLiner can use a native
    EPUB reader with its own position format, and no webview is needed.
-   Existing EPUB positions and highlights get a best-effort migration (or
-   are reset).
+   Existing EPUB positions and highlights are reset (decided 2026-10-17).
 4. **The Electron and Svelte builds stay as they are for now.**
 5. **All 6 themes are kept.**
 
@@ -287,6 +288,47 @@ and the article view.
 - **Exit criteria:** the parity checkpoint (below) passes for a week of
   daily use, and the kittest suite covers subscribe, read, tag and sync.
 
+#### Phase 2 record (2026-10-17)
+
+`apps/threadliner/native` (`threadliner-native`, about 4,600 lines):
+`cargo run -p threadliner-native --release`, or `npm run
+native:threadliner`. Its README has the architecture table, a parity table
+against every IPC channel and Svelte feature, and a `demo_data` example
+that fills a temporary config and data folder from real feeds.
+
+- **Parity:** feeds, entries, tags, settings (theme and scale mirrored to
+  the synced settings), the poller with notifications (`notify-rust`),
+  setup, the remote-sync dialog and every `git:*` operation, Help, About
+  with the update check, all shortcuts and a command palette.
+- **Partial:**
+  - Help is a dialog rather than a second window.
+  - The article header doesn't scroll with the body.
+  - Text selection works only within one paragraph.
+  - Window geometry lives in eframe's storage, not the Tauri
+    window-state file.
+- **Not yet:** single-instance.
+- **Shared data:** the same `ThreadLiner` config folder and data folder,
+  byte-compatible JSON (tested). `marina_core::paths` now matches
+  Electron's `userData` on Windows (`%APPDATA%`) and macOS
+  (`~/Library/Application Support`), not only Linux.
+- **Shared crates gained:**
+  - `marina_egui::dialog`: modal shells, inputs, buttons and `confirm`.
+  - `settings::select` and `theme_list_among`.
+  - `ToolbarButton::attention`.
+- **`rfd` pinned to 0.15:** `tauri-plugin-dialog` turns on rfd 0.16's
+  `gtk3` feature, which conflicts with `xdg-portal`, so `threadliner-native`
+  has no GTK dependency.
+- **Tests:** 9, including a kittest flow against a local HTTP feed and a
+  git temp folder (setup → add feed → read → mark unread → tag → assign),
+  checked against the files on disk.
+- **Still to check by hand before cutover:**
+  - Notifications and the folder dialog on Windows, macOS and KDE.
+  - The undecorated window on Windows and macOS.
+  - Sync against a real remote.
+  - Non-US keyboard layouts.
+  - A week of daily use alongside the Tauri build on the same data (the
+    parity checkpoint).
+
 ### Phase 3 — PageLiner (~3–5 weeks)
 
 - Library grid with covers (media cache pattern), metadata and reading
@@ -370,11 +412,11 @@ formats, so this mainly checks UI flows.
 | Two UI stacks during the migration | Strict "no egui in `*-core`" rule; the Tauri builds receive no new features once a native app reaches parity |
 | egui updates break things (0.x releases) | Pin minor versions in `[workspace.dependencies]`; upgrade all apps together |
 
-## Open questions
+## Later decisions (2026-10-17)
 
-1. Should Option B (GTK) still be pursued, or is it superseded by C?
-2. How should existing EPUB positions and highlights migrate: a
-   best-effort conversion from CFI, or a reset?
+- **Option B (GTK4/libadwaita) is dropped.** Option C replaces it.
+- **EPUB reading positions and highlights are reset** when PageLiner moves
+  to the native reader. No CFI conversion is attempted.
 
 ## Rough total
 

@@ -94,6 +94,20 @@ npm run start -w noteliner
 npm run start -w threadliner
 ```
 
+## Native build (egui)
+
+The pure-Rust builds of plan Option C
+([`docs/plans/plan-native-rust-egui.md`](docs/plans/plan-native-rust-egui.md)): egui UIs over the
+same Rust backends, with no webview, for Linux, Windows and macOS. They share the Electron and Tauri
+builds' settings and data folders. ThreadLiner is the first:
+
+```bash
+npm run native:threadliner     # cargo run -p threadliner-native --release
+```
+
+See [`apps/threadliner/native/README.md`](apps/threadliner/native/README.md) for what's ported. The
+binary is `threadliner-native`, so it installs next to the other builds.
+
 ## Native Linux builds (Tauri)
 
 Each app has a `src-tauri/` crate that replaces the Electron main process

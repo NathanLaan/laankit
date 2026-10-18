@@ -33,6 +33,9 @@ pub struct ToolbarButton<'a> {
     pub label: Option<&'a str>,
     pub active: bool,
     pub disabled: bool,
+    /// Tints the icon with the accent while inactive (`extraClass`, e.g.
+    /// ThreadLiner's `sync-pending`).
+    pub attention: bool,
 }
 
 impl<'a> ToolbarButton<'a> {
@@ -43,7 +46,13 @@ impl<'a> ToolbarButton<'a> {
             label: None,
             active: false,
             disabled: false,
+            attention: false,
         }
+    }
+
+    pub fn attention(mut self, attention: bool) -> Self {
+        self.attention = attention;
+        self
     }
 
     pub fn active(mut self, active: bool) -> Self {
@@ -126,6 +135,8 @@ pub fn button(ui: &mut Ui, b: ToolbarButton<'_>) -> Response {
         (p.bg_selected, p.accent, Stroke::new(1.0, p.accent))
     } else if hovered {
         (p.bg_button, p.text_primary, Stroke::NONE)
+    } else if b.attention {
+        (egui::Color32::TRANSPARENT, p.accent, Stroke::NONE)
     } else {
         (egui::Color32::TRANSPARENT, p.text_secondary, Stroke::NONE)
     };
