@@ -73,15 +73,18 @@ bundle one family so they look the same everywhere.
 | `fonts::BOLD_FAMILY`       | Inter 4.1 Bold                         | 411 KB  |
 | `fonts::ITALIC`            | Inter 4.1 Italic                       | 408 KB  |
 | `fonts::BOLD_ITALIC`       | Inter 4.1 Bold Italic                  | 415 KB  |
-| `Monospace`                | JetBrains Mono 2.304 Regular           | 267 KB  |
-| `fonts::MONO_BOLD`         | JetBrains Mono 2.304 Bold              | 271 KB  |
-| `fonts::MONO_ITALIC`       | JetBrains Mono 2.304 Italic            | 270 KB  |
+| `Monospace`                | JetBrains Mono NL 2.304 Regular        | 203 KB  |
+| `fonts::MONO_BOLD`         | JetBrains Mono NL 2.304 Bold           | 206 KB  |
+| `fonts::MONO_ITALIC`       | JetBrains Mono NL 2.304 Italic         | 206 KB  |
 | `fonts::SERIF` (+ `_ITALIC`, `_BOLD`, `_BOLD_ITALIC`) | Source Serif 4.005 Regular, Italic, Bold, Bold Italic (books) | 893 KB |
 | `icons::FAMILY`            | Font Awesome Free 6.7.2 Solid          | 416 KB  |
 
 About 4.2 MB in all, embedded with `include_bytes!`. Pick a face with a
 `fonts::Style` (`fonts::styled`, `fonts::bold`, `fonts::italic`,
 `fonts::weight` for `RichText`; `fonts::format` for `LayoutJob`s).
+
+JetBrains Mono NL is the no-ligatures build: egui can't switch OpenType
+features off, and code should show `->` and `!=` as typed.
 
 The faces are static instances rather than variable fonts on purpose: egui
 shapes text about twice as fast with them, and first-time shaping is what

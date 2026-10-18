@@ -1,0 +1,25 @@
+[package]
+name = "marina-editor"
+version = "0.1.0"
+description = "NoteLiner's Markdown editor for the native (egui) builds: egui's TextEdit with an incremental highlighting layouter, list editing, find/replace, wikilink completion and bounded undo. Plan Option C, see docs/plans/plan-native-rust-egui.md."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = []
+# Hunspell spell checking (pure Rust, `spellbook`) with a host-supplied dictionary.
+spellcheck = ["dep:spellbook"]
+
+[dependencies]
+egui.workspace = true
+log.workspace = true
+marina-egui.workspace = true
+regex = "1"
+spellbook = { version = "0.4", optional = true }
+
+[dev-dependencies]
+eframe.workspace = true
+egui_kittest.workspace = true
+env_logger.workspace = true
+image.workspace = true

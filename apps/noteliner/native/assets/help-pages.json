@@ -1,0 +1,176 @@
+[
+  {
+    "id": "overview",
+    "title": "Welcome to NoteLiner",
+    "section": "Overview",
+    "body": "# Welcome to NoteLiner\n\nNoteLiner is an outliner-style markdown note-taking application built with\nElectron and Svelte. Your notes live as plain `.md` files inside a folder\non disk, and the app tracks edits via Git so you can review, sync, and roll\nback changes at any time.\n\n## What's in this Help\n\n- **Toolbar buttons** — every icon on the left toolbar has a dedicated page\n  describing what it does and which keyboard shortcut triggers it.\n- **Panels** — the Files, Outline, Tags, Search, Backlinks, Attachments,\n  History, and Log panels each have their own page.\n- **Workflow guides** — how to create files, start notes from templates,\n  import documents, link notes with `[[wikilinks]]`, sync to a remote\n  Git repository, and export to HTML/PDF/Markdown.\n\n## Tips for using this dialog\n\n- Type into the **search box** on the left to find pages whose content\n  contains your term. Matches stay highlighted; non-matching pages are\n  grayed out.\n- **Drag** the divider between the index and content panes to resize them.\n- Press **Escape** to close.\n"
+  },
+  {
+    "id": "getting-started",
+    "title": "Getting Started",
+    "section": "Overview",
+    "body": "# Getting Started\n\n1. **Open a folder** with the *Open Folder* toolbar button (or `Ctrl+O`).\n   NoteLiner will initialize Git in that folder if it isn't already a\n   repository.\n2. **Create your first note** with *New File* (`Ctrl+N`) and give it a\n   short, descriptive name. The file is created as `<id>-<slug>.md` and\n   selected immediately.\n3. **Write in markdown**. The editor is plain text — links, headings, lists,\n   code blocks, and `[[wikilinks]]` all render in the Preview pane\n   (`Ctrl+P`).\n4. **Tag, link, and organize**. Apply tags from the Tags pane, filter the\n   Files pane by tag, and connect notes with `[[wikilinks]]`.\n5. **Sync** to a Git remote (`Ctrl+Shift+S`) when you want to back up or\n   share your project.\n"
+  },
+  {
+    "id": "toolbar-home",
+    "title": "Home",
+    "section": "Toolbar",
+    "body": "# Home\n\nCloses the currently open project and returns you to the open-screen, where\nyou can open another folder, create a new project, or pick from your recent\nprojects list.\n\nBefore closing, NoteLiner saves your window layout (panel widths, visible\npanes, etc.) and flushes any pending commits to Git. A *Syncing…* dialog\nappears briefly while this happens.\n"
+  },
+  {
+    "id": "toolbar-open-folder",
+    "title": "Open Folder",
+    "section": "Toolbar",
+    "body": "# Open Folder\n\n**Shortcut:** `Ctrl+O`\n\nOpens a system folder picker. Choose any folder on disk:\n\n- If the folder already contains a NoteLiner project (a `.noteliner/` index\n  and a Git repository), it opens directly.\n- If the folder exists but is not yet a project, the **Setup** dialog\n  appears so you can optionally connect a remote Git URL before\n  initializing.\n\nNoteLiner remembers recently opened folders on the open-screen.\n"
+  },
+  {
+    "id": "toolbar-new-file",
+    "title": "New File",
+    "section": "Toolbar",
+    "body": "# New File\n\n**Shortcut:** `Ctrl+N`\n\nCreates a new markdown note inside the current project. You'll be prompted\nfor a display name and an optional set of tags. The file is saved as\n`<id>-<slug>.md` and selected for editing right away.\n\nNew files can also be created on the fly by clicking a *dangling*\n`[[wikilink]]` in the Preview pane — see the **Wikilinks** page.\n\nIf the project has any **templates**, the dialog shows a *Template* dropdown\nso a new note can start from a saved skeleton instead of a blank body — see\nthe **Templates** page.\n"
+  },
+  {
+    "id": "templates",
+    "title": "Templates",
+    "section": "Files",
+    "body": "# Templates\n\nTemplates are reusable note skeletons stored as plain markdown in the\nproject's `_templates/` folder. They are **not** notes — they never\nappear in the file tree, search, or backlinks — but they are committed to git\nalong with the rest of the project, so they version and sync like everything\nelse.\n\n## Using a template\n\nWhen a project contains at least one template, the **New File** dialog\n(`Ctrl+N`) shows a *Template* dropdown. Pick one and the new note\nstarts from that template's body instead of a blank document. Choose *Blank*\nfor the default behaviour.\n\n## Creating a template\n\nSelect a note and run **Save as Template** from the Command Palette\n(`Ctrl+K`). The note's current name and editor contents are saved as a\nnew template. You can then open `_templates/<name>.md` and edit it —\nfor example to add placeholders.\n\n## Placeholders\n\nWhen a note is created from a template, these placeholders in the template\nbody are filled in automatically:\n\n- `{{title}}` — the new note's name (e.g. `Meeting Notes`)\n- `{{date}}` — the current date, `YYYY-MM-DD` (e.g. `2026-05-31`)\n- `{{time}}` — the current time, `HH:MM` 24-hour (e.g. `14:30`)\n- `{{datetime}}` — date and time together (e.g. `2026-05-31 14:30`)\n\nAny other `{{...}}` text is left untouched.\n"
+  },
+  {
+    "id": "toolbar-import",
+    "title": "Import Document",
+    "section": "Toolbar",
+    "body": "# Import Document\n\n**Shortcut:** `Ctrl+Alt+I`\n\nImports an external document into the current project, converting it to\nmarkdown. Embedded images are extracted into the project's `_attachments/`\nfolder and rewritten as markdown image references.\n\nA summary line appears in the Log pane noting how many images were\nextracted and whether any tables were stripped during conversion.\n"
+  },
+  {
+    "id": "toolbar-files",
+    "title": "Files Panel",
+    "section": "Toolbar",
+    "body": "# Files Panel\n\n**Shortcut:** `Ctrl+E`\n\nToggles the **Files** sidebar pane. The Files pane lists every note in the\nproject. Click a file to open it in the editor.\n\nRight-click a file for a context menu with quick actions: open in your\nsystem file manager, duplicate (`Ctrl+Shift+D`) or rename the file,\nmove the file to a new parent, delete the file, clear all tags, toggle\npreview, or export the note to HTML, PDF, or Markdown.\n\n**Duplicate** opens a dialog pre-filled with the source note's tags and a\n`<name>-Copy` name, then creates a copy of the note's body.\n\n**Move** opens a dialog showing the file's current parent and lets you pick a\nnew one — or `(None)` to move it to the top level. The file itself and its\ndescendants are excluded so you can't create a loop.\n\nUse `Ctrl+PgUp` / `Ctrl+PgDn` to step through files without leaving\nthe keyboard.\n"
+  },
+  {
+    "id": "toolbar-outline",
+    "title": "Outline Panel",
+    "section": "Toolbar",
+    "body": "# Outline Panel\n\n**Shortcut:** `Ctrl+Shift+O`\n\nToggles the **Outline** sidebar pane. The Outline shows every heading in\nthe current note as a tree. Click any heading to jump straight to that\nsection of the editor.\n\nThe outline updates live as you type, so it doubles as a structural\noverview while you write.\n"
+  },
+  {
+    "id": "toolbar-tags",
+    "title": "Tags Panel",
+    "section": "Toolbar",
+    "body": "# Tags Panel\n\n**Shortcut:** `Ctrl+Shift+T`\n\nToggles the **Tags** sidebar pane. Lists every tag applied to the\ncurrently selected file.\n\n- **Add a tag:** `Ctrl+T` (or `Ctrl+Shift++` when the Tags pane is\n  visible).\n- **Remove a tag:** `Ctrl+Y`.\n\nTags are stored in each file's YAML frontmatter when frontmatter writing\nis enabled in Settings — otherwise they live only in the project index.\n"
+  },
+  {
+    "id": "toolbar-attachments",
+    "title": "Attachments Panel",
+    "section": "Toolbar",
+    "body": "# Attachments Panel\n\n**Shortcut:** `Ctrl+Shift+A`\n\nToggles the **Attachments** side panel (right side). Shows every file in\nthe project's `_attachments/` folder — images, PDFs, and other binary\nassets pulled in by imports or dropped manually.\n\nFrom here you can preview attachments, copy their paths, or insert a\nmarkdown reference into the active note.\n"
+  },
+  {
+    "id": "toolbar-search",
+    "title": "Search Panel",
+    "section": "Toolbar",
+    "body": "# Search Panel\n\n**Shortcut:** `Ctrl+F`\n\nToggles the **Search** sidebar pane and focuses the search input.\nPerforms a project-wide, full-text search across every note. Results group\nby file; click any matched line to jump to that location in the editor.\n\nTo search *inside* the current file only, use the editor's built-in\nfind with `Ctrl+Shift+F`.\n"
+  },
+  {
+    "id": "toolbar-backlinks",
+    "title": "Backlinks Panel",
+    "section": "Toolbar",
+    "body": "# Backlinks Panel\n\n**Shortcut:** `Ctrl+Shift+B`\n\nToggles the **Backlinks** sidebar pane. Lists every other note in the\nproject that contains a `[[wikilink]]` pointing to the currently\nselected file.\n\nEach entry shows the source note's name and the specific line containing\nthe link. Click an entry to jump straight to that line in the source\nnote.\n"
+  },
+  {
+    "id": "toolbar-sync",
+    "title": "Remote Sync",
+    "section": "Toolbar",
+    "body": "# Remote Sync\n\n**Shortcut:** `Ctrl+Shift+S`\n\nOpens the **Remote Sync** dialog for managing your project's Git remote:\n\n- **Connect** a remote URL (GitHub, GitLab, Gitea, self-hosted, etc.).\n- **Pull**, **Pull & Rebase**, or **Push** to/from the remote.\n- View **sync status** — synced, ahead, behind, or diverged.\n- **Reset from Remote** to discard all local changes and match the remote\n  exactly. *(Destructive — cannot be undone.)*\n- **Disconnect** the remote without touching your files.\n\nIf no remote is configured, the dialog walks you through connecting one.\n"
+  },
+  {
+    "id": "toolbar-log",
+    "title": "Log Panel",
+    "section": "Toolbar",
+    "body": "# Log Panel\n\n**Shortcut:** `Ctrl+L`\n\nToggles the **Log** panel at the bottom of the window. Surfaces\ninformational messages from NoteLiner: import results, sync activity,\nwarnings, and errors.\n\nDrag the top edge to resize.\n"
+  },
+  {
+    "id": "toolbar-project-settings",
+    "title": "Project Settings",
+    "section": "Toolbar",
+    "body": "# Project Settings\n\n**Shortcut:** `Ctrl+Shift+,`\n\nOpens the **Project Settings** dialog for the currently open project.\nCovers Git author identity (name and email used for commits) and other\nper-project preferences.\n\nIf a required setting is missing when you open a project, NoteLiner\nopens this dialog automatically.\n"
+  },
+  {
+    "id": "toolbar-settings",
+    "title": "Settings",
+    "section": "Toolbar",
+    "body": "# Settings\n\n**Shortcut:** `Ctrl+,`\n\nOpens the **Settings** dialog with two tabs:\n\n- **UI** — theme, UI scale, custom window titlebar, and whether to write\n  YAML frontmatter into `.md` files on save.\n- **Keyboard Shortcuts** — a complete, auto-generated list of every\n  command and its shortcut. Pulled directly from the command registry,\n  so it always matches what the app actually responds to.\n"
+  },
+  {
+    "id": "toolbar-about",
+    "title": "About",
+    "section": "Toolbar",
+    "body": "# About\n\n**Shortcut:** `Ctrl+Shift+I`\n\nShows the **About** dialog with the application name, version, and a\nlink to the GitHub repository.\n"
+  },
+  {
+    "id": "toolbar-help",
+    "title": "Help",
+    "section": "Toolbar",
+    "body": "# Help\n\nOpens this Help dialog. Type in the search box on the left to filter the\nindex by content; non-matching pages are grayed out. Drag the vertical\ndivider to resize the index and content panes. Press **Escape** to close.\n"
+  },
+  {
+    "id": "editor",
+    "title": "Editor",
+    "section": "Editing",
+    "body": "# Editor\n\nThe central pane is a plain-text markdown editor (CodeMirror under the\nhood). Everything you type is auto-saved and, on a short debounce,\ncommitted to Git in the background.\n\n## Useful editor shortcuts\n\n- `Ctrl+B` — bold the selection (wraps it in `**`, or toggles it off)\n- `Ctrl+I` — italicize the selection (wraps it in `*`, or toggles it off)\n- `Ctrl+Shift+F` — find in current file\n- `Ctrl+P` — toggle the Preview pane\n- `Ctrl+H` — toggle the History pane\n- `Alt+.` — insert right arrow (→) at caret\n- `Alt+,` — insert left arrow (←) at caret\n\nHeadings, lists, code blocks, blockquotes, tables, images, and\n`[[wikilinks]]` all render in Preview exactly as you'd expect from\nstandard markdown.\n"
+  },
+  {
+    "id": "preview",
+    "title": "Preview Pane",
+    "section": "Editing",
+    "body": "# Preview Pane\n\n**Shortcut:** `Ctrl+P`\n\nThe Preview pane renders the current note's markdown as styled HTML.\n`[[wikilinks]]` become clickable: solid links open the target note;\ndashed (*dangling*) links offer to create the target note when clicked.\n\nRight-click anywhere inside the preview for a context menu with\n**Select All**, **Copy**, and the **Save to HTML / PDF / Markdown**\nexport actions.\n\nDrag the left edge of the pane to resize it.\n"
+  },
+  {
+    "id": "history",
+    "title": "History Pane",
+    "section": "Editing",
+    "body": "# History Pane\n\n**Shortcut:** `Ctrl+H`\n\nShows the Git commit history for the currently selected note. Each entry\nlists the commit message, author, and timestamp; click an entry to view\nthe file's contents at that point in time.\n\nBecause every save commits in the background, history gives you a\nfine-grained timeline of how each note evolved.\n"
+  },
+  {
+    "id": "wikilinks",
+    "title": "Wikilinks",
+    "section": "Editing",
+    "body": "# Wikilinks\n\nType `[[Note Name]]` anywhere in a note to link to another note by\nname. In Preview:\n\n- Links that resolve to an existing note are solid and clickable —\n  clicking jumps to that note.\n- Links that don't resolve appear with a **dashed underline**. Clicking\n  one opens the **New File** dialog pre-filled with that name.\n\nPipe syntax (`[[Real Name|Display Text]]`) lets you show a different\nlabel while still pointing at the target.\n\nThe **Backlinks** panel lists every note pointing *at* the current\nnote, so you can navigate your link graph in either direction.\n"
+  },
+  {
+    "id": "export",
+    "title": "Export to HTML / PDF / Markdown",
+    "section": "Editing",
+    "body": "# Export\n\nNoteLiner can save the current note as a standalone document outside of\nthe project folder:\n\n- **Save to HTML** — fully styled HTML.\n- **Save to PDF** — uses the system's print-to-PDF pipeline.\n- **Save to Markdown** — a clean `.md` copy without frontmatter or\n  project metadata.\n\nTrigger any of these from:\n\n- the Preview pane's right-click context menu, or\n- the Files pane's right-click context menu on the selected file.\n\nAfter saving, NoteLiner opens your Downloads folder so you can pick up\nthe exported file.\n"
+  },
+  {
+    "id": "command-palette",
+    "title": "Command Palette",
+    "section": "App",
+    "body": "# Command Palette\n\n**Shortcut:** `Ctrl+K` (also `Ctrl+Shift+P`)\n\nOpens the Command Palette — a fuzzy-searchable list of every action in\nthe app. Type a few letters of any command name to find it; `Enter`\nruns it.\n\nRecently used commands appear at the top of the list, so frequent\nactions stay one keystroke away.\n"
+  },
+  {
+    "id": "titlebar-toolbar-toggle",
+    "title": "Toolbar Toggle",
+    "section": "App",
+    "body": "# Toolbar Toggle\n\n**Shortcut:** `Ctrl+Shift+E`\n\nHides or shows the left-side toolbar. Useful when you want maximum\nhorizontal space for the editor and preview.\n\nWhen the custom titlebar is enabled (Settings → UI → Custom Window\nTitlebar), the toolbar can also be toggled from the hamburger icon in\nthe titlebar itself.\n"
+  },
+  {
+    "id": "zoom",
+    "title": "Zoom",
+    "section": "App",
+    "body": "# Zoom\n\nAdjust the entire UI's zoom level:\n\n- `Ctrl+=` — zoom in\n- `Ctrl+-` — zoom out\n- `Ctrl+0` — reset to 100%\n\nFor a coarser change, pick a UI Scale in **Settings → UI**.\n"
+  },
+  {
+    "id": "themes",
+    "title": "Themes",
+    "section": "App",
+    "body": "# Themes\n\nNoteLiner ships with three themes:\n\n- **Midnight** — deep, low-contrast dark theme.\n- **Dark** — neutral dark theme.\n- **Light** — bright theme for daytime use.\n\nSwitch from **Settings → UI → Theme**, or from the Command Palette\n(*Set Theme: Midnight / Dark / Light*).\n"
+  },
+  {
+    "id": "keyboard-shortcuts",
+    "title": "Keyboard Shortcuts",
+    "section": "App",
+    "body": "# Keyboard Shortcuts\n\nA complete, always-up-to-date shortcut reference lives in\n**Settings → Keyboard Shortcuts**. The list is generated from the\ncommand registry, so anything the app responds to is documented there.\n\nHighlights:\n\n- `Ctrl+K` — Command Palette\n- `Ctrl+N` / `Ctrl+D` — new / delete file\n- `Ctrl+Shift+D` — duplicate file\n- `Ctrl+O` — open folder\n- `Ctrl+P` / `Ctrl+H` — preview / history\n- `Ctrl+E` / `Ctrl+Shift+E` — toggle sidebar / toolbar\n- `Ctrl+F` / `Ctrl+Shift+F` — project search / find in file\n- `Ctrl+Shift+S` — remote sync\n- `Ctrl+,` / `Ctrl+Shift+,` — settings / project settings\n- `Ctrl+B` / `Ctrl+I` — bold / italic (in editor)\n- `Ctrl+Shift+I` — about\n"
+  }
+]

@@ -434,4 +434,32 @@ mod tests {
         h.run();
         assert_eq!(h.state().answer, Some(Confirm::No));
     }
+
+    /// A full dialog whose body takes the height it's offered keeps its
+    /// actions row inside the window (the Tag Editor's OK was cut off).
+    #[test]
+    fn full_dialog_fits_the_window() {
+        let size = vec2(1200.0, 800.0);
+        let mut h = Harness::builder()
+            .with_size(size)
+            .with_context_setup(crate::fonts::install)
+            .build_ui(|ui| {
+                let ctx = ui.ctx().clone();
+                Dialog::full("fit", "Fit").show(&ctx, |ui| {
+                    let height = ui.available_height() - 60.0;
+                    ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
+                    actions(ui, |ui| {
+                        button(ui, "OK", ButtonKind::Primary, true);
+                    });
+                });
+            });
+        h.run();
+        let ok = h.get_by_label("OK").rect();
+        assert!(
+            ok.bottom() <= size.y - OVERLAY_PAD.bottom as f32,
+            "OK ends at {} in a {} px window",
+            ok.bottom(),
+            size.y
+        );
+    }
 }

@@ -11,7 +11,9 @@ use std::sync::{Arc, Mutex};
 
 use base64::Engine;
 use serde_json::{json, Value};
+#[cfg(unix)]
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+#[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
 use tokio::task::JoinSet;
 
@@ -105,6 +107,14 @@ impl McpServer {
         self.running.lock().unwrap().as_ref().map(|r| r.socket_path.clone())
     }
 
+    /// The server listens on a Unix socket; other platforms (Windows) don't
+    /// have one yet, so starting reports that instead.
+    #[cfg(not(unix))]
+    pub async fn start(self: &Arc<Self>, _runtime_path: &Path) -> anyhow::Result<()> {
+        anyhow::bail!("the MCP server isn't available on this platform yet (it needs a Unix socket)")
+    }
+
+    #[cfg(unix)]
     pub async fn start(self: &Arc<Self>, runtime_path: &Path) -> anyhow::Result<()> {
         if self.is_running() {
             return Ok(());
@@ -158,6 +168,7 @@ impl McpServer {
         self.host.log("[MCP] stopped".into());
     }
 
+    #[cfg(unix)]
     async fn serve(self: Arc<Self>, stream: UnixStream) {
         let (read, mut write) = stream.into_split();
         let mut reader = BufReader::new(read);
@@ -760,25 +771,33 @@ pub async fn run_bridge(user_data: &Path) -> i32 {
         Err(e) => return fail(format!("failed to read runtime file: {e}"), 1),
     };
     let Some(sock) = runtime["socketPath"].as_str() else { return fail("runtime file is missing socketPath".into(), 1) };
-    let stream = match UnixStream::connect(sock).await {
-        Ok(s) => s,
-        Err(e) => return fail(format!("connection error: {e}"), 1),
-    };
-    let (mut rd, mut wr) = stream.into_split();
-    let up = async {
-        let _ = tokio::io::copy(&mut tokio::io::stdin(), &mut wr).await;
-        let _ = wr.shutdown().await;
-        // Keep draining responses after stdin closes.
-        std::future::pending::<()>().await
-    };
-    let down = async {
-        let _ = tokio::io::copy(&mut rd, &mut tokio::io::stdout()).await;
-    };
-    tokio::select! {
-        _ = up => {}
-        _ = down => {}
+    #[cfg(not(unix))]
+    {
+        let _ = sock;
+        fail("the MCP bridge isn't available on this platform yet (it needs a Unix socket)".into(), 1)
     }
-    0
+    #[cfg(unix)]
+    {
+        let stream = match UnixStream::connect(sock).await {
+            Ok(s) => s,
+            Err(e) => return fail(format!("connection error: {e}"), 1),
+        };
+        let (mut rd, mut wr) = stream.into_split();
+        let up = async {
+            let _ = tokio::io::copy(&mut tokio::io::stdin(), &mut wr).await;
+            let _ = wr.shutdown().await;
+            // Keep draining responses after stdin closes.
+            std::future::pending::<()>().await
+        };
+        let down = async {
+            let _ = tokio::io::copy(&mut rd, &mut tokio::io::stdout()).await;
+        };
+        tokio::select! {
+            _ = up => {}
+            _ = down => {}
+        }
+        0
+    }
 }
 
 #[cfg(test)]
@@ -845,6 +864,7 @@ mod tests {
         assert_eq!(bad["error"]["code"], INVALID_PARAMS);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn socket_round_trip() {
         let tmp = tempfile::tempdir().unwrap();

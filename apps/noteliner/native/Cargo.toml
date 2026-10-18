@@ -1,0 +1,42 @@
+[package]
+name = "noteliner-native"
+version = "2.0.1"
+description = "NoteLiner in pure Rust: an egui UI over noteliner-core (plan Option C, docs/plans/plan-native-rust-egui.md)."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "noteliner-native"
+path = "src/main.rs"
+
+[dependencies]
+marina-core.workspace = true
+marina-egui.workspace = true
+marina-richtext.workspace = true
+noteliner-core = { path = "../../../crates/noteliner-core" }
+noteliner-export.workspace = true
+noteliner-slides.workspace = true
+marina-editor = { workspace = true, features = ["spellcheck"] }
+anyhow.workspace = true
+chrono.workspace = true
+eframe.workspace = true
+egui.workspace = true
+egui_extras.workspace = true
+env_logger.workspace = true
+image.workspace = true
+log.workspace = true
+regex = "1"
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+# 0.15, not 0.16: the Tauri dialog plugin enables 0.16's `gtk3` feature, which can't be
+# combined with `xdg-portal`. 0.15 stays a separate crate, on the pure-Rust portal backend.
+rfd = "0.15"
+open = "5"
+
+[dev-dependencies]
+egui_kittest.workspace = true
+hayro = "0.8"
+tempfile = "3"

@@ -1,0 +1,24 @@
+[package]
+name = "noteliner-slides"
+version = "0.1.0"
+description = "NoteLiner's presentations, natively: deck parsing and slide edits (egui-free), plus the slide, slides-pane, deck-preview, settings and presenter widgets. Option C, see docs/plans/plan-native-rust-egui.md."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+regex = "1"
+egui.workspace = true
+marina-egui.workspace = true
+marina-richtext.workspace = true
+log.workspace = true
+comrak = { version = "0.39", default-features = false }
+
+[dev-dependencies]
+eframe.workspace = true
+egui_extras = { workspace = true, features = ["file", "image"] }
+egui_kittest.workspace = true
+env_logger.workspace = true
+log.workspace = true

@@ -12,9 +12,9 @@
 //! | [`BOLD_FAMILY`]                | Inter Bold                                          |
 //! | [`ITALIC`]                     | Inter Italic                                        |
 //! | [`BOLD_ITALIC`]                | Inter Bold Italic                                   |
-//! | `FontFamily::Monospace`        | JetBrains Mono Regular                              |
-//! | [`MONO_BOLD`]                  | JetBrains Mono Bold                                 |
-//! | [`MONO_ITALIC`]                | JetBrains Mono Italic                               |
+//! | `FontFamily::Monospace`        | JetBrains Mono NL Regular (no ligatures)            |
+//! | [`MONO_BOLD`]                  | JetBrains Mono NL Bold                              |
+//! | [`MONO_ITALIC`]                | JetBrains Mono NL Italic                            |
 //! | [`SERIF`], [`SERIF_ITALIC`]    | Source Serif 4 Regular, Italic (books)              |
 //! | [`SERIF_BOLD`], [`SERIF_BOLD_ITALIC`] | Source Serif 4 Bold, Bold Italic             |
 //! | [`crate::icons::FAMILY`]       | Font Awesome 6 Free Solid                           |
@@ -80,15 +80,15 @@ const FACES: [(&str, &[u8]); 13] = [
     ),
     (
         "JetBrainsMono",
-        include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf"),
+        include_bytes!("../assets/fonts/JetBrainsMonoNL-Regular.ttf"),
     ),
     (
         "JetBrainsMono-Bold",
-        include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf"),
+        include_bytes!("../assets/fonts/JetBrainsMonoNL-Bold.ttf"),
     ),
     (
         "JetBrainsMono-Italic",
-        include_bytes!("../assets/fonts/JetBrainsMono-Italic.ttf"),
+        include_bytes!("../assets/fonts/JetBrainsMonoNL-Italic.ttf"),
     ),
     (
         "SourceSerif4",
@@ -111,6 +111,12 @@ const FACES: [(&str, &[u8]); 13] = [
         include_bytes!("../assets/fonts/fa-solid-900.ttf"),
     ),
 ];
+
+/// The bundled font files as (name, bytes), for code that lays out text
+/// outside egui with the same faces (e.g. `noteliner-export`'s PDFs).
+pub fn bundled_faces() -> &'static [(&'static str, &'static [u8])] {
+    &FACES
+}
 
 /// egui's own icon font (`egui::special_emojis`), kept as a fallback because
 /// some built-in widgets draw with it.
