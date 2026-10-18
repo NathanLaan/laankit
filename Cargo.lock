@@ -4563,7 +4563,7 @@ dependencies = [
 
 [[package]]
 name = "noteliner"
-version = "2.0.1"
+version = "2.2.5"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4623,7 +4623,7 @@ dependencies = [
 
 [[package]]
 name = "noteliner-native"
-version = "2.0.1"
+version = "2.2.5"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4649,6 +4649,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "winresource",
 ]
 
 [[package]]
@@ -5205,7 +5206,7 @@ dependencies = [
 
 [[package]]
 name = "pageliner"
-version = "2.0.1"
+version = "2.2.5"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5265,7 +5266,7 @@ dependencies = [
 
 [[package]]
 name = "pageliner-native"
-version = "2.0.1"
+version = "2.2.5"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5287,6 +5288,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "uuid",
+ "winresource",
 ]
 
 [[package]]
@@ -7931,7 +7933,7 @@ dependencies = [
 
 [[package]]
 name = "threadliner"
-version = "2.0.1"
+version = "2.2.5"
 dependencies = [
  "anyhow",
  "chrono",
@@ -7967,7 +7969,7 @@ dependencies = [
 
 [[package]]
 name = "threadliner-native"
-version = "2.0.1"
+version = "2.2.5"
 dependencies = [
  "anyhow",
  "chrono",
@@ -7988,6 +7990,7 @@ dependencies = [
  "tempfile",
  "threadliner-core",
  "tokio",
+ "winresource",
 ]
 
 [[package]]
@@ -10182,6 +10185,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "winresource"
+version = "0.1.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2bc6d36480b829272a5bdabf08e6dca8004761c1da7e35efef800540c66221b"
+dependencies = [
+ "toml 1.1.6+spec-1.1.0",
+ "version_check",
+]
+
+[[package]]
 name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10373,6 +10386,14 @@ name = "xmp-writer"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "image",
+]
 
 [[package]]
 name = "yaml-rust"

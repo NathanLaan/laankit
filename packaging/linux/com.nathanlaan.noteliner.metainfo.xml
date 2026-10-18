@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.nathanlaan.noteliner</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>NoteLiner</name>
+  <summary>Outliner-style Markdown notes with git sync</summary>
+  <developer id="com.nathanlaan">
+    <name>Nathan Laan</name>
+  </developer>
+  <description>
+    <p>
+      NoteLiner organizes Markdown notes in a tree. Every change is saved and
+      committed to a git repository, and synced to a remote when you set one.
+    </p>
+    <ul>
+      <li>A Markdown editor with highlighting, list editing, find and spell check</li>
+      <li>Wikilinks, backlinks, tags, search and per-note history</li>
+      <li>Attachments, templates, DOCX/PPTX import and PDF/HTML export</li>
+      <li>Slides from notes, with a full-screen presenter</li>
+      <li>An MCP server so AI clients can read and edit notes, with confirmation</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.nathanlaan.noteliner.desktop</launchable>
+  <provides>
+    <binary>noteliner</binary>
+  </provides>
+  <url type="homepage">https://github.com/NathanLaan/marina</url>
+  <url type="bugtracker">https://github.com/NathanLaan/marina/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="2.2.5" date="2026-10-18"/>
+    <release version="2.0.1" date="2026-10-18"/>
+  </releases>
+</component>

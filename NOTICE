@@ -9,6 +9,8 @@ This repository bundles third-party material under its own licenses, listed belo
 Inter 4.1 (crates/marina-egui/assets/fonts/Inter-*.ttf) — SIL Open Font License 1.1.
   Copyright (c) 2016 The Inter Project Authors. https://github.com/rsms/inter
   License: crates/marina-egui/assets/fonts/Inter-LICENSE.txt
+  Modified: the `calt` feature is retagged `ss20` (no contextual arrows);
+  outlines and other features are unchanged.
 JetBrains Mono NL 2.304 (crates/marina-egui/assets/fonts/JetBrainsMonoNL-*.ttf) — SIL Open
   Font License 1.1. Copyright 2020 The JetBrains Mono Project Authors.
   https://github.com/JetBrains/JetBrainsMono

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=NoteLiner
+GenericName=Notes
+Comment=Outliner-style Markdown notes with git sync
+Exec=noteliner
+Icon=com.nathanlaan.noteliner
+Terminal=false
+Categories=Office;
+Keywords=notes;markdown;outliner;git;wiki;
+StartupNotify=true
+StartupWMClass=com.nathanlaan.noteliner

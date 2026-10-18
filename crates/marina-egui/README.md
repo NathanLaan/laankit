@@ -83,7 +83,8 @@ About 4.2 MB in all, embedded with `include_bytes!`. Pick a face with a
 `fonts::Style` (`fonts::styled`, `fonts::bold`, `fonts::italic`,
 `fonts::weight` for `RichText`; `fonts::format` for `LayoutJob`s).
 
-JetBrains Mono NL is the no-ligatures build: egui can't switch OpenType
+Inter's `calt` feature is retagged `ss20` and JetBrains Mono NL is the
+no-ligatures build, both for the same reason: egui can't switch OpenType
 features off, and code should show `->` and `!=` as typed.
 
 The faces are static instances rather than variable fonts on purpose: egui

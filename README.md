@@ -111,10 +111,12 @@ npm run native:noteliner       # cargo run -p noteliner-native --release
 
 See [`apps/threadliner/native/README.md`](apps/threadliner/native/README.md),
 [`apps/pageliner/native/README.md`](apps/pageliner/native/README.md) and
-[`apps/noteliner/native/README.md`](apps/noteliner/native/README.md) for what's ported. The
-binaries are `threadliner-native`, `pageliner-native` and `noteliner-native`, so they install next
-to the other builds. `noteliner-native --mcp-bridge` is NoteLiner's MCP bridge, as in the Tauri
-build.
+[`apps/noteliner/native/README.md`](apps/noteliner/native/README.md) for what's ported. These
+are now *the* builds: their binaries are `threadliner`, `pageliner` and `noteliner` (the Cargo
+packages keep the `-native` suffix), and their .deb/.rpm packages replace the Tauri and Electron
+ones. `noteliner --mcp-bridge` is NoteLiner's MCP bridge. Packaging (deb, rpm, AppImage, Flatpak,
+Windows installer, macOS .app/.dmg), the release workflow and how to roll back are in
+[`docs/packaging.md`](docs/packaging.md).
 
 ## Native Linux builds (Tauri)
 
@@ -164,14 +166,16 @@ npm run tauri:build -w threadliner
 npm run tauri:build -w pageliner
 ```
 
-Packages are 5–7 MB (vs. 100 MB+ for Electron) and depend on the system WebKitGTK. If the
-Electron `.deb` of the same app is installed, remove it first; both
-install a `/usr/bin/<app>` launcher.
+Packages are 5–7 MB (vs. 100 MB+ for Electron) and depend on the system WebKitGTK. Since the
+native cutover the Tauri binaries are `threadliner-tauri`, `pageliner-tauri` and
+`noteliner-tauri` (installed as `/usr/bin/<app>-tauri`, packages `thread-liner` etc.); plain
+`/usr/bin/<app>` belongs to the native packages, which conflict with and replace these. See
+[`docs/packaging.md`](docs/packaging.md) for rolling back to them.
 
 ### NoteLiner's MCP server
 
-In the Tauri build the `noteliner` binary is its own MCP bridge: point MCP
-clients at `noteliner --mcp-bridge` (Settings → MCP shows the exact
+In the Tauri build the `noteliner-tauri` binary is its own MCP bridge: point MCP
+clients at `noteliner-tauri --mcp-bridge` (Settings → MCP shows the exact
 snippet). No Node.js runtime is required.
 
 ## App icons

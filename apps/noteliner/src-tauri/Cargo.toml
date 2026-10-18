@@ -1,13 +1,15 @@
 [package]
 name = "noteliner"
-version = "2.0.1"
+version = "2.2.5"
 description = "NoteLiner — outliner-style Markdown notes with git sync (Tauri build)"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+# `noteliner-tauri`: plain `noteliner` is the native (egui) build since
+# the cutover (docs/packaging.md).
 [[bin]]
-name = "noteliner"
+name = "noteliner-tauri"
 path = "src/main.rs"
 
 [build-dependencies]

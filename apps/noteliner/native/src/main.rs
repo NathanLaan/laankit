@@ -5,7 +5,7 @@
 //! recent projects, window state, the MCP runtime file) as the Electron and
 //! Tauri builds. See `README.md`.
 //!
-//! `noteliner-native --mcp-bridge` runs the stdio ↔ socket bridge that MCP
+//! `noteliner --mcp-bridge` runs the stdio ↔ socket bridge that MCP
 //! clients spawn, instead of the app (as the Tauri binary's flag does).
 
 mod app;
@@ -29,8 +29,13 @@ mod ui_tests_panes;
 
 use config::Paths;
 
-/// The app id the window manager groups the windows by.
-const APP_ID: &str = "noteliner";
+/// The app id the window manager groups the windows by (the Wayland app id
+/// and X11 WM class, matching `com.nathanlaan.noteliner.desktop`): the Tauri
+/// and Electron builds' `identifier` / `appId`.
+const APP_ID: &str = "com.nathanlaan.noteliner";
+/// Where eframe keeps its own state (`app.ron`): the folder named after the
+/// pre-cutover app id, so saved preferences survive the id change.
+const STORAGE_ID: &str = "noteliner";
 
 fn main() -> eframe::Result {
     if std::env::args().any(|a| a == "--mcp-bridge") {
@@ -62,6 +67,7 @@ fn main() -> eframe::Result {
         // Tauri host does. eframe's own copy would also restore transient
         // states, e.g. reopening full screen after quitting while presenting.
         persist_window: false,
+        persistence_path: storage_file(),
         ..Default::default()
     };
     eframe::run_native(
@@ -85,4 +91,11 @@ fn app_icon() -> egui::IconData {
         }
         Err(_) => egui::IconData::default(),
     }
+}
+
+/// `<data dir>/noteliner/app.ron` (`eframe::storage_dir`), created if missing.
+fn storage_file() -> Option<std::path::PathBuf> {
+    let dir = eframe::storage_dir(STORAGE_ID)?;
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("app.ron"))
 }

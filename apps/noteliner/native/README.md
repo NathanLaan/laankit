@@ -20,10 +20,12 @@ cargo run -p noteliner-native --release     # or: npm run native:noteliner
 cargo test -p noteliner-native
 ```
 
-The binary is `noteliner-native`, so it can't collide with the `/usr/bin/noteliner` the Electron
-and Tauri packages install. It needs `git` on the PATH, like the other builds.
+The package is `noteliner-native`; its binary is `noteliner`, the one the release packages install
+as `/usr/bin/noteliner` (the native build replaced the Tauri and Electron ones; see
+[`docs/packaging.md`](../../../docs/packaging.md)). It needs `git` on the PATH, like the other
+builds.
 
-- **MCP.** Settings → MCP turns the server on. Point MCP clients at `noteliner-native
+- **MCP.** Settings → MCP turns the server on. Point MCP clients at `noteliner
   --mcp-bridge` (the settings show the exact snippet); the bridge finds the running app through
   `mcp-runtime.json`, as the Tauri binary's `--mcp-bridge` does. The server needs a Unix socket, so
   on Windows it reports that it isn't available yet.
@@ -196,7 +198,7 @@ opens, like the HTML and Markdown exports.
 | `ProjectSettingsModal`, `SyncModal`, `SyncingModal`, `ImportingModal` | Done |                                                              |
 | `AboutModal`, Help (`HelpApp`)                 | Done    |                                                                       |
 | `McpConfirmModal`                              | Done    | Tool, action, raw arguments (payloads cut), Allow once / for session / Deny |
-| `McpWalkthroughModal`                          | Done    | The client snippet uses `noteliner-native --mcp-bridge`                |
+| `McpWalkthroughModal`                          | Done    | The client snippet uses `noteliner --mcp-bridge`                |
 | `TagsPane`, `TagFilterPopover`, `TagEditorModal` | Done  | Chips toggle, Ctrl+T adds, notes dropped from FILES get the tag; filter with No Tags / Show all / Hide all; colours from the SVG palette |
 | `SearchPane`, `BacklinksPane`                  | Done    | Results jump to the line                                              |
 | `HistoryPanel`, `AttachmentPanel`              | Done    | Attachments add "Insert into Note" / "Copy Markdown" (native additions) |

@@ -1,6 +1,6 @@
 {
   "name": "threadliner",
-  "version": "2.0.1",
+  "version": "2.2.5",
   "description": "A desktop RSS reader built with Electron, Svelte, and Git-synced JSON",
   "main": "src/main/main.js",
   "scripts": {

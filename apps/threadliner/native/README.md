@@ -18,8 +18,9 @@ cargo run -p threadliner-native --release     # or: npm run native:threadliner
 cargo test -p threadliner-native              # needs `git` on the PATH, like the app
 ```
 
-The binary is `threadliner-native`, so it can't collide with the `/usr/bin/threadliner` the
-Electron and Tauri packages install.
+The package is `threadliner-native`; its binary is `threadliner`, the one the release packages
+install as `/usr/bin/threadliner` (the native build replaced the Tauri and Electron ones; see
+[`docs/packaging.md`](../../../docs/packaging.md)).
 
 - **First run** shows the setup dialog: pick (or create) the data folder and optionally a git remote.
 - **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and

@@ -95,7 +95,7 @@ pub struct McpStatus {
     pub enabled: bool,
     pub running: bool,
     pub socket_path: Option<PathBuf>,
-    /// The executable MCP clients spawn (`noteliner-native --mcp-bridge`).
+    /// The executable MCP clients spawn (`noteliner --mcp-bridge`).
     pub bridge_command: PathBuf,
     pub project_open: bool,
     pub confirm_writes: bool,

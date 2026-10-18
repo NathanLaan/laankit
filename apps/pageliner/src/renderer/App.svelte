@@ -18,7 +18,7 @@
   let showSettings = $state(false);
   let showSync = $state(false);
   let showPalette = $state(false);
-  let appVersion = $state('2.0.1');
+  let appVersion = $state('2.2.5');
 
   // customTitlebarApplied is the startup value that decided whether the OS
   // frame is on; only it controls whether <TitleBar/> renders.

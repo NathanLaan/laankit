@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "apps/pageliner/src-tauri", "apps/threadliner/src-tauri", "apps/noteliner/src-tauri", "apps/spikes/*", "apps/threadliner/native", "apps/pageliner/native", "apps/noteliner/native"]
+members = ["crates/*", "apps/pageliner/src-tauri", "apps/threadliner/src-tauri", "apps/noteliner/src-tauri", "apps/spikes/*", "apps/threadliner/native", "apps/pageliner/native", "apps/noteliner/native", "xtask"]
 
 [workspace.package]
 edition = "2021"

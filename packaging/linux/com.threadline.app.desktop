@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=ThreadLiner
+GenericName=Feed Reader
+Comment=RSS, Atom and JSON Feed reader with git sync
+Exec=threadliner
+Icon=com.threadline.app
+Terminal=false
+Categories=Network;News;Feed;
+Keywords=rss;atom;feed;news;reader;git;
+StartupNotify=true
+StartupWMClass=com.threadline.app

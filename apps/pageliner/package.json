@@ -1,6 +1,6 @@
 {
   "name": "pageliner",
-  "version": "2.0.1",
+  "version": "2.2.5",
   "description": "A desktop e-reader and document library built with Electron, Svelte, and optional Git-synced JSON",
   "main": "src/main/main.js",
   "scripts": {

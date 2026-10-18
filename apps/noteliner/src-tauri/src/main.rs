@@ -2,7 +2,7 @@
 // preload are shared with the Electron build, and the backend lives in
 // crates/noteliner-core.
 //
-// `noteliner --mcp-bridge` runs the stdio ↔ socket bridge MCP clients
+// `noteliner-tauri --mcp-bridge` runs the stdio ↔ socket bridge MCP clients
 // spawn, instead of the app (replaces bin/noteliner-mcp-bridge.js, so no
 // Node runtime is needed).
 

@@ -1,13 +1,15 @@
 [package]
 name = "pageliner"
-version = "2.0.1"
+version = "2.2.5"
 description = "PageLiner — e-reader and document library (Tauri build)"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+# `pageliner-tauri`: plain `pageliner` is the native (egui) build since
+# the cutover (docs/packaging.md).
 [[bin]]
-name = "pageliner"
+name = "pageliner-tauri"
 path = "src/main.rs"
 
 [build-dependencies]

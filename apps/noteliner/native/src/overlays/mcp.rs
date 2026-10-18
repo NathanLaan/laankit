@@ -180,7 +180,7 @@ pub fn walkthrough(
             heading(ui, "How it works");
             for (n, text) in [
                 "NoteLiner listens on a private local socket while a project is open.",
-                "Your AI client launches `noteliner-native --mcp-bridge`, which pipes its stdio into that socket.",
+                "Your AI client launches `noteliner --mcp-bridge`, which pipes its stdio into that socket.",
                 "The client calls tools (list_notes, create_note, ...) — you see every operation in the Sync Log.",
             ]
             .iter()

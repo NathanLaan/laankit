@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=PageLiner
+GenericName=E-book Reader
+Comment=EPUB and PDF reader and document library
+Exec=pageliner
+Icon=com.pageliner.app
+Terminal=false
+Categories=Office;Viewer;
+Keywords=ebook;epub;pdf;reader;library;highlights;
+StartupNotify=true
+StartupWMClass=com.pageliner.app

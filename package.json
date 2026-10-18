@@ -1,6 +1,6 @@
 {
   "name": "marina",
-  "version": "2.0.1",
+  "version": "2.2.5",
   "private": true,
   "workspaces": ["packages/*", "packages/desktop-ui/examples/*", "apps/*"],
   "scripts": {

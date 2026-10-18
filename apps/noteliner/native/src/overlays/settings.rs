@@ -359,7 +359,7 @@ mod tests {
             enabled: true,
             project_open: true,
             running: true,
-            bridge_command: "/usr/bin/noteliner-native".into(),
+            bridge_command: "/usr/bin/noteliner".into(),
             ..Default::default()
         };
         assert_eq!(mcp_status_text(Some(&s)), "Running");
@@ -372,7 +372,7 @@ mod tests {
         );
         assert_eq!(
             v["mcpServers"]["noteliner"]["command"],
-            json!("/usr/bin/noteliner-native")
+            json!("/usr/bin/noteliner")
         );
     }
 }

@@ -26,6 +26,14 @@
 //! [`weight`] for `RichText`, [`format`] for `LayoutJob`s. Font Awesome is also
 //! the last fallback of the text families, so icons can sit inside a label.
 //!
+//! The Inter faces are modified: their `calt` (contextual alternates) feature
+//! is retagged `ss20`, because egui can't turn OpenType features off and
+//! Inter's `calt` draws `->` and `-->` as arrows, which notes and code must
+//! show as typed. The lookups are unchanged. To redo it after updating Inter,
+//! with fonttools: for each `GSUB`/`GPOS` `FeatureRecord` whose `FeatureTag`
+//! is `calt`, set it to `ss20` and save. JetBrains Mono is the no-ligatures
+//! (NL) build for the same reason.
+//!
 //! Characters none of these have (CJK, emoji, Arabic, Devanagari, …) come from
 //! the operating system's own fallback (fontconfig, DirectWrite, CoreText), via
 //! eframe's `system_fonts` feature, which loads a font on demand the first time
@@ -406,5 +414,17 @@ mod tests {
             .family(),
             FontFamily::Proportional
         );
+    }
+
+    /// The bundled Inter has its `calt` feature retagged (see the module
+    /// docs), so `->` and `-->` stay as typed. A font update must redo that.
+    #[test]
+    fn inter_has_no_contextual_arrows() {
+        for (name, bytes) in bundled_faces().iter().filter(|(n, _)| n.starts_with("Inter")) {
+            assert!(
+                !bytes.windows(4).any(|w| w == b"calt"),
+                "{name} still has a `calt` feature"
+            );
+        }
     }
 }

@@ -17,8 +17,13 @@ mod ui_tests;
 
 use config::Paths;
 
-/// The app id the window manager groups the windows by.
-const APP_ID: &str = "threadliner";
+/// The app id the window manager groups the windows by (the Wayland app id
+/// and X11 WM class, matching `com.threadline.app.desktop`): the Tauri and
+/// Electron builds' `identifier` / `appId`.
+const APP_ID: &str = "com.threadline.app";
+/// Where eframe keeps its own state (`app.ron`): the folder named after the
+/// pre-cutover app id, so saved preferences survive the id change.
+const STORAGE_ID: &str = "threadliner";
 
 fn main() -> eframe::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -36,6 +41,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport,
         persist_window: true,
+        persistence_path: storage_file(),
         ..Default::default()
     };
     eframe::run_native(
@@ -59,4 +65,11 @@ fn app_icon() -> egui::IconData {
         }
         Err(_) => egui::IconData::default(),
     }
+}
+
+/// `<data dir>/threadliner/app.ron` (`eframe::storage_dir`), created if missing.
+fn storage_file() -> Option<std::path::PathBuf> {
+    let dir = eframe::storage_dir(STORAGE_ID)?;
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("app.ron"))
 }

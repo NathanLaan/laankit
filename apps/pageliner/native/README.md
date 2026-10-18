@@ -17,8 +17,9 @@ cargo run -p pageliner-native --release     # or: npm run native:pageliner
 cargo test -p pageliner-native
 ```
 
-The binary is `pageliner-native`, so it can't collide with the `/usr/bin/pageliner` the Electron
-and Tauri packages install.
+The package is `pageliner-native`; its binary is `pageliner`, the one the release packages install
+as `/usr/bin/pageliner` (the native build replaced the Tauri and Electron ones; see
+[`docs/packaging.md`](../../../docs/packaging.md)).
 
 - **Import** with Ctrl+O or the Import button (EPUB and PDF), or **drop files** on the window.
 - **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and

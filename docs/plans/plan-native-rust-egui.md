@@ -1,14 +1,16 @@
 # Option C — Pure Rust (egui) Apps
 
-Status: **Accepted as Option C (2026-10-17). Phase 0 (spikes) passed on
-the `laan/egui` branch, all five go. Phase 1 (`marina-egui`,
-`marina-richtext`) done 2026-10-17. Phase 2 (ThreadLiner) built
-2026-10-17 and in its week of daily use before cutover. Phase 3
-(PageLiner) built 2026-10-17; Phase 4 (NoteLiner) next.** See
+Status: **Accepted as Option C (2026-10-17). Phases 0–4 done
+2026-10-17/18: spikes, the shared crates, and native ThreadLiner,
+PageLiner and NoteLiner. Phase 5 (packaging and cutover) done
+2026-10-18: the native binaries are now `threadliner`, `pageliner` and
+`noteliner`, version 2.2.5.** See
 [Phase 0 results](#phase-0-results-2026-10-17),
 [Phase 1 record](#phase-1-record-2026-10-17),
-[Phase 2 record](#phase-2-record-2026-10-17) and
-[Phase 3 record](#phase-3-record-2026-10-17). Follows ArtCraft's `artcraft-native` approach
+[Phase 2 record](#phase-2-record-2026-10-17),
+[Phase 3 record](#phase-3-record-2026-10-17),
+[Phase 4 record](#phase-4-record-2026-10-18) and
+[Phase 5 record](#phase-5-record-2026-10-18). Follows ArtCraft's `artcraft-native` approach
 for NoteLiner, ThreadLiner and PageLiner. Option C in
 [plan-native-linux.md](plan-native-linux.md) points here; it replaces the
 Python/GTK option that used to carry that letter.
@@ -409,6 +411,69 @@ Same order as the Linux plan:
 
 Spell check can follow as 4b.
 
+#### Phase 4 record (2026-10-18)
+
+`apps/noteliner/native` plus three new crates, built in two waves of
+parallel agents:
+
+- **`marina-editor`:** the Markdown editor widget, promoted from spike 1.
+  - Per-line galley cache and highlighting in the theme colours.
+  - All of `Editor.svelte`'s shortcuts, matched on physical keys.
+  - List editing (`listEdits.js`), bracket closing, `[[` completion, and
+    find/replace (case, regex, word).
+  - Undo as diffs, capped at 8 MiB or 1,000 steps.
+  - Paste/drop and link events for the host; optional Hunspell spell check
+    (`spellbook`).
+  - Typing p95: 2–3.5 ms at 5k lines, at the limit at 20k, fails at 50k.
+  - Not yet: highlighting inside code fences, folding, bracket matching,
+    multiple cursors.
+- **`noteliner-export`:** in-process Typst PDF export, behind a default
+  `pdf` feature.
+  - Uses the app's fonts, with system fallback for CJK and emoji.
+  - Inline HTML subset, and wikilinks as text or links.
+  - Cold export ~270 ms, warm 5–10 ms; Typst adds ~34 MB to the binary.
+- **`noteliner-slides`:** `slides.js`/`slideEdits.js` ported, identical
+  output to the JS on 120,000+ generated cases.
+  - `SlideView`, `SlidesPane`, `DeckPreview`, the presentation settings
+    dialog, and a native full-screen `Presenter` (F5).
+- **The app (`noteliner-native`):** every Tauri channel, with shared data:
+  projects, `~/.config/NoteLiner`, the MCP runtime and socket.
+  - Open/new project, the file tree with drag and drop, and all the dialogs.
+  - Preview, Search, Tags (pane, filter, colour editor), Backlinks,
+    History, Attachments.
+  - DOCX/PPTX import and HTML/Markdown/PDF export.
+  - The MCP server, its confirm and walkthrough dialogs, and
+    `--mcp-bridge`.
+  - Help, About, and a command palette with every shortcut.
+  - 52 tests, including kittest flows checked against files on disk.
+- **Shared-crate changes:**
+  - `marina_egui::fonts::bundled_faces()`.
+  - JetBrains Mono NL (no ligatures).
+  - Inter's `calt` retagged `ss20`, so `->` and `-->` aren't drawn as arrows
+    (egui can't switch OpenType features off; tested).
+  - The dialog layout test that caught the Tag Editor overflowing.
+- **`noteliner-core`:** the MCP Unix socket is `#[cfg(unix)]`. **On
+  Windows, MCP reports "not available yet"**; a named-pipe transport is
+  still to do.
+- **Fixed during review:**
+  - The Tag Editor's OK button was pushed off-screen by an unbounded
+    separator.
+  - Quitting while presenting reopened the app full screen, because eframe
+    0.37 restores its saved window even with `persist_window: false`.
+    NoteLiner now blanks eframe's window key, since it saves bounds per
+    project itself.
+- **Not yet:**
+  - Single-instance (all three apps).
+  - MCP on Windows.
+  - The editor and slides gaps listed in their READMEs.
+- **Still to check by hand:**
+  - Real IMEs, screen readers, and clipboard image paste on Wayland, X11,
+    Windows and macOS.
+  - File-manager drops onto the editor.
+  - Spell-check dictionaries on Windows and macOS.
+  - The presenter on multiple monitors.
+  - An MCP client round trip through `noteliner --mcp-bridge`.
+
 ### Phase 5 — Packaging and cutover (~2 weeks)
 
 - `cargo-deb`, `cargo-generate-rpm` and AppImage. A Flatpak is now simple
@@ -422,6 +487,46 @@ Spell check can follow as 4b.
   and finally the Svelte renderer once all three apps have moved.
 - Windows (MSI or NSIS via `cargo-packager`) and macOS (`.app`/`.dmg`,
   signed and notarised) builds from the same crates, in a CI matrix.
+
+#### Phase 5 record (2026-10-18)
+
+See `docs/packaging.md` for build steps, sizes, runtime dependencies,
+signing and rollback.
+
+- **Cutover (the user's call, 2026-10-18):**
+  - Binaries: the native `[[bin]]`s are `threadliner`, `pageliner` and
+    `noteliner`. Cargo packages keep the `-native` suffix, so
+    `cargo run -p <app>-native` still works.
+  - Tauri: the Tauri binaries are `<app>-tauri`, and `npm run tauri:build`
+    still works.
+  - App ids: the native apps use the existing ids (`com.threadline.app`,
+    `com.pageliner.app`, `com.nathanlaan.noteliner`). eframe's state stays in
+    the old folders, so saved preferences carry over.
+  - Packages: the native packages replace the Tauri packages
+    (`thread-liner` etc.) and upgrade the Electron ones in place.
+  - The Svelte/Electron/Tauri source stays in the repo for now.
+- **Linux, built and validated:** `.deb` (cargo-deb), `.rpm`
+  (cargo-generate-rpm) and AppImage (cargo-packager), for all three apps:
+  - ThreadLiner: 8, 8.5 and 12 MB.
+  - PageLiner: 9.5, 11 and 14 MB.
+  - NoteLiner: 18, 19 and 24 MB.
+  - Desktop files and AppStream metainfo pass validation; the AppImages
+    launch.
+  - Icons come from `cargo run -p xtask -- icons`, and
+    `scripts/package-native.sh` builds everything.
+- **Not yet built:**
+  - Windows NSIS (per-user) and macOS `.app`/`.dmg`: the first build will
+    be the `release-native` CI workflow (`native-v*` tags or by hand). It
+    makes a draft release only.
+  - Flatpak: manifests in `packaging/flatpak/`, untested. They bundle git
+    and need `--filesystem=home`.
+- **Signing:** unsigned. Authenticode and Apple codesign + notarization are
+  TODOs; `docs/packaging.md` lists the GitHub secrets each needs.
+- **Versions:** `scripts/set-version.sh <version>` sets every app's Cargo,
+  npm and Tauri version, PageLiner's fallback, and a new AppStream release
+  entry, then refreshes both lock files.
+- **Shared fixes from this phase:** Inter without `calt` arrows, and
+  NoteLiner no longer reopening full screen (both in the Phase 4 record).
 
 ### Parity checkpoint
 

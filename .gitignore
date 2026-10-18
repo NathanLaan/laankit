@@ -9,3 +9,6 @@ out/
 # Rust / Tauri
 target/
 apps/*/src-tauri/gen/
+
+# Packaging outputs (cargo run -p xtask -- icons, scripts/package-native.sh)
+packaging/generated/
