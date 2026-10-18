@@ -1,13 +1,13 @@
 //! `update:*` channels. Electron used electron-updater; native Linux
 //! packages (deb/rpm/Flatpak) are updated by the package manager, so this
-//! only *checks* GitHub Releases and sends the user to the release page.
+//! only *checks* GitHub Releases (`marina_core::updates`) and sends the
+//! user to the release page.
 //! The renderer's state machine (idle → checking → available/unavailable/
 //! error) is unchanged.
 
 use std::sync::Mutex;
 
-use anyhow::{anyhow, Result};
-use serde::Deserialize;
+use marina_core::updates::{self, UpdateCheck};
 use serde_json::{json as j, Value};
 use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
@@ -15,25 +15,11 @@ use tauri_plugin_opener::OpenerExt;
 use crate::host::Host;
 use crate::ipc::{json, Args, IpcResult};
 
-#[derive(Deserialize)]
-struct Release {
-    tag_name: String,
-    html_url: String,
-    #[serde(default)]
-    body: Option<String>,
-    #[serde(default)]
-    draft: bool,
-}
-
 pub struct Updater {
     /// GitHub `owner/repo` that publishes this app's releases, if any.
     repo: Option<&'static str>,
     state: Mutex<Value>,
     release_url: Mutex<Option<String>>,
-}
-
-fn parse_version(v: &str) -> Option<semver::Version> {
-    semver::Version::parse(v.trim().trim_start_matches('v')).ok()
 }
 
 impl Updater {
@@ -46,22 +32,6 @@ impl Updater {
         host.send(app, "update:state", state);
     }
 
-    async fn latest(repo: &str) -> Result<Release> {
-        let client = reqwest::Client::builder()
-            .user_agent(concat!("marina-updater/", env!("CARGO_PKG_VERSION")))
-            .timeout(std::time::Duration::from_secs(15))
-            .build()?;
-        // Includes pre-releases (continuous builds), like allowPrerelease.
-        let releases: Vec<Release> = client
-            .get(format!("https://api.github.com/repos/{repo}/releases?per_page=10"))
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        releases.into_iter().find(|r| !r.draft).ok_or_else(|| anyhow!("No releases published"))
-    }
-
     pub async fn check(&self, host: &Host, app: &AppHandle) -> bool {
         if cfg!(debug_assertions) {
             self.set(host, app, j!({ "state": "unavailable", "reason": "dev" }));
@@ -72,17 +42,15 @@ impl Updater {
             return false;
         };
         self.set(host, app, j!({ "state": "checking" }));
-        match Self::latest(repo).await {
-            Ok(rel) => {
-                let current = parse_version(&app.package_info().version.to_string());
-                let latest = parse_version(&rel.tag_name);
-                let version = rel.tag_name.trim_start_matches('v').to_string();
-                if matches!((&current, &latest), (Some(c), Some(l)) if l > c) {
-                    *self.release_url.lock().unwrap() = Some(rel.html_url);
-                    self.set(host, app, j!({ "state": "available", "version": version, "notes": rel.body }));
-                } else {
-                    self.set(host, app, j!({ "state": "unavailable", "version": version }));
-                }
+        let current = app.package_info().version.to_string();
+        match updates::check(repo, &current).await {
+            Ok(UpdateCheck::Available(rel)) => {
+                *self.release_url.lock().unwrap() = Some(rel.url);
+                self.set(host, app, j!({ "state": "available", "version": rel.version, "notes": rel.notes }));
+                true
+            }
+            Ok(UpdateCheck::UpToDate { latest }) => {
+                self.set(host, app, j!({ "state": "unavailable", "version": latest }));
                 true
             }
             Err(e) => {

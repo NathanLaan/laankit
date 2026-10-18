@@ -33,7 +33,9 @@ An e-reader and document library for EPUB and PDF, with bookmarks, highlights, r
 
 - `crates/marina-core/` — framework-independent backend shared by all apps: git sync, JSON stores, XDG paths, debouncing.
 - `crates/marina-tauri/` — the Tauri host shared by all apps: the Electron-compatible IPC bridge, window chrome, UI prefs, dialogs, update check.
-- `crates/noteliner-core/`, `crates/threadliner-core/`, `crates/pageliner-core/` — each app's backend (ported from its `src/main/*.js`), independent of the UI shell so the planned GTK build can reuse it.
+- `crates/marina-egui/` — the native (egui) counterpart of `desktop-ui` for the pure-Rust builds (plan Option C): themes, fonts, window chrome, command palette, settings, panes. Try it with `cargo run -p marina-egui --example gallery`.
+- `crates/marina-richtext/` — HTML/XHTML rendering for the native builds (ThreadLiner articles, PageLiner EPUB).
+- `crates/noteliner-core/`, `crates/threadliner-core/`, `crates/pageliner-core/` — each app's backend (ported from its `src/main/*.js`), independent of the UI shell so the native egui builds can reuse it.
 
 ## Prerequisites
 

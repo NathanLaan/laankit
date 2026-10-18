@@ -1,0 +1,24 @@
+[package]
+name = "marina-richtext"
+version = "0.1.0"
+description = "Sanitized HTML/XHTML reduced to native rich-text blocks and laid out progressively with egui: ThreadLiner articles, PageLiner EPUB chapters, the NoteLiner preview."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+marina-egui.workspace = true
+egui.workspace = true
+# Decodes images on a background thread (native); `http` fetches remote images, `svg` renders `.svg` sources.
+egui_extras = { workspace = true, features = ["http", "svg", "gif", "webp"] }
+base64.workspace = true
+log.workspace = true
+ammonia = "4"
+scraper = "0.27"
+url = "2"
+percent-encoding = "2"
+regex = "1"
+
+[dev-dependencies]
+egui_kittest.workspace = true
+serde_json.workspace = true

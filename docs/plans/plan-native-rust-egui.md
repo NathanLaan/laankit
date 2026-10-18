@@ -1,8 +1,10 @@
 # Option C — Pure Rust (egui) Apps
 
 Status: **Accepted as Option C (2026-10-17). Phase 0 (spikes) passed on
-the `laan/egui` branch, all five go; Phase 1 next.** See
-[Phase 0 results](#phase-0-results-2026-10-17). Follows ArtCraft's `artcraft-native` approach
+the `laan/egui` branch, all five go. Phase 1 (`marina-egui`,
+`marina-richtext`) done 2026-10-17; Phase 2 (ThreadLiner) next.** See
+[Phase 0 results](#phase-0-results-2026-10-17) and
+[Phase 1 record](#phase-1-record-2026-10-17). Follows ArtCraft's `artcraft-native` approach
 for NoteLiner, ThreadLiner and PageLiner. Option C in
 [plan-native-linux.md](plan-native-linux.md) points here; it replaces the
 Python/GTK option that used to carry that letter.
@@ -233,6 +235,44 @@ Unrelated bugs found along the way:
   widget in every theme. This replaces the desktop-ui Playwright visual
   tests.
 - Move the update check out of `marina-tauri` into `marina-core`.
+
+#### Phase 1 record (2026-10-17)
+
+Everything above is built. Run `cargo run -p marina-egui --example gallery`
+to see it: the full app shell (title bar, toolbar, pane sidebar, command
+palette, settings, About) and every widget, in any of the six themes.
+
+- **`marina-egui`** (`crates/marina-egui`, see its README): `theme`
+  (palettes generated from `theme/index.svelte.js`, same theme and scale
+  ids), `fonts`, `icons` (Font Awesome codepoints generated from the npm
+  package), `window` and `toast` (ported from ArtCraft, MIT OR Apache-2.0,
+  credited in `NOTICE`), `titlebar`, `toolbar`, `commands` (registry and a
+  `fuzzy_score` checked against `fuzzy.js` on about 1,000 pairs), `palette`,
+  `settings`, `panes`, `about`, `not_ported` and `diagnostics`
+  (`MARINA_SCREENSHOT`, `MARINA_THEME`, `MARINA_SCALE`). 41 tests, most of
+  them kittest.
+- **Commands return action values** of the app's own type instead of
+  running closures, so the app applies them in its update loop with
+  `&mut self`.
+- **Fonts:** static Inter (Regular, SemiBold, Bold, Italic, Bold Italic)
+  and JetBrains Mono (Regular, Bold, Italic), 3.3 MB with Font Awesome.
+  Variable Inter was tried first, but egui shapes text about twice as
+  slowly with it, which pushed opening a long article past 16 ms. Missing
+  scripts and emoji fall back to system fonts through eframe's
+  `system_fonts` feature.
+- **`marina-richtext`** (`crates/marina-richtext`): the article and EPUB
+  renderer, with progressive layout. The first frame is 11–16 ms whatever
+  the document length (2,000 blocks: 12 ms, against 295 ms laying out
+  everything). Pluggable `Resolver`s handle web and EPUB images and links.
+  Its README lists what's still to do (cross-paragraph selection, row
+  spans, more EPUB CSS).
+- **`marina-core::updates`**: the GitHub release check, now shared; the
+  Tauri updater uses it.
+- **CI:** the `native` job lints and tests `marina-core`, `marina-egui`,
+  `marina-richtext` and the spikes on Linux, Windows and macOS.
+- **egui 0.37 deprecations** to follow in app code: `Id::new` → `Id::unique`
+  or `IdSalt`, `ui.id()` → `ui.scope_id()`, `WidgetType` → `Role`. kittest
+  harnesses need `.with_context_setup(marina_egui::fonts::install)`.
 
 ### Phase 2 — ThreadLiner pilot (~3–4 weeks)
 

@@ -1,0 +1,25 @@
+Marina
+Copyright (c) 2026 Nathan
+Licensed under the MIT License (LICENSE).
+
+Third-party material
+
+This repository bundles third-party material under its own licenses, listed below.
+
+Inter 4.1 (crates/marina-egui/assets/fonts/Inter-*.ttf) — SIL Open Font License 1.1.
+  Copyright (c) 2016 The Inter Project Authors. https://github.com/rsms/inter
+  License: crates/marina-egui/assets/fonts/Inter-LICENSE.txt
+JetBrains Mono 2.304 (crates/marina-egui/assets/fonts/JetBrainsMono-*.ttf) — SIL Open
+  Font License 1.1. Copyright 2020 The JetBrains Mono Project Authors.
+  https://github.com/JetBrains/JetBrainsMono
+  License: crates/marina-egui/assets/fonts/JetBrainsMono-OFL.txt
+Font Awesome Free 6.7.2 (crates/marina-egui/assets/fonts/fa-solid-900.ttf, and the codepoints in
+  crates/marina-egui/src/icons.rs) — font under the SIL Open Font License 1.1, icons under
+  CC BY 4.0. Copyright Fonticons, Inc. https://fontawesome.com/license/free
+  License: crates/marina-egui/assets/fonts/FontAwesome-LICENSE.txt
+ArtCraft (portions of crates/marina-egui/src/window.rs, toast.rs and diagnostics.rs, adapted
+  from artcraft-native/src/ui/window.rs, ui/toast.rs and app.rs) — MIT License or Apache License
+  2.0, at your option; used here under the MIT License. Copyright (c) 2026 ArtCraft Team and the
+  ArtCraft contributors. https://github.com/storytold/artcraft
+  The MIT License text is the same as this repository's LICENSE, with the ArtCraft copyright
+  line above in place of Marina's.
