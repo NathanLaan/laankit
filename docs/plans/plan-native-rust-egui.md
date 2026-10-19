@@ -581,6 +581,8 @@ formats, so this mainly checks UI flows.
   `docs/plans/spikes/`, and the `spike` build profile is now `fast-release`.
 - **Remaining editor, slides and rich-text gaps** are analysed and planned in
   [plan-editor-slides-richtext.md](plan-editor-slides-richtext.md).
+- **Everything still open** after both plans is tracked in
+  [plan-remaining-work.md](plan-remaining-work.md).
 
 ## Rough total
 

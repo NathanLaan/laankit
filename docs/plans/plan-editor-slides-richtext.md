@@ -416,6 +416,9 @@ can overlap with Phase 3 for the same reason.
 
 ## Remaining after the plan
 
+Also tracked, with the project-wide items, in
+[plan-remaining-work.md](plan-remaining-work.md).
+
 - **Hand checks:**
   - **IME:** IBus/Fcitx on Wayland and X11, Windows TSF and macOS, in the
     new editor core: inline composition, candidate window placement,
