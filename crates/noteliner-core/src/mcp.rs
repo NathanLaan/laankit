@@ -21,6 +21,8 @@ use crate::workspace::Shared;
 
 pub const PROTOCOL_VERSION: &str = "2024-11-05";
 const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
+/// Only the Unix-socket transport reads frames (MCP isn't on Windows yet).
+#[cfg(unix)]
 const MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
 
 const PARSE_ERROR: i64 = -32700;

@@ -43,7 +43,7 @@ jobs:
           npm run tauri:build -w pageliner
           npm run tauri:build -w threadliner
           npm run tauri:build -w noteliner
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: linux-packages
           path: |
