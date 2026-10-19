@@ -457,7 +457,7 @@ impl RichView {
             }
         }
         let focused = ctx.memory(|m| m.focused().is_some());
-        let hovered = ctx.pointer_hover_pos().is_some_and(&ours);
+        let hovered = ctx.pointer_hover_pos().is_some_and(ours);
         if !focused
             && (hovered || self.selection.is_some())
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::A))

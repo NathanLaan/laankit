@@ -31,7 +31,7 @@ jobs:
       # AppImage; runners have no FUSE, so let it extract itself instead.
       APPIMAGE_EXTRACT_AND_RUN: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install system libraries
         if: runner.os == 'Linux'
         run: |
@@ -48,7 +48,7 @@ jobs:
       - name: Build and package
         shell: bash
         run: scripts/package-native.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: packages-${{ runner.os }}
           path: |
@@ -64,7 +64,7 @@ jobs:
     needs: package
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: packages
           merge-multiple: true
