@@ -9,6 +9,8 @@
 //!   them to the webview builds.
 //! - A deck renders as slides (`DeckPreview.svelte`), through
 //!   `noteliner_slides::DeckPreview`; clicking a slide jumps the editor to it.
+//! - `$…$` and `$$…$$` math is typeset (Typst, via `crate::math`); the
+//!   webview builds showed it as text.
 
 use std::path::PathBuf;
 use std::sync::LazyLock;
@@ -18,7 +20,7 @@ use std::collections::HashMap;
 use egui::{Frame, Margin, RichText, Ui};
 use marina_egui::{icons, theme};
 use marina_richtext::{
-    from_html, Action, Document, LinkAction, Options, Resolver, RichStyle, RichView,
+    from_note_html, Action, Document, LinkAction, Options, Resolver, RichStyle, RichView,
 };
 use noteliner_slides::{Deck, DeckPreview, ImageSource};
 use regex::Regex;
@@ -165,8 +167,8 @@ impl Preview {
 
 /// The note's Markdown as a rich-text document.
 pub fn document(markdown: &str) -> Document {
-    let html = noteliner_core::export::markdown_to_html(&wikilinks_to_html(markdown));
-    from_html(&html, &Options::default())
+    let html = noteliner_core::export::preview_html(&wikilinks_to_html(markdown));
+    from_note_html(&html, &Options::default())
 }
 
 /// `[[Name]]` / `[[Name|alias]]` → `<a href="wikilink:Name">alias</a>`,

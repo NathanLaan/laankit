@@ -14,7 +14,7 @@ cargo test -p pageliner-epub
 
 - **The whole book in one scroll.** Every spine document is converted when the book opens and
   joined into one document, so scrolling and paging cross chapter boundaries. Opening measured
-  58 ms for a 30-chapter, 2,175-block book and 10–17 ms for shorter ones (`--profile spike`), so
+  58 ms for a 30-chapter, 2,175-block book and 10–17 ms for shorter ones (`--profile fast-release`), so
   hosts may open books on a background thread but don't have to.
 - **Toolbar** (as in the Svelte reader): back to the library, sidebar toggle, the chapter title,
   Highlight selection, Bookmark toggle, text size (60–220%), reading theme (Light, Sepia, Dark),

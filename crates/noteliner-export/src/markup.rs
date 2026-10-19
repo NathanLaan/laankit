@@ -204,7 +204,8 @@ pub fn document(
 }
 
 /// The comrak options NoteLiner's export uses (`export::markdown_to_html`),
-/// plus footnotes and `[[Real Name|Label]]` wikilinks.
+/// plus footnotes, `[[Real Name|Label]]` wikilinks, and math (`$…$`, `$$…$$`,
+/// ```` ```math ````).
 pub fn options() -> Options<'static> {
     let mut opts = Options::default();
     opts.extension.table = true;
@@ -214,6 +215,8 @@ pub fn options() -> Options<'static> {
     opts.extension.footnotes = true;
     opts.extension.superscript = false;
     opts.extension.wikilinks_title_after_pipe = true;
+    opts.extension.math_dollars = true;
+    opts.extension.math_code = true;
     opts
 }
 
@@ -304,6 +307,13 @@ impl<'n> Writer<'_, 'n> {
                 self.nesting -= 1;
             }
             NodeValue::List(list) => self.list(node, list.list_type, list.start, list.tight),
+            NodeValue::CodeBlock(code)
+                if code.info.split_whitespace().next() == Some("math")
+                    && crate::math::latex_to_typst(&code.literal).is_ok() =>
+            {
+                let eq = crate::math::typst_equation(&code.literal, true).expect("checked above");
+                self.out.push_str(&eq);
+            }
             NodeValue::CodeBlock(code) => {
                 let lang = code.info.split_whitespace().next().unwrap_or("");
                 let _ = write!(self.out, "#raw(block: true, ");
@@ -546,8 +556,19 @@ impl<'n> Writer<'_, 'n> {
             }
             NodeValue::Raw(raw) => self.out.push_str(&escape_text(&raw)),
             NodeValue::Escaped | NodeValue::SpoileredText => self.inlines(node),
+            // Native Typst math; LaTeX it can't convert stays as its source.
             NodeValue::Math(math) => {
-                let _ = write!(self.out, "#raw({})", string_literal(&math.literal));
+                match crate::math::typst_equation(&math.literal, math.display_math) {
+                    Ok(eq) => self.out.push_str(&eq),
+                    Err(_) => {
+                        let delim = if math.display_math { "$$" } else { "$" };
+                        let _ = write!(
+                            self.out,
+                            "#raw({})",
+                            string_literal(&format!("{delim}{}{delim}", math.literal))
+                        );
+                    }
+                }
             }
             _ if node.first_child().is_some() => self.inline_or_blocks(node),
             _ => {}

@@ -31,6 +31,10 @@ pub enum Act {
     ToggleSpeakerNotes,
     /// Full-screen presenting (a native addition).
     Present,
+    /// Presenting with the speaker view in a second window (a native addition).
+    PresentWithSpeakerView,
+    /// The editor's Go to line bar (CodeMirror's `Mod-Alt-g`).
+    GoToLine,
     AddTag,
     TogglePreview,
     ToggleHistory,
@@ -273,6 +277,26 @@ pub fn registry() -> Registry<Act, View> {
             .key(Binding::logical(Modifiers::NONE, Key::F5))
             .shortcut("F5")
             .when(is_deck),
+    );
+    // Alt+F5 is PowerPoint's "Presenter View" key.
+    r.register(
+        add(
+            "deck.presentWithSpeakerView",
+            "Present with Speaker View",
+            "Presentation",
+            Act::PresentWithSpeakerView,
+        )
+        .key(Binding::logical(Modifiers::ALT, Key::F5))
+        .shortcut("Alt+F5")
+        .when(is_deck),
+    );
+
+    // Editor: CodeMirror's search keymap had Go to line on Mod-Alt-g.
+    r.register(
+        add("editor.goToLine", "Go to Line", "Editor", Act::GoToLine)
+            .key(Binding::physical(alt, Key::G))
+            .shortcut("Ctrl+Alt+G")
+            .when(has_selection),
     );
 
     // Tags: before View, so Ctrl+Shift++ adds a tag (with the TAGS pane

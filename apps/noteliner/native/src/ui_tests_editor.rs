@@ -233,3 +233,86 @@ fn slides_pane_settings_and_presenter() {
     h.run_steps(2);
     assert!(!h.state().presenting());
 }
+
+/// Long (300 lines) and Short, in a fresh project.
+fn two_notes(dir: &Path) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut p = Project::new(NoteGit::new(Arc::new(|_| {})));
+        p.init(dir, None).await.unwrap();
+        p.set_git_config("Test User", "test@localhost")
+            .await
+            .unwrap();
+        let long: String = (1..=300).map(|i| format!("line {i}\n")).collect();
+        p.create_file("Long", &json!([]), Some(long), None)
+            .await
+            .unwrap();
+        p.create_file("Short", &json!([]), Some("short note\n".into()), None)
+            .await
+            .unwrap();
+    });
+}
+
+/// Opens `project` in a fresh app over `user_data` and waits for its index.
+fn reopen(user_data: &Path, project: &Path) -> Harness<'static, NoteLinerApp> {
+    let mut h = harness(Paths {
+        user_data: user_data.to_path_buf(),
+    });
+    h.run_steps(2);
+    h.state_mut().open(project.to_path_buf());
+    wait_for(&mut h, "the project", |a| a.entries().len() == 2);
+    h
+}
+
+#[test]
+fn reopening_restores_the_last_notes_caret_and_scroll() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("notes");
+    std::fs::create_dir_all(&project).unwrap();
+    two_notes(&project);
+    let user_data = tmp.path().join("NoteLiner");
+
+    // Leave Long with the caret on line 200 (char 1394) and scrolled there.
+    let mut h = reopen(&user_data, &project);
+    select(&mut h, "Long");
+    let caret = (1..200).map(|i| format!("line {i}\n").len()).sum::<usize>() + 2;
+    h.state_mut()
+        .set_editor_view(caret, caret, egui::vec2(0.0, 3000.0));
+    h.run_steps(4);
+    let (_, _, scroll) = h.state().editor_view().unwrap();
+    assert!(scroll.y > 2000.0, "{scroll:?}");
+    h.state_mut().shutdown();
+    drop(h);
+
+    // Reopening opens Long there.
+    let mut h = reopen(&user_data, &project);
+    let long = id_of(&h, "Long");
+    wait_for(&mut h, "Long reopened", move |a| {
+        a.editor_file_id().as_deref() == Some(long.as_str())
+    });
+    h.run_steps(4);
+    let (anchor, head, scroll) = h.state().editor_view().unwrap();
+    assert_eq!((anchor, head), (caret, caret));
+    assert!((scroll.y - 3000.0).abs() < 2.0, "{scroll:?}");
+    assert_eq!(h.state().editor_cursor(), (200, 3));
+
+    // Only the last note is remembered: after switching to Short, reopening
+    // opens Short at its own place, and Long's is gone.
+    select(&mut h, "Short");
+    h.state_mut().set_editor_view(5, 5, egui::Vec2::ZERO);
+    h.run_steps(4);
+    h.state_mut().shutdown();
+    drop(h);
+    let mut h = reopen(&user_data, &project);
+    let short = id_of(&h, "Short");
+    wait_for(&mut h, "Short reopened", move |a| {
+        a.editor_file_id().as_deref() == Some(short.as_str())
+    });
+    h.run_steps(4);
+    assert_eq!(h.state().editor_cursor(), (1, 6));
+    let saved = std::fs::read_to_string(user_data.join("window-state.json")).unwrap();
+    assert_eq!(saved.matches("lastFilePosition").count(), 1, "{saved}");
+    select(&mut h, "Long");
+    h.run_steps(2);
+    assert_eq!(h.state().editor_cursor(), (1, 1), "Long opens at the top");
+}

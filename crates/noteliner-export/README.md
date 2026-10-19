@@ -1,8 +1,8 @@
 # noteliner-export
 
 NoteLiner's PDF export without a webview, for the native (egui) build (plan
-Option C, Phase 4, step 9). Promoted from `apps/spikes/export`; its
-`RESULTS.md` has the original comparison with Electron's `printToPDF`.
+Option C, Phase 4, step 9). Promoted from the Phase 0 export spike;
+`docs/plans/spikes/export.md` has the original comparison with Electron's `printToPDF`.
 
 Frontmatter is stripped, comrak parses the Markdown (the same GFM options as
 `noteliner_core::export`, plus footnotes and `[[Real Name|Label]]`
@@ -42,7 +42,7 @@ let pdf: Vec<u8> = exporter.get().export(&raw_note, &ExportOptions {
 | `WikiLinks::{Text, Url(template)}` | Link-styled text (default), or real links: `{name}` in the template becomes the percent-encoded note name |
 | `Error`                      | `PdfUnavailable` (built without `pdf`), `Compile`, `Pdf`                         |
 
-`cargo run --profile spike -p noteliner-export --example export -- [--repeat N] [--typ OUT.typ] note.md out.pdf`
+`cargo run --profile fast-release -p noteliner-export --example export -- [--repeat N] [--typ OUT.typ] note.md out.pdf`
 exports a note the way the app does and prints timings.
 
 ## Fonts
@@ -81,7 +81,7 @@ fonts. A clean release build of the crate takes about 12 minutes on a busy
 
 ## Numbers
 
-`--profile spike`, Linux, 16 cores, load average 16–19 (other builds
+`--profile fast-release`, Linux, 16 cores, load average 16–19 (other builds
 running), so treat these as upper bounds:
 
 | Note                                         | First export (cold) | Re-export (median of 5) | PDF     |
@@ -147,12 +147,36 @@ breaks, description lists, wikilinks, and images from the project folder
 - **Frontmatter** is always stripped. `Title::Frontmatter` uses its `title`
   (or NoteLiner's `name` mirror field) as the heading.
 
+## Math
+
+Notes write math in LaTeX syntax (`$…$`, `$$…$$`, ```` ```math ````).
+`math::latex_to_typst` converts a documented subset to Typst math (the
+table is in `src/math.rs`: scripts, fractions, roots, Greek, relations
+and operators, big operators with limits, `\left…\right`, matrices,
+`cases`/`aligned`, `\text`/`\mathbb`/`\mathcal`…, accents, spacing) and
+refuses the rest (`\color`, `\boxed`, `array`, macros, comments), so
+callers show the source instead of something wrong.
+
+- **PDF:** formulas are emitted as native Typst math, set in New Computer
+  Modern Math (bundled: `assets/fonts/NewCMMath-Regular.otf`, GUST Font
+  License, ~1.3 MB). Unsupported formulas print as their source.
+- **`Exporter::math_svg(latex, display, size)`:** one formula as SVG,
+  white on transparent, on a page that fits it (`top-edge`/`bottom-edge:
+  "bounds"`, 3 pt above and below so radical bars aren't clipped). The
+  NoteLiner preview and slides draw it tinted (via
+  `marina_richtext::math`). Typst's straight strokes (radical bars) are
+  rewritten as rectangles (`math::straight_strokes_as_rects`), because
+  rasterizers skip zero-height paths.
+- **Tests** (`tests/math.rs`): every symbol in the table and ~30
+  constructs compile in Typst; 200 generated formulas always compile;
+  unsupported input is refused; a PDF embeds the math font and contains
+  the native equations. Unit tests cover the conversion and a 20,000-case
+  no-panic fuzz.
+
 ## Not yet
 
 - **Remote images:** `https://` URLs become placeholders; nothing is
   downloaded.
-- **Math:** `$…$` is set as code. Typst math could render it, but Markdown
-  math syntax differs from Typst's.
 - **Inline HTML styling:** attributes (`style=`, `class=`) are ignored, and
   `<a href>` keeps only its text.
 - **Mermaid and other diagram fences** are set as code.

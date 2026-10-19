@@ -19,6 +19,10 @@ Source Serif 4.005 (crates/marina-egui/assets/fonts/SourceSerif4-*.ttf) — SIL 
   1.1. Copyright 2014 - 2023 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
   https://github.com/adobe-fonts/source-serif
   License: crates/marina-egui/assets/fonts/SourceSerif4-LICENSE.md
+New Computer Modern Math (crates/noteliner-export/assets/fonts/NewCMMath-Regular.otf), unmodified,
+  from typst-assets 0.15.1 — GUST Font License 1.0 (LaTeX Project Public License 1.3c or later).
+  Copyright the NewComputerModern authors (Antonis Tsolomitis). https://ctan.org/pkg/newcomputermodern
+  License: crates/noteliner-export/assets/fonts/NewCMMath-LICENSE.txt
 Font Awesome Free 6.7.2 (crates/marina-egui/assets/fonts/fa-solid-900.ttf, and the codepoints in
   crates/marina-egui/src/icons.rs) — font under the SIL Open Font License 1.1, icons under
   CC BY 4.0. Copyright Fonticons, Inc. https://fontawesome.com/license/free

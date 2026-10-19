@@ -295,3 +295,26 @@ fn every_sample_slide_renders_at_every_size() {
         h.run();
     }
 }
+
+#[test]
+fn tasks_tables_and_marks_paint_in_both_slide_themes() {
+    let md = "# Tasks\n\n- [ ] todo\n- [x] done\n\n---\n\n# Table\n\n\
+              | L | C | R |\n|:--|:-:|--:|\n| a | b | c |\n\n---\n\n\
+              # Marks\n\nsome <mark>hi</mark> and <kbd>Ctrl</kbd>\n";
+    for theme in ["dark", "light"] {
+        let config = serde_json::json!({ "theme": theme });
+        let deck = parse_deck(md, Some(&config));
+        assert_eq!(deck.slides.len(), 3);
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(980.0, 1700.0))
+            .with_context_setup(marina_egui::fonts::install)
+            .build_ui(|ui| {
+                for slide in &deck.slides {
+                    noteliner_slides::SlideView::new(slide, &deck.config)
+                        .total(deck.slides.len())
+                        .show(ui, 960.0);
+                }
+            });
+        h.run();
+    }
+}

@@ -2,10 +2,10 @@
 //! Phase 0 spike's approach), headless at 1000×800 with the Marina fonts.
 //!
 //! ```text
-//! cargo run --profile spike -p marina-richtext --example bench [articles.json]
+//! cargo run --profile fast-release -p marina-richtext --example bench [articles.json]
 //! ```
 //!
-//! `articles.json` is the spike-article cache (`spike-article fetch`): an array of
+//! `articles.json` is a cache of real feed articles (the Phase 0 article spike made one): an array of
 //! `{ "title", "link", "content" }`. Without it, only synthetic documents are measured.
 
 use std::time::{Duration, Instant};

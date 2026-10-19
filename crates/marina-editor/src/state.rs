@@ -8,6 +8,9 @@ use std::sync::Arc;
 use egui::text::{CCursor, CCursorRange};
 use egui::{Id, TextEdit};
 
+use crate::editor_core::selection::{Sel, Selections};
+use crate::editor_core::CoreState;
+use crate::engine::Engine;
 use crate::find::FindState;
 use crate::highlight::Highlighter;
 use crate::history::{Cursor, History};
@@ -30,6 +33,8 @@ pub struct EditorPrefs {
     pub spell_check: bool,
     /// Auto-close brackets and quotes (`closeBrackets` in `basicSetup`).
     pub close_brackets: bool,
+    /// The text engine (the core engine unless `MARINA_EDITOR_ENGINE=textedit`).
+    pub engine: Engine,
 }
 
 impl Default for EditorPrefs {
@@ -40,6 +45,7 @@ impl Default for EditorPrefs {
             wrap: true,
             spell_check: true,
             close_brackets: true,
+            engine: Engine::default(),
         }
     }
 }
@@ -69,6 +75,8 @@ pub enum Command {
     Find,
     FindNext,
     FindPrevious,
+    /// Ctrl/Cmd+Alt+G: the Go to line bar (CodeMirror's `gotoLine`).
+    GoToLine,
     /// Replaces the selection (or inserts at the caret).
     Insert(String),
     /// Inserts at a character position (e.g. where a file from the tree was dropped).
@@ -97,6 +105,31 @@ pub(crate) struct Completion {
     /// Indices into [`EditorState::link_targets`].
     pub items: Vec<usize>,
     pub selected: usize,
+}
+
+/// The Go to line bar.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct GotoBar {
+    pub input: String,
+    /// Focus the input next frame.
+    pub focus: bool,
+    /// The last Enter didn't parse.
+    pub invalid: bool,
+}
+
+/// A position as (0-based line, column in characters).
+pub(crate) type LineCol = (usize, usize);
+
+/// Bracket and selection-match decorations, cached until the text, the
+/// caret or the visible lines change.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct DecorCache {
+    /// (text version, anchor, head, first visible line, last visible line).
+    pub key: Option<(u64, usize, usize, usize, usize)>,
+    /// The bracket at the caret and its partner, as (line, column) in characters.
+    pub brackets: Option<(LineCol, Option<LineCol>)>,
+    /// Other occurrences of the selection: (line, columns in characters).
+    pub matches: Vec<(usize, Range<usize>)>,
 }
 
 /// One editor's state. See the crate docs for how a host drives it.
@@ -132,6 +165,15 @@ pub struct EditorState {
     /// The word under the pointer when the context menu opened, with its
     /// character range and suggestions.
     pub(crate) menu_word: Option<(Range<usize>, String, Vec<String>)>,
+    pub(crate) goto: Option<GotoBar>,
+    pub(crate) decor: DecorCache,
+    /// This frame's input has a paste, cut or line-joining key that
+    /// `TextEdit` handles (ordered lists are renumbered after it).
+    pub(crate) structural_input: bool,
+    /// The core engine's index of `text`, and the text version it matches.
+    pub(crate) rope: ropey::Rope,
+    pub(crate) rope_version: u64,
+    pub(crate) core: CoreState,
 }
 
 impl EditorState {
@@ -159,6 +201,12 @@ impl EditorState {
             composing: false,
             status_cache: None,
             menu_word: None,
+            goto: None,
+            decor: DecorCache::default(),
+            structural_input: false,
+            rope: ropey::Rope::new(),
+            rope_version: 0,
+            core: CoreState::default(),
         }
     }
 
@@ -167,12 +215,52 @@ impl EditorState {
         self.highlighter.stats
     }
 
+    /// Line galleys the layouter holds (the core engine keeps only the ones
+    /// near the viewport).
+    pub fn held_galleys(&self) -> usize {
+        self.highlighter.galley_count()
+    }
+
     /// Bytes held by the undo history.
     pub fn history_bytes(&self) -> usize {
         self.history.bytes()
     }
 
-    /// The `TextEdit` id (for focus, or for tests).
+    /// The engine in use.
+    pub fn engine(&self) -> Engine {
+        self.prefs.engine
+    }
+
+    pub(crate) fn is_core(&self) -> bool {
+        self.prefs.engine == Engine::Core
+    }
+
+    /// The selections, as (anchor, head) in characters, primary first (the
+    /// core engine can have several; `TextEdit` has one).
+    pub fn selections(&self, ctx: &egui::Context) -> Vec<Cursor> {
+        if !self.is_core() {
+            return vec![self.cursor(ctx)];
+        }
+        let sel = &self.core.sel;
+        let p = sel.primary_index();
+        std::iter::once(sel.primary())
+            .chain(
+                sel.ranges()
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != p)
+                    .map(|(_, s)| *s),
+            )
+            .map(|s| (s.anchor, s.head))
+            .collect()
+    }
+
+    /// Lines folded away by the core engine: (first line, last hidden line), 0-based.
+    pub fn folds(&self) -> &[(usize, usize)] {
+        self.core.folds.ranges()
+    }
+
+    /// The editor's id (focus, accessibility; also `TextEdit`'s id).
     pub fn id(&self) -> Id {
         self.id
     }
@@ -195,6 +283,10 @@ impl EditorState {
         self.history.clear();
         self.completion = None;
         self.scroll_request = Some(egui::Vec2::ZERO);
+        self.core.folds.clear();
+        self.core.ime = None;
+        self.core.anchor = None;
+        self.composing = false;
         self.set_cursor(ctx, 0, 0);
     }
 
@@ -245,6 +337,10 @@ impl EditorState {
 
     /// The caret and selection as (anchor, head), in characters.
     pub fn cursor(&self, ctx: &egui::Context) -> Cursor {
+        if self.is_core() {
+            let p = self.core.sel.primary();
+            return (p.anchor, p.head);
+        }
         TextEdit::load_state(ctx, self.id)
             .and_then(|s| s.cursor.char_range())
             .map_or((0, 0), |r| (r.secondary.index.0, r.primary.index.0))
@@ -252,6 +348,15 @@ impl EditorState {
 
     /// Moves the caret (or selects anchor..head), in characters, and scrolls it into view.
     pub fn set_cursor(&mut self, ctx: &egui::Context, anchor: usize, head: usize) {
+        if self.is_core() {
+            self.sync_rope();
+            let n = self.chars_len();
+            self.core.sel = Selections::single(Sel::new(anchor.min(n), head.min(n)));
+            self.core.goal_x = None;
+            self.reveal = Some((head.min(n), false));
+            self.core_unfold_carets();
+            return;
+        }
         let n = chars_in(&self.text);
         let mut state = TextEdit::load_state(ctx, self.id).unwrap_or_default();
         state.cursor.set_char_range(Some(CCursorRange::two(
@@ -271,9 +376,44 @@ impl EditorState {
         self.scroll_request = Some(offset);
     }
 
+    /// Restores a saved view: the caret (anchor and head, in characters) and
+    /// the scroll offset, without scrolling the caret into view (the saved
+    /// offset already shows it). For reopening a note where it was left.
+    pub fn restore_view(
+        &mut self,
+        ctx: &egui::Context,
+        anchor: usize,
+        head: usize,
+        scroll: egui::Vec2,
+    ) {
+        self.set_cursor(ctx, anchor, head);
+        self.reveal = None;
+        self.scroll_request = Some(scroll);
+    }
+
+    /// Opens the Go to line bar, focused (Ctrl/Cmd+Alt+G).
+    pub fn open_goto(&mut self) {
+        let bar = self.goto.get_or_insert_with(GotoBar::default);
+        bar.focus = true;
+        bar.invalid = false;
+    }
+
+    pub fn goto_open(&self) -> bool {
+        self.goto.is_some()
+    }
+
     /// Puts the caret at the start of 1-based `line`, scrolls that line to
     /// the top and focuses the editor (the outline's `scrollToLine`).
     pub fn scroll_to_line(&mut self, ctx: &egui::Context, line: usize) {
+        if self.is_core() {
+            self.sync_rope();
+            let line = line.max(1).min(self.lines()) - 1;
+            let c = self.rope.line_to_char(line);
+            self.set_cursor(ctx, c, c);
+            self.reveal = Some((c, true));
+            self.focus_request = true;
+            return;
+        }
         let mut b = 0;
         for _ in 1..line.max(1) {
             match self.text[b..].find('\n') {
@@ -343,6 +483,11 @@ impl EditorState {
         }
         let (anchor, head) = cursor;
         let (from, to) = (anchor.min(head), anchor.max(head));
+        if self.is_core() {
+            let (status, kind) = self.core_status(from, to, head);
+            self.status_cache = Some((key, status, kind));
+            return (status, kind);
+        }
         let (bf, bt, bh) = (
             byte_at(&self.text, from),
             byte_at(&self.text, to),
@@ -368,6 +513,34 @@ impl EditorState {
         let kind = classify_span(&span, 1, span.len());
         self.status_cache = Some((key, status, kind));
         (status, kind)
+    }
+
+    /// Status and list kind from the rope (O(log n) lookups, not a scan).
+    fn core_status(&mut self, from: usize, to: usize, head: usize) -> (CursorStatus, ListKind) {
+        self.sync_rope();
+        let (line, col) = self.line_col(head);
+        let (from_line, to_line) = (self.line_col(from).0, self.line_col(to).0);
+        let status = CursorStatus {
+            line: line + 1,
+            col: col + 1,
+            selection_len: to - from,
+            selection_lines: (from != to).then_some((from_line + 1, to_line + 1)),
+        };
+        let span: Vec<&str> = (from_line..=to_line).map(|l| self.line_text(l)).collect();
+        let kind = classify_span(&span, 1, span.len());
+        (status, kind)
+    }
+
+    /// Opens any fold that hides a caret.
+    pub(crate) fn core_unfold_carets(&mut self) {
+        if self.core.folds.is_empty() {
+            return;
+        }
+        let heads: Vec<usize> = self.core.sel.ranges().iter().map(|s| s.head).collect();
+        for h in heads {
+            let (line, _) = self.line_col(h);
+            self.core.folds.unfold_hiding(line);
+        }
     }
 
     /// Applies an edit as one undoable step and puts the caret where it says.

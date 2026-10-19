@@ -1,7 +1,7 @@
 //! NoteLiner's PDF export without a webview: frontmatter stripped →
 //! Markdown (comrak AST) → Typst markup ([`markup`]) → `typst::compile` in an
 //! in-memory world → `typst_pdf::pdf`. Plan Option C, Phase 4; promoted from
-//! `apps/spikes/export` (see its `RESULTS.md`).
+//! the Phase 0 export spike (see `docs/plans/spikes/export.md`).
 //!
 //! ```ignore
 //! // Once, at startup: built and warmed up on a background thread.
@@ -21,11 +21,17 @@
 //!
 //! HTML export stays on comrak in `noteliner-core` ([`export_html`]).
 //!
+//! Math: `$…$` and `$$…$$` (and ```` ```math ```` blocks) are converted from
+//! LaTeX syntax by [`math`] and typeset by Typst in New Computer Modern Math,
+//! which this crate bundles. [`Exporter::math_svg`] renders one formula to
+//! SVG for the app's preview and slides.
+//!
 //! Typst is behind the default `pdf` feature. Without it the crate still
-//! builds, [`markup`] still works, and exporting returns
+//! builds, [`markup`] and [`math`] still work, and exporting returns
 //! [`Error::PdfUnavailable`].
 
 pub mod markup;
+pub mod math;
 #[cfg(feature = "pdf")]
 mod world;
 
@@ -134,6 +140,11 @@ fn resolve_title(title: &Title, data: &frontmatter::Data) -> Option<String> {
     }
 }
 
+/// New Computer Modern Math (GUST Font License; see `assets/fonts/NewCMMath-LICENSE.txt`),
+/// always added to the faces an [`Exporter`] is given: Typst sets math in it.
+#[cfg(feature = "pdf")]
+const MATH_FONT: &[u8] = include_bytes!("../assets/fonts/NewCMMath-Regular.otf");
+
 /// Exports notes to PDF. Keep one per app: the fonts and Typst's caches are
 /// reused, so later exports take milliseconds rather than ~200 ms.
 pub struct Exporter {
@@ -154,9 +165,13 @@ impl Exporter {
     /// An exporter with these font files (e.g.
     /// `marina_egui::fonts::bundled_faces()`), falling back to system fonts.
     pub fn new(faces: impl IntoIterator<Item = &'static [u8]>) -> Self {
-        let faces: Vec<_> = faces.into_iter().collect();
+        #[cfg_attr(not(feature = "pdf"), allow(unused_mut))]
+        let mut faces: Vec<_> = faces.into_iter().collect();
         #[cfg(feature = "pdf")]
         {
+            if !faces.contains(&MATH_FONT) {
+                faces.push(MATH_FONT);
+            }
             Self {
                 bundled: Arc::new(world::FontSet::new(&faces, false)),
                 faces,
@@ -209,6 +224,49 @@ impl Exporter {
         let note = "**Bold** _italic_ `code`\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n";
         if let Err(e) = self.export(note, &options) {
             log::warn!("PDF export warm-up failed: {e}");
+        }
+    }
+
+    /// Renders one formula (LaTeX syntax, without `$`) to SVG: white glyphs on
+    /// a transparent page that fits the formula, `size` points tall text, so
+    /// a viewer can tint it to any text colour. `display` sets it as a block
+    /// (larger operators, limits above and below). Unsupported LaTeX is
+    /// [`Error::Compile`]; callers show the source instead.
+    pub fn math_svg(&self, latex: &str, display: bool, size: f32) -> Result<String> {
+        let equation =
+            math::typst_equation(latex, display).map_err(|e| Error::Compile(e.to_string()))?;
+        #[cfg(feature = "pdf")]
+        {
+            use typst_layout::PagedDocument;
+
+            let size = if size.is_finite() {
+                size.clamp(4.0, 200.0)
+            } else {
+                14.0
+            };
+            let source = format!(
+                "#set page(width: auto, height: auto, margin: (x: 1pt, y: 3pt), fill: none)\n\
+                 #set text(size: {size:.2}pt, fill: white, top-edge: \"bounds\", bottom-edge: \"bounds\")\n\
+                 {equation}\n"
+            );
+            let fonts = self.fonts_for(&source);
+            let world = world::ExportWorld::new(fonts, source, None);
+            let doc: PagedDocument = typst::compile(&world)
+                .output
+                .map_err(|errs| Error::Compile(join_messages(errs.iter().map(|e| &e.message))))?;
+            let page = doc
+                .pages()
+                .first()
+                .ok_or_else(|| Error::Compile("empty formula".into()))?;
+            Ok(math::straight_strokes_as_rects(&typst_svg::svg(
+                page,
+                &typst_svg::SvgOptions::default(),
+            )))
+        }
+        #[cfg(not(feature = "pdf"))]
+        {
+            let _ = (equation, size);
+            Err(Error::PdfUnavailable)
         }
     }
 

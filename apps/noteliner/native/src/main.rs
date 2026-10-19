@@ -14,6 +14,7 @@ mod commands;
 mod config;
 mod deck;
 mod editor;
+mod math;
 mod model;
 mod overlays;
 mod spell;
@@ -26,6 +27,8 @@ mod ui_tests;
 mod ui_tests_editor;
 #[cfg(test)]
 mod ui_tests_panes;
+#[cfg(test)]
+mod ui_tests_present;
 
 use config::Paths;
 

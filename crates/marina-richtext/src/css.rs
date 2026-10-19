@@ -3,8 +3,10 @@
 //!
 //! - `font-style`, `font-weight`, `text-decoration`, `font-family` (monospace only): emphasis.
 //! - `text-align` (including `justify`): centred titles, right-aligned signatures, justified prose.
-//! - `text-indent`, `margin-left`, `padding-left` (and the `margin`/`padding` shorthands):
-//!   indented paragraphs, block quotes and verse built from `div`s.
+//! - `text-indent` (negative: hanging), `margin-left`, `padding-left` (and the `margin`/`padding`
+//!   shorthands): indented paragraphs, hanging indents, block quotes and verse built from `div`s.
+//! - `margin-top`, `margin-bottom` (and `margin`): books that space paragraphs themselves
+//!   (`p { margin: 0 }` with indents, or wide gaps around verse); capped, see `convert`.
 //! - `font-variant: small-caps`, `text-transform: uppercase`: chapter openings and acronyms.
 //! - `vertical-align: super | sub`: footnote markers styled with classes instead of `<sup>`.
 //! - `width: N% | Npx` on images: frontispieces and inline figures sized by the book.
@@ -12,7 +14,7 @@
 //!
 //! Ignored, because a reflowing reader shouldn't take them from the book: colours and
 //! backgrounds (the reading theme owns them), font sizes and line heights (the reader's own
-//! setting), vertical margins, floats, positioning, `page-break-*` (there are no pages) and
+//! setting), vertical padding, floats, positioning, `page-break-*` (there are no pages) and
 //! everything else.
 //!
 //! Selectors are reduced to their last compound (`div.note p.first` → `p.first`), so a rule can
@@ -32,8 +34,12 @@ pub struct Decls {
     pub hidden: bool,
     /// `margin-left` + `padding-left`, in ems.
     pub indent_left: Option<f32>,
-    /// `text-indent`, in ems.
+    /// `text-indent`, in ems (negative for a hanging indent).
     pub text_indent: Option<f32>,
+    /// `margin-top`, in ems.
+    pub margin_top: Option<f32>,
+    /// `margin-bottom`, in ems.
+    pub margin_bottom: Option<f32>,
     pub small_caps: Option<bool>,
     pub uppercase: Option<bool>,
     /// `vertical-align`: `Some(true)` super, `Some(false)` sub.
@@ -92,6 +98,8 @@ impl Decls {
             align,
             indent_left,
             text_indent,
+            margin_top,
+            margin_bottom,
             small_caps,
             uppercase,
             superscript,
@@ -144,9 +152,24 @@ impl Decls {
                         d.indent_left = Some(d.indent_left.unwrap_or(0.0) + l.ems());
                     }
                 }
+                "margin-top" => d.margin_top = Length::parse(&value).map(Length::ems),
+                "margin-bottom" => d.margin_bottom = Length::parse(&value).map(Length::ems),
                 "margin" | "padding" => {
                     // The left side: `a` (all), `a b`, `a b c` (left = b), `a b c d` (left = d).
                     let parts: Vec<&str> = value.split_whitespace().collect();
+                    if prop == "margin" {
+                        // Top: the first value; bottom: the first (1 or 2 values) or the third.
+                        let bottom = if parts.len() >= 3 {
+                            parts.get(2)
+                        } else {
+                            parts.first()
+                        };
+                        d.margin_top = parts
+                            .first()
+                            .and_then(|v| Length::parse(v))
+                            .map(Length::ems);
+                        d.margin_bottom = bottom.and_then(|v| Length::parse(v)).map(Length::ems);
+                    }
                     let left = match parts.len() {
                         1 => parts.first(),
                         2 | 3 => parts.get(1),

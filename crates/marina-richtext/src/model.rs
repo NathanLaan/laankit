@@ -21,6 +21,8 @@ pub enum Block {
         align: Align,
         indent: Indent,
     },
+    /// A task item (`- [ ]` in Markdown) starts its first text block with a
+    /// [`Style::checkbox`] span.
     List {
         ordered: bool,
         start: u32,
@@ -40,7 +42,8 @@ pub enum Block {
     },
     Rule,
     /// Rows of cells; each cell is inline text (block content inside a cell is flattened).
-    /// `colspan`s and `rowspan`s are padded with empty cells, so every row lines up.
+    /// `colspan`s and `rowspan`s are padded with empty cells, so every row lines up. A cell's
+    /// alignment is on its spans ([`Style::cell_align`]).
     Table {
         rows: Vec<Vec<Vec<Span>>>,
         header_rows: usize,
@@ -56,7 +59,7 @@ pub enum TextKind {
     Caption,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Align {
     #[default]
     Left,
@@ -67,13 +70,19 @@ pub enum Align {
     Justify,
 }
 
-/// A paragraph's CSS indents, in ems.
+/// A paragraph's CSS indents and vertical margins, in ems.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Indent {
     /// `margin-left` + `padding-left`, of the paragraph and its block ancestors.
     pub left: f32,
-    /// `text-indent` (first line only; negative "hanging" indents are dropped).
+    /// `text-indent` (first line only). Negative is a hanging indent: the first line starts left
+    /// of the others, at most back to the column's edge.
     pub first_line: f32,
+    /// `margin-top` set on the paragraph's own element (not inherited); `None` keeps the reader's
+    /// spacing.
+    pub top: Option<f32>,
+    /// `margin-bottom`, likewise; replaces the reader's paragraph gap when set.
+    pub bottom: Option<f32>,
 }
 
 /// A run of text with one style.
@@ -97,6 +106,20 @@ pub struct Style {
     pub sup: bool,
     /// `<sub>` / `vertical-align: sub`.
     pub sub: bool,
+    /// `<mark>`: highlighted text.
+    pub mark: bool,
+    /// `<kbd>`: a key cap (also `code`, so renderers that don't know key caps show code).
+    pub kbd: bool,
+    /// A task-list checkbox, `Some(checked)`. Only on the span that stands for the box, whose
+    /// text is the Markdown `[ ]` or `[x]` (so copying gives task syntax, and renderers that
+    /// don't draw boxes still show something readable). See [`Block::List`].
+    pub checkbox: Option<bool>,
+    /// The alignment of the table cell this span is in (`align` or `text-align` on the `td`/`th`,
+    /// or its column header's). Set on every span of an aligned cell; `None` is left. Kept on
+    /// the spans so [`Block::Table`]'s shape stays the same for code that matches on it.
+    pub cell_align: Option<Align>,
+    /// A formula: the span's text is its LaTeX source (see [`crate::math`]).
+    pub math: Option<crate::math::MathMode>,
 }
 
 impl Block {

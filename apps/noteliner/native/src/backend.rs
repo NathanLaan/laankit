@@ -431,11 +431,16 @@ impl Backend {
         Self { rt, rx, core }
     }
 
-    /// The context to repaint when an event arrives.
+    /// The context to repaint when an event arrives. Also installs the math
+    /// renderer (Typst, through the PDF exporter) for the preview and slides.
     pub fn attach(&self, ctx: &egui::Context) {
         let mut slot = self.core.ctx.lock().unwrap();
         if slot.is_none() {
             *slot = Some(ctx.clone());
+            marina_richtext::math::install(
+                ctx,
+                Arc::new(crate::math::TypstMath(self.core.exporter.clone())),
+            );
             ctx.request_repaint();
         }
     }

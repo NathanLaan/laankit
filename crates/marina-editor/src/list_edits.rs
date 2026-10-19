@@ -274,7 +274,7 @@ pub fn chars_in(s: &str) -> usize {
 /// The 0-based line holding byte `b`, and that line's byte start.
 pub fn line_of(text: &str, b: usize) -> (usize, usize) {
     let before = &text[..b];
-    let line = before.matches('\n').count();
+    let line = crate::fastcmp::newlines(before.as_bytes());
     let start = before.rfind('\n').map_or(0, |i| i + 1);
     (line, start)
 }
@@ -529,6 +529,177 @@ pub fn sub_list_in_text(text: &str, head: usize) -> Option<DocEdit> {
     })
 }
 
+// --- Renumbering ordered lists after an edit ----------------------------------------------------
+
+/// An ordered item's place in a list: its quote prefix, indent width,
+/// delimiter (`.` or `)`) and number, plus where its digits sit in the line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Ordered {
+    quote: usize,
+    indent: usize,
+    delim: u8,
+    number: u64,
+    digits: (usize, usize),
+}
+
+/// What a line is, for walking a list's siblings.
+enum Walk {
+    Ordered(Ordered),
+    /// A bullet item (its indent width).
+    Bullet(usize),
+    Blank,
+    /// Anything else, with its indent width.
+    Other(usize),
+}
+
+fn walk_line(line: &str) -> Walk {
+    if is_blank(line) {
+        return Walk::Blank;
+    }
+    let quote = quote_prefix_len(line);
+    let rest = &line[quote..];
+    match parse_item(rest) {
+        Some(item) if item.ordered => {
+            let start = quote + item.indent.len();
+            let end = start + item.marker.len() - 1;
+            Walk::Ordered(Ordered {
+                quote,
+                indent: item.indent.chars().count(),
+                delim: item.marker.as_bytes()[item.marker.len() - 1],
+                number: line[start..end].parse().unwrap_or(0),
+                digits: (start, end),
+            })
+        }
+        Some(item) => Walk::Bullet(item.indent.chars().count()),
+        None => Walk::Other(indent_of(rest).chars().count()),
+    }
+}
+
+/// The next sibling of the ordered item at `from` (same quote, indent and
+/// delimiter), stepping by `dir` (+1 or -1): skips blank lines, deeper
+/// items and continuation lines; stops where the list ends.
+fn sibling(lines: &[&str], from: usize, level: Ordered, dir: isize) -> Option<(usize, Ordered)> {
+    let mut i = from as isize;
+    loop {
+        i += dir;
+        if i < 0 || i as usize >= lines.len() {
+            return None;
+        }
+        let idx = i as usize;
+        match walk_line(lines[idx]) {
+            Walk::Blank => {}
+            Walk::Ordered(o) if o.quote == level.quote && o.indent == level.indent => {
+                return (o.delim == level.delim).then_some((idx, o));
+            }
+            Walk::Ordered(o) if o.indent > level.indent => {}
+            Walk::Bullet(indent) if indent > level.indent => {}
+            Walk::Ordered(_) | Walk::Bullet(_) => return None,
+            Walk::Other(indent) if indent > level.indent => {}
+            Walk::Other(_) => {
+                // A lazy continuation line belongs to the item above it, but a
+                // paragraph after a blank line (or a heading or fence) ends the list.
+                let line = lines[idx].trim_start();
+                let above_blank = idx == 0 || is_blank(lines[idx - 1]);
+                if above_blank || line.starts_with('#') || line.starts_with("```") {
+                    return None;
+                }
+            }
+        }
+    }
+}
+
+/// After an edit from `old` to `new`, renumbers the ordered items that
+/// follow it so their run stays sequential (CodeMirror's `renumberList`,
+/// for insertions and deletions alike): the first ordered item after the
+/// changed lines becomes its previous sibling's number + 1, and so do the
+/// following siblings, as long as they were sequential before the edit. A
+/// list that wasn't sequential there (`1. 1. 1.`) is left alone. `None`
+/// when nothing changes.
+pub fn renumber_after_edit(old: &str, new: &str) -> Option<String> {
+    if old == new {
+        return None;
+    }
+    let new_lines: Vec<&str> = new.split('\n').collect();
+    let old_lines: Vec<&str> = old.split('\n').collect();
+    // Whole lines: the edit's lines are the ones between the common leading
+    // and trailing lines.
+    let same_start = old_lines
+        .iter()
+        .zip(&new_lines)
+        .take_while(|(a, b)| a == b)
+        .count();
+    let max_end = old_lines.len().min(new_lines.len()) - same_start;
+    let same_end = old_lines
+        .iter()
+        .rev()
+        .zip(new_lines.iter().rev())
+        .take(max_end)
+        .take_while(|(a, b)| a == b)
+        .count();
+    // The lines from `after` on are old lines shifted by `delta`.
+    let after = new_lines.len() - same_end;
+    let delta = new_lines.len() as isize - old_lines.len() as isize;
+
+    // The first ordered item after the edit, at the level it sits at.
+    let (first, level) = new_lines
+        .iter()
+        .enumerate()
+        .skip(after)
+        .find_map(|(i, l)| match walk_line(l) {
+            Walk::Blank | Walk::Other(_) => None,
+            Walk::Ordered(o) => Some(Some((i, o))),
+            Walk::Bullet(_) => Some(None),
+        })
+        .flatten()?;
+    let (_, prev) = sibling(&new_lines, first, level, -1)?;
+    let old_first = (first as isize - delta) as usize;
+    let Walk::Ordered(old_level) = walk_line(old_lines.get(old_first)?) else {
+        return None;
+    };
+    let (_, old_prev) = sibling(&old_lines, old_first, old_level, -1)?;
+    // Only a run that was sequential before the edit is renumbered.
+    if old_level.number != old_prev.number + 1 || level.number == prev.number + 1 {
+        return None;
+    }
+
+    let mut out: Vec<String> = new_lines.iter().map(|l| l.to_string()).collect();
+    let (mut at, mut item) = (first, level);
+    let (mut old_at, mut old_item) = (old_first, old_level);
+    let mut number = prev.number + 1;
+    loop {
+        let line = new_lines[at];
+        out[at] = format!(
+            "{}{number}{}",
+            &line[..item.digits.0],
+            &line[item.digits.1..]
+        );
+        let Some((next, next_item)) = sibling(&new_lines, at, item, 1) else {
+            break;
+        };
+        let Some((old_next, old_next_item)) = sibling(&old_lines, old_at, old_item, 1) else {
+            break;
+        };
+        // The same line (shifted by the edit) and still in sequence before it.
+        if old_next as isize + delta != next as isize || old_next_item.number != old_item.number + 1
+        {
+            break;
+        }
+        (at, item, old_at, old_item) = (next, next_item, old_next, old_next_item);
+        number += 1;
+    }
+    let text = out.join("\n");
+    (text != new).then_some(text)
+}
+
+/// Applies [`renumber_after_edit`] to an edit of `old`. Renumbering only
+/// rewrites lines after the edit, so the cursor stays put.
+pub fn with_renumbering(old: &str, mut edit: DocEdit) -> DocEdit {
+    if let Some(text) = renumber_after_edit(old, &edit.text) {
+        edit.text = text;
+    }
+    edit
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -638,5 +809,92 @@ mod tests {
         assert_eq!((e.text.as_str(), e.anchor, e.head), ("1. a\n2. b", 0, 9));
         let e = sub_list_in_text("- a\n- b", 7).unwrap();
         assert_eq!((e.text.as_str(), e.head), ("- a\n  - b", 9));
+    }
+
+    fn renum(old: &str, new: &str) -> String {
+        renumber_after_edit(old, new).unwrap_or_else(|| "<none>".into())
+    }
+
+    #[test]
+    fn renumbers_after_insertions_and_deletions() {
+        // Enter after item 1 inserts "2.": the rest move up by one.
+        assert_eq!(
+            renum("1. a\n2. b\n3. c", "1. a\n2. x\n2. b\n3. c"),
+            "1. a\n2. x\n3. b\n4. c"
+        );
+        // Deleting item 2: the rest move down.
+        assert_eq!(
+            renum("1. a\n2. b\n3. c\n4. d", "1. a\n3. c\n4. d"),
+            "1. a\n2. c\n3. d"
+        );
+        // Pasting two items shifts by two; widths can change.
+        assert_eq!(
+            renum("1. a\n2. b\n3. c", "1. a\n2. p\n3. q\n2. b\n3. c"),
+            "1. a\n2. p\n3. q\n4. b\n5. c"
+        );
+        assert_eq!(renum("8. a\n9. b", "8. a\n9. x\n9. b"), "8. a\n9. x\n10. b");
+        // A list starting at 5 keeps its numbering.
+        assert_eq!(renum("5. a\n6. b", "5. a\n6. x\n6. b"), "5. a\n6. x\n7. b");
+    }
+
+    #[test]
+    fn renumbering_respects_levels_delimiters_and_quotes() {
+        // Only the nested list where the edit happened.
+        assert_eq!(
+            renum(
+                "1. a\n   1. x\n   2. y\n2. b\n3. c",
+                "1. a\n   1. x\n   2. n\n   2. y\n2. b\n3. c"
+            ),
+            "1. a\n   1. x\n   2. n\n   3. y\n2. b\n3. c"
+        );
+        // Tab nests item 2: the top level closes the gap.
+        assert_eq!(
+            renum("1. a\n2. b\n3. c", "1. a\n  2. b\n3. c"),
+            "1. a\n  2. b\n2. c"
+        );
+        // `)` lists renumber; a `.` item after them is another list.
+        assert_eq!(
+            renum("1) a\n2) b\n3. c", "1) a\n2) x\n2) b\n3. c"),
+            "1) a\n2) x\n3) b\n3. c"
+        );
+        assert_eq!(
+            renum("> 1. a\n> 2. b", "> 1. a\n> 2. x\n> 2. b"),
+            "> 1. a\n> 2. x\n> 3. b"
+        );
+        // Continuation lines and nested bullets don't break the run.
+        assert_eq!(
+            renum(
+                "1. a\n   more\n   - sub\n2. b\n3. c",
+                "1. a\n   more\n   - sub\n2. x\n2. b\n3. c"
+            ),
+            "1. a\n   more\n   - sub\n2. x\n3. b\n4. c"
+        );
+    }
+
+    #[test]
+    fn leaves_lazy_and_separate_lists_alone() {
+        assert_eq!(
+            renum("1. a\n1. b\n1. c", "1. a\n2. x\n1. b\n1. c"),
+            "<none>"
+        );
+        // A paragraph after a blank line starts a new list.
+        assert_eq!(
+            renum("1. a\n\nText\n\n2. b", "1. a\n2. x\n\nText\n\n2. b"),
+            "<none>"
+        );
+        assert_eq!(renum("- a\n- b", "- a\n- x\n- b"), "<none>");
+        assert_eq!(renum("plain", "plain text"), "<none>");
+        // Already sequential: nothing to do.
+        assert_eq!(renum("1. a\n2. b", "1. a\n2. b\n3. c"), "<none>");
+    }
+
+    #[test]
+    fn enter_and_tab_renumber_through_the_text_helpers() {
+        let old = "1. a\n2. b\n3. c";
+        let e = with_renumbering(old, enter_in_text(old, 4).unwrap());
+        assert_eq!(e.text, "1. a\n2. \n3. b\n4. c");
+        assert_eq!((e.anchor, e.head), (8, 8));
+        let e = with_renumbering(old, indent_in_text(old, 6, 6, false).unwrap());
+        assert_eq!(e.text, "1. a\n  2. b\n2. c");
     }
 }

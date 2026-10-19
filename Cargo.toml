@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "apps/pageliner/src-tauri", "apps/threadliner/src-tauri", "apps/noteliner/src-tauri", "apps/spikes/*", "apps/threadliner/native", "apps/pageliner/native", "apps/noteliner/native", "xtask"]
+members = ["crates/*", "apps/pageliner/src-tauri", "apps/threadliner/src-tauri", "apps/noteliner/src-tauri", "apps/threadliner/native", "apps/pageliner/native", "apps/noteliner/native", "xtask"]
 
 [workspace.package]
 edition = "2021"
@@ -31,8 +31,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
-# Option C (pure Rust, egui) spikes. See docs/plans/plan-native-rust-egui.md.
-spike-common = { path = "apps/spikes/common" }
+# Option C (pure Rust, egui). See docs/plans/plan-native-rust-egui.md.
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit", "wayland", "x11", "persistence"] }
 egui = "0.37"
 egui_extras = { version = "0.37", default-features = false, features = ["image"] }
@@ -46,9 +45,9 @@ lto = true
 codegen-units = 1
 strip = true
 
-# Release speed without the full LTO build, for measuring the spikes:
-# `cargo run --profile spike -p spike-editor`.
-[profile.spike]
+# Release speed without the full LTO build, for benchmarks and quick
+# optimised runs: `cargo run --profile fast-release -p noteliner-native`.
+[profile.fast-release]
 inherits = "release"
 lto = false
 codegen-units = 16

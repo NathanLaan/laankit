@@ -1,5 +1,6 @@
-//! Markdown highlighting for `TextEdit`'s layouter, with a per-line galley
-//! cache (Phase 0 spike 1: see `apps/spikes/editor/RESULTS.md`).
+//! Markdown highlighting with a per-line galley cache, for both engines
+//! (the core editor lays out only the lines on screen; `TextEdit`'s layouter
+//! joins them all) (Phase 0 spike 1: see `docs/plans/spikes/editor.md`).
 //!
 //! A line-based scanner (not a full CommonMark parse): each line is
 //! highlighted from its own text plus the block state it starts in (normal,
@@ -8,6 +9,12 @@
 //! and suffix), rescans and lays out only the lines in between, plus any
 //! following lines whose block state changed (for example after opening a
 //! fence), and joins the line galleys with `Galley::concat`.
+//!
+//! Fenced code is highlighted by language through [`crate::code`]. Each line
+//! remembers the fence's parse state it starts in ([`LineStart`]), so an edit
+//! in a fence re-highlights only until the state settles, and an edit outside
+//! one leaves it alone. Until the syntaxes have loaded, fences are one
+//! colour; once they arrive, the fence lines alone are highlighted again.
 //!
 //! The per-line cache is what makes this usable: egui's own paragraph cache
 //! drops every entry not used in the previous frame, so a single whole-text
@@ -18,10 +25,12 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use egui::text::{ByteIndex, LayoutJob, LayoutSection, TextWrapping};
-use egui::{Color32, FontFamily, FontId, Galley, Stroke, TextFormat, Ui};
+use egui::{Color32, FontFamily, FontId, Galley, Rect, Stroke, TextFormat, Ui};
 use marina_egui::fonts::Style;
 use marina_egui::theme::Palette;
+use syntect::parsing::SyntaxSet;
 
+use crate::code::{self, FenceCode, Token};
 use crate::spell::{misspelled, SpellChecker};
 
 /// What a run of text is, for styling.
@@ -42,6 +51,8 @@ pub enum Kind {
     Task,
     Quote,
     Frontmatter,
+    /// Code in a fence whose language is known, by token class.
+    Syntax(Token),
 }
 
 /// The block a line starts in.
@@ -54,6 +65,15 @@ pub enum BlockState {
         ch: u8,
         len: u8,
     },
+}
+
+/// Everything a line's highlighting depends on besides its own text: the
+/// block it starts in and, inside a fence with a known language, the parse
+/// state the fence has reached.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LineStart {
+    pub block: BlockState,
+    pub code: Option<Arc<FenceCode>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -84,10 +104,14 @@ pub struct Span {
 /// | gutter        | `--bg-base`, numbers in `--text-faint` (active line `--text-muted`) |
 /// | active line   | `--bg-item-hover`                                                 |
 /// | find matches  | `--accent` at 25% (the current one at 45%)                        |
+/// | selection matches | `--accent` at 15%                                             |
+/// | bracket match | `--accent` at 30%; an unmatched bracket in red at 30%             |
 ///
 /// The code colour is the one colour not in the palette: CodeMirror's string
 /// green, One Dark's `#98c379` on dark themes and the default style's
-/// `#116644` on light ones, as the Svelte editor shows code.
+/// `#116644` on light ones, as the Svelte editor shows code. Fences in a
+/// language [`crate::code`] knows are coloured by token instead
+/// ([`SyntaxColors`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EditorColors {
     pub text: Color32,
@@ -107,7 +131,120 @@ pub struct EditorColors {
     pub active_line: Color32,
     pub find_match: Color32,
     pub find_current: Color32,
+    pub selection_match: Color32,
+    pub bracket_match: Color32,
+    pub bracket_unmatched: Color32,
     pub misspelled: Color32,
+    pub syntax: SyntaxColors,
+}
+
+/// Colours for highlighted code, by [`Token`]. Plain code and punctuation
+/// take the theme's text colours; the rest follow what the Svelte editor
+/// showed: CodeMirror's One Dark (`oneDark`) on dark themes and its
+/// `defaultHighlightStyle` on light ones.
+///
+/// | Token       | Dark (One Dark) | Light (CodeMirror default) |
+/// |-------------|-----------------|----------------------------|
+/// | plain       | `--text-primary`  | `--text-primary`           |
+/// | punctuation | `--text-secondary`| `--text-secondary`         |
+/// | comment     | `#7d8799`       | `#940` (italic in both)    |
+/// | string      | `#98c379`       | `#a11`                     |
+/// | number      | `#d19a66`       | `#164`                     |
+/// | constant    | `#d19a66`       | `#219`                     |
+/// | keyword     | `#c678dd`       | `#708`                     |
+/// | operator    | `#56b6c2`       | `#708`                     |
+/// | function    | `#61afef`       | `#00f`                     |
+/// | type        | `#e5c07b`       | `#085`                     |
+/// | tag         | `#e06c75`       | `#170`                     |
+/// | attribute   | `#d19a66`       | `#00c`                     |
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SyntaxColors {
+    pub plain: Color32,
+    pub punctuation: Color32,
+    pub comment: Color32,
+    pub string: Color32,
+    pub number: Color32,
+    pub constant: Color32,
+    pub keyword: Color32,
+    pub operator: Color32,
+    pub function: Color32,
+    pub ty: Color32,
+    pub tag: Color32,
+    pub attribute: Color32,
+}
+
+impl SyntaxColors {
+    pub fn from_palette(p: &Palette) -> Self {
+        let hex = |rgb: u32| {
+            let [_, r, g, b] = rgb.to_be_bytes();
+            Color32::from_rgb(r, g, b)
+        };
+        if p.dark {
+            Self {
+                plain: p.text_primary,
+                punctuation: p.text_secondary,
+                comment: hex(0x7d8799),
+                string: hex(0x98c379),
+                number: hex(0xd19a66),
+                constant: hex(0xd19a66),
+                keyword: hex(0xc678dd),
+                operator: hex(0x56b6c2),
+                function: hex(0x61afef),
+                ty: hex(0xe5c07b),
+                tag: hex(0xe06c75),
+                attribute: hex(0xd19a66),
+            }
+        } else {
+            Self {
+                plain: p.text_primary,
+                punctuation: p.text_secondary,
+                comment: hex(0x994400),
+                string: hex(0xaa1111),
+                number: hex(0x116644),
+                constant: hex(0x221199),
+                keyword: hex(0x770088),
+                operator: hex(0x770088),
+                function: hex(0x0000ff),
+                ty: hex(0x008855),
+                tag: hex(0x117700),
+                attribute: hex(0x0000cc),
+            }
+        }
+    }
+
+    pub fn color(&self, token: Token) -> Color32 {
+        match token {
+            Token::Plain => self.plain,
+            Token::Punctuation => self.punctuation,
+            Token::Comment => self.comment,
+            Token::String => self.string,
+            Token::Number => self.number,
+            Token::Constant => self.constant,
+            Token::Keyword => self.keyword,
+            Token::Operator => self.operator,
+            Token::Function => self.function,
+            Token::Type => self.ty,
+            Token::Tag => self.tag,
+            Token::Attribute => self.attribute,
+        }
+    }
+
+    fn all(&self) -> [Color32; 12] {
+        [
+            self.plain,
+            self.punctuation,
+            self.comment,
+            self.string,
+            self.number,
+            self.constant,
+            self.keyword,
+            self.operator,
+            self.function,
+            self.ty,
+            self.tag,
+            self.attribute,
+        ]
+    }
 }
 
 impl EditorColors {
@@ -134,7 +271,11 @@ impl EditorColors {
             active_line: p.bg_item_hover,
             find_match: p.accent.gamma_multiply(0.25),
             find_current: p.accent.gamma_multiply(0.45),
+            selection_match: p.accent.gamma_multiply(0.15),
+            bracket_match: p.accent.gamma_multiply(0.3),
+            bracket_unmatched: Color32::from_rgb(0xe0, 0x4b, 0x4b).gamma_multiply(0.3),
             misspelled: Color32::from_rgb(0xe0, 0x4b, 0x4b),
+            syntax: SyntaxColors::from_palette(p),
         }
     }
 
@@ -153,7 +294,10 @@ impl EditorColors {
             self.code_bg,
             self.pre_bg,
             self.misspelled,
-        ] {
+        ]
+        .into_iter()
+        .chain(self.syntax.all())
+        {
             for b in c.to_array() {
                 h = (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
             }
@@ -193,6 +337,11 @@ impl EditorColors {
             Kind::ListMarker | Kind::Task => plain(body, self.marker),
             Kind::Quote => plain(font(Style::ITALIC), self.quote),
             Kind::Frontmatter => plain(mono, self.muted),
+            Kind::Syntax(token) => TextFormat {
+                background: self.pre_bg,
+                italics: token == Token::Comment,
+                ..plain(mono, self.syntax.color(token))
+            },
         };
         if misspelled {
             format.underline = Stroke::new(1.5, self.misspelled);
@@ -208,36 +357,70 @@ pub struct HighlightStats {
     pub calls: u64,
     /// Calls that built a new document galley (the text or look changed).
     pub rebuilds: u64,
-    /// Lines scanned and laid out again.
+    /// Lines scanned (highlighted) again.
     pub lines_laid_out: u64,
+    /// Line galleys built (laid out with fonts).
+    pub galleys_built: u64,
 }
 
-/// The cached layouter. One per editor.
+/// The cached highlighter and layouter. One per editor.
+///
+/// Scanning (which spans a line has) and layout (its galley) are separate:
+/// every line is scanned, because a line's highlighting depends on the block
+/// it starts in, but galleys are built only when asked for. The `TextEdit`
+/// engine asks for all of them ([`Self::layout`]); the core engine only for
+/// the lines on screen ([`Self::line_galley`]), and keeps their measured
+/// heights.
 #[derive(Default)]
 pub struct Highlighter {
-    /// One entry per line of `last.text`.
+    /// One entry per line of `text`.
     doc: Vec<LineEntry>,
     /// The first row of each line in the last document galley, plus the row count at the end.
     line_rows: Vec<usize>,
-    last: Option<Last>,
+    /// The text the lines were scanned from, and the host's version of it.
+    text: Option<String>,
+    text_version: Option<u64>,
+    /// The look the line galleys and measured heights were laid out with.
+    galley_look: Option<Look>,
+    /// The last document galley (`TextEdit` engine), until a line or the look changes.
+    doc_galley: Option<Arc<Galley>>,
+    /// Whether the last scan had the code syntaxes (fences are highlighted
+    /// again, once, when they arrive).
+    code_ready: bool,
+    /// Bumped whenever lines change or a line's measured height is set or cleared.
+    version: u64,
+    /// Line galleys currently held.
+    galleys: usize,
     pub stats: HighlightStats,
 }
 
-/// A line's spans and the block state the next line starts in.
-type Scanned = (Vec<Span>, BlockState);
+/// A line's spans and what the next line starts in.
+type Scanned = (Vec<Span>, LineStart);
 /// A matched inline construct: its byte length and its parts as (start, end, kind).
 type Inline = (usize, Vec<(usize, usize, Kind)>);
 
 #[derive(Clone)]
 struct LineEntry {
-    /// The block state the line starts in.
-    state: BlockState,
+    /// What the line starts in.
+    start: LineStart,
     scan: Arc<Scanned>,
-    galley: Arc<Galley>,
+    /// The line's length in bytes (without the newline).
+    len: usize,
+    galley: Option<Arc<Galley>>,
+    /// Size of the galley last built for this line (kept when the galley is evicted).
+    size: Option<egui::Vec2>,
+}
+
+impl LineEntry {
+    /// Whether the line is in a fence or opens one.
+    fn in_fence(&self) -> bool {
+        matches!(self.start.block, BlockState::Fence { .. })
+            || matches!(self.scan.1.block, BlockState::Fence { .. })
+    }
 }
 
 /// Everything besides the text that changes a line's galley.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Look {
     /// Wrap width, rounded to whole points as epaint does (`u32::MAX`: no wrapping).
     pub wrap: u32,
@@ -247,10 +430,19 @@ pub struct Look {
     pub spell: u64,
 }
 
-struct Last {
-    text: String,
-    look: Look,
-    galley: Arc<Galley>,
+impl Look {
+    pub fn new(opts: &LayoutOptions<'_>, wrap_width: f32) -> Self {
+        Self {
+            wrap: if opts.wrap {
+                wrap_width.round().max(0.0) as u32
+            } else {
+                u32::MAX
+            },
+            font_size_bits: opts.font_size.to_bits(),
+            colors: opts.colors.key(),
+            spell: opts.spell.map_or(0, |(_, v)| v.wrapping_add(1)),
+        }
+    }
 }
 
 /// How lines are laid out: the colours, the font size and the spell checker.
@@ -263,7 +455,7 @@ pub struct LayoutOptions<'a> {
 }
 
 impl Highlighter {
-    /// The layouter body.
+    /// The `TextEdit` layouter body: the whole note as one galley.
     pub fn layout(
         &mut self,
         ui: &Ui,
@@ -272,37 +464,137 @@ impl Highlighter {
         opts: &LayoutOptions<'_>,
     ) -> Arc<Galley> {
         self.stats.calls += 1;
-        let look = Look {
-            wrap: if opts.wrap {
-                wrap_width.round().max(0.0) as u32
-            } else {
-                u32::MAX
-            },
-            font_size_bits: opts.font_size.to_bits(),
-            colors: opts.colors.key(),
-            spell: opts.spell.map_or(0, |(_, v)| v.wrapping_add(1)),
-        };
-        if let Some(last) = &self.last {
-            if last.look == look && last.text == text {
-                return last.galley.clone();
+        let look = Look::new(opts, wrap_width);
+        let changed = self.update(ui.ctx(), text, None);
+        if !changed && self.galley_look == Some(look) {
+            if let Some(g) = &self.doc_galley {
+                return g.clone();
             }
         }
         self.stats.rebuilds += 1;
-        let galley = self.incremental(ui, text, opts, look);
-        self.last = Some(Last {
-            text: text.to_owned(),
-            look,
-            galley: galley.clone(),
-        });
+        self.set_look(look);
+        for (i, line) in text.split('\n').enumerate() {
+            self.ensure(ui, i, line, opts, look);
+        }
+        self.line_rows.clear();
+        let mut rows = 0;
+        for e in &self.doc {
+            self.line_rows.push(rows);
+            rows += e.galley.as_ref().map_or(1, |g| g.rows.len());
+        }
+        self.line_rows.push(rows);
+        let galley = self.galley_from_doc(ui, text, opts, look);
+        self.doc_galley = Some(galley.clone());
         galley
+    }
+
+    /// Rescans the lines that changed since the last call (and the fences,
+    /// once the code syntaxes arrive). With the host's `version` of the text,
+    /// an unchanged version skips comparing the text. True if anything changed.
+    pub fn update(&mut self, ctx: &egui::Context, text: &str, version: Option<u64>) -> bool {
+        self.update_hinted(ctx, text, version, None)
+    }
+
+    /// [`Self::update`], told which lines changed: `(first line, its byte
+    /// start, last changed old line, last changed new line)`, as the core
+    /// engine's rope sync knows them (so the text isn't diffed again).
+    pub fn update_hinted(
+        &mut self,
+        ctx: &egui::Context,
+        text: &str,
+        version: Option<u64>,
+        hint: Option<(usize, usize, usize, usize)>,
+    ) -> bool {
+        let syntaxes = code::syntaxes(Some(ctx));
+        let refresh = syntaxes.is_some() && !self.code_ready && self.text.is_some();
+        let same = match (version, self.text_version) {
+            (Some(v), Some(w)) => v == w,
+            _ => self.text.as_deref() == Some(text),
+        };
+        if same && !refresh {
+            return false;
+        }
+        if !same {
+            self.incremental(text, syntaxes, hint);
+            // Reuse the allocation: a new note-sized string per keystroke
+            // shows up at tens of thousands of lines.
+            let t = self.text.get_or_insert_with(String::new);
+            t.clear();
+            t.push_str(text);
+        }
+        if refresh {
+            self.refresh_fences(text, syntaxes);
+        }
+        self.text_version = version;
+        self.code_ready = syntaxes.is_some();
+        self.doc_galley = None;
+        self.version += 1;
+        true
+    }
+
+    /// The galley of 0-based `line` (whose text is `text`), laid out with
+    /// `look` (a different look than last time drops every galley and height).
+    pub fn line_galley(
+        &mut self,
+        ui: &Ui,
+        line: usize,
+        text: &str,
+        opts: &LayoutOptions<'_>,
+        look: Look,
+    ) -> Option<Arc<Galley>> {
+        if line >= self.doc.len() {
+            return None;
+        }
+        self.set_look(look);
+        Some(self.ensure(ui, line, text, opts, look))
+    }
+
+    /// `line`'s galley if it's currently held.
+    pub fn cached_galley(&self, line: usize) -> Option<Arc<Galley>> {
+        self.doc.get(line)?.galley.clone()
+    }
+
+    /// The size of `line`'s galley, if it has been laid out with the current look.
+    pub fn measured_size(&self, line: usize) -> Option<egui::Vec2> {
+        self.doc.get(line)?.size
+    }
+
+    /// The length of `line` in bytes.
+    pub fn line_len(&self, line: usize) -> usize {
+        self.doc.get(line).map_or(0, |e| e.len)
+    }
+
+    /// The blocks `line` starts and ends in (code fences, frontmatter).
+    pub fn line_blocks(&self, line: usize) -> Option<(BlockState, BlockState)> {
+        self.doc.get(line).map(|e| (e.start.block, e.scan.1.block))
+    }
+
+    /// Bumped whenever lines change or a measured height is set or cleared.
+    pub fn layout_version(&self) -> u64 {
+        self.version
+    }
+
+    /// Line galleys currently held.
+    pub fn galley_count(&self) -> usize {
+        self.galleys
+    }
+
+    /// Drops the galleys of lines outside `keep` (their measured sizes stay).
+    pub fn evict_galleys(&mut self, keep: Range<usize>) {
+        for (i, e) in self.doc.iter_mut().enumerate() {
+            if !keep.contains(&i) && e.galley.take().is_some() {
+                self.galleys -= 1;
+            }
+        }
+        self.doc_galley = None;
     }
 
     /// The galley of the last layout, if the text hasn't changed since.
     pub fn galley_for(&self, text: &str) -> Option<Arc<Galley>> {
-        self.last
+        self.doc_galley
             .as_ref()
-            .filter(|l| l.text == text)
-            .map(|l| l.galley.clone())
+            .filter(|_| self.text.as_deref() == Some(text))
+            .cloned()
     }
 
     /// Lines in the last layout.
@@ -328,62 +620,160 @@ impl Highlighter {
         self.doc.get(line).map(|e| e.scan.0.as_slice())
     }
 
+    /// The rectangle of characters `cols` (in characters) of 0-based line
+    /// `line`, relative to the document galley `galley` (the last layout).
+    /// Uses the line's own galley, so it doesn't walk the document's rows.
+    /// A range that wraps onto another row is cut at the end of its first row.
+    pub fn char_rect(&self, galley: &Galley, line: usize, cols: Range<usize>) -> Option<Rect> {
+        let entry = self.doc.get(line)?;
+        let first_row = *self.line_rows.get(line)?;
+        let top = galley.rows.get(first_row)?.pos.y;
+        let g = entry.galley.as_ref()?;
+        let r = cols_rect(g, cols)?;
+        Some(r.translate(egui::vec2(0.0, top)))
+    }
+
+    /// Drops every galley and height if `look` differs from theirs.
+    pub fn set_look(&mut self, look: Look) {
+        if self.galley_look == Some(look) {
+            return;
+        }
+        for e in &mut self.doc {
+            e.galley = None;
+            e.size = None;
+        }
+        self.galleys = 0;
+        self.galley_look = Some(look);
+        self.doc_galley = None;
+        self.version += 1;
+    }
+
+    /// The galley of `line`, built if missing.
+    fn ensure(
+        &mut self,
+        ui: &Ui,
+        line: usize,
+        text: &str,
+        opts: &LayoutOptions<'_>,
+        look: Look,
+    ) -> Arc<Galley> {
+        let e = &mut self.doc[line];
+        if let Some(g) = &e.galley {
+            return g.clone();
+        }
+        let mut spans = e.scan.0.clone();
+        if let Some((checker, _)) = opts.spell {
+            flag_misspelled(text, &mut spans, checker);
+        }
+        let g = line_galley(ui, text, &spans, opts, look);
+        if e.size != Some(g.size()) {
+            self.version += 1;
+        }
+        e.size = Some(g.size());
+        e.galley = Some(g.clone());
+        self.galleys += 1;
+        self.stats.galleys_built += 1;
+        g
+    }
+
     fn incremental(
         &mut self,
+        text: &str,
+        syntaxes: Option<&SyntaxSet>,
+        hint: Option<(usize, usize, usize, usize)>,
+    ) {
+        let old_len = self.doc.len();
+        // Lines [0, first) are unchanged; new lines (new_last, ..) match old lines (old_last, ..).
+        let (first, start, old_last, new_last) = match self.text.as_deref() {
+            Some(last) if old_len > 0 => hint.unwrap_or_else(|| changed_lines(last, text, old_len)),
+            _ => (0, 0, old_len, usize::MAX),
+        };
+        let first = first.min(old_len);
+        let mut state = match first {
+            0 => LineStart::default(),
+            f => self.doc[f - 1].scan.1.clone(),
+        };
+        let mut fresh = Vec::new();
+        let mut j = old_last.wrapping_add(1);
+        let mut reuse_from = old_len;
+        for (k, line) in text[start..].split('\n').enumerate() {
+            let i = first + k;
+            if i > new_last {
+                // Past the edit: the rest is reusable once a line starts in the same state.
+                if j < old_len && self.doc[j].start == state {
+                    reuse_from = j;
+                    break;
+                }
+                j += 1;
+            }
+            let entry = self.scan_entry(line, state, i == 0, syntaxes);
+            state = entry.scan.1.clone();
+            fresh.push(entry);
+        }
+        // One splice: the unchanged lines on both sides move at most once,
+        // and aren't cloned.
+        let end = reuse_from.max(first);
+        let dropped = self.doc[first..end]
+            .iter()
+            .filter(|e| e.galley.is_some())
+            .count();
+        self.galleys -= dropped;
+        self.doc.splice(first..end, fresh);
+    }
+
+    /// Scans one line (its galley is built later, when asked for).
+    fn scan_entry(
+        &mut self,
+        line: &str,
+        start: LineStart,
+        first_line: bool,
+        syntaxes: Option<&SyntaxSet>,
+    ) -> LineEntry {
+        let scan = scan_line_with_code(line, &start, first_line, syntaxes);
+        self.stats.lines_laid_out += 1;
+        LineEntry {
+            start,
+            scan: Arc::new(scan),
+            len: line.len(),
+            galley: None,
+            size: None,
+        }
+    }
+
+    /// The syntaxes just arrived: highlights the fence lines of the current
+    /// document again and keeps every other line as it is.
+    fn refresh_fences(&mut self, text: &str, syntaxes: Option<&SyntaxSet>) {
+        let old = std::mem::take(&mut self.doc);
+        let mut doc = Vec::with_capacity(old.len());
+        let mut state = LineStart::default();
+        for (i, (line, entry)) in text.split('\n').zip(old).enumerate() {
+            if !entry.in_fence() && entry.start == state {
+                state = entry.scan.1.clone();
+                doc.push(entry);
+                continue;
+            }
+            let entry = self.scan_entry(line, state, i == 0, syntaxes);
+            state = entry.scan.1.clone();
+            doc.push(entry);
+        }
+        self.set_doc(doc);
+    }
+
+    /// Keeps the lines (and counts their galleys).
+    fn set_doc(&mut self, doc: Vec<LineEntry>) {
+        self.galleys = doc.iter().filter(|e| e.galley.is_some()).count();
+        self.doc = doc;
+    }
+
+    /// Joins the line galleys into the document galley.
+    fn galley_from_doc(
+        &self,
         ui: &Ui,
         text: &str,
         opts: &LayoutOptions<'_>,
         look: Look,
     ) -> Arc<Galley> {
-        let old = std::mem::take(&mut self.doc);
-        let reusable = self
-            .last
-            .as_ref()
-            .filter(|l| l.look == look && !old.is_empty());
-        // Lines [0, first) are unchanged; new lines (new_last, ..) match old lines (old_last, ..).
-        let (first, start, old_last, new_last) = match reusable {
-            Some(last) => changed_lines(&last.text, text, old.len()),
-            None => (0, 0, old.len(), usize::MAX),
-        };
-        let mut doc = Vec::with_capacity(old.len() + 8);
-        doc.extend_from_slice(&old[..first]);
-        let mut state = doc
-            .last()
-            .map_or(BlockState::Normal, |e: &LineEntry| e.scan.1);
-        let mut j = old_last.wrapping_add(1);
-        for (k, line) in text[start..].split('\n').enumerate() {
-            let i = first + k;
-            if i > new_last {
-                // Past the edit: the rest is reusable once a line starts in the same state.
-                if j < old.len() && old[j].state == state {
-                    doc.extend_from_slice(&old[j..]);
-                    break;
-                }
-                j += 1;
-            }
-            let mut scan = scan_line(line, state, i == 0);
-            if let Some((checker, _)) = opts.spell {
-                flag_misspelled(line, &mut scan.0, checker);
-            }
-            let scan = Arc::new(scan);
-            self.stats.lines_laid_out += 1;
-            let galley = line_galley(ui, line, &scan.0, opts, look);
-            doc.push(LineEntry {
-                state,
-                scan: scan.clone(),
-                galley,
-            });
-            state = scan.1;
-        }
-        let galleys: Vec<Arc<Galley>> = doc.iter().map(|e| e.galley.clone()).collect();
-        self.line_rows.clear();
-        let mut rows = 0;
-        for g in &galleys {
-            self.line_rows.push(rows);
-            rows += g.rows.len();
-        }
-        self.line_rows.push(rows);
-        self.doc = doc;
+        let galleys: Vec<Arc<Galley>> = self.doc.iter().filter_map(|e| e.galley.clone()).collect();
         let job = merged_job(text, opts, look);
         Arc::new(Galley::concat(
             Arc::new(job),
@@ -393,10 +783,31 @@ impl Highlighter {
     }
 }
 
+/// The rectangle of characters `cols` of one line's galley. A range that
+/// wraps onto another row is cut at the end of its first row.
+pub fn cols_rect(g: &Galley, cols: Range<usize>) -> Option<Rect> {
+    let a = g.pos_from_cursor(egui::text::CCursor::new(cols.start));
+    let b = g.pos_from_cursor(egui::text::CCursor::new(cols.end));
+    let right = if (a.top() - b.top()).abs() < 1.0 {
+        b.left()
+    } else {
+        g.rows
+            .get(
+                g.layout_from_cursor(egui::text::CCursor::new(cols.start))
+                    .row,
+            )
+            .map_or(a.left() + 6.0, |r| r.rect().right())
+    };
+    Some(Rect::from_min_max(
+        a.min,
+        egui::pos2(right.max(a.left() + 2.0), a.bottom()),
+    ))
+}
+
 /// The job behind a `Galley::concat` of line galleys. The rows already carry
 /// the formatting, but `Galley::is_empty` checks for sections, and the
 /// painter skips an "empty" galley, so give it one covering the text.
-fn merged_job(text: &str, opts: &LayoutOptions<'_>, look: Look) -> LayoutJob {
+pub(crate) fn merged_job(text: &str, opts: &LayoutOptions<'_>, look: Look) -> LayoutJob {
     let mut job = LayoutJob {
         text: text.to_owned(),
         wrap: wrapping(look),
@@ -507,16 +918,10 @@ fn flag_misspelled(line: &str, spans: &mut Vec<Span>, checker: &dyn SpellChecker
 /// last changed new line). Lines after the last changed ones are identical.
 fn changed_lines(old: &str, new: &str, old_lines: usize) -> (usize, usize, usize, usize) {
     let (o, n) = (old.as_bytes(), new.as_bytes());
-    let newlines = |b: &[u8]| b.iter().filter(|&&c| c == b'\n').count();
-    let p = o.iter().zip(n).take_while(|(a, b)| a == b).count();
+    let newlines = crate::fastcmp::newlines;
+    let p = crate::fastcmp::common_prefix(o, n);
     let max_s = o.len().min(n.len()) - p;
-    let s = o
-        .iter()
-        .rev()
-        .zip(n.iter().rev())
-        .take(max_s)
-        .take_while(|(a, b)| a == b)
-        .count();
+    let s = crate::fastcmp::common_suffix(o, n, max_s);
     let first = newlines(&o[..p]);
     let start = o[..p]
         .iter()
@@ -627,6 +1032,55 @@ pub fn scan_line(line: &str, state: BlockState, first_line: bool) -> (Vec<Span>,
     let table = trimmed.starts_with('|');
     inline(line, pos, base, table, &mut spans);
     (spans, BlockState::Normal)
+}
+
+/// [`scan_line`] plus code: a fence opener looks up its language, and lines
+/// inside a fence with a known language are highlighted by token (when the
+/// syntaxes have loaded; otherwise fences stay one colour).
+pub fn scan_line_with_code(
+    line: &str,
+    start: &LineStart,
+    first_line: bool,
+    syntaxes: Option<&SyntaxSet>,
+) -> Scanned {
+    let (spans, block) = scan_line(line, start.block, first_line);
+    let code = match (start.block, block) {
+        // A fence opens: start its language, if known.
+        (BlockState::Normal, BlockState::Fence { ch, .. }) => syntaxes.and_then(|set| {
+            let info = line.trim_start().trim_start_matches(ch as char);
+            let syntax = code::find_syntax(set, info)?;
+            FenceCode::new(set, syntax).map(Arc::new)
+        }),
+        // Inside a fence (not its closing line): highlight by token.
+        (BlockState::Fence { .. }, BlockState::Fence { .. }) => {
+            match (start.code.as_ref(), syntaxes) {
+                (Some(code), Some(set)) => match code.line(set, line) {
+                    Some((runs, next)) => {
+                        let spans = runs
+                            .into_iter()
+                            .map(|(range, token)| Span {
+                                range,
+                                kind: Kind::Syntax(token),
+                                misspelled: false,
+                            })
+                            .collect();
+                        return (
+                            spans,
+                            LineStart {
+                                block,
+                                code: Some(Arc::new(next)),
+                            },
+                        );
+                    }
+                    // syntect gave up: the rest of the fence is plain.
+                    None => None,
+                },
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    (spans, LineStart { block, code })
 }
 
 /// `- `, `* `, `+ `, `1. `, `1) ` (or the marker alone at the end of the line).
@@ -857,6 +1311,7 @@ mod tests {
 
     #[test]
     fn incremental_matches_a_full_rebuild() {
+        crate::code::load_blocking();
         let ctx = egui::Context::default();
         marina_egui::fonts::install(&ctx);
         let colors = EditorColors::from_palette(marina_egui::theme::ThemeId::Midnight.palette());
@@ -881,7 +1336,7 @@ mod tests {
                 let spans = |h: &Highlighter| {
                     h.doc
                         .iter()
-                        .map(|e| (e.state, e.scan.0.clone()))
+                        .map(|e| (e.start.clone(), e.scan.0.clone()))
                         .collect::<Vec<_>>()
                 };
                 assert_eq!(spans(&h), spans(&fresh), "after {from:?} → {to:?}");
@@ -890,6 +1345,122 @@ mod tests {
             }
         });
         out.textures_delta.clear();
+    }
+
+    /// A note with prose around two highlighted fences.
+    fn fenced_doc() -> String {
+        let mut lines = vec!["# Title".to_string(), "Some text.".into(), "```rust".into()];
+        for i in 0..20 {
+            lines.push(format!("fn f{i}() -> u8 {{ {i} }} // c"));
+        }
+        lines.push("```".into());
+        lines.push("More text.".into());
+        lines.push("```python".into());
+        for i in 0..10 {
+            lines.push(format!("def g{i}(): return '{i}'"));
+        }
+        lines.push("```".into());
+        lines.push("End.".into());
+        lines.join("\n")
+    }
+
+    #[test]
+    fn fences_are_highlighted_and_edits_stay_local() {
+        crate::code::load_blocking();
+        let ctx = egui::Context::default();
+        marina_egui::fonts::install(&ctx);
+        let colors = EditorColors::from_palette(marina_egui::theme::ThemeId::Dark.palette());
+        let mut h = Highlighter::default();
+        let text = fenced_doc();
+        let mut out = ctx.run_ui(Default::default(), |ui| {
+            h.layout(ui, &text, 600.0, &opts(&colors));
+            // Line 3 is `fn f0() -> u8 { 0 } // c`.
+            let spans = h.line_spans(3).unwrap();
+            let kind_of = |needle: &str| {
+                let line = text.split('\n').nth(3).unwrap();
+                let at = line.find(needle).unwrap();
+                spans.iter().find(|s| s.range.contains(&at)).unwrap().kind
+            };
+            assert_eq!(kind_of("fn"), Kind::Syntax(Token::Keyword));
+            assert_eq!(kind_of("// c"), Kind::Syntax(Token::Comment));
+            assert_eq!(kind_of("0 }"), Kind::Syntax(Token::Number));
+
+            // Editing prose doesn't touch either fence.
+            let before = h.stats.lines_laid_out;
+            let edited = text.replacen("More text.", "More text, edited.", 1);
+            h.layout(ui, &edited, 600.0, &opts(&colors));
+            assert_eq!(h.stats.lines_laid_out - before, 1);
+
+            // Editing inside the Rust fence re-highlights only that line (the
+            // parse state after it is unchanged).
+            let before = h.stats.lines_laid_out;
+            let edited2 = edited.replacen("fn f5()", "fn f5x()", 1);
+            h.layout(ui, &edited2, 600.0, &opts(&colors));
+            assert_eq!(h.stats.lines_laid_out - before, 1);
+
+            // Opening a block comment changes the state: the rest of the fence
+            // is highlighted again (as a comment), and the Python fence isn't.
+            let before = h.stats.lines_laid_out;
+            let edited3 = edited2.replacen("fn f10()", "/* fn f10()", 1);
+            h.layout(ui, &edited3, 600.0, &opts(&colors));
+            let relaid = h.stats.lines_laid_out - before;
+            assert!((10..=14).contains(&relaid), "{relaid}");
+            let mut fresh = Highlighter::default();
+            fresh.layout(ui, &edited3, 600.0, &opts(&colors));
+            for i in 0..h.line_count() {
+                assert_eq!(h.line_spans(i), fresh.line_spans(i), "line {i}");
+            }
+        });
+        out.textures_delta.clear();
+    }
+
+    #[test]
+    fn syntaxes_arriving_re_highlight_only_fences() {
+        crate::code::load_blocking();
+        let ctx = egui::Context::default();
+        marina_egui::fonts::install(&ctx);
+        let colors = EditorColors::from_palette(marina_egui::theme::ThemeId::Light.palette());
+        let text = fenced_doc();
+        let mut h = Highlighter::default();
+        let mut out = ctx.run_ui(Default::default(), |ui| {
+            h.layout(ui, &text, 600.0, &opts(&colors));
+            // As if the last layout had run before the syntaxes loaded.
+            h.code_ready = false;
+            let before = h.stats.lines_laid_out;
+            h.layout(ui, &text, 600.0, &opts(&colors));
+            let fence_lines = 2 + 20 + 2 + 10;
+            assert_eq!(h.stats.lines_laid_out - before, fence_lines);
+            assert!(h.code_ready);
+        });
+        out.textures_delta.clear();
+    }
+
+    #[test]
+    fn unknown_languages_stay_one_colour() {
+        let set = crate::code::load_blocking();
+        let start = LineStart::default();
+        let (_, opened) = scan_line_with_code("```klingon", &start, false, Some(set));
+        assert_eq!(opened.block, BlockState::Fence { ch: b'`', len: 3 });
+        assert!(opened.code.is_none());
+        let (spans, _) = scan_line_with_code("qapla'", &opened, false, Some(set));
+        assert_eq!(spans[0].kind, Kind::CodeBlock);
+        // Before the syntaxes load, a known language is one colour too.
+        let (_, pending) = scan_line_with_code("```rust", &start, false, None);
+        assert!(pending.code.is_none());
+    }
+
+    #[test]
+    fn syntax_colours_follow_the_theme() {
+        use marina_egui::theme::ThemeId;
+        for id in ThemeId::ALL {
+            let p = id.palette();
+            let c = SyntaxColors::from_palette(p);
+            assert_eq!(c.plain, p.text_primary);
+            assert_eq!(c.punctuation, p.text_secondary);
+            assert_ne!(c.keyword, c.string);
+            let one_dark_keyword = Color32::from_rgb(0xc6, 0x78, 0xdd);
+            assert_eq!(c.keyword == one_dark_keyword, p.dark, "{}", id.name());
+        }
     }
 
     #[test]

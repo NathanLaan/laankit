@@ -3,6 +3,12 @@
 //! Articles are sanitized first with ThreadLiner's DOMPurify allow-list ([`sanitize`]). EPUB
 //! chapters aren't (nothing is executed or rendered as HTML), but they carry CSS, which
 //! [`Options::stylesheet`] supplies.
+//!
+//! Task lists: an `<input type="checkbox">` at the very start of a list item becomes a
+//! [`Style::checkbox`] span (`[ ]` or `[x]`); any other `<input>` is dropped. That's the HTML
+//! comrak and `marked` produce for `- [ ]` items in NoteLiner's preview ([`from_html`]). Articles
+//! never get checkboxes: the sanitizer's allow-list (DOMPurify's, as in ThreadLiner) has no
+//! `<input>`, nor `<mark>` or `<kbd>`, whose text is kept unstyled as before.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
@@ -12,7 +18,9 @@ use scraper::node::Node;
 use scraper::{ElementRef, Html};
 
 use crate::css::{Decls, Length, StyleSheet};
+use crate::math::MathMode;
 use crate::model::{Align, Block, Document, Indent, Span, Style, TextKind};
+use crate::svg;
 
 /// ThreadLiner's `ContentViewer.svelte` `ALLOWED_TAGS`.
 const ALLOWED_TAGS: &[&str] = &[
@@ -59,6 +67,8 @@ const ALLOWED_ATTRS: &[&str] = &[
 ];
 /// The widest left indent kept, in ems (deeply nested `div`s in some books add up).
 const MAX_INDENT: f32 = 6.0;
+/// The largest vertical margin kept, in ems (chapter openings sometimes drop a third of a page).
+const MAX_MARGIN: f32 = 3.0;
 /// Images at most this big (declared size) are treated as inline glyphs: their alt text is kept.
 const INLINE_IMAGE_MAX: f32 = 40.0;
 /// Elements whose content is never text.
@@ -123,21 +133,36 @@ pub fn from_xhtml(xhtml: &str, opts: &Options<'_>) -> Document {
         .filter_map(ElementRef::wrap)
         .find(|e| e.value().name() == "body")
         .unwrap_or(root);
-    convert(body, opts)
+    convert(body, opts, false)
 }
 
 /// Converts already-safe HTML (a fragment or a document).
 pub fn from_html(html: &str, opts: &Options<'_>) -> Document {
     let html = Html::parse_fragment(html);
-    convert(html.root_element(), opts)
+    convert(html.root_element(), opts, false)
+}
+
+/// Converts a note's HTML (NoteLiner's preview and slides): [`from_html`] plus math. comrak's
+/// math (`$…$`, `$$…$$`, ```` ```math ````) becomes formulas (see [`crate::math`]) rather than
+/// plain text. Articles and books never get this: their `data-math-style` attributes, if any,
+/// stay plain text.
+pub fn from_note_html(html: &str, opts: &Options<'_>) -> Document {
+    let html = Html::parse_fragment(html);
+    convert(html.root_element(), opts, true)
 }
 
 /// ThreadLiner's sanitizer: the `<noscript><img></noscript>` unwrap, then DOMPurify's allow-list.
+///
+/// Inline `<svg>` is taken out first and cleaned on its own ([`svg::clean`]: drawing only, no
+/// scripts, handlers or external references), then put back as an `<img>` with an SVG `data:`
+/// source, which the allow-list keeps. ammonia's HTML allow-list can't express a safe SVG
+/// subset, and letting SVG through it would mean allowing tags it doesn't understand.
 pub fn sanitize(html: &str) -> String {
     static NOSCRIPT_IMG: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"(?is)<noscript>\s*(<img\b[^>]*>)\s*</noscript>").expect("regex")
     });
-    let html = NOSCRIPT_IMG.replace_all(html, "$1");
+    let html = inline_svgs_as_images(html);
+    let html = NOSCRIPT_IMG.replace_all(&html, "$1");
     ammonia::Builder::empty()
         .tags(ALLOWED_TAGS.iter().copied().collect())
         .generic_attributes(ALLOWED_ATTRS.iter().copied().collect())
@@ -150,10 +175,53 @@ pub fn sanitize(html: &str) -> String {
         .to_string()
 }
 
-fn convert(root: ElementRef<'_>, opts: &Options<'_>) -> Document {
+/// Replaces each `<svg>…</svg>` with an `<img>` of its cleaned markup (or nothing). Nested SVGs
+/// end at the first `</svg>`, as the regex can't count; the remainder is then dropped by the
+/// allow-list like any unknown tag.
+fn inline_svgs_as_images(html: &str) -> String {
+    static SVG: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?is)<svg\b.*?</svg\s*>").expect("regex"));
+    if !SVG.is_match(html) {
+        return html.to_string();
+    }
+    SVG.replace_all(html, |c: &regex::Captures<'_>| {
+        let frag = Html::parse_fragment(&c[0]);
+        let Some(el) = frag
+            .root_element()
+            .descendants()
+            .filter_map(ElementRef::wrap)
+            .find(|e| e.value().name() == "svg")
+        else {
+            return String::new();
+        };
+        let Some(clean) = svg::clean(el) else {
+            return String::new();
+        };
+        let mut img = format!(
+            "<img src=\"{}\" alt=\"{}\"",
+            svg::data_uri(&clean.markup),
+            clean
+                .title
+                .replace('&', "&amp;")
+                .replace('"', "&quot;")
+                .replace('<', "&lt;")
+        );
+        for (attr, v) in [("width", clean.width), ("height", clean.height)] {
+            if let Some(v) = v {
+                img.push_str(&format!(" {attr}=\"{v}\""));
+            }
+        }
+        img.push('>');
+        img
+    })
+    .into_owned()
+}
+
+fn convert(root: ElementRef<'_>, opts: &Options<'_>, math: bool) -> Document {
     let mut ctx = Ctx {
         opts,
         pending_ids: Vec::new(),
+        math,
     };
     let mut b = Builder::new(true);
     walk(root, Inherit::default(), None, &mut b, &mut ctx);
@@ -174,6 +242,8 @@ struct Ctx<'a> {
     opts: &'a Options<'a>,
     /// Ids seen since the last top-level block; they anchor to the next one.
     pending_ids: Vec<String>,
+    /// Whether comrak's math markup becomes formulas ([`from_note_html`]).
+    math: bool,
 }
 
 /// What an element passes down to its content.
@@ -198,6 +268,8 @@ enum Caps {
 /// Collects blocks, and the inline spans of the paragraph being built.
 struct Builder {
     top: bool,
+    /// Collecting a list item: a checkbox before any text is its task marker.
+    list_item: bool,
     blocks: Vec<Block>,
     spans: Vec<Span>,
     align: Align,
@@ -209,6 +281,7 @@ impl Builder {
     fn new(top: bool) -> Self {
         Self {
             top,
+            list_item: false,
             blocks: Vec::new(),
             spans: Vec::new(),
             align: Align::Left,
@@ -282,7 +355,10 @@ impl Builder {
             return;
         }
         match self.spans.last_mut() {
-            Some(last) if last.style == style && last.link.as_deref() == link => {
+            // Formulas stay one span each (`$a$$b$` is two).
+            Some(last)
+                if last.style == style && last.link.as_deref() == link && style.math.is_none() =>
+            {
                 last.text.push_str(&text)
             }
             _ => self.spans.push(Span {
@@ -291,6 +367,13 @@ impl Builder {
                 link: link.map(str::to_string),
             }),
         }
+    }
+
+    /// Whether nothing visible has been collected yet (a checkbox here starts a task item).
+    fn at_item_start(&self) -> bool {
+        self.list_item
+            && self.blocks.is_empty()
+            && self.spans.iter().all(|s| s.text.trim().is_empty())
     }
 
     fn line_break(&mut self) {
@@ -305,6 +388,18 @@ impl Builder {
     /// Ends the paragraph being built.
     fn flush(&mut self, ctx: &mut Ctx<'_>) {
         let spans = take_spans(&mut self.spans);
+        // A paragraph that is just a `$$…$$` formula is a display formula block.
+        let visible: Vec<&Span> = spans
+            .iter()
+            .filter(|s| s.style.math.is_some() || !s.text.trim().is_empty())
+            .collect();
+        if let [only] = visible.as_slice() {
+            if only.style.math == Some(MathMode::Display) {
+                let block = display_math(&only.text);
+                self.push(block, ctx);
+                return;
+            }
+        }
         if !spans.is_empty() {
             self.push(
                 Block::Text {
@@ -327,6 +422,28 @@ impl Builder {
 
 /// `s` in upper case, letter for letter (characters whose capital is longer, like `ß`, stay as
 /// they are, so positions inside the text don't move).
+/// comrak's `data-math-style` value.
+fn math_mode(style: &str) -> Option<MathMode> {
+    match style.trim() {
+        "inline" => Some(MathMode::Inline),
+        "display" => Some(MathMode::Display),
+        _ => None,
+    }
+}
+
+/// A display formula on its own line: an image block whose `src` names the formula, and whose
+/// alt text is its source (for copying and search).
+fn display_math(latex: &str) -> Block {
+    Block::Image {
+        src: crate::math::image_src(latex),
+        alt: latex.to_string(),
+        title: String::new(),
+        width: None,
+        height: None,
+        fraction: None,
+    }
+}
+
 fn upper(s: &str) -> String {
     s.chars().map(|c| single_upper(c).unwrap_or(c)).collect()
 }
@@ -384,6 +501,51 @@ fn element(
     let e = el.value();
     let name = e.name().to_ascii_lowercase();
     let name = name.as_str();
+    if name == "input" {
+        let checkbox = e
+            .attr("type")
+            .is_some_and(|t| t.trim().eq_ignore_ascii_case("checkbox"));
+        if checkbox && b.at_item_start() {
+            let checked = e.attr("checked").is_some();
+            let style = Style {
+                checkbox: Some(checked),
+                ..Style::default()
+            };
+            b.spans.clear();
+            b.push_raw(if checked { "[x]" } else { "[ ]" }.into(), style, None);
+        }
+        return;
+    }
+    if ctx.math {
+        // ```` ```math ```` is `<pre><code data-math-style="display">` (or the attribute on
+        // `<pre>` with GitHub-style `lang`).
+        let mode = e.attr("data-math-style").and_then(math_mode).or_else(|| {
+            (name == "pre")
+                .then(|| el.children().filter_map(ElementRef::wrap).next())
+                .flatten()
+                .and_then(|code| code.value().attr("data-math-style"))
+                .and_then(math_mode)
+        });
+        if let Some(mode) = mode {
+            let latex: String = el.text().collect();
+            let latex = latex.trim();
+            if latex.is_empty() {
+                return;
+            }
+            if name == "pre" {
+                // ```` ```math ````: a display formula on its own.
+                b.flush(ctx);
+                b.push(display_math(latex), ctx);
+            } else {
+                let style = Style {
+                    math: Some(mode),
+                    ..inh.style
+                };
+                b.push_raw(latex.to_string(), style, link);
+            }
+            return;
+        }
+    }
     if SKIPPED.contains(&name) {
         return;
     }
@@ -470,6 +632,7 @@ fn element(
                 let item = match ElementRef::wrap(child) {
                     Some(li) if li.value().name().eq_ignore_ascii_case("li") => {
                         let mut sub = Builder::new(false);
+                        sub.list_item = true;
                         sub.align = inh.align;
                         sub.indent = Indent::default();
                         walk(li, inh, link, &mut sub, ctx);
@@ -533,8 +696,9 @@ fn element(
             b.push(Block::Rule, ctx);
         }
         "img" => image(el, inh, decls.width, link, b, ctx),
+        "svg" if !wraps_external_image(el) => inline_svg(el, inh, link, b, ctx),
         "svg" => {
-            // EPUB covers: `<svg><image xlink:href="cover.jpg"/></svg>`. Other SVG is dropped.
+            // EPUB covers: `<svg><image xlink:href="cover.jpg"/></svg>`: the image itself.
             for img in el
                 .descendants()
                 .filter_map(ElementRef::wrap)
@@ -626,7 +790,9 @@ fn inherit(name: &str, mut inh: Inherit, decls: &Decls) -> Inherit {
         "i" | "em" | "cite" | "dfn" | "var" => s.italic = true,
         "u" | "ins" => s.underline = true,
         "s" | "strike" | "del" => s.strike = true,
-        "code" | "kbd" | "samp" | "tt" => s.code = true,
+        "code" | "samp" | "tt" => s.code = true,
+        "kbd" => (s.code, s.kbd) = (true, true),
+        "mark" => s.mark = true,
         "small" => s.small = true,
         "sup" => s.sup = true,
         "sub" => s.sub = true,
@@ -642,9 +808,11 @@ fn inherit(name: &str, mut inh: Inherit, decls: &Decls) -> Inherit {
         }
     }
     if let Some(first) = decls.text_indent {
-        // A negative (hanging) indent would need the other lines indented instead.
-        inh.indent.first_line = first.clamp(0.0, MAX_INDENT);
+        inh.indent.first_line = first.clamp(-MAX_INDENT, MAX_INDENT);
     }
+    // Vertical margins belong to the element itself, not to its descendants.
+    inh.indent.top = decls.margin_top.map(|m| m.clamp(0.0, MAX_MARGIN));
+    inh.indent.bottom = decls.margin_bottom.map(|m| m.clamp(0.0, MAX_MARGIN));
     if decls.small_caps == Some(true) {
         inh.caps = Caps::Small;
     } else if decls.uppercase == Some(true) {
@@ -679,6 +847,60 @@ fn plain(text: &str, style: Style) -> Span {
         style,
         link: None,
     }
+}
+
+/// Whether an `<svg>` only wraps an external image (EPUB covers: `<svg><image href=…/></svg>`):
+/// those show the image itself, which [`svg::clean`] would drop. An SVG that also draws
+/// something is a picture, and any external image in it is dropped instead.
+fn wraps_external_image(el: ElementRef<'_>) -> bool {
+    let mut external = false;
+    for d in el.descendants().filter_map(ElementRef::wrap) {
+        match d.value().name() {
+            "image" => {
+                external |= d
+                    .value()
+                    .attrs()
+                    .any(|(k, v)| (k == "href" || k.ends_with(":href")) && !v.starts_with("data:"))
+            }
+            "svg" | "g" | "title" | "desc" | "metadata" => {}
+            _ => return false,
+        }
+    }
+    external
+}
+
+/// Inline `<svg>` drawing: cleaned (see [`svg`]) into an image block with an SVG `data:` source.
+/// Icon-sized pictures keep only their title inline, as small `<img>`s do.
+fn inline_svg(
+    el: ElementRef<'_>,
+    inh: Inherit,
+    link: Option<&str>,
+    b: &mut Builder,
+    ctx: &mut Ctx<'_>,
+) {
+    let Some(clean) = svg::clean(el) else { return };
+    let small = |d: Option<f32>| d.is_some_and(|d| d <= INLINE_IMAGE_MAX);
+    if small(clean.width) && small(clean.height) {
+        if !clean.title.is_empty() {
+            b.push_text(&clean.title, inh.style, Caps::None, link);
+        }
+        return;
+    }
+    b.flush(ctx);
+    if let Some(id) = el.value().id() {
+        ctx.pending_ids.push(id.to_string());
+    }
+    b.push(
+        Block::Image {
+            src: svg::data_uri(&clean.markup),
+            alt: clean.title,
+            title: String::new(),
+            width: clean.width,
+            height: clean.height,
+            fraction: None,
+        },
+        ctx,
+    );
 }
 
 fn image(
@@ -808,6 +1030,8 @@ fn table(el: ElementRef<'_>, inh: Inherit, link: Option<&str>, b: &mut Builder, 
     b.flush(ctx);
     let mut out = Vec::new();
     let mut header_rows = 0;
+    // The header's alignment per column, for body cells that don't set their own.
+    let mut column_align: Vec<Option<Align>> = Vec::new();
     // Rows still covered by a `rowspan` from above, per column.
     let mut covered: Vec<usize> = Vec::new();
     for row in &rows {
@@ -852,6 +1076,23 @@ fn table(el: ElementRef<'_>, inh: Inherit, link: Option<&str>, b: &mut Builder, 
                 .unwrap_or(1)
                 .clamp(1, 64);
             let col = cells_out.len();
+            let header = out.len() < header_rows;
+            let align = cell_align(cell, ctx).or_else(|| {
+                if header {
+                    None
+                } else {
+                    column_align.get(col).copied().flatten()
+                }
+            });
+            if header {
+                if column_align.len() <= col {
+                    column_align.resize(col + 1, None);
+                }
+                column_align[col] = align;
+            }
+            if let Some(a) = align {
+                spans.iter_mut().for_each(|s| s.style.cell_align = Some(a));
+            }
             if covered.len() < col + span {
                 covered.resize(col + span, 0);
             }
@@ -877,6 +1118,29 @@ fn table(el: ElementRef<'_>, inh: Inherit, link: Option<&str>, b: &mut Builder, 
             ctx,
         );
     }
+}
+
+/// A cell's own alignment: CSS `text-align` (stylesheet or `style`), else the `align` attribute
+/// (CSS wins, as in browsers).
+fn cell_align(cell: ElementRef<'_>, ctx: &Ctx<'_>) -> Option<Align> {
+    let e = cell.value();
+    let mut decls = ctx
+        .opts
+        .stylesheet
+        .map(|s| s.decls_for(e.name(), e.id(), e.classes()))
+        .unwrap_or_default();
+    if let Some(style) = e.attr("style") {
+        decls.merge(&Decls::parse(style));
+    }
+    decls.align.or_else(
+        || match e.attr("align")?.trim().to_ascii_lowercase().as_str() {
+            "left" => Some(Align::Left),
+            "center" | "middle" => Some(Align::Center),
+            "right" => Some(Align::Right),
+            "justify" => Some(Align::Justify),
+            _ => None,
+        },
+    )
 }
 
 fn cells(row: ElementRef<'_>) -> Vec<ElementRef<'_>> {
@@ -1193,6 +1457,103 @@ mod tests {
         assert_eq!(doc.anchors.get("p12"), Some(&1));
         assert!(
             matches!(&doc.blocks[2], Block::Image { src, .. } if src == "OEBPS/images/a b.png")
+        );
+    }
+
+    fn epub(css: &str, html: &str) -> Document {
+        let sheet = StyleSheet::parse(css);
+        let opts = Options {
+            base: Base::None,
+            stylesheet: Some(&sheet),
+        };
+        from_html(html, &opts)
+    }
+
+    #[test]
+    fn hanging_indents_and_vertical_margins() {
+        let doc = epub(
+            "p.hang { text-indent: -2em; margin-left: 2em } \
+             p.tight { margin: 0 } p.gap { margin: 1em 0 1.5em } \
+             div.chapter { margin-top: 9em }",
+            "<p class=hang>Hanging</p><p class=tight>Tight</p><p class=gap>Gap</p>\
+             <div class=chapter><p>Inside</p></div><p>Plain</p>",
+        );
+        let indent = |i: usize| match &doc.blocks[i] {
+            Block::Text { indent, .. } => *indent,
+            b => panic!("{b:?}"),
+        };
+        assert_eq!((indent(0).first_line, indent(0).left), (-2.0, 2.0));
+        assert_eq!((indent(1).top, indent(1).bottom), (Some(0.0), Some(0.0)));
+        assert_eq!((indent(2).top, indent(2).bottom), (Some(1.0), Some(1.5)));
+        // The chapter's own margin isn't the paragraph's (and would be capped anyway).
+        assert_eq!((indent(3).top, indent(3).bottom), (None, None));
+        assert_eq!((indent(4).top, indent(4).bottom), (None, None));
+        let capped = epub("p { margin-top: 20em }", "<p>Big</p>");
+        let Block::Text { indent, .. } = &capped.blocks[0] else {
+            panic!()
+        };
+        assert_eq!(indent.top, Some(MAX_MARGIN));
+    }
+
+    #[test]
+    fn inline_svg_becomes_a_clean_image() {
+        let svg = r#"<svg width="300" height="150" onload="alert(1)"><title>Chart</title>
+            <script>alert(2)</script><rect width="300" height="150" fill="teal"/>
+            <image href="https://tracker.example/p.png"/></svg>"#;
+        for doc in [
+            from_html(
+                &format!("<p>Before</p>{svg}<p>After</p>"),
+                &Options::default(),
+            ),
+            from_article_html(&format!("<p>Before</p>{svg}<p>After</p>"), None),
+        ] {
+            let Some(Block::Image {
+                src,
+                alt,
+                width,
+                height,
+                ..
+            }) = doc.blocks.iter().find(|b| matches!(b, Block::Image { .. }))
+            else {
+                panic!("{doc:?}")
+            };
+            assert!(svg::is_svg_data(src), "{src}");
+            let markup = {
+                use base64::Engine;
+                let data = src.split_once(',').unwrap().1;
+                String::from_utf8(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(data)
+                        .unwrap(),
+                )
+                .unwrap()
+            };
+            assert!(markup.contains("<rect"), "{markup}");
+            for bad in ["script", "alert", "onload", "tracker"] {
+                assert!(!markup.contains(bad), "{bad} in {markup}");
+            }
+            assert_eq!(
+                (alt.as_str(), *width, *height),
+                ("Chart", Some(300.0), Some(150.0))
+            );
+            assert_eq!(texts(&doc).first().map(String::as_str), Some("Before"));
+        }
+    }
+
+    #[test]
+    fn icon_svgs_keep_their_title_and_covers_their_image() {
+        let doc = from_html(
+            r#"<p>Star <svg width="16" height="16"><title>star</title><path d="M0 0L8 16"/></svg> rated</p>"#,
+            &Options::default(),
+        );
+        assert_eq!(texts(&doc), ["Star star rated"]);
+        let cover = from_html(
+            r#"<svg viewBox="0 0 600 800"><image width="600" height="800" xlink:href="cover.jpg"/></svg>"#,
+            &Options::default(),
+        );
+        assert!(
+            matches!(&cover.blocks[..], [Block::Image { src, .. }] if src == "cover.jpg"),
+            "{cover:?}"
         );
     }
 }

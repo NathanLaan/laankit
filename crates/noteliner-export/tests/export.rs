@@ -206,10 +206,21 @@ fn cjk_and_emoji_fall_back_to_system_fonts() {
     let without = bundled_only
         .export(md, &options("CJK 日本語", None))
         .unwrap();
-    let names = |pdf: &[u8]| -> usize {
-        String::from_utf8_lossy(pdf)
-            .matches("/FontDescriptor")
-            .count()
+    // The fonts a PDF embeds, by base name (`/BaseFont /ABCDEF+Name`).
+    let names = |pdf: &[u8]| -> std::collections::BTreeSet<String> {
+        let text = String::from_utf8_lossy(pdf);
+        text.split("/BaseFont")
+            .skip(1)
+            .map(|rest| {
+                let name: String = rest
+                    .trim_start_matches([' ', '/'])
+                    .chars()
+                    .take_while(|c| !c.is_whitespace() && *c != '/' && *c != '>')
+                    .collect();
+                name.split_once('+')
+                    .map_or(name.clone(), |(_, n)| n.to_string())
+            })
+            .collect()
     };
     let has_cjk_font = std::process::Command::new("fc-list")
         .args([":lang=ja", "family"])
@@ -217,11 +228,13 @@ fn cjk_and_emoji_fall_back_to_system_fonts() {
         .map(|o| !o.stdout.is_empty())
         .unwrap_or(true);
     if has_cjk_font {
+        // With the fallback a system font is embedded that the bundled-only PDF lacks. (Without
+        // it, Typst draws the missing glyphs' boxes with one of the bundled faces, so counting
+        // fonts isn't enough.)
+        let (with, without) = (names(&pdf), names(&without));
         assert!(
-            names(&pdf) > names(&without),
-            "no extra font embedded for CJK: {} vs {}",
-            names(&pdf),
-            names(&without)
+            with.difference(&without).next().is_some(),
+            "no extra font embedded for CJK: {with:?} vs {without:?}"
         );
     } else {
         eprintln!("no system CJK font; only checked that the export succeeds");

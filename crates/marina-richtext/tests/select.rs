@@ -137,3 +137,99 @@ fn clicking_a_mark_reports_it() {
     assert_eq!(h.state().clicked, ["hl-1"]);
     assert!(h.state().view.selection(&h.state().doc).is_none());
 }
+
+/// Presses and releases the primary button at `p` `times` times in quick succession (kittest only
+/// counts a double or triple click if the input clock moves between them).
+fn clicks_at(h: &mut Harness<'_, State>, p: egui::Pos2, times: usize, modifiers: egui::Modifiers) {
+    h.hover_at(p);
+    h.run();
+    let start = h.ctx.input(|i| i.time) + 1.0;
+    // Held modifiers come from the keyboard (as a real one reports them), not just the event.
+    h.event(egui::Event::ModifiersChanged(modifiers));
+    for i in 0..times * 2 {
+        h.input_mut().time = Some(start + i as f64 * 0.05);
+        h.event(egui::Event::PointerButton {
+            pos: p,
+            button: egui::PointerButton::Primary,
+            pressed: i % 2 == 0,
+            modifiers,
+        });
+        h.step();
+    }
+    h.event(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    h.run();
+}
+
+fn selected(h: &Harness<'_, State>) -> Option<String> {
+    h.state().view.selection(&h.state().doc).map(|s| s.text)
+}
+
+#[test]
+fn double_click_selects_a_word() {
+    let mut h = harness();
+    // Inside "paragraph" of "Alpha paragraph text.".
+    let p = at(&h, "Alpha", 0.4);
+    clicks_at(&mut h, p, 2, egui::Modifiers::NONE);
+    assert_eq!(selected(&h).as_deref(), Some("paragraph"));
+}
+
+#[test]
+fn triple_click_selects_the_paragraph() {
+    let mut h = harness();
+    let p = at(&h, "Gamma", 0.4);
+    clicks_at(&mut h, p, 3, egui::Modifiers::NONE);
+    assert_eq!(selected(&h).as_deref(), Some("Gamma paragraph text."));
+}
+
+#[test]
+fn shift_click_extends_from_the_last_click() {
+    let mut h = harness();
+    let p = at(&h, "Alpha", 0.0);
+    clicks_at(&mut h, p, 1, egui::Modifiers::NONE);
+    assert!(selected(&h).is_none(), "a plain click selects nothing");
+    let p = at(&h, "Delta", 1.0);
+    clicks_at(&mut h, p, 1, egui::Modifiers::SHIFT);
+    let text = selected(&h).expect("Shift+click extends");
+    assert!(text.starts_with("Alpha"), "{text:?}");
+    assert!(
+        text.contains("Beta item") && text.contains("Delta"),
+        "{text:?}"
+    );
+    // Shift+click again moves the end, keeping the start.
+    let p = at(&h, "Beta", 0.99);
+    clicks_at(&mut h, p, 1, egui::Modifiers::SHIFT);
+    let text = selected(&h).expect("still selected");
+    assert!(
+        text.starts_with("Alpha") && !text.contains("Gamma"),
+        "{text:?}"
+    );
+}
+
+#[test]
+fn select_all_and_copy() {
+    let mut h = harness();
+    // Not hovered and nothing selected: Ctrl+A isn't this view's.
+    h.hover_at(egui::pos2(-10.0, -10.0));
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    h.run();
+    assert!(selected(&h).is_none());
+    // Over the view: everything.
+    h.hover_at(at(&h, "Gamma", 0.5));
+    h.run();
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    h.run();
+    let all = selected(&h).expect("everything selected");
+    assert_eq!(
+        all,
+        "Alpha paragraph text.\nBeta item\nGamma paragraph text.\nDelta."
+    );
+    h.event(egui::Event::Copy);
+    h.step();
+    let copied = h
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .any(|c| matches!(c, egui::OutputCommand::CopyText(t) if *t == all));
+    assert!(copied, "{:?}", h.output().platform_output.commands);
+}

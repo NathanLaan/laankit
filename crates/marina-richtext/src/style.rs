@@ -5,6 +5,11 @@ use marina_egui::theme::{self, Palette};
 
 use crate::fonts::Face;
 
+/// `<mark>`'s highlight: a softer version of the browser default (`yellow`).
+const MARK_BG: Color32 = Color32::from_rgb(0xff, 0xe0, 0x66);
+/// Text on [`MARK_BG`], dark in every theme (the browser default is `black`).
+const MARK_TEXT: Color32 = Color32::from_rgb(0x1a, 0x1a, 0x1a);
+
 /// How a document looks. Build it with [`RichStyle::from_ctx`] each frame (cheap), then adjust
 /// the size, face or column width for the app.
 #[derive(Clone, Debug, PartialEq)]
@@ -30,6 +35,16 @@ pub struct RichStyle {
     pub quote_bar: Color32,
     /// Horizontal rules and table lines.
     pub rule: Color32,
+    /// `<mark>`: background and text. Like a browser's default (a yellow highlight with dark
+    /// text), which reads in light and dark themes alike.
+    pub mark_bg: Color32,
+    pub mark_text: Color32,
+    /// `<kbd>`: the key cap's outline.
+    pub kbd_border: Color32,
+    /// Task checkboxes: the box outline, a checked box's fill, and its tick.
+    pub check_border: Color32,
+    pub check_fill: Color32,
+    pub check_mark: Color32,
 }
 
 impl RichStyle {
@@ -52,6 +67,12 @@ impl RichStyle {
             pre_bg: p.pre_bg,
             quote_bar: p.blockquote_border,
             rule: p.border,
+            mark_bg: MARK_BG,
+            mark_text: MARK_TEXT,
+            kbd_border: p.border_hover,
+            check_border: p.text_muted,
+            check_fill: p.accent,
+            check_mark: p.accent_on,
         }
     }
 }

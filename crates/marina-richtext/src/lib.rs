@@ -9,16 +9,20 @@
 //! - [`resolve`]: [`Resolver`], where images come from and what links do.
 //! - [`style`]: [`RichStyle`], sizes and colours from the active Marina theme.
 //! - [`fonts`]: the font family names the view asks for.
+//! - [`svg`]: inline `<svg>`, cleaned at conversion and rasterized off the UI thread.
+//! - [`math`]: `$…$` / `$$…$$` formulas, typeset by an app-supplied [`math::MathRenderer`].
 
 pub mod convert;
 pub mod css;
 pub mod fonts;
+pub mod math;
 pub mod model;
 pub mod resolve;
 pub mod style;
+pub mod svg;
 pub mod view;
 
-pub use convert::{from_article_html, from_html, from_xhtml, Base, Options};
+pub use convert::{from_article_html, from_html, from_note_html, from_xhtml, Base, Options};
 pub use fonts::Face;
 pub use model::{Align, Block, Document, Indent, Span, Style, TextKind};
 pub use resolve::{BundleResolver, LinkAction, Resolver, WebResolver};

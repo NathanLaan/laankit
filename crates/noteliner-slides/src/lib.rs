@@ -8,7 +8,7 @@
 //! | [`render`]  | `Slide.svelte`: [`SlideView`] draws one slide at any size |
 //! | [`pane`]    | `SlidesPane.svelte` ([`SlidesPane`]) and `DeckPreview.svelte` ([`DeckPreview`]) |
 //! | [`settings`] | `PresentationSettingsModal.svelte` ([`PresentationSettings`]) |
-//! | [`presenter`] | Full-screen presenting ([`Presenter`]); new in the native build |
+//! | [`presenter`] | Full-screen presenting with an optional speaker view ([`Presenter`]); new in the native build |
 //!
 //! The parsing and edit modules are tested against the JS originals on
 //! thousands of generated notes (`tests/differential.rs`).
@@ -28,6 +28,6 @@ pub use deck::{
 };
 pub use edits::{Direction, EditResult, SlideEdit};
 pub use pane::{DeckPreview, PaneAction, SlidesPane};
-pub use presenter::{Presenter, PresenterAction};
+pub use presenter::{Nav, Presenter, PresenterAction, Timer};
 pub use render::{ImageSource, PassThrough, SlideTheme, SlideView};
 pub use settings::{PresentationSettings, SettingsOutcome};

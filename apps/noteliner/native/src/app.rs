@@ -28,7 +28,7 @@ use serde_json::{json, Value};
 
 use crate::backend::{self, Backend, Event, ExportKind, McpConfirm, Op, Outcome};
 use crate::commands::{self, Act, View};
-use crate::config::{Layout, Paths, Prefs, Recent};
+use crate::config::{LastFilePosition, Layout, Paths, Prefs, Recent};
 use crate::deck::{self, DeckState, SlideImages};
 use crate::editor::{EditorAction, NoteEditor};
 use crate::model::{self, Entry, SortMode};
@@ -130,6 +130,9 @@ pub struct NoteLinerApp {
     /// A line to put the caret on once this note has loaded (search,
     /// backlinks).
     pending_line: Option<(String, usize)>,
+    /// Where to put the caret and scroll of the last-opened note once it has
+    /// loaded (the project was just reopened).
+    pending_position: Option<LastFilePosition>,
     /// The MCP confirm's "raw arguments" are shown.
     mcp_details: bool,
     /// The MCP decisions sent, for tests.
@@ -199,6 +202,7 @@ impl NoteLinerApp {
             panes: PaneStates::default(),
             history: HistoryState::default(),
             pending_line: None,
+            pending_position: None,
             mcp_details: false,
             #[cfg(test)]
             mcp_decisions: Vec::new(),
@@ -307,6 +311,18 @@ impl NoteLinerApp {
         self.editor.cursor()
     }
 
+    /// The open note's caret (anchor, head) and scroll offset.
+    #[cfg(test)]
+    pub fn editor_view(&self) -> Option<(usize, usize, egui::Vec2)> {
+        self.editor.view().map(|(_, a, h, s)| (a, h, s))
+    }
+
+    /// Moves the caret and scroll as if the user had (for tests).
+    #[cfg(test)]
+    pub fn set_editor_view(&mut self, anchor: usize, head: usize, scroll: egui::Vec2) {
+        self.editor.restore_view(anchor, head, scroll);
+    }
+
     #[cfg(test)]
     pub fn apply_for_test(&mut self, ctx: &egui::Context, act: Act) {
         self.apply(ctx, act);
@@ -325,6 +341,14 @@ impl NoteLinerApp {
     #[cfg(test)]
     pub fn presenting(&self) -> bool {
         self.deck.presenter.is_some()
+    }
+
+    #[cfg(test)]
+    pub fn speaker_view_open(&self) -> bool {
+        self.deck
+            .presenter
+            .as_ref()
+            .is_some_and(|p| p.speaker_view_open())
     }
 
     #[cfg(test)]
@@ -409,6 +433,7 @@ impl NoteLinerApp {
                 self.panes = PaneStates::default();
                 self.history = HistoryState::default();
                 self.pending_line = None;
+                self.pending_position = None;
                 self.branch = None;
                 self.sync = None;
                 self.recent = self.backend.recent();
@@ -433,6 +458,15 @@ impl NoteLinerApp {
                 if let Some((pending, line)) = self.pending_line.take() {
                     if pending == id {
                         self.editor.scroll_to_line(line);
+                    }
+                }
+                if let Some(pos) = self.pending_position.take() {
+                    if pos.file_id == id {
+                        self.editor.restore_view(
+                            pos.anchor,
+                            pos.cursor,
+                            egui::vec2(pos.scroll_x, pos.scroll),
+                        );
                     }
                 }
                 if self.pending_settings.as_deref() == Some(id.as_str()) {
@@ -754,8 +788,20 @@ impl NoteLinerApp {
             layout,
         };
         project.refresh();
+        let last = project
+            .layout
+            .last_file_position
+            .clone()
+            .filter(|pos| project.entry(&pos.file_id).is_some());
         self.project = Some(project);
         self.editor.clear();
+        self.pending_position = None;
+        // Reopen the note that was open, where it was left.
+        if let Some(pos) = last {
+            let id = pos.file_id.clone();
+            self.pending_position = Some(pos);
+            self.select(id);
+        }
         self.backend.git_state();
         self.backend.mcp_status();
         if needs {
@@ -1240,11 +1286,13 @@ impl NoteLinerApp {
             | Act::MoveSlideUp
             | Act::MoveSlideDown
             | Act::ToggleSpeakerNotes => self.slide_command(act),
-            Act::Present => {
+            Act::Present | Act::PresentWithSpeakerView => {
                 self.update_deck();
                 if self.deck.deck().is_some_and(|d| !d.slides.is_empty()) {
                     let start = self.deck.active(self.editor.cursor().0).unwrap_or(1);
-                    self.deck.presenter = Some(noteliner_slides::Presenter::new(start));
+                    let speaker = act == Act::PresentWithSpeakerView;
+                    self.deck.presenter =
+                        Some(noteliner_slides::Presenter::new(start).with_speaker_view(speaker));
                     self.palette = None;
                 }
             }
@@ -1281,6 +1329,7 @@ impl NoteLinerApp {
                 self.backend
                     .set_prefs(json!({ "spellCheckEnabled": self.prefs.spell_check }));
             }
+            Act::GoToLine => self.editor.go_to_line(),
             Act::ZoomIn => self.theme.zoom_in(),
             Act::ZoomOut => self.theme.zoom_out(),
             Act::ZoomReset => self.theme.zoom_reset(),
@@ -1434,6 +1483,7 @@ impl NoteLinerApp {
             }),
             "presentation-settings" => self.apply(ctx, Act::PresentationSettings),
             "present" => self.apply(ctx, Act::Present),
+            "present-speaker" => self.apply(ctx, Act::PresentWithSpeakerView),
             "log" => self.toggle(|l| l.show_log = true),
             "search" => {
                 self.toggle(|l| l.show_search = true);
@@ -1537,6 +1587,7 @@ impl NoteLinerApp {
         if self.custom_titlebar {
             window::window_edges(&ctx);
         }
+        self.track_position();
         self.persist_layout();
         self.track_bounds(&ctx);
         if let Some(shot) = &mut self.screenshot {
@@ -1677,6 +1728,17 @@ impl NoteLinerApp {
                     }
                     if is_deck && b(ui, icons::CIRCLE_PLAY, "Present (F5)", false, false) {
                         acts.push(Act::Present);
+                    }
+                    if is_deck
+                        && b(
+                            ui,
+                            icons::PERSON_CHALKBOARD,
+                            "Present with Speaker View (Alt+F5)",
+                            false,
+                            false,
+                        )
+                    {
+                        acts.push(Act::PresentWithSpeakerView);
                     }
                     if b(ui, icons::TAG, "Tags (Ctrl+Shift+T)", l.show_tags, false) {
                         acts.push(Act::ToggleTags);
@@ -2241,6 +2303,34 @@ impl NoteLinerApp {
             PreviewAction::Wikilink(name) => self.open_wikilink(&name),
             PreviewAction::OpenUrl(url) => ctx.open_url(egui::OpenUrl::new_tab(url)),
             PreviewAction::JumpToLine(line) => self.editor.scroll_to_line(line),
+        }
+    }
+
+    /// Remembers the open note's caret and scroll in the layout (saved with
+    /// it, debounced). Waits until a pending restore has been applied, so
+    /// reopening doesn't overwrite the saved place with the top of the note.
+    fn track_position(&mut self) {
+        let Some(p) = &mut self.project else { return };
+        let Some((id, anchor, head, scroll)) = self.editor.view() else {
+            return;
+        };
+        if p.selected.as_deref() != Some(id)
+            || self
+                .pending_position
+                .as_ref()
+                .is_some_and(|pos| pos.file_id == id)
+        {
+            return;
+        }
+        let pos = LastFilePosition {
+            file_id: id.to_string(),
+            anchor,
+            cursor: head,
+            scroll_x: scroll.x.round(),
+            scroll: scroll.y.round(),
+        };
+        if p.layout.last_file_position.as_ref() != Some(&pos) {
+            p.layout.last_file_position = Some(pos);
         }
     }
 

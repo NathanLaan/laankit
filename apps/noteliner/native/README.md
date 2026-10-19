@@ -85,12 +85,15 @@ test fails when the file is stale).
 | `svg_colors`     | The SVG named colours for tag chips (`lib/svgColors.js`)                                            |
 | `ui_tests`       | egui_kittest: new project → new file → type → autosave → rename → drag-and-drop move → delete       |
 | `ui_tests_panes` | egui_kittest: search → jump, backlinks → jump, history, tags pane / filter / editor, attachments insert and remove, MCP allow / session / deny; and a PDF export read back with hayro |
-| `ui_tests_editor`| egui_kittest: typing autosaves, list Enter, `[[` completion, a pasted image becomes an attachment and its Markdown, Ctrl+click on a wikilink; SLIDES pane insert → disk, presentation settings save, presenter open/close |
+| `ui_tests_editor`| egui_kittest: typing autosaves, list Enter, `[[` completion, a pasted image becomes an attachment and its Markdown, Ctrl+click on a wikilink; SLIDES pane insert → disk, presentation settings save, presenter open/close; reopening a project restores the last note's caret and scroll (and only that note's) |
 
 ### Editor
 
 `src/editor.rs` holds `NoteEditor`, a wrapper around `marina-editor` (see
-`crates/marina-editor/README.md`). The app only uses this API:
+`crates/marina-editor/README.md`). The editor runs on its own core engine;
+`MARINA_EDITOR_ENGINE=textedit noteliner` falls back to the previous engine
+(egui's `TextEdit`) for one release, should the core engine misbehave with an
+input method or screen reader. The app only uses this API:
 
 - `load(id, name, filename, body)` when `file:read` arrives; `clear()`; `renamed(id, name, filename)`.
 - `show(ui, preview_on, history_on) -> Vec<EditorAction>`: the toolbar (list buttons, History,
@@ -105,10 +108,21 @@ test fails when the file is stale).
   Note", pasted attachments, and a note dragged from FILES onto the text (a `[name](./file.md)`
   link at the drop point, `interceptInternalDrops`).
 - `scroll_to_line(line)`; `status()`, `cursor()`, `selection_len()`, `selected_lines()`, `text()`.
+- `go_to_line()`: opens the editor's Go to line bar (Ctrl+Alt+G, or "Go to Line" in the palette).
+- `view()` / `restore_view(anchor, head, scroll)`: the open note's caret and scroll, and putting
+  them back (see below).
 
 `[[` completes the names of the other notes in the index (`wikilinkCompletions`). The editor's
 display matches the CodeMirror setup (14 px, line numbers, wrapping); only `spellCheckEnabled` is
-a preference. Notes don't reopen at their last caret or scroll position, as in the Svelte build.
+a preference.
+
+**Reopening a project** opens the note that was open, with its caret and scroll where they were
+(the editor plan's decision 3). Only that one note is remembered: the app keeps
+`lastFilePosition: { fileId, anchor, cursor, scrollX, scroll }` in the project's layout in
+`window-state.json` (the Tauri shape, plus this key, which the Svelte build ignores), updates it
+as the caret and scroll move, and saves it with the layout (debounced) and on close and quit. It's
+applied once the note has loaded, and ignored if the note is gone. Other notes open at the top, as
+in the Svelte build.
 
 ### Spell checking
 
@@ -130,6 +144,17 @@ through `apply_slide_edit`; the preview column renders a deck as slides; Present
 writes the block through `file:setPresentation`; "Convert to Presentation" lands in the settings
 with the SLIDES pane open, as in Svelte. The status bar shows the caret's slide and the speaking
 time at 130 words a minute. Slide images come from `_attachments/`, like the preview's.
+**Present** (F5, toolbar) is full screen; **Present with Speaker View** (Alt+F5, PowerPoint's
+Presenter View key; toolbar and palette) adds the speaker window (see
+`crates/noteliner-slides/README.md`).
+
+### Math
+
+`$…$`, `$$…$$` and ```` ```math ```` blocks are typeset in the preview, slides and speaker notes
+(`noteliner_core::export::preview_html` turns on comrak's math; `marina_richtext::from_note_html`
+keeps it) and in PDF export. `src/math.rs` installs Typst (through the warm PDF exporter) as
+`marina-richtext`'s math renderer when the backend attaches. LaTeX it can't convert shows as its
+source. The webview builds showed math as text; the HTML export still does.
 
 ### PDF export
 
@@ -168,7 +193,7 @@ opens, like the HTML and Markdown exports.
 | `git:getConfig`, `git:setConfig`                          | Done    | Project Settings; opened as required when a commit needs an identity     |
 | `projects:getRecent`, `addRecent`, `removeRecent`         | Done    | Same `recent-projects.json` shape                                       |
 | `system:getInfo`, `fs:ensureDir`                          | Done    | New Project defaults                                                    |
-| `window-state:getLayout`, `saveLayout`, `restoreBounds`   | Done    | Same `window-state.json`; panel layout and window bounds per project    |
+| `window-state:getLayout`, `saveLayout`, `restoreBounds`   | Done    | Same `window-state.json`; panel layout and window bounds per project, plus the last-opened note's caret and scroll (`lastFilePosition`, native only) |
 | `mcp:getStatus`, `mcp:confirm-response`, `mcp:confirm-request` | Done | Settings → MCP; the full confirmation dialog with raw arguments         |
 | `ui:getPrefs`, `ui:setPrefs` and their side effects       | Done    | `writeFrontmatter` and `mcpEnabled` apply live                          |
 | `ui:spellcheck-changed`                                   | Done    | F7 and Settings; Hunspell dictionaries instead of the webview's checker (see Spell checking) |
@@ -191,7 +216,7 @@ opens, like the HTML and Markdown exports.
 | `NewFileModal` (New File, New Presentation, Duplicate), `MoveFileModal` | Done |                                                    |
 | `DeleteFileModal`, `ClearTagsModal`            | Done    |                                                                       |
 | `OutlinePane`                                  | Done    |                                                                       |
-| `Editor`                                       | Done    | `marina-editor`: highlighting, list editing, shortcuts, find/replace, `[[` completion, paste/drop attachments, spell check. Its own parity table lists what's left of CodeMirror's `basicSetup` (code-fence languages, folding, bracket matching, multiple cursors) |
+| `Editor`                                       | Done    | `marina-editor` on its core engine: highlighting (code fences by language), list editing with ordered-list renumbering, shortcuts, find/replace, Go to line (Ctrl+Alt+G), bracket and selection matches, `[[` completion, paste/drop attachments, spell check, several cursors (Ctrl+click, Ctrl+D, find "all", Alt+drag), folding (gutter, Ctrl+Shift+[ / ]), notes of 50,000+ lines. Its own parity table lists what's left |
 | `Preview`                                      | Done    | comrak + marina-richtext; wikilinks open or create notes; attachments |
 | `StatusBar`, `LogPanel`                        | Done    | Including a deck's slide and speaking time                            |
 | `SettingsModal` (UI, MCP, Keyboard Shortcuts)  | Done    | Turning MCP on opens the walkthrough                                  |

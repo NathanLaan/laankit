@@ -16,20 +16,26 @@
 //! }
 //! ```
 
+pub mod code;
 mod editor;
+pub mod editor_core;
 pub mod edits;
+mod engine;
+pub mod fastcmp;
 pub mod find;
 #[doc(hidden)]
 pub mod gen;
 pub mod highlight;
 pub mod history;
 pub mod list_edits;
+pub mod matching;
 pub mod spell;
 mod state;
 pub mod toolbar;
 
 pub use editor::{Editor, EditorEvent, EditorOutput, SaveFormat};
 pub use edits::attachment_markdown;
+pub use engine::Engine;
 pub use highlight::EditorColors;
 pub use list_edits::ListKind;
 #[cfg(feature = "spellcheck")]

@@ -1,4 +1,4 @@
-//! `cargo run --profile spike -p noteliner-export --example export -- [--repeat N] [--typ OUT.typ] <in.md> <out.pdf|out.html>`
+//! `cargo run --profile fast-release -p noteliner-export --example export -- [--repeat N] [--typ OUT.typ] <in.md> <out.pdf|out.html>`
 //!
 //! Exports a note the way the native NoteLiner does: the bundled fonts, the
 //! file name as the title, images from the note's folder. `--repeat N`

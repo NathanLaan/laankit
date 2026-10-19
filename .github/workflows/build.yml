@@ -51,8 +51,8 @@ jobs:
             target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
 
-  # Option C (pure Rust, egui): the shared native crates and the Phase 0
-  # spikes, on every target platform. See docs/plans/plan-native-rust-egui.md.
+  # Option C (pure Rust, egui): the shared native crates and the native
+  # apps, on every target platform. See docs/plans/plan-native-rust-egui.md.
   native:
     strategy:
       fail-fast: false
@@ -71,9 +71,9 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Lint
-        run: cargo clippy -p marina-core -p marina-egui -p marina-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p marina-editor -p noteliner-export -p noteliner-slides -p spike-common -p spike-editor -p spike-richtext -p spike-article -p spike-epub -p spike-pdf -p spike-export --all-targets -- -D warnings
+        run: cargo clippy -p marina-core -p marina-egui -p marina-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p marina-editor -p noteliner-export -p noteliner-slides --all-targets -- -D warnings
       - name: Test
         run: |
           git config --global user.name ci
           git config --global user.email ci@localhost
-          cargo test -p marina-core -p marina-egui -p marina-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p marina-editor -p noteliner-export -p noteliner-slides -p spike-common -p spike-editor -p spike-richtext -p spike-article -p spike-epub -p spike-pdf -p spike-export
+          cargo test -p marina-core -p marina-egui -p marina-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p marina-editor -p noteliner-export -p noteliner-slides

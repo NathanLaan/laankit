@@ -1,9 +1,12 @@
-//! [`Editor`]: the widget. `TextEdit::multiline` over [`EditorState`]'s
-//! text with the cached highlighting layouter, plus what `Editor.svelte` and
-//! CodeMirror's `basicSetup` add around it: list keys, emphasis toggles,
+//! [`Editor`]: the widget. The text area is the core engine
+//! ([`crate::editor_core`]) or, as a fallback, `TextEdit::multiline` over
+//! [`EditorState`]'s text with the cached highlighting layouter; around it is
+//! what `Editor.svelte` and CodeMirror's `basicSetup` add: list keys, emphasis toggles,
 //! bracket auto-closing, the line-number gutter and active line, find and
-//! replace, `[[` completion, the context menu, and the attachment and link
-//! hooks the host handles.
+//! replace, Go to line, bracket matching and selection matches, `[[`
+//! completion, the context menu, and the attachment and link hooks the host
+//! handles. Ordered lists are renumbered after Enter, Backspace/Delete, Tab
+//! and paste ([`crate::list_edits::renumber_after_edit`]).
 //!
 //! Keys the editor handles itself are taken out of the input before
 //! `TextEdit` sees them, so each is one undoable step of our own
@@ -23,14 +26,18 @@ use marina_egui::{icons, theme};
 use crate::edits;
 use crate::find;
 use crate::highlight::{link_at, EditorColors, LayoutOptions, LinkTarget};
-use crate::list_edits::{self, byte_at, chars_in, to_ordered_list, to_unordered_list, DocEdit};
+use crate::list_edits::{
+    self, byte_at, chars_in, line_of, renumber_after_edit, to_ordered_list, to_unordered_list,
+    with_renumbering, DocEdit,
+};
+use crate::matching::{self, MAX_SELECTION_MATCHES};
 use crate::spell::{self, SpellChecker};
 use crate::state::{Command, Completion, EditorState};
 
 /// Padding around the text (`.cm-content { padding: 16px 0 }`, `.cm-line { padding: 0 16px }`).
-const PAD: f32 = 16.0;
+pub(crate) const PAD: f32 = 16.0;
 /// The gutter's minimum width (`.cm-lineNumbers { minWidth: 44px }`).
-const GUTTER_MIN: f32 = 44.0;
+pub(crate) const GUTTER_MIN: f32 = 44.0;
 /// Completion entries shown at most (`.slice(0, 50)`).
 const MAX_COMPLETIONS: usize = 50;
 
@@ -127,6 +134,21 @@ impl<'a> Editor<'a> {
         }
         let focused = ctx.memory(|m| m.has_focus(state.id));
         let was_composing = state.composing;
+        state.structural_input = focused
+            && ui.input(|i| {
+                i.events.iter().any(|e| {
+                    matches!(
+                        e,
+                        Event::Paste(_)
+                            | Event::Cut
+                            | Event::Key {
+                                key: Key::Enter | Key::Backspace | Key::Delete,
+                                pressed: true,
+                                ..
+                            }
+                    )
+                })
+            });
         if focused {
             let ime = state.track_ime(ui);
             if !ime && !state.composing {
@@ -145,22 +167,43 @@ impl<'a> Editor<'a> {
                 )
                 .show(ui, |ui| state.find_panel(ui, time, &mut events));
         }
+        if state.goto.is_some() {
+            egui::Panel::bottom(state.id.with("goto-panel"))
+                .frame(
+                    Frame::NONE
+                        .fill(theme::palette(&ctx).bg_base)
+                        .inner_margin(Margin::symmetric(10, 6))
+                        .stroke(Stroke::new(1.0, theme::palette(&ctx).border)),
+                )
+                .show(ui, |ui| state.goto_panel(ui));
+        }
 
         let before = state.cursor(&ctx);
         let mut out = None;
         egui::CentralPanel::default()
             .frame(Frame::NONE.fill(colors.background))
             .show(ui, |ui| {
-                out = Some(state.body(
-                    ui,
-                    &colors,
-                    accessible_name,
-                    context_menu,
-                    before,
-                    time,
-                    was_composing,
-                    &mut events,
-                ));
+                out = Some(if state.is_core() {
+                    state.core_body(
+                        ui,
+                        &colors,
+                        accessible_name,
+                        context_menu,
+                        time,
+                        &mut events,
+                    )
+                } else {
+                    state.body(
+                        ui,
+                        &colors,
+                        accessible_name,
+                        context_menu,
+                        before,
+                        time,
+                        was_composing,
+                        &mut events,
+                    )
+                });
             });
         let (response, char_at_pointer) = out.expect("central panel ran");
         state.completion_popup(&ctx, &colors);
@@ -189,7 +232,8 @@ impl EditorState {
             Command::UnorderedList => {
                 list_edits::span_in_text(&self.text, anchor, head, to_unordered_list)
             }
-            Command::IndentSubList => list_edits::sub_list_in_text(&self.text, head),
+            Command::IndentSubList => list_edits::sub_list_in_text(&self.text, head)
+                .map(|e| with_renumbering(&self.text, e)),
             Command::Bold => Some(edits::toggle_marker(&self.text, anchor, head, "**")),
             Command::Italic => Some(edits::toggle_marker(&self.text, anchor, head, "*")),
             Command::Insert(s) => Some(edits::replace_selection(&self.text, anchor, head, &s)),
@@ -212,8 +256,59 @@ impl EditorState {
                 None
             }
             Command::SelectAll => {
-                self.set_cursor(ctx, 0, chars_in(&self.text));
+                let n = if self.is_core() {
+                    self.sync_rope();
+                    self.chars_len()
+                } else {
+                    chars_in(&self.text)
+                };
+                self.set_cursor(ctx, 0, n);
                 self.focus_request = true;
+                None
+            }
+            Command::Copy | Command::Cut if self.is_core() && self.core.sel.is_multi() => {
+                // Every selection, one per line, as the Copy/Cut events do.
+                self.sync_rope();
+                let ranges: Vec<_> = self
+                    .core
+                    .sel
+                    .ranges()
+                    .iter()
+                    .filter(|r| !r.is_empty())
+                    .copied()
+                    .collect();
+                if ranges.is_empty() {
+                    return;
+                }
+                let parts: Vec<&str> = ranges
+                    .iter()
+                    .map(|r| &self.text[self.char_to_byte(r.from())..self.char_to_byte(r.to())])
+                    .collect();
+                ctx.copy_text(parts.join("\n"));
+                self.focus_request = true;
+                if command == Command::Cut {
+                    let rope = &self.rope;
+                    let spans: Vec<std::ops::Range<usize>> =
+                        ranges.iter().map(|r| r.from()..r.to()).collect();
+                    let reps = vec![String::new(); spans.len()];
+                    let (text, placed) =
+                        crate::editor_core::ops::replace_ranges(&self.text, &spans, &reps, |c| {
+                            rope.char_to_byte(c)
+                        });
+                    let sels = placed
+                        .iter()
+                        .map(|r| crate::editor_core::selection::Sel::caret(r.start))
+                        .collect();
+                    let p = placed.first().map_or(0, |r| r.start);
+                    self.history
+                        .record(&self.recorded, &text, (anchor, head), (p, p), time, false);
+                    self.text = text;
+                    self.recorded.clone_from(&self.text);
+                    self.version += 1;
+                    self.sync_rope();
+                    self.core.sel = crate::editor_core::selection::Selections::new(sels, 0);
+                    events.push(EditorEvent::Changed);
+                }
                 None
             }
             Command::Copy | Command::Cut => {
@@ -249,12 +344,34 @@ impl EditorState {
                 self.find_step(ctx, command == Command::FindNext);
                 None
             }
+            Command::GoToLine => {
+                self.open_goto();
+                None
+            }
         };
         if let Some(edit) = edit {
             self.apply_edit(ctx, (anchor, head), edit, time);
             self.focus_request = true;
             events.push(EditorEvent::Changed);
         }
+    }
+
+    /// The find panel's "all" in the core engine: one selection per match.
+    pub(crate) fn select_all_matches(&mut self) {
+        self.find.matches(&self.text, self.version);
+        let sels: Vec<crate::editor_core::selection::Sel> = self
+            .find
+            .char_matches()
+            .iter()
+            .map(|m| crate::editor_core::selection::Sel::new(m.start, m.end))
+            .collect();
+        if sels.is_empty() {
+            return;
+        }
+        self.core.sel = crate::editor_core::selection::Selections::new(sels, 0);
+        self.core.reveal = true;
+        self.core_unfold_carets();
+        self.focus_request = true;
     }
 
     /// Selects the next or previous find match from the selection.
@@ -312,9 +429,13 @@ impl EditorState {
             };
             // Enter and Backspace are only ours when a list or markup edit applies;
             // otherwise TextEdit types them, so they group with the typing around them.
+            let multi = self.is_core() && self.core.sel.is_multi();
+            if multi && matches!(action, KeyAction::Enter | KeyAction::Backspace) {
+                continue;
+            }
             let edit = match action {
                 KeyAction::Enter | KeyAction::Backspace => match self.markup_edit(&ctx, &action) {
-                    Some(edit) => Some(edit),
+                    Some(edit) => Some(with_renumbering(&self.text, edit)),
                     None => continue,
                 },
                 _ => None,
@@ -357,6 +478,10 @@ impl EditorState {
                 Key::Escape => return Some(KeyAction::CompletionDismiss),
                 _ => {}
             }
+        }
+        // Ctrl/Cmd+Alt+G: Go to line (CodeMirror's `Mod-Alt-g`), by physical key.
+        if mods.command && mods.alt && !mods.shift && phys == Key::G {
+            return Some(KeyAction::Command(Command::GoToLine));
         }
         // Alt+. / Alt+, insert arrows (by physical key: macOS's Alt+. types another character).
         if mods.alt && !mods.ctrl && !mods.mac_cmd && !mods.command && !mods.shift {
@@ -401,10 +526,15 @@ impl EditorState {
     }
 
     /// The list continuation (Enter) or markup deletion (Backspace) at the caret, if any.
-    fn markup_edit(&self, ctx: &egui::Context, action: &KeyAction) -> Option<DocEdit> {
+    fn markup_edit(&mut self, ctx: &egui::Context, action: &KeyAction) -> Option<DocEdit> {
         let (anchor, head) = self.cursor(ctx);
         match action {
+            // Enter reads earlier lines (to outdent a nested item): the whole note.
             KeyAction::Enter if anchor == head => list_edits::enter_in_text(&self.text, head),
+            // Backspace looks at the caret's line only.
+            KeyAction::Backspace if self.is_core() => {
+                self.core_line_edit(anchor, head, edits::backspace)
+            }
             KeyAction::Backspace => edits::backspace(&self.text, anchor, head),
             _ => None,
         }
@@ -443,6 +573,7 @@ impl EditorState {
             // Tab and Shift+Tab are always ours (TextEdit would insert a tab character).
             KeyAction::Indent(outdent) => {
                 list_edits::indent_in_text(&self.text, anchor, head, outdent)
+                    .map(|e| with_renumbering(&self.text, e))
             }
             // Handled with their edit in `handle_keys`.
             KeyAction::Enter | KeyAction::Backspace => None,
@@ -466,13 +597,21 @@ impl EditorState {
                 .collect()
         });
         let [one] = typed.as_slice() else { return };
+        if self.is_core() && self.core.sel.is_multi() {
+            return;
+        }
         let mut chars = one.chars();
         let (Some(ch), None) = (chars.next(), chars.next()) else {
             return;
         };
         let ctx = ui.ctx().clone();
         let (anchor, head) = self.cursor(&ctx);
-        let Some(edit) = edits::type_char(&self.text, anchor, head, ch) else {
+        let edit = if self.is_core() {
+            self.core_line_edit(anchor, head, |line, a, h| edits::type_char(line, a, h, ch))
+        } else {
+            edits::type_char(&self.text, anchor, head, ch)
+        };
+        let Some(edit) = edit else {
             return;
         };
         ui.input_mut(|i| i.events.retain(|e| !matches!(e, Event::Text(_))));
@@ -631,6 +770,15 @@ impl EditorState {
 
         // Typing (and IME commits) become history steps once no composition is open.
         if !self.composing && (output.response.response.changed() || was_composing) {
+            // A paste, cut, Enter or Backspace/Delete that `TextEdit` handled
+            // may have added or removed ordered items: renumber the rest, in
+            // the same undo step (only lines after the edit change, so the
+            // caret stays put).
+            if self.structural_input && self.recorded != self.text {
+                if let Some(text) = renumber_after_edit(&self.recorded, &self.text) {
+                    self.text = text;
+                }
+            }
             if self.recorded != self.text {
                 let after = output
                     .cursor_range
@@ -724,7 +872,10 @@ impl EditorState {
         }
     }
 
-    /// The active line and the find matches, behind the text.
+    /// The active line behind the text, and the bracket pair, selection
+    /// matches and find matches over it. Those are translucent and drawn on
+    /// top because code spans paint their own background, which would hide
+    /// anything behind them.
     #[allow(clippy::too_many_arguments)]
     fn paint_backdrop(
         &mut self,
@@ -739,6 +890,7 @@ impl EditorState {
     ) {
         let ctx = ui.ctx();
         let mut shapes = Vec::new();
+        let mut overlay = Vec::new();
         let left = origin.x - gutter - PAD;
         let right = clip.right().max(origin.x + galley.size().x + PAD);
         // Every row of the caret's line (it may wrap).
@@ -759,6 +911,35 @@ impl EditorState {
                 0.0,
                 colors.active_line,
             ));
+        }
+        self.update_decor(ctx, galley, origin, clip);
+        let doc_ok = self.highlighter.line_rows().last() == Some(&galley.rows.len());
+        if doc_ok {
+            let rect = |line: usize, cols: std::ops::Range<usize>| {
+                self.highlighter
+                    .char_rect(galley, line, cols)
+                    .map(|r| r.translate(origin.to_vec2()))
+            };
+            for (line, cols) in &self.decor.matches {
+                if let Some(r) = rect(*line, cols.clone()) {
+                    overlay.push(Shape::rect_filled(r, 2.0, colors.selection_match));
+                }
+            }
+            if let Some(((line, col), other)) = self.decor.brackets {
+                let fill = if other.is_some() {
+                    colors.bracket_match
+                } else {
+                    colors.bracket_unmatched
+                };
+                if let Some(r) = rect(line, col..col + 1) {
+                    overlay.push(Shape::rect_filled(r, 2.0, fill));
+                }
+                if let Some((l, c)) = other {
+                    if let Some(r) = rect(l, c..c + 1) {
+                        overlay.push(Shape::rect_filled(r, 2.0, fill));
+                    }
+                }
+            }
         }
         if self.find.open {
             self.find.matches(&self.text, self.version);
@@ -781,15 +962,173 @@ impl EditorState {
                 };
                 if (a.top() - b.top()).abs() < 1.0 {
                     let r = Rect::from_min_max(pos2(a.left(), a.top()), pos2(b.left(), a.bottom()));
-                    shapes.push(Shape::rect_filled(r.translate(origin.to_vec2()), 2.0, fill));
+                    overlay.push(Shape::rect_filled(r.translate(origin.to_vec2()), 2.0, fill));
                 } else {
                     // A match across rows: mark its start.
                     let r = Rect::from_min_size(a.min, vec2(6.0, a.height()));
-                    shapes.push(Shape::rect_filled(r.translate(origin.to_vec2()), 2.0, fill));
+                    overlay.push(Shape::rect_filled(r.translate(origin.to_vec2()), 2.0, fill));
                 }
             }
         }
         ui.painter().set(slot, Shape::Vec(shapes));
+        ui.painter().extend(overlay);
+    }
+
+    /// Recomputes the bracket match and the selection matches when the text,
+    /// the caret or the visible lines changed.
+    fn update_decor(
+        &mut self,
+        ctx: &egui::Context,
+        galley: &egui::Galley,
+        origin: Pos2,
+        clip: Rect,
+    ) {
+        let rows = &galley.rows;
+        if rows.is_empty() || self.highlighter.line_rows().last() != Some(&rows.len()) {
+            self.decor = Default::default();
+            return;
+        }
+        let first_row = rows.partition_point(|r| origin.y + r.rect().bottom() < clip.top());
+        let end_row = rows.partition_point(|r| origin.y + r.rect().top() <= clip.bottom());
+        let first_line = self.highlighter.line_of_row(first_row.min(rows.len() - 1));
+        let last_line = self
+            .highlighter
+            .line_of_row(end_row.saturating_sub(1).min(rows.len() - 1));
+        let (anchor, head) = self.cursor(ctx);
+        let key = (self.version, anchor, head, first_line, last_line);
+        if self.decor.key == Some(key) {
+            return;
+        }
+        self.decor.key = Some(key);
+        let text = &self.text;
+        let line_col = |b: usize| {
+            let (line, start) = line_of(text, b);
+            (line, chars_in(&text[start..b]))
+        };
+
+        self.decor.brackets = (anchor == head)
+            .then(|| matching::bracket_match(text, byte_at(text, head)))
+            .flatten()
+            .map(|m| (line_col(m.at), m.other.map(line_col)));
+
+        self.decor.matches.clear();
+        let (bf, bt) = (
+            byte_at(text, anchor.min(head)),
+            byte_at(text, anchor.max(head)),
+        );
+        let Some((query, whole)) = matching::selection_query(text, bf, bt) else {
+            return;
+        };
+        let query_chars = chars_in(query);
+        let mut start = if first_line == 0 {
+            0
+        } else {
+            match text.match_indices('\n').nth(first_line - 1) {
+                Some((i, _)) => i + 1,
+                None => return,
+            }
+        };
+        for (k, line) in text[start..]
+            .split('\n')
+            .take(last_line + 1 - first_line)
+            .enumerate()
+        {
+            for r in matching::find_in_line(line, query, whole) {
+                if start + r.start == bf {
+                    continue;
+                }
+                let col = chars_in(&line[..r.start]);
+                self.decor
+                    .matches
+                    .push((first_line + k, col..col + query_chars));
+                if self.decor.matches.len() >= MAX_SELECTION_MATCHES {
+                    return;
+                }
+            }
+            start += line.len() + 1;
+        }
+    }
+
+    /// The Go to line bar (CodeMirror's `gotoLine` panel).
+    fn goto_panel(&mut self, ui: &mut Ui) {
+        let ctx = ui.ctx().clone();
+        let input_id = self.id.with("goto-input");
+        let (mut go, mut close) = (false, false);
+        let Some(bar) = &mut self.goto else { return };
+        ui.horizontal(|ui| {
+            ui.label("Go to line:");
+            let field = ui
+                .add(
+                    TextEdit::singleline(&mut bar.input)
+                        .id(input_id)
+                        .hint_text("line, line:column, +n, -n or n%")
+                        .desired_width(240.0)
+                        .text_color_opt(bar.invalid.then_some(Color32::from_rgb(0xe0, 0x4b, 0x4b))),
+                )
+                .accessible_name("Go to line");
+            if std::mem::take(&mut bar.focus) {
+                field.request_focus();
+            }
+            if field.has_focus() || field.lost_focus() {
+                if ui.input(|i| i.key_pressed(Key::Enter)) {
+                    go = true;
+                }
+                if ui.input(|i| i.key_pressed(Key::Escape)) {
+                    close = true;
+                }
+            }
+            if field.changed() {
+                bar.invalid = false;
+            }
+            if ui.button("go").clicked() {
+                go = true;
+            }
+            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                if ui
+                    .add(egui::Button::new(icons::icon(icons::XMARK)).frame(false))
+                    .on_hover_text("Close (Escape)")
+                    .clicked()
+                {
+                    close = true;
+                }
+            });
+        });
+        if go {
+            let input = bar.input.clone();
+            let current = self.status(&ctx).line;
+            let lines = self.text.matches('\n').count() + 1;
+            match matching::parse_goto(&input, current, lines) {
+                Some((line, col)) => {
+                    let start = match line {
+                        1 => 0,
+                        n => self
+                            .text
+                            .match_indices('\n')
+                            .nth(n - 2)
+                            .map_or(0, |(i, _)| i + 1),
+                    };
+                    let end = self.text[start..]
+                        .find('\n')
+                        .map_or(self.text.len(), |i| start + i);
+                    let col = col.map_or(0, |c| (c - 1).min(chars_in(&self.text[start..end])));
+                    let c = chars_in(&self.text[..start]) + col;
+                    self.set_cursor(&ctx, c, c);
+                    self.reveal = Some((c, false));
+                    self.goto = None;
+                    self.focus_request = true;
+                }
+                None => {
+                    if let Some(bar) = &mut self.goto {
+                        bar.invalid = true;
+                        bar.focus = true;
+                    }
+                }
+            }
+        }
+        if close {
+            self.goto = None;
+            self.focus_request = true;
+        }
     }
 
     /// Line numbers for the visible rows.
@@ -854,7 +1193,10 @@ impl EditorState {
     }
 
     /// The misspelled word around character `c`, with suggestions.
-    fn misspelled_at(&self, c: usize) -> Option<(std::ops::Range<usize>, String, Vec<String>)> {
+    pub(crate) fn misspelled_at(
+        &self,
+        c: usize,
+    ) -> Option<(std::ops::Range<usize>, String, Vec<String>)> {
         let checker = self.spell.as_ref().filter(|_| self.prefs.spell_check)?;
         let b = byte_at(&self.text, c);
         let start = self.text[..b].rfind('\n').map_or(0, |i| i + 1);
@@ -870,7 +1212,12 @@ impl EditorState {
     }
 
     /// The context menu (`handleContextMenu`), plus spelling suggestions.
-    fn context_menu_ui(&mut self, ui: &mut Ui, time: f64, events: &mut Vec<EditorEvent>) {
+    pub(crate) fn context_menu_ui(
+        &mut self,
+        ui: &mut Ui,
+        time: f64,
+        events: &mut Vec<EditorEvent>,
+    ) {
         let ctx = ui.ctx().clone();
         let item = |ui: &mut Ui, icon: &str, label: &str, shortcut: &str| {
             let text = RichText::new(format!("{icon}  {label}"));
@@ -1040,6 +1387,7 @@ impl EditorState {
         let mut step = None;
         let mut replace_one = false;
         let mut replace_every = false;
+        let mut select_all = false;
         ui.horizontal(|ui| {
             let field = ui
                 .add(
@@ -1070,8 +1418,12 @@ impl EditorState {
                 step = Some(false);
             }
             if ui.button("all").clicked() && count > 0 {
-                // One selection only in egui: select the first and report the count.
-                step = Some(true);
+                if self.is_core() {
+                    select_all = true;
+                } else {
+                    // One selection only in TextEdit: select the first and report the count.
+                    step = Some(true);
+                }
             }
             ui.checkbox(&mut self.find.case_sensitive, "match case");
             ui.checkbox(&mut self.find.regex, "regexp");
@@ -1108,6 +1460,9 @@ impl EditorState {
 
         if let Some(forward) = step {
             self.find_step(&ctx, forward);
+        }
+        if select_all {
+            self.select_all_matches();
         }
         if replace_one {
             self.replace_current(&ctx, time, events);

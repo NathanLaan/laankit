@@ -66,6 +66,48 @@ pub fn document(lines: usize) -> String {
     g.out.join("\n")
 }
 
+/// [`document`] with `fences` large code fences (`fence_lines` lines each,
+/// cycling through Rust, Python, JSON and shell) spread evenly through it;
+/// still exactly `lines` lines.
+pub fn document_with_fences(lines: usize, fences: usize, fence_lines: usize) -> String {
+    let base = document(lines);
+    let mut out: Vec<String> = base.split('\n').map(String::from).collect();
+    let per = fence_lines + 2;
+    if fences == 0 || fences * per >= lines {
+        return base;
+    }
+    let gap = lines / (fences + 1);
+    for f in 0..fences {
+        let at = (gap * (f + 1)).min(out.len());
+        let fence = big_fence(f, fence_lines);
+        out.splice(at..at, fence);
+    }
+    out.truncate(lines.max(1));
+    out.join("\n")
+}
+
+fn big_fence(index: usize, n: usize) -> Vec<String> {
+    let (lang, line): (&str, fn(usize) -> String) = match index % 4 {
+        0 => ("rust", |i| {
+            format!("    let value_{i}: u64 = compute({i}, \"name {i}\") * 2; // step {i}")
+        }),
+        1 => ("python", |i| {
+            format!("    result_{i} = transform(data[{i}], key='k{i}')  # step {i}")
+        }),
+        2 => ("json", |i| {
+            format!("  \"key_{i}\": {{ \"n\": {i}, \"ok\": true, \"s\": \"v{i}\" }},")
+        }),
+        _ => ("sh", |i| {
+            format!("echo \"step {i}\" | grep -v x > out_{i}.log  # {i}")
+        }),
+    };
+    let mut v = Vec::with_capacity(n + 2);
+    v.push(format!("```{lang}"));
+    v.extend((0..n).map(line));
+    v.push("```".into());
+    v
+}
+
 struct Gen {
     seed: u64,
     out: Vec<String>,
@@ -170,6 +212,14 @@ fn capitalize(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fenced_documents_keep_their_length() {
+        let doc = document_with_fences(5000, 4, 200);
+        assert_eq!(doc.split('\n').count(), 5000);
+        assert_eq!(doc.matches("```python").count(), 1);
+        assert!(doc.contains("```json") && doc.contains("```sh"));
+    }
 
     #[test]
     fn exact_line_count_and_deterministic() {

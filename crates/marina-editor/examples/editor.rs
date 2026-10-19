@@ -9,7 +9,9 @@
 //! `en_US` from the system's Hunspell folder if it can find it.
 //! `MARINA_THEME`, `MARINA_SCALE` and `MARINA_SCREENSHOT` work as in every
 //! Marina app (`marina_egui::diagnostics`); `MARINA_FIND=<query>` opens the
-//! find panel, and `MARINA_LINE=<n>` scrolls to a line.
+//! find panel, `MARINA_LINE=<n>` scrolls to a line, `MARINA_SELECT=<a>,<b>`
+//! selects characters a..b (a caret when a = b), and `MARINA_GOTO=1` opens
+//! the Go to line bar.
 
 use egui::{Frame, Margin, RichText};
 use marina_editor::toolbar::{self, ToolbarProps};
@@ -148,6 +150,15 @@ fn main() -> eframe::Result {
                 .and_then(|l| l.parse().ok())
             {
                 state.scroll_to_line(ctx, line);
+            }
+            if let Some((a, b)) = std::env::var("MARINA_SELECT").ok().and_then(|v| {
+                let (a, b) = v.split_once(',')?;
+                Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+            }) {
+                state.set_cursor(ctx, a, b);
+            }
+            if std::env::var_os("MARINA_GOTO").is_some() {
+                state.open_goto();
             }
             state.focus();
             Ok(Box::new(App {

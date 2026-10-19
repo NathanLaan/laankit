@@ -38,6 +38,7 @@ use egui::{
 };
 
 use crate::fonts::Families;
+use crate::math::MathMode;
 use crate::model::{Align, Block, Document, Indent, Span, TextKind};
 use crate::resolve::{LinkAction, Resolver};
 use crate::style::RichStyle;
@@ -63,6 +64,8 @@ const EST_IMAGE_RATIO: f32 = 0.5;
 const DRAG_THRESHOLD: f32 = 4.0;
 /// Scrolling while a selection is dragged past the view's edge, per point beyond it per frame.
 const AUTOSCROLL_RATE: f32 = 0.35;
+/// What a task checkbox span is laid out as (its box is drawn over it; see `decorate`).
+const CHECKBOX_TEXT: &str = "[x]";
 /// Superscripts and subscripts, relative to their text.
 const SCRIPT_SCALE: f32 = 0.7;
 
@@ -152,6 +155,8 @@ pub struct RichView {
     selection: Option<(Position, Position)>,
     /// A press on text: where it started (document and screen), and whether it has moved.
     drag: Option<Drag>,
+    /// Where the last plain click landed: Shift+click extends from here when nothing is selected.
+    caret: Option<Position>,
     /// The text laid out last frame, for hit-testing the pointer.
     hits: Vec<TextHit>,
 }
@@ -200,6 +205,7 @@ impl RichView {
             marks: Vec::new(),
             selection: None,
             drag: None,
+            caret: None,
             hits: Vec::new(),
         }
     }
@@ -337,8 +343,13 @@ impl RichView {
         }
     }
 
-    /// Selection by dragging, clicks on marks, Ctrl+C and Escape. `inner` is the viewport on
-    /// screen. Returns the clicked mark and whether the selection changed.
+    /// Selection by dragging, double-click (word), triple-click (paragraph), Shift+click
+    /// (extend), Ctrl/Cmd+A (everything); clicks on marks; Ctrl+C and Escape. `inner` is the
+    /// viewport on screen. Returns the clicked mark and whether the selection changed.
+    ///
+    /// Ctrl/Cmd+A belongs to this view when no text field has keyboard focus and the pointer is
+    /// over it (or it already has a selection), so it never takes Select All from a field or
+    /// from another view in the same window.
     fn pointer(
         &mut self,
         ui: &Ui,
@@ -349,12 +360,22 @@ impl RichView {
         let ctx = ui.ctx().clone();
         let before = self.selection;
         let mut clicked = None;
-        let (pressed, down, released, pos) = ctx.input(|i| {
+        let (pressed, down, released, pos, shift, clicks) = ctx.input(|i| {
+            let primary = egui::PointerButton::Primary;
+            let clicks = if i.pointer.button_triple_clicked(primary) {
+                3
+            } else if i.pointer.button_double_clicked(primary) {
+                2
+            } else {
+                1
+            };
             (
                 i.pointer.primary_pressed(),
                 i.pointer.primary_down(),
                 i.pointer.primary_released(),
                 i.pointer.interact_pos(),
+                i.modifiers.shift,
+                clicks,
             )
         });
         // Only presses meant for this view: not on a dialog or menu above it.
@@ -366,12 +387,28 @@ impl RichView {
         };
         if pressed {
             if let Some(p) = pos.filter(|p| ours(*p)) {
-                self.selection = None;
-                self.drag = self.hit(p).map(|anchor| Drag {
-                    anchor,
-                    origin: p,
-                    moved: false,
-                });
+                let hit = self.hit(p);
+                let from = self.selection.map(|(a, _)| a).or(self.caret);
+                match (shift, from, hit) {
+                    // Shift+click extends; dragging on from there keeps extending.
+                    (true, Some(anchor), Some(focus)) => {
+                        self.selection = (anchor != focus).then_some((anchor, focus));
+                        self.drag = Some(Drag {
+                            anchor,
+                            origin: p,
+                            moved: true,
+                        });
+                    }
+                    _ => {
+                        self.selection = None;
+                        self.caret = hit;
+                        self.drag = hit.map(|anchor| Drag {
+                            anchor,
+                            origin: p,
+                            moved: false,
+                        });
+                    }
+                }
             }
         }
         if let (Some(drag), Some(p)) = (self.drag.as_mut(), pos) {
@@ -399,6 +436,14 @@ impl RichView {
         }
         if released {
             if let Some(drag) = self.drag.take() {
+                if !drag.moved && clicks > 1 {
+                    let range = if clicks == 2 {
+                        self.word_at(drag.anchor)
+                    } else {
+                        self.part_at(drag.anchor)
+                    };
+                    self.selection = range.filter(|(a, b)| a != b);
+                }
                 if !drag.moved {
                     clicked = self
                         .marks
@@ -412,6 +457,13 @@ impl RichView {
             }
         }
         let focused = ctx.memory(|m| m.focused().is_some());
+        let hovered = ctx.pointer_hover_pos().is_some_and(&ours);
+        if !focused
+            && (hovered || self.selection.is_some())
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::A))
+        {
+            self.selection = whole(doc);
+        }
         if !focused && self.selection.is_some() {
             let (copy, escape) = ctx.input(|i| {
                 (
@@ -433,6 +485,62 @@ impl RichView {
             ctx.request_repaint();
         }
         (clicked, changed)
+    }
+
+    /// The word around `pos` (letters, digits, `_` and inner apostrophes), from this frame's
+    /// layout; `None` on a space or punctuation.
+    fn word_at(&self, pos: Position) -> Option<(Position, Position)> {
+        let (hit, i) = self.part_hit(pos)?;
+        let chars: Vec<char> = hit.galley.text().chars().collect();
+        let word = |k: usize| {
+            chars.get(k).is_some_and(|c| {
+                c.is_alphanumeric()
+                    || *c == '_'
+                    || (matches!(c, '\'' | '’')
+                        && k > 0
+                        && chars[k - 1].is_alphanumeric()
+                        && chars.get(k + 1).is_some_and(|n| n.is_alphanumeric()))
+            })
+        };
+        // A click just past a word's last letter still means that word.
+        let i = if word(i) {
+            i
+        } else {
+            i.checked_sub(1).filter(|k| word(*k))?
+        };
+        let mut a = i;
+        while a > 0 && word(a - 1) {
+            a -= 1;
+        }
+        let mut b = i + 1;
+        while word(b) {
+            b += 1;
+        }
+        let at = |k: usize| Position {
+            block: pos.block,
+            offset: hit.base + k,
+        };
+        Some((at(a), at(b)))
+    }
+
+    /// The whole text part (paragraph, list item, cell, code block) holding `pos`.
+    fn part_at(&self, pos: Position) -> Option<(Position, Position)> {
+        let (hit, _) = self.part_hit(pos)?;
+        let len = hit.galley.text().chars().count();
+        let at = |k: usize| Position {
+            block: pos.block,
+            offset: hit.base + k,
+        };
+        Some((at(0), at(len)))
+    }
+
+    /// The text part laid out this frame that holds `pos`, and `pos`'s index in it.
+    fn part_hit(&self, pos: Position) -> Option<(&TextHit, usize)> {
+        self.hits.iter().find_map(|h| {
+            let len = h.galley.text().chars().count();
+            (h.block == pos.block && h.base <= pos.offset && pos.offset <= h.base + len)
+                .then(|| (h, pos.offset - h.base))
+        })
     }
 
     /// The document position under (or nearest to) a screen point, from last layout.
@@ -644,18 +752,31 @@ impl RichView {
                     spans,
                     *kind,
                     *align,
-                    indent.first_line * style.size,
+                    first_line_px(*indent, style),
                     style,
                     families,
                     self.width - left,
+                    Some(ui.ctx()),
                 );
-                let galley = ui.fonts_mut(|f| f.layout_job(job));
-                heading_gap(*kind, style) + galley.pos_from_cursor(CCursor::new(pos.offset)).top()
+                let galley = layout_text(ui, job, *align);
+                gap_above(*kind, *indent, style)
+                    + galley.pos_from_cursor(CCursor::new(pos.offset)).top()
             }
             _ => 0.0,
         };
         top + extra
     }
+}
+
+/// The whole of `doc`, as a selection range (`None` when it has no text).
+fn whole(doc: &Document) -> Option<(Position, Position)> {
+    let last = doc.blocks.len().checked_sub(1)?;
+    let end = Position {
+        block: last,
+        offset: doc.blocks[last].part_text().chars().count(),
+    };
+    let start = Position::default();
+    (start != end).then_some((start, end))
 }
 
 /// The text from `start` to `end`: each block's parts on their own lines.
@@ -691,10 +812,17 @@ fn estimate(block: &Block, style: &RichStyle, width: f32) -> f32 {
         (chars as f32 / per_line).ceil().max(1.0)
     };
     match block {
-        Block::Text { kind, spans, .. } => {
+        Block::Text {
+            kind,
+            spans,
+            indent,
+            ..
+        } => {
             let scale = heading_scale(*kind).0;
             let chars = spans.iter().map(|s| s.text.chars().count()).sum();
-            heading_gap(*kind, style) + lines(chars, scale) * line * scale + size * PARAGRAPH_GAP
+            gap_above(*kind, *indent, style)
+                + lines(chars, scale) * line * scale
+                + gap_below(*kind, *indent, style)
         }
         Block::List { items, .. } => items
             .iter()
@@ -835,19 +963,21 @@ fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
             align,
             indent,
         } => {
-            ui.add_space(heading_gap(*kind, style));
+            ui.add_space(gap_above(*kind, *indent, style));
             let left = indent_px(*indent, style);
             let (job, links) = text_job(
                 spans,
                 *kind,
                 *align,
-                indent.first_line * style.size,
+                first_line_px(*indent, style),
                 style,
                 cx.families,
                 ui.available_width() - left,
+                Some(ui.ctx()),
             );
-            let mut galley = ui.fonts_mut(|f| f.layout_job(job));
+            let mut galley = layout_text(ui, job, *align);
             let base = cx.part(&mut galley);
+            let behind = ui.painter().add(egui::Shape::Noop);
             let label = Label::new(egui::WidgetText::Galley(galley.clone()))
                 .selectable(false)
                 .sense(Sense::click());
@@ -870,13 +1000,20 @@ fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
                 Align::Center => resp.rect.center_top(),
                 Align::Right => resp.rect.right_top(),
             };
+            decorate(
+                ui.painter(),
+                behind,
+                &galley,
+                galley_pos,
+                spans,
+                style,
+                *kind,
+            );
             cx.record(base, galley.clone(), galley_pos, resp.rect);
             if let Some(slot) = cx.galley.take() {
                 *slot = Some((galley.clone(), resp.rect.top()));
             }
-            if *kind != TextKind::Caption {
-                ui.add_space(style.size * PARAGRAPH_GAP);
-            }
+            ui.add_space(gap_below(*kind, *indent, style));
             if !links.is_empty() {
                 if let Some(pointer) = resp.hover_pos() {
                     let c = galley.cursor_from_pos(pointer - galley_pos).index.0;
@@ -969,6 +1106,11 @@ fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
                 });
             ui.add_space(style.size * PARAGRAPH_GAP);
         }
+        Block::Image { src, .. } if crate::math::parse_image_src(src).is_some() => {
+            let latex = crate::math::parse_image_src(src).unwrap_or_default();
+            display_math(ui, &latex, style);
+            ui.add_space(style.size * PARAGRAPH_GAP);
+        }
         Block::Image {
             src,
             alt,
@@ -976,35 +1118,38 @@ fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
             width,
             fraction,
             ..
-        } => match cx.resolver.image(ui.ctx(), src) {
-            Some(uri) => {
-                let column = ui.available_width();
-                let max = fraction
-                    .map_or(column, |f| column * f)
-                    .min(width.unwrap_or(f32::INFINITY));
-                // Covers and full-page plates fit the screen.
-                let max_height = ui.ctx().content_rect().height() * IMAGE_MAX_SCREEN;
-                ui.vertical_centered(|ui| {
-                    let image = egui::Image::new(uri)
-                        .max_width(max)
-                        .max_height(max_height)
-                        .alt_text(alt.clone());
-                    let resp = ui.add(image);
-                    if !title.is_empty() {
-                        resp.on_hover_text(title.as_str());
-                    }
-                });
-                ui.add_space(style.size * PARAGRAPH_GAP);
+        } => {
+            match crate::svg::image_uri(ui.ctx(), src).or_else(|| cx.resolver.image(ui.ctx(), src))
+            {
+                Some(uri) => {
+                    let column = ui.available_width();
+                    let max = fraction
+                        .map_or(column, |f| column * f)
+                        .min(width.unwrap_or(f32::INFINITY));
+                    // Covers and full-page plates fit the screen.
+                    let max_height = ui.ctx().content_rect().height() * IMAGE_MAX_SCREEN;
+                    ui.vertical_centered(|ui| {
+                        let image = egui::Image::new(uri)
+                            .max_width(max)
+                            .max_height(max_height)
+                            .alt_text(alt.clone());
+                        let resp = ui.add(image);
+                        if !title.is_empty() {
+                            resp.on_hover_text(title.as_str());
+                        }
+                    });
+                    ui.add_space(style.size * PARAGRAPH_GAP);
+                }
+                None if !alt.is_empty() => {
+                    ui.label(
+                        egui::RichText::new(format!("[image: {alt}]"))
+                            .italics()
+                            .color(style.muted),
+                    );
+                }
+                None => {}
             }
-            None if !alt.is_empty() => {
-                ui.label(
-                    egui::RichText::new(format!("[image: {alt}]"))
-                        .italics()
-                        .color(style.muted),
-                );
-            }
-            None => {}
-        },
+        }
         Block::Rule => {
             ui.add_space(style.size * 0.5);
             let (rect, _) =
@@ -1019,6 +1164,44 @@ fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
         Block::Table { rows, header_rows } => {
             let columns = rows.iter().map(Vec::len).max().unwrap_or(1).max(1);
             let cell_width = (ui.available_width() / columns as f32 - 12.0).max(80.0);
+            // Lay every cell out first (in reading order, which `part` counts in), so each
+            // column's width is known before aligning its cells.
+            let mut laid: Vec<Vec<LaidCell>> = Vec::new();
+            let mut col_widths = vec![0.0f32; columns];
+            for (r, row) in rows.iter().enumerate() {
+                let mut cells = Vec::new();
+                for (c, cell) in row.iter().enumerate() {
+                    let mut spans = cell.clone();
+                    if r < *header_rows {
+                        spans.iter_mut().for_each(|s| s.style.bold = true);
+                    }
+                    let align = cell
+                        .first()
+                        .and_then(|s| s.style.cell_align)
+                        .unwrap_or_default();
+                    let (job, _) = text_job(
+                        &spans,
+                        TextKind::Paragraph,
+                        Align::Left,
+                        0.0,
+                        style,
+                        cx.families,
+                        cell_width,
+                        Some(ui.ctx()),
+                    );
+                    // A galley keeps the cell's own wrap width (a job would be re-wrapped to the grid's).
+                    let mut galley = ui.fonts_mut(|f| f.layout_job(job));
+                    let base = cx.part(&mut galley);
+                    col_widths[c] = col_widths[c].max(galley.size().x);
+                    cells.push(LaidCell {
+                        galley,
+                        base,
+                        align,
+                        spans,
+                    });
+                }
+                laid.push(cells);
+            }
             egui::ScrollArea::horizontal()
                 .id_salt(("table", id))
                 .show(ui, |ui| {
@@ -1026,29 +1209,47 @@ fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
                         .striped(true)
                         .spacing([12.0, 6.0])
                         .show(ui, |ui| {
-                            for (r, row) in rows.iter().enumerate() {
-                                for cell in row {
-                                    let mut spans = cell.clone();
-                                    if r < *header_rows {
-                                        spans.iter_mut().for_each(|s| s.style.bold = true);
-                                    }
-                                    let (job, _) = text_job(
+                            for row in laid {
+                                for (c, cell) in row.into_iter().enumerate() {
+                                    let LaidCell {
+                                        galley,
+                                        base,
+                                        align,
+                                        spans,
+                                    } = cell;
+                                    let width = col_widths[c].max(galley.size().x);
+                                    let x = match align {
+                                        Align::Left | Align::Justify => egui::Align::Min,
+                                        Align::Center => egui::Align::Center,
+                                        Align::Right => egui::Align::Max,
+                                    };
+                                    let behind = ui.painter().add(egui::Shape::Noop);
+                                    let resp = ui
+                                        .allocate_ui_with_layout(
+                                            egui::vec2(width, galley.size().y),
+                                            egui::Layout::top_down(x),
+                                            |ui| {
+                                                ui.set_width(width);
+                                                ui.add(
+                                                    Label::new(egui::WidgetText::Galley(
+                                                        galley.clone(),
+                                                    ))
+                                                    .selectable(false),
+                                                )
+                                            },
+                                        )
+                                        .inner;
+                                    let pos = resp.rect.left_top();
+                                    decorate(
+                                        ui.painter(),
+                                        behind,
+                                        &galley,
+                                        pos,
                                         &spans,
-                                        TextKind::Paragraph,
-                                        Align::Left,
-                                        0.0,
                                         style,
-                                        cx.families,
-                                        cell_width,
+                                        TextKind::Paragraph,
                                     );
-                                    // A galley keeps the cell's own wrap width (a job would be re-wrapped to the grid's).
-                                    let mut galley = ui.fonts_mut(|f| f.layout_job(job));
-                                    let base = cx.part(&mut galley);
-                                    let resp = ui.add(
-                                        Label::new(egui::WidgetText::Galley(galley.clone()))
-                                            .selectable(false),
-                                    );
-                                    cx.record(base, galley, resp.rect.left_top(), resp.rect);
+                                    cx.record(base, galley, pos, resp.rect);
                                 }
                                 ui.end_row();
                             }
@@ -1057,6 +1258,53 @@ fn block_ui(ui: &mut Ui, block: &Block, id: usize, cx: &mut Cx<'_>) {
             ui.add_space(style.size * PARAGRAPH_GAP);
         }
     }
+}
+
+/// A display formula, centred: its rendering tinted with the text colour, scaled down to fit the
+/// column, or its source as code while it renders or when it can't be.
+fn display_math(ui: &mut Ui, latex: &str, style: &RichStyle) {
+    use crate::math::{MathImage, MathMode};
+    match crate::math::image(ui.ctx(), latex, MathMode::Display, style.size) {
+        MathImage::Ready(texture) => {
+            let column = ui.available_width().max(1.0);
+            let size = if texture.size.x > column {
+                texture.size * (column / texture.size.x)
+            } else {
+                texture.size
+            };
+            ui.vertical_centered(|ui| {
+                let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
+                ui.painter().image(
+                    texture.id,
+                    rect,
+                    Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    style.text,
+                );
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, latex));
+            });
+        }
+        MathImage::Pending | MathImage::Unavailable => {
+            ui.vertical_centered(|ui| {
+                ui.add(
+                    Label::new(
+                        egui::RichText::new(crate::math::fallback_text(latex, MathMode::Display))
+                            .font(crate::math::fallback_font(style.size))
+                            .color(style.text)
+                            .background_color(style.code_bg),
+                    )
+                    .wrap(),
+                );
+            });
+        }
+    }
+}
+
+/// A table cell laid out ahead of the grid: its galley, its part's offset, alignment and spans.
+struct LaidCell {
+    galley: Arc<Galley>,
+    base: usize,
+    align: Align,
+    spans: Vec<Span>,
 }
 
 /// Space above a heading.
@@ -1079,8 +1327,142 @@ fn heading_scale(kind: TextKind) -> (f32, bool) {
     }
 }
 
+/// Draws what a layout job can't: task checkboxes over their `[ ]` / `[x]` text, and key-cap
+/// frames around `<kbd>` text. `pos` is where `galley`'s origin is on screen; `spans` are the
+/// ones the galley was laid out from (in order). `behind` is a shape slot reserved before the
+/// text was added (`Painter::add(Shape::Noop)`): key-cap fills go there, under the glyphs.
+fn decorate(
+    painter: &egui::Painter,
+    behind: egui::layers::ShapeIdx,
+    galley: &Galley,
+    pos: Pos2,
+    spans: &[Span],
+    style: &RichStyle,
+    kind: TextKind,
+) {
+    let mut under = Vec::new();
+    let mut start = 0;
+    for span in spans {
+        let end = start + span.text.chars().count();
+        let (a, b) = (start, end);
+        start = end;
+        let st = span.style;
+        if let Some(mode) = st.math {
+            paint_math(painter, galley, pos, span, mode, a..b, style, kind);
+            continue;
+        }
+        if st.checkbox.is_none() && !st.kbd {
+            continue;
+        }
+        let ra = galley.pos_from_cursor(CCursor::new(a));
+        let rb = galley.pos_from_cursor(CCursor::new(b));
+        if (ra.top() - rb.top()).abs() > 0.5 {
+            continue; // Wrapped over two rows: leave it plain.
+        }
+        let range = Rect::from_min_max(
+            pos + egui::vec2(ra.left(), ra.top()),
+            pos + egui::vec2(rb.left(), ra.bottom()),
+        );
+        if let Some(checked) = st.checkbox {
+            paint_checkbox(painter, range, checked, style);
+        } else {
+            // The glyphs' box: the row minus its line-height padding.
+            let pad = (range.height() - style.size * 1.15).max(0.0) / 2.0;
+            let frame = Rect::from_min_max(
+                range.min + egui::vec2(-2.0, pad),
+                range.max + egui::vec2(2.0, -pad),
+            );
+            under.push(egui::Shape::rect_filled(frame, 3.0, style.code_bg));
+            under.push(egui::Shape::rect_stroke(
+                frame,
+                3.0,
+                Stroke::new(1.0, style.kbd_border),
+                egui::StrokeKind::Inside,
+            ));
+        }
+    }
+    if !under.is_empty() {
+        painter.set(behind, egui::Shape::Vec(under));
+    }
+}
+
+/// An inline formula over its placeholder (`chars` in `galley`), if `text_job` laid one out.
+#[allow(clippy::too_many_arguments)]
+fn paint_math(
+    painter: &egui::Painter,
+    galley: &Galley,
+    pos: Pos2,
+    span: &Span,
+    mode: MathMode,
+    chars: Range<usize>,
+    style: &RichStyle,
+    kind: TextKind,
+) {
+    let placeholder = galley
+        .job
+        .text
+        .chars()
+        .nth(chars.start)
+        .is_some_and(|c| c == crate::math::NBSP);
+    if !placeholder {
+        return; // Laid out as its source.
+    }
+    let size = span_size(&span.style, heading_scale(kind).0, style);
+    let crate::math::MathImage::Ready(texture) =
+        crate::math::image(painter.ctx(), &span.text, mode, size)
+    else {
+        return;
+    };
+    let ra = galley.pos_from_cursor(CCursor::new(chars.start));
+    let rb = galley.pos_from_cursor(CCursor::new(chars.end));
+    let rect = Rect::from_min_max(
+        pos + egui::vec2(ra.left(), ra.top()),
+        pos + egui::vec2(rb.left(), ra.bottom()),
+    );
+    let color = if span.link.is_some() {
+        style.link
+    } else {
+        style.text
+    };
+    crate::math::paint(painter, rect, texture, color);
+}
+
+/// A checkbox centred in `range` (the `[ ]` text's box), sized to the body text.
+fn paint_checkbox(painter: &egui::Painter, range: Rect, checked: bool, style: &RichStyle) {
+    let side = (style.size * 0.85).min(range.height());
+    let rect = Rect::from_center_size(range.center(), egui::vec2(side, side));
+    let radius = (side * 0.2).round();
+    if checked {
+        painter.rect_filled(rect, radius, style.check_fill);
+        let w = side * 0.12;
+        let tick = [
+            rect.left_top() + egui::vec2(side * 0.24, side * 0.52),
+            rect.left_top() + egui::vec2(side * 0.43, side * 0.70),
+            rect.left_top() + egui::vec2(side * 0.77, side * 0.32),
+        ];
+        painter.line_segment([tick[0], tick[1]], Stroke::new(w, style.check_mark));
+        painter.line_segment([tick[1], tick[2]], Stroke::new(w, style.check_mark));
+    } else {
+        painter.rect_stroke(
+            rect,
+            radius,
+            Stroke::new(1.5, style.check_border),
+            egui::StrokeKind::Inside,
+        );
+    }
+}
+
+/// A span's text size: the block's `scale` (headings), small text and super/subscripts.
+fn span_size(st: &crate::Style, scale: f32, style: &RichStyle) -> f32 {
+    let script = st.sup || st.sub;
+    style.size * scale * if st.small { 0.8 } else { 1.0 } * if script { SCRIPT_SCALE } else { 1.0 }
+}
+
 /// The layout job for a run of spans, and the character ranges that are links. `first_line` is
 /// the first line's indent, in points.
+/// `ctx` lays formulas out as their rendered size (see [`crate::math`]); without it, or while
+/// they render, formulas show their source.
+#[allow(clippy::too_many_arguments)]
 pub fn text_job(
     spans: &[Span],
     kind: TextKind,
@@ -1089,6 +1471,7 @@ pub fn text_job(
     style: &RichStyle,
     families: &Families,
     width: f32,
+    ctx: Option<&egui::Context>,
 ) -> (LayoutJob, Vec<(Range<usize>, String)>) {
     let (scale, heading) = heading_scale(kind);
     let mut job = LayoutJob::default();
@@ -1098,20 +1481,16 @@ pub fn text_job(
         Align::Center => egui::Align::Center,
         Align::Right => egui::Align::RIGHT,
     };
-    // `Align::Justify` is set ragged-right: egui's justification spreads the space between every
-    // glyph rather than between words, which reads worse than no justification.
-    let mut leading = first_line.max(0.0);
+    // `Align::Justify` is laid out left-aligned here; `layout_text` then widens the word gaps.
+    // Negative is a hanging first line (see `layout_text`).
+    let mut leading = first_line;
     let mut links = Vec::new();
     let mut chars = 0;
     for span in spans {
         let st = span.style;
         let bold = st.bold || heading;
         let italic = st.italic || kind == TextKind::Caption;
-        let script = st.sup || st.sub;
-        let size = style.size
-            * scale
-            * if st.small { 0.8 } else { 1.0 }
-            * if script { SCRIPT_SCALE } else { 1.0 };
+        let size = span_size(&st, scale, style);
         let font = if st.code {
             families.code(bold, italic)
         } else {
@@ -1125,14 +1504,23 @@ pub fn text_job(
         if font.fake_bold {
             color = style.strong;
         }
+        if st.mark {
+            color = style.mark_text;
+        }
         if span.link.is_some() {
             color = style.link;
         }
-        let format = TextFormat {
+        if st.checkbox.is_some() {
+            // The `[ ]` / `[x]` text keeps its place (and positions); `decorate` draws the box.
+            color = Color32::TRANSPARENT;
+        }
+        let mut format = TextFormat {
             font_id: FontId::new(if st.code { size * 0.9 } else { size }, font.family),
             line_height: Some(size * style.line_height),
             color,
-            background: if st.code {
+            background: if st.mark {
+                style.mark_bg
+            } else if st.code && !st.kbd {
                 style.code_bg
             } else {
                 Color32::TRANSPARENT
@@ -1140,7 +1528,7 @@ pub fn text_job(
             // Keep the code background to the glyphs rather than the whole (1.5×) line.
             expand_bg: 0.0,
             italics: font.fake_italic,
-            underline: if st.underline || span.link.is_some() {
+            underline: if st.checkbox.is_none() && (st.underline || span.link.is_some()) {
                 Stroke::new(1.0, color)
             } else {
                 Stroke::NONE
@@ -1164,9 +1552,163 @@ pub fn text_job(
             links.push((chars..chars + n, link.clone()));
         }
         chars += n;
-        job.append(&span.text, std::mem::take(&mut leading), format);
+        if let Some(mode) = st.math {
+            // Rendered: invisible no-break spaces the formula is painted over (`decorate`).
+            if let Some((text, placeholder, _)) =
+                ctx.and_then(|c| crate::math::inline_placeholder(c, &span.text, mode, &format))
+            {
+                job.append(&text, std::mem::take(&mut leading), placeholder);
+                continue;
+            }
+            // Not (yet) rendered: the source, as code, with the same characters.
+            format.font_id = crate::math::fallback_font(size);
+            format.background = style.code_bg;
+        }
+        // A checkbox is laid out as the same three characters whatever its state, so checked and
+        // unchecked boxes line up; the model keeps `[ ]` / `[x]` for copying.
+        let text = match st.checkbox {
+            Some(_) if n == CHECKBOX_TEXT.chars().count() => CHECKBOX_TEXT,
+            _ => span.text.as_str(),
+        };
+        job.append(text, std::mem::take(&mut leading), format);
     }
     (job, links)
+}
+
+/// Lays out a text block's job: `Align::Justify` rows get word spacing (see [`justify`]).
+///
+/// A hanging first line (a negative `first_line` given to [`text_job`]) starts left of the
+/// others and is as much wider, as in CSS. The galley's rect still starts at 0, so a label
+/// keeps the column's width and the first line draws into the block's left margin (which the
+/// callers never let it pass).
+pub fn layout_text(ui: &Ui, job: LayoutJob, align: Align) -> Arc<Galley> {
+    let mut galley = ui.fonts_mut(|f| f.layout_job(job.clone()));
+    if align == Align::Justify {
+        if let Some(justified) = justify(&job, &galley) {
+            let laid = ui.fonts_mut(|f| f.layout_job(justified));
+            // Same rows, or the first layout (the widened spaces must not move a line break).
+            let same = laid.rows.len() == galley.rows.len()
+                && laid
+                    .rows
+                    .iter()
+                    .zip(&galley.rows)
+                    .all(|(a, b)| a.row.glyphs.len() == b.row.glyphs.len());
+            if same {
+                galley = laid;
+            }
+        }
+    }
+    if galley.rect.min.x < 0.0 {
+        let mut g = (*galley).clone();
+        g.rect.min.x = 0.0;
+        galley = Arc::new(g);
+    }
+    galley
+}
+
+/// `job` with its justified rows filled to the wrap width by widening the gaps between words
+/// (never between letters): every row but a paragraph's last, and not before a line break, as
+/// CSS does. The extra space is the `leading_space` of a section starting at each word that
+/// follows a space, so the text, and every position in it, stays the same. `None` when no row
+/// needs it.
+///
+/// egui's own `LayoutJob::justify` puts whole pixels between every pair of letters once a row is
+/// short by a pixel per letter, which reads as letter-spacing on sparse lines.
+fn justify(job: &LayoutJob, galley: &Galley) -> Option<LayoutJob> {
+    use egui::epaint::text::ByteIndex;
+    let width = job.wrap.max_width;
+    if !width.is_finite() || galley.rows.len() < 2 {
+        return None;
+    }
+    let byte_of: Vec<usize> = job.text.char_indices().map(|(b, _)| b).collect();
+    let mut widen: Vec<(usize, f32)> = Vec::new();
+    let mut slack = 1.0f32;
+    let mut first_char = 0;
+    for (i, placed) in galley.rows.iter().enumerate() {
+        let glyphs = &placed.row.glyphs;
+        let last = i + 1 == galley.rows.len() || placed.ends_with_newline;
+        if !last {
+            if let Some(end) = glyphs.iter().rposition(|g| !g.chr.is_whitespace()) {
+                let right = glyphs[end].pos.x + glyphs[end].advance_width;
+                let full = glyphs.last().map_or(right, |g| g.pos.x + g.advance_width);
+                slack = slack.max(full - right + 1.0);
+                let words: Vec<usize> = (1..=end)
+                    .filter(|&g| glyphs[g - 1].chr == ' ' && glyphs[g].chr != ' ')
+                    .collect();
+                let extra = width - right;
+                if !words.is_empty() && extra > 0.0 {
+                    let each = extra / words.len() as f32;
+                    widen.extend(
+                        words
+                            .iter()
+                            .filter_map(|&g| byte_of.get(first_char + g).map(|&b| (b, each))),
+                    );
+                }
+            }
+        }
+        first_char += glyphs.len() + usize::from(placed.ends_with_newline);
+    }
+    if widen.is_empty() {
+        return None;
+    }
+    let mut out = job.clone();
+    out.wrap.max_width = width + slack;
+    out.sections.clear();
+    let mut next = widen.iter().peekable();
+    for section in &job.sections {
+        let range = section.byte_range.start.0..section.byte_range.end.0;
+        let mut start = range.start;
+        let mut leading = section.leading_space;
+        while let Some(&&(b, each)) = next.peek() {
+            if b >= range.end {
+                break;
+            }
+            next.next();
+            if b < start {
+                continue;
+            }
+            if b == start {
+                leading += each;
+                continue;
+            }
+            out.sections.push(egui::text::LayoutSection {
+                leading_space: leading,
+                byte_range: ByteIndex(start)..ByteIndex(b),
+                format: section.format.clone(),
+            });
+            (start, leading) = (b, each);
+        }
+        out.sections.push(egui::text::LayoutSection {
+            leading_space: leading,
+            byte_range: ByteIndex(start)..ByteIndex(range.end),
+            format: section.format.clone(),
+        });
+    }
+    Some(out)
+}
+
+/// The space above a text block: its own `margin-top` when the document sets one, else the
+/// heading gap.
+fn gap_above(kind: TextKind, indent: Indent, style: &RichStyle) -> f32 {
+    indent
+        .top
+        .map_or_else(|| heading_gap(kind, style), |m| m * style.size)
+}
+
+/// The space below a text block: its own `margin-bottom` when set, else the paragraph gap
+/// (captions sit on what follows).
+fn gap_below(kind: TextKind, indent: Indent, style: &RichStyle) -> f32 {
+    match indent.bottom {
+        Some(m) => m * style.size,
+        None if kind == TextKind::Caption => 0.0,
+        None => style.size * PARAGRAPH_GAP,
+    }
+}
+
+/// The first line's indent in points: `text-indent`, where a negative (hanging) one reaches at
+/// most back to the column's edge.
+fn first_line_px(indent: Indent, style: &RichStyle) -> f32 {
+    (indent.first_line * style.size).max(-indent_px(indent, style))
 }
 
 #[cfg(test)]
@@ -1288,5 +1830,159 @@ mod tests {
         assert!(!view.scroll_to_anchor(&doc, "nope"));
         let offset = frame(&ctx, &mut view, &doc);
         assert!((view.block_tops()[50] - offset).abs() < 1.0);
+    }
+
+    const LOREM: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod \
+        tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud \
+        exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.";
+
+    /// Lays `LOREM` out at `width` as left-aligned and justified galleys (and with `hang`).
+    fn lorem(width: f32, hang: f32) -> (Arc<Galley>, Arc<Galley>) {
+        let ctx = ctx();
+        let spans = [Span {
+            text: LOREM.into(),
+            style: crate::model::Style::default(),
+            link: None,
+        }];
+        let mut out = None;
+        for _ in 0..2 {
+            // The first pass loads the fonts.
+            ctx.run_ui(RawInput::default(), |ui| {
+                let style = RichStyle::from_ctx(ui.ctx());
+                let fams = Families::of(ui.ctx());
+                let job = |align| {
+                    text_job(
+                        &spans,
+                        TextKind::Paragraph,
+                        align,
+                        -hang,
+                        &style,
+                        &fams,
+                        width,
+                        None,
+                    )
+                    .0
+                };
+                out = Some((
+                    layout_text(ui, job(Align::Left), Align::Left),
+                    layout_text(ui, job(Align::Justify), Align::Justify),
+                ));
+            })
+            .drop_without_applying_deltas();
+        }
+        out.expect("laid out")
+    }
+
+    fn content_right(row: &egui::epaint::text::PlacedRow) -> f32 {
+        let g = row
+            .row
+            .glyphs
+            .iter()
+            .rfind(|g| !g.chr.is_whitespace())
+            .expect("glyph");
+        row.pos.x + g.pos.x + g.advance_width
+    }
+
+    #[test]
+    fn justify_spreads_words_not_letters() {
+        let width = 320.0;
+        let (left, just) = lorem(width, 0.0);
+        assert!(left.rows.len() > 2, "{}", left.rows.len());
+        assert_eq!(left.rows.len(), just.rows.len());
+        let last = just.rows.len() - 1;
+        for (i, (l, j)) in left.rows.iter().zip(&just.rows).enumerate() {
+            assert_eq!(l.row.glyphs.len(), j.row.glyphs.len(), "row {i}");
+            if i < last {
+                // Within egui's pixel snapping of the glyphs.
+                assert!(
+                    (content_right(j) - width).abs() < 1.5,
+                    "row {i} ends at {} of {width}",
+                    content_right(j)
+                );
+            } else {
+                assert!(
+                    (content_right(j) - content_right(l)).abs() < 0.01,
+                    "last row ragged"
+                );
+            }
+            // Inside a word, letters keep their spacing (to within egui's pixel snapping of
+            // each glyph; egui's own justify adds whole pixels between every pair).
+            for (a, b) in l.row.glyphs.windows(2).zip(j.row.glyphs.windows(2)) {
+                if !a[0].chr.is_whitespace() && !a[1].chr.is_whitespace() {
+                    let dl = a[1].pos.x - a[0].pos.x;
+                    let dj = b[1].pos.x - b[0].pos.x;
+                    assert!(
+                        (dl - dj).abs() <= 1.01,
+                        "row {i}: {:?}{:?}",
+                        a[0].chr,
+                        a[1].chr
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn hanging_first_line_starts_left_and_is_wider() {
+        let width = 320.0;
+        let (hung, hung_justified) = lorem(width, 24.0);
+        let first_x = |g: &Galley| g.rows[0].pos.x + g.rows[0].row.glyphs[0].pos.x;
+        let second_x = |g: &Galley| g.rows[1].pos.x + g.rows[1].row.glyphs[0].pos.x;
+        assert!((first_x(&hung) - (second_x(&hung) - 24.0)).abs() < 1.01);
+        // The galley stays column-wide, starting at 0.
+        assert_eq!(hung.rect.min.x, 0.0);
+        // Justified, the hanging line still ends at the column's edge.
+        assert!((content_right(&hung_justified.rows[0]) - width).abs() < 1.5);
+        assert!((first_x(&hung_justified) - first_x(&hung)).abs() < 0.01);
+        // Positions still map through the hanging row.
+        let g = &hung.rows[0].row.glyphs[3];
+        let at = hung.rows[0].pos + g.pos.to_vec2() + egui::vec2(1.0, 2.0);
+        assert_eq!(hung.cursor_from_pos(at.to_vec2()).index.0, 3);
+    }
+
+    /// `cargo test -p marina-richtext --release justify_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn justify_cost() {
+        let ctx = ctx();
+        let paragraphs: Vec<[Span; 1]> = (0..300)
+            .map(|i| {
+                [Span {
+                    text: format!("{i} {LOREM}"),
+                    style: crate::model::Style::default(),
+                    link: None,
+                }]
+            })
+            .collect();
+        for align in [Align::Left, Align::Justify] {
+            let mut took = Duration::ZERO;
+            ctx.run_ui(RawInput::default(), |_| {})
+                .drop_without_applying_deltas();
+            ctx.run_ui(RawInput::default(), |ui| {
+                let style = RichStyle::from_ctx(ui.ctx());
+                let fams = Families::of(ui.ctx());
+                let start = Instant::now();
+                for spans in &paragraphs {
+                    let job = text_job(
+                        spans,
+                        TextKind::Paragraph,
+                        align,
+                        0.0,
+                        &style,
+                        &fams,
+                        520.0,
+                        None,
+                    )
+                    .0;
+                    let _ = layout_text(ui, job, align);
+                }
+                took = start.elapsed();
+            })
+            .drop_without_applying_deltas();
+            println!(
+                "{align:?}: 300 paragraphs in {:.1} ms",
+                took.as_secs_f64() * 1000.0
+            );
+        }
     }
 }

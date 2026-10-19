@@ -351,6 +351,32 @@ impl NoteEditor {
         self.text_rect.is_some_and(|r| r.contains(pos))
     }
 
+    /// The open note's id, caret (anchor, head in characters) and scroll
+    /// offset, for remembering where it was left.
+    pub fn view(&self) -> Option<(&str, usize, usize, egui::Vec2)> {
+        let id = self.id.as_deref()?;
+        let (anchor, head) = self.state.cursor(&self.ctx);
+        Some((id, anchor, head, self.state.scroll_offset()))
+    }
+
+    /// Puts the caret and scroll back where `view` said they were (the note
+    /// must be loaded); offsets past the end are clamped.
+    pub fn restore_view(&mut self, anchor: usize, head: usize, scroll: egui::Vec2) {
+        let n = self.state.text().chars().count();
+        self.state
+            .restore_view(&self.ctx, anchor.min(n), head.min(n), scroll);
+        self.state.focus();
+        self.ctx.request_repaint();
+    }
+
+    /// Opens the editor's Go to line bar (Ctrl+Alt+G, or the palette).
+    pub fn go_to_line(&mut self) {
+        if self.id.is_some() {
+            self.state.open_goto();
+            self.ctx.request_repaint();
+        }
+    }
+
     /// Move the caret to `line` (1-based), scroll it to the top and focus.
     pub fn scroll_to_line(&mut self, line: usize) {
         self.state.scroll_to_line(&self.ctx, line.max(1));

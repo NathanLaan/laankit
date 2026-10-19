@@ -1,13 +1,30 @@
 //! Drives the editor headlessly (egui_kittest): list keys, shortcuts, undo,
 //! IME, `[[` completion, paste and drop hooks, find and replace, and that the
-//! text paints.
+//! text paints. Every test runs on both engines (the core engine and the
+//! `TextEdit` fallback): see `both_engines!` at the end.
 
 use std::sync::Arc;
 
 use egui::{vec2, ColorImage, Event, ImeEvent, Key, Modifiers};
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
-use marina_editor::{Command, Editor, EditorEvent, EditorState};
+use std::cell::Cell;
+
+use marina_editor::{Command, Editor, EditorEvent, EditorState, Engine};
+
+thread_local! {
+    /// The engine the current test runs on.
+    static ENGINE: Cell<Engine> = const { Cell::new(Engine::Core) };
+}
+
+/// An editor on the current test's engine.
+fn new_state(name: &str) -> EditorState {
+    let mut s = EditorState::new(name);
+    let mut prefs = s.prefs();
+    prefs.engine = ENGINE.with(Cell::get);
+    s.set_prefs(prefs);
+    s
+}
 
 struct State {
     editor: EditorState,
@@ -28,7 +45,7 @@ fn harness(text: &str) -> Harness<'static, State> {
                 s.events.extend(out.events);
             },
             State {
-                editor: EditorState::new("test"),
+                editor: new_state("test"),
                 events: Vec::new(),
             },
         );
@@ -94,7 +111,6 @@ fn changed(h: &mut Harness<'static, State>) -> usize {
 
 const CMD: Modifiers = Modifiers::COMMAND;
 
-#[test]
 fn text_paints() {
     let h = harness("# Title\n\nSome **bold** text.");
     // The field is named for screen readers and holds the note.
@@ -107,7 +123,7 @@ fn text_paints() {
     ctx.run_ui(Default::default(), |_| {})
         .textures_delta
         .clear();
-    let mut state = EditorState::new("paint");
+    let mut state = new_state("paint");
     state.set_text(&ctx, "Some **bold** text.");
     let mut out = ctx.run_ui(Default::default(), |ui| {
         Editor::new(&mut state).show(ui);
@@ -120,7 +136,6 @@ fn text_paints() {
     assert!(found, "no text shape painted the note");
 }
 
-#[test]
 fn set_text_is_not_a_user_edit() {
     let mut h = harness("x");
     assert_eq!(changed(&mut h), 0);
@@ -131,7 +146,6 @@ fn set_text_is_not_a_user_edit() {
     assert!(!h.state().editor.can_undo());
 }
 
-#[test]
 fn enter_continues_lists_as_one_undo_step() {
     let mut h = harness("- a");
     cursor_to(&mut h, 3);
@@ -149,7 +163,6 @@ fn enter_continues_lists_as_one_undo_step() {
     assert_eq!(text(&h), "- a\n- b\n");
 }
 
-#[test]
 fn plain_enter_and_backspace_type_normally() {
     let mut h = harness("ab");
     cursor_to(&mut h, 1);
@@ -165,7 +178,6 @@ fn plain_enter_and_backspace_type_normally() {
     assert_eq!(text(&h), "");
 }
 
-#[test]
 fn tab_indents_and_shift_tab_outdents() {
     let mut h = harness("- a\n- b");
     cursor_to(&mut h, 7);
@@ -175,7 +187,6 @@ fn tab_indents_and_shift_tab_outdents() {
     assert_eq!(text(&h), "- a\n- b");
 }
 
-#[test]
 fn typing_groups_into_one_undo_step() {
     let mut h = harness("hello");
     cursor_to(&mut h, 5);
@@ -189,7 +200,6 @@ fn typing_groups_into_one_undo_step() {
     assert_eq!(text(&h), "hello world");
 }
 
-#[test]
 fn emphasis_shortcuts_toggle() {
     let mut h = harness("make bold");
     select(&mut h, 5, 9);
@@ -203,7 +213,6 @@ fn emphasis_shortcuts_toggle() {
     assert_eq!(text(&h), "*make* bold");
 }
 
-#[test]
 fn list_and_arrow_shortcuts_use_physical_keys() {
     let mut h = harness("alpha\nbeta");
     select(&mut h, 0, 10);
@@ -221,7 +230,6 @@ fn list_and_arrow_shortcuts_use_physical_keys() {
     assert!(text(&h).ends_with("→←"));
 }
 
-#[test]
 fn toolbar_commands_run_on_the_next_frame() {
     let mut h = harness("one\ntwo");
     select(&mut h, 0, 7);
@@ -233,7 +241,6 @@ fn toolbar_commands_run_on_the_next_frame() {
     assert_eq!(text(&h), "one\ntwo");
 }
 
-#[test]
 fn brackets_auto_close() {
     let mut h = harness("");
     type_text(&mut h, "(");
@@ -244,7 +251,6 @@ fn brackets_auto_close() {
     assert_eq!(cursor(&h), (3, 3));
 }
 
-#[test]
 fn ime_commit_is_one_step_and_composition_owns_enter() {
     let mut h = harness("- a");
     cursor_to(&mut h, 3);
@@ -288,7 +294,6 @@ fn ime_commit_is_one_step_and_composition_owns_enter() {
     assert_eq!(text(&h), "- a");
 }
 
-#[test]
 fn wikilink_completion() {
     let mut h = harness("");
     h.state_mut().editor.set_link_targets(vec![
@@ -318,7 +323,6 @@ fn wikilink_completion() {
     assert!(text(&h).ends_with(" [[me\n"), "{:?}", text(&h));
 }
 
-#[test]
 fn image_and_file_pastes_go_to_the_host() {
     let mut h = harness("x");
     h.event(Event::PasteImage(Arc::new(ColorImage::filled(
@@ -354,7 +358,6 @@ fn image_and_file_pastes_go_to_the_host() {
     assert!(text(&h).contains("plain"));
 }
 
-#[test]
 fn find_and_replace() {
     let mut h = harness("cat dog cat bird cat");
     key(&mut h, Key::F, CMD);
@@ -387,7 +390,6 @@ fn find_and_replace() {
     assert!(!h.state().editor.find_open());
 }
 
-#[test]
 fn status_and_list_kind() {
     let mut h = harness("# T\n- a\n- b");
     select(&mut h, 4, 11);
@@ -401,7 +403,6 @@ fn status_and_list_kind() {
     );
 }
 
-#[test]
 fn scroll_to_line_moves_the_caret() {
     let doc: String = (1..=300).map(|i| format!("line {i}\n")).collect();
     let mut h = harness(&doc);
@@ -413,3 +414,207 @@ fn scroll_to_line_moves_the_caret() {
     assert_eq!((s.line, s.col), (200, 1));
     assert!(h.state().editor.scroll_offset().y > 1000.0);
 }
+
+fn go_to_line_bar() {
+    let doc: String = (1..=300).map(|i| format!("line {i}\n")).collect();
+    let mut h = harness(&doc);
+    physical(&mut h, Key::G, Key::G, CMD | Modifiers::ALT);
+    assert!(h.state().editor.goto_open());
+    h.run();
+    type_text(&mut h, "120:3");
+    key(&mut h, Key::Enter, Modifiers::NONE);
+    h.run();
+    let ctx = h.ctx.clone();
+    let s = h.state_mut().editor.status(&ctx);
+    assert_eq!((s.line, s.col), (120, 3));
+    assert!(!h.state().editor.goto_open(), "closes after jumping");
+    assert!(
+        h.state().editor.scroll_offset().y > 1000.0,
+        "scrolled to it"
+    );
+
+    // Relative, and a bad input keeps the bar open.
+    h.state_mut().editor.run(Command::GoToLine);
+    h.run();
+    h.run();
+    type_text(&mut h, "+10");
+    key(&mut h, Key::Enter, Modifiers::NONE);
+    h.run();
+    assert_eq!(h.state_mut().editor.status(&ctx).line, 130);
+    h.state_mut().editor.open_goto();
+    h.run();
+    type_text(&mut h, "nope");
+    key(&mut h, Key::Enter, Modifiers::NONE);
+    h.run();
+    assert!(h.state().editor.goto_open());
+    key(&mut h, Key::Escape, Modifiers::NONE);
+    h.run();
+    assert!(!h.state().editor.goto_open());
+}
+
+fn ordered_lists_renumber_after_enter_delete_and_paste() {
+    // Enter in a list (our list edit): one undo step with the renumbering.
+    let mut h = harness("1. a\n2. b\n3. c");
+    cursor_to(&mut h, 4);
+    key(&mut h, Key::Enter, Modifiers::NONE);
+    assert_eq!(text(&h), "1. a\n2. \n3. b\n4. c");
+    key(&mut h, Key::Z, CMD);
+    assert_eq!(text(&h), "1. a\n2. b\n3. c");
+
+    // Deleting a whole item (TextEdit's own Backspace on a selection).
+    let mut h = harness("1. a\n2. b\n3. c\n4. d");
+    select(&mut h, 5, 10);
+    key(&mut h, Key::Backspace, Modifiers::NONE);
+    assert_eq!(text(&h), "1. a\n2. c\n3. d");
+    key(&mut h, Key::Z, CMD);
+    assert_eq!(text(&h), "1. a\n2. b\n3. c\n4. d");
+
+    // Pasting two items.
+    let mut h = harness("1. a\n2. b\n3. c");
+    cursor_to(&mut h, 5);
+    h.event(Event::Paste("2. p\n3. q\n".into()));
+    h.run();
+    assert_eq!(text(&h), "1. a\n2. p\n3. q\n4. b\n5. c");
+
+    // Tab nests an item; the outer list closes the gap.
+    let mut h = harness("1. a\n2. b\n3. c");
+    cursor_to(&mut h, 7);
+    key(&mut h, Key::Tab, Modifiers::NONE);
+    assert_eq!(text(&h), "1. a\n  2. b\n2. c");
+
+    // Plain typing never renumbers.
+    let mut h = harness("1. a\n1. b\n1. c");
+    cursor_to(&mut h, 4);
+    type_text(&mut h, "z");
+    assert_eq!(text(&h), "1. az\n1. b\n1. c");
+}
+
+/// Every filled rect in the frame's shapes.
+fn rect_fills(shapes: &[egui::epaint::ClippedShape]) -> Vec<egui::Color32> {
+    fn walk(shape: &egui::Shape, out: &mut Vec<egui::Color32>) {
+        match shape {
+            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+            egui::Shape::Rect(r) => out.push(r.fill),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for c in shapes {
+        walk(&c.shape, &mut out);
+    }
+    out
+}
+
+/// The index of the first clipped shape holding a filled rect of `fill`,
+/// and of the first holding the note's text.
+fn paint_order(shapes: &[egui::epaint::ClippedShape], fill: egui::Color32) -> (usize, usize) {
+    fn has_fill(shape: &egui::Shape, fill: egui::Color32) -> bool {
+        match shape {
+            egui::Shape::Vec(v) => v.iter().any(|s| has_fill(s, fill)),
+            egui::Shape::Rect(r) => r.fill == fill,
+            _ => false,
+        }
+    }
+    let rect = shapes
+        .iter()
+        .position(|c| has_fill(&c.shape, fill))
+        .unwrap();
+    let text = shapes
+        .iter()
+        .position(|c| matches!(&c.shape, egui::Shape::Text(t) if t.galley.text().contains("call(")))
+        .unwrap();
+    (rect, text)
+}
+
+fn bracket_and_selection_matches_paint() {
+    let ctx = egui::Context::default();
+    marina_egui::fonts::install(&ctx);
+    ctx.run_ui(Default::default(), |_| {})
+        .textures_delta
+        .clear();
+    let colors = marina_editor::EditorColors::from_palette(&marina_egui::theme::palette(&ctx));
+    let mut state = new_state("decor");
+    state.set_text(&ctx, "call(foo) then foo and foo; foo_bar\n(unclosed");
+    // A selection needs the focus (TextEdit collapses it otherwise).
+    state.focus();
+    let frame = |state: &mut EditorState| {
+        let mut out = ctx.run_ui(Default::default(), |ui| {
+            Editor::new(state).show(ui);
+        });
+        out.textures_delta.clear();
+        rect_fills(&out.shapes)
+    };
+    frame(&mut state);
+
+    // Caret before `(`: the pair is marked, over the text (code spans paint
+    // their own background, which would hide a mark behind them).
+    state.set_cursor(&ctx, 4, 4);
+    let fills = frame(&mut state);
+    let mut out = ctx.run_ui(Default::default(), |ui| {
+        Editor::new(&mut state).show(ui);
+    });
+    out.textures_delta.clear();
+    let (rect, text) = paint_order(&out.shapes, colors.bracket_match);
+    assert!(rect > text, "the bracket mark is painted before the text");
+    let count = |fills: &[egui::Color32], c| fills.iter().filter(|f| **f == c).count();
+    assert_eq!(count(&fills, colors.bracket_match), 2, "{fills:?}");
+
+    // An unmatched bracket is marked alone, in red.
+    state.set_cursor(&ctx, 36, 36);
+    let fills = frame(&mut state);
+    assert_eq!(count(&fills, colors.bracket_unmatched), 1, "{fills:?}");
+
+    // Selecting `foo` (a whole word) marks the other whole-word `foo` only:
+    // not the selection itself, and not `foo_bar`.
+    state.set_cursor(&ctx, 5, 8);
+    frame(&mut state);
+    let fills = frame(&mut state);
+    assert_eq!(count(&fills, colors.selection_match), 2, "{fills:?}");
+    assert_eq!(count(&fills, colors.bracket_match), 0);
+}
+
+/// Runs each listed test once per engine.
+macro_rules! both_engines {
+    ($($name:ident),* $(,)?) => {
+        mod core_engine {
+            $(
+                #[test]
+                fn $name() {
+                    super::ENGINE.with(|e| e.set(marina_editor::Engine::Core));
+                    super::$name();
+                }
+            )*
+        }
+        mod textedit_engine {
+            $(
+                #[test]
+                fn $name() {
+                    super::ENGINE.with(|e| e.set(marina_editor::Engine::TextEdit));
+                    super::$name();
+                }
+            )*
+        }
+    };
+}
+
+both_engines!(
+    text_paints,
+    set_text_is_not_a_user_edit,
+    enter_continues_lists_as_one_undo_step,
+    plain_enter_and_backspace_type_normally,
+    tab_indents_and_shift_tab_outdents,
+    typing_groups_into_one_undo_step,
+    emphasis_shortcuts_toggle,
+    list_and_arrow_shortcuts_use_physical_keys,
+    toolbar_commands_run_on_the_next_frame,
+    brackets_auto_close,
+    ime_commit_is_one_step_and_composition_owns_enter,
+    wikilink_completion,
+    image_and_file_pastes_go_to_the_host,
+    find_and_replace,
+    status_and_list_kind,
+    scroll_to_line_moves_the_caret,
+    go_to_line_bar,
+    ordered_lists_renumber_after_enter_delete_and_paste,
+    bracket_and_selection_matches_paint,
+);

@@ -18,7 +18,13 @@ scraper = "0.27"
 url = "2"
 percent-encoding = "2"
 regex = "1"
+# Inline `<svg>`: rasterized on a worker thread (`svg`). Same version egui_extras uses.
+resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts", "raster-images"] }
 
 [dev-dependencies]
+# The HTML the NoteLiner preview renders (comrak with its options), for conversion tests.
+noteliner-core = { path = "../noteliner-core" }
+# The `preview` example's window.
+eframe.workspace = true
 egui_kittest.workspace = true
 serde_json.workspace = true

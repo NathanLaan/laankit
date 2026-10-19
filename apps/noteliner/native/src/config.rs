@@ -224,8 +224,26 @@ pub struct Layout {
     #[serde(serialize_with = "js_number")]
     pub backlinks_height: f32,
     pub pane_order: Vec<String>,
+    /// The note that was open and where its caret and scroll were (native
+    /// only): reopened there with the project. Only one note is remembered.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_file_position: Option<LastFilePosition>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// `lastFilePosition` in the layout: the open note's id, its caret (anchor
+/// and head, in characters) and the editor's scroll offset.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LastFilePosition {
+    pub file_id: String,
+    pub anchor: usize,
+    pub cursor: usize,
+    #[serde(serialize_with = "js_number")]
+    pub scroll_x: f32,
+    #[serde(serialize_with = "js_number")]
+    pub scroll: f32,
 }
 
 impl Default for Layout {
@@ -254,6 +272,7 @@ impl Default for Layout {
             search_height: 200.0,
             backlinks_height: 180.0,
             pane_order: PANE_KEYS.iter().map(|k| k.to_string()).collect(),
+            last_file_position: None,
             extra: Map::new(),
         }
     }

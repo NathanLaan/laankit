@@ -144,11 +144,12 @@ apps/
 
 ### Phase 0 — Spikes and decision (~2–3 weeks)
 
-Each spike is a throwaway crate in `apps/spikes/<name>` with a
-`RESULTS.md`. The phases below depend on them. Shared helpers (the eframe
-launcher, `MARINA_SCREENSHOT`, timing stats) are in
-`apps/spikes/common`. Measure with `--profile spike`: release
-optimisation without the slow LTO build.
+Each spike was a throwaway crate in `apps/spikes/<name>` with a
+`RESULTS.md`; the phases below depend on them. Shared helpers (the eframe
+launcher, `MARINA_SCREENSHOT`, timing stats) were in `apps/spikes/common`.
+Measurements used a release profile without the slow LTO build (now
+`--profile fast-release`). The spike crates were removed on 2026-10-18 once
+promoted; their results are kept in `docs/plans/spikes/`.
 
 1. **Editor.** A 5,000-line Markdown file in `TextEdit` with a highlighting
    layouter. Pass if typing latency stays under 16 ms, IME works on Wayland
@@ -177,8 +178,8 @@ feature handed off to another build.
 #### Phase 0 results (2026-10-17)
 
 All five spikes passed. Details, numbers and how to reproduce them are in
-each `apps/spikes/<name>/RESULTS.md`. Measured on Linux only; the CI
-`spikes` job builds and tests them on Windows and macOS.
+`docs/plans/spikes/<name>.md` (the spike crates themselves were removed on
+2026-10-18). Measured on Linux only.
 
 | Spike | Result | Key numbers | Carries into |
 |---|---|---|---|
@@ -575,6 +576,11 @@ formats, so this mainly checks UI flows.
 - **Option B (GTK4/libadwaita) is dropped.** Option C replaces it.
 - **EPUB reading positions and highlights are reset** when PageLiner moves
   to the native reader. No CFI conversion is attempted.
+- **The Phase 0 spike crates were removed (2026-10-18)** after being
+  promoted into `crates/` and the native apps. Their results are kept in
+  `docs/plans/spikes/`, and the `spike` build profile is now `fast-release`.
+- **Remaining editor, slides and rich-text gaps** are analysed and planned in
+  [plan-editor-slides-richtext.md](plan-editor-slides-richtext.md).
 
 ## Rough total
 

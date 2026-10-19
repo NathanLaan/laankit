@@ -15,6 +15,7 @@ marina-egui.workspace = true
 marina-richtext.workspace = true
 log.workspace = true
 comrak = { version = "0.39", default-features = false }
+chrono.workspace = true
 
 [dev-dependencies]
 eframe.workspace = true

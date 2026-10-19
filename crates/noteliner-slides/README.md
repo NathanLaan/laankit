@@ -97,20 +97,41 @@ current Markdown and `Deck` every frame and return actions.
 | Layouts: hero, title-body, split, grid, full-bleed, quote, table | Done    | Sizes and gaps from `Slide.svelte`'s CSS |
 | Header/footer bands with `{{page}}`, `{{total}}`, host vars; slide numbers | Done | A bare `header` flag prints `true`, as the JS does |
 | `bg=` directive                                                | Done      | Hex, `rgb()`/`rgba()`, `transparent`, SVG names; gradients ignored |
-| `class=` directive                                             | Not yet   | There are no slide CSS classes to apply; kept in `directives` |
+| `class=` directive                                             | Done      | `theme-light`/`theme-dark` and `layout-<id>` override the slide's theme and layout (the only class names `Slide.svelte`'s CSS styled); others ignored |
 | Inline Markdown: bold, italic, code, links, strikethrough      | Done      | comrak → `marina-richtext` blocks |
-| Lists, quotes, code blocks (wrapped), tables                   | Done      | Table column alignment (`:-:`) not applied |
-| Images: contain at natural size; full-bleed cover              | Done      | Rounded image corners not drawn |
+| Lists, quotes, code blocks (wrapped), tables                   | Done      | Including column alignment (`:-:`, `--:`) from the cells' `align` |
+| Task lists (`- [ ]` / `- [x]`)                                 | Done      | Drawn boxes, filled with a tick when checked, in the slide theme's colours |
+| Images: contain at natural size; full-bleed cover              | Done      | 8 px corners as `img { border-radius: 8px }`; square on full-bleed slides; inline `<svg>` via marina-richtext |
 | Video: YouTube/remote link card                                | Done      | |
-| Video: local files play inline                                 | Not yet   | Shown as the link card |
-| Math (`$$`) blocks                                             | Same      | Shown as text, as `marked` does |
-| `<mark>` highlight                                             | Not yet   | |
+| Video: local files play inline                                 | Out of scope | Shown as the link card (decided 2026-10-18) |
+| Math (`$…$`, `$$…$$`, ```` ```math ````)                         | Native addition | Typeset by the app's math renderer (NoteLiner: Typst), tinted in the slide theme's text colour; source as code without one (`marked` showed text) |
+| `<mark>` highlight                                             | Done      | `background: var(--slide-accent); color: var(--slide-bg)`, as `Slide.svelte` |
+| `<kbd>` key caps                                               | Native addition | Code background with a muted outline (the Svelte slides used the browser default) |
 | SLIDES pane: thumbnails, active row, jump, notes icon, layout tag, empty states, notes-only count | Done | |
 | SLIDES pane: rename (double-click or menu), drag to reorder, context menu (every item) | Done | |
 | Deck preview: scaled slides, number rail, notes below, follows the caret, click to jump | Done | |
 | Presentation Settings dialog                                   | Done      | Levels 4–6 from frontmatter are shown as "custom" |
 | Full-screen presenter                                          | Native addition | Keys, click to advance, S for notes, counter |
-| Presenter in a separate window / speaker view                  | Not yet   | Not in the Svelte build either |
+| Speaker view in a second window                                | Native addition | `Presenter::with_speaker_view(true)`: current and next slide, notes (rendered, with math), timer (T / R), clock; keys work in both windows; "Swap displays" (X); see below |
+
+## Speaker view
+
+`Presenter::new(start).with_speaker_view(true)` adds a second native window (an egui *immediate*
+viewport, drawn from the same `Presenter` in the same frame, so both windows always show the same
+slide without shared state behind locks). It shows the current slide, the next slide (or "End of
+presentation"), the current slide's notes as rendered Markdown, an elapsed timer (starts with the
+presentation; T pauses or resumes, R resets) and the clock, with Previous/Next/Swap/End buttons.
+Every navigation key works in either window; Escape in either ends.
+
+egui can't list monitors or tell which one a window is on, so the audience window goes full
+screen where it is and the speaker window opens beside it as a normal window. Drag it to the
+presenter's screen, or press **X** ("Swap displays") to move the full-screen audience window to the
+speaker window's monitor and the speaker window to the audience window's old place (needs window
+positions, which Wayland doesn't report: there it does nothing). Ending restores the main
+window's position and full-screen state; closing the speaker window keeps presenting. Without
+multi-viewport support (tests, or a backend without it) the speaker view is a panel over the
+audience view. Every viewport command sent is in `Presenter::commands_sent()`, which the tests
+check. Tests: `tests/speaker.rs` (headless) and the presenter unit tests.
 
 ## Tests
 

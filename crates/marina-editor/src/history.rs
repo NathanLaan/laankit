@@ -167,18 +167,12 @@ fn diff<'a>(old: &'a str, new: &'a str) -> Option<(usize, &'a str, &'a str)> {
         return None;
     }
     let (o, n) = (old.as_bytes(), new.as_bytes());
-    let mut p = o.iter().zip(n).take_while(|(a, b)| a == b).count();
+    let mut p = crate::fastcmp::common_prefix(o, n);
     while !old.is_char_boundary(p) || !new.is_char_boundary(p) {
         p -= 1;
     }
     let max_s = o.len().min(n.len()) - p;
-    let mut s = o
-        .iter()
-        .rev()
-        .zip(n.iter().rev())
-        .take(max_s)
-        .take_while(|(a, b)| a == b)
-        .count();
+    let mut s = crate::fastcmp::common_suffix(o, n, max_s);
     while !old.is_char_boundary(o.len() - s) || !new.is_char_boundary(n.len() - s) {
         s -= 1;
     }
