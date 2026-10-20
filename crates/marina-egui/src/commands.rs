@@ -608,6 +608,26 @@ mod tests {
         assert_eq!(fuzzy_score("New File", "xyz"), 0);
     }
 
+    /// A `file://` URL for `p` that Node's ESM `import` accepts on every
+    /// platform: `file:///home/…` on Unix, `file:///C:/…` on Windows (without the
+    /// `\\?\` prefix `canonicalize` adds there).
+    fn file_url(p: &std::path::Path) -> String {
+        let abs = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+        let mut s = abs.to_string_lossy().replace('\\', "/");
+        if let Some(rest) = s.strip_prefix("//?/") {
+            s = rest.to_string();
+        }
+        let s = s
+            .replace('%', "%25")
+            .replace(' ', "%20")
+            .replace('#', "%23");
+        if s.starts_with('/') {
+            format!("file://{s}")
+        } else {
+            format!("file:///{s}")
+        }
+    }
+
     /// Scores a few hundred generated pairs with both `fuzzy.js` (through
     /// Node) and [`fuzzy_score`]. Skipped when Node or the JS source isn't
     /// available.
@@ -633,7 +653,7 @@ mod tests {
             "import {{ fuzzyScore }} from {js:?};\n\
              const pairs = JSON.parse(process.argv[1]);\n\
              console.log(JSON.stringify(pairs.map(([t, p]) => fuzzyScore(t, p))));",
-            js = format!("file://{}", js.canonicalize().unwrap().display()),
+            js = file_url(&js),
         );
         let out = std::process::Command::new("node")
             .args([

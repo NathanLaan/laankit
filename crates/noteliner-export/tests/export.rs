@@ -222,11 +222,11 @@ fn cjk_and_emoji_fall_back_to_system_fonts() {
             })
             .collect()
     };
-    let has_cjk_font = std::process::Command::new("fc-list")
-        .args([":lang=ja", "family"])
-        .output()
-        .map(|o| !o.stdout.is_empty())
-        .unwrap_or(true);
+    // Whether the fallback can find a CJK font at all, asked of the same scan
+    // the exporter uses (not `fc-list`, which only exists on Linux: Windows
+    // and macOS runners may have no CJK font Typst can reach).
+    let has_cjk_font =
+        typst_kit::fonts::system().any(|(_, info)| info.coverage.contains('日' as u32));
     if has_cjk_font {
         // With the fallback a system font is embedded that the bundled-only PDF lacks. (Without
         // it, Typst draws the missing glyphs' boxes with one of the bundled faces, so counting

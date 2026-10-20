@@ -5,7 +5,7 @@
 //! Skipped when `node` isn't on the PATH.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use noteliner_slides::deck::parse_deck;
@@ -150,11 +150,49 @@ fn node_available() -> bool {
     Command::new("node").arg("--version").output().is_ok()
 }
 
+/// A `file://` URL for `p` that Node's ESM `import` accepts on every
+/// platform: `file:///home/…` on Unix, `file:///C:/…` on Windows (without the
+/// `\\?\` prefix `canonicalize` adds there).
+fn file_url(p: &std::path::Path) -> String {
+    let abs = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let mut s = abs.to_string_lossy().replace('\\', "/");
+    if let Some(rest) = s.strip_prefix("//?/") {
+        s = rest.to_string();
+    }
+    let s = s
+        .replace('%', "%25")
+        .replace(' ', "%20")
+        .replace('#', "%23");
+    if s.starts_with('/') {
+        format!("file://{s}")
+    } else {
+        format!("file:///{s}")
+    }
+}
+
+#[test]
+fn file_urls_work_for_node_on_every_platform() {
+    // Windows paths (as `canonicalize` returns them there) and plain ones; on
+    // Linux these don't exist, so only the string handling runs.
+    assert_eq!(
+        file_url(Path::new(r"\\?\D:\a\m\x.js")),
+        "file:///D:/a/m/x.js"
+    );
+    assert_eq!(
+        file_url(Path::new(r"C:\Program Files\x.js")),
+        "file:///C:/Program%20Files/x.js"
+    );
+    assert_eq!(
+        file_url(Path::new("/no/such/dir/a#b.js")),
+        "file:///no/such/dir/a%23b.js"
+    );
+}
+
 /// Runs `cases` through the JS originals; one JSON result per case.
 fn run_js(cases: &[Value]) -> Vec<Value> {
     let script = format!(
-        r#"import * as S from "file://{slides}";
-import * as E from "file://{edits}";
+        r#"import * as S from "{slides}";
+import * as E from "{edits}";
 let input = "";
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (d) => (input += d));
@@ -180,8 +218,8 @@ process.stdin.on("end", () => {{
   process.stdout.write(JSON.stringify(out));
 }});
 "#,
-        slides = js_lib("slides.js").display(),
-        edits = js_lib("slideEdits.js").display(),
+        slides = file_url(&js_lib("slides.js")),
+        edits = file_url(&js_lib("slideEdits.js")),
     );
     let mut child = Command::new("node")
         .args(["--input-type=module", "-e", &script])

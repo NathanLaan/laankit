@@ -38,6 +38,7 @@ NoteLiner are the default builds (version 2.2.5).
 | Remove the TextEdit fallback engine | NoteLiner (`marina-editor`) | One release after the IME and screen-reader checks (section 4) pass. Removes `MARINA_EDITOR_ENGINE=textedit`. | Medium |
 | Shift+arrow selection in rich text | All three (`marina-richtext`) | Needs a keyboard caret in `RichView`. | Medium |
 | More code-fence languages (TypeScript, TOML, Svelte, PowerShell) | NoteLiner | Not in syntect's bundled set; a larger set (e.g. `two-face`) was deferred by decision. | Low |
+| Editor font choice | NoteLiner | Planned in [plan-editor-font.md](plan-editor-font.md) (draft for review). | Medium |
 | Help in its own window | ThreadLiner | Currently a dialog. | Low |
 | Sync status after a failed Sync Now | PageLiner | Only the error is shown today. | Low |
 | EPUB paging keys while a dialog is open | PageLiner | Arrow keys may still turn pages when the dialog has no text field (untested). | Low |

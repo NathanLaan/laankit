@@ -420,7 +420,10 @@ mod tests {
     /// docs), so `->` and `-->` stay as typed. A font update must redo that.
     #[test]
     fn inter_has_no_contextual_arrows() {
-        for (name, bytes) in bundled_faces().iter().filter(|(n, _)| n.starts_with("Inter")) {
+        for (name, bytes) in bundled_faces()
+            .iter()
+            .filter(|(n, _)| n.starts_with("Inter"))
+        {
             assert!(
                 !bytes.windows(4).any(|w| w == b"calt"),
                 "{name} still has a `calt` feature"

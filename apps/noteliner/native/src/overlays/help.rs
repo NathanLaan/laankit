@@ -236,7 +236,11 @@ mod tests {
 
     fn url_path(p: &std::path::Path) -> String {
         let abs = p.canonicalize().unwrap_or(p.to_path_buf());
-        let s = abs.display().to_string().replace('\\', "/");
+        let mut s = abs.display().to_string().replace('\\', "/");
+        // `canonicalize` adds `\\?\` on Windows, which isn't a valid URL path.
+        if let Some(rest) = s.strip_prefix("//?/") {
+            s = rest.to_string();
+        }
         if s.starts_with('/') {
             format!("file://{s}")
         } else {
