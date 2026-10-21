@@ -338,3 +338,85 @@ fn large_notes_keep_galleys_bounded() {
     type_text(&mut h, "x");
     assert!(text(&h).contains("xline 19990 with"));
 }
+
+fn copied(h: &Harness<'static, State>, want: &str) -> bool {
+    h.output()
+        .platform_output
+        .commands
+        .iter()
+        .any(|c| matches!(c, egui::OutputCommand::CopyText(t) if t == want))
+}
+
+/// An input method that switches off without a final commit (a dead key or
+/// compose sequence abandoned, the IME turned off) must not leave the
+/// composition open: that swallowed every later copy, paste and key until the
+/// app restarted.
+#[test]
+fn a_composition_ended_without_commit_does_not_block_input() {
+    let mut h = harness("ab");
+    cursor_to(&mut h, 2, 2);
+    h.event(Event::Ime(egui::ImeEvent::Preedit {
+        text: "´".into(),
+        active_range_chars: None,
+    }));
+    h.run();
+    #[allow(deprecated)]
+    h.event(Event::Ime(egui::ImeEvent::Disabled));
+    h.run();
+    // The composed text is kept, and ordinary input works again.
+    assert_eq!(text(&h), "ab´");
+    type_text(&mut h, "c");
+    assert_eq!(text(&h), "ab´c");
+    cursor_to(&mut h, 0, 4);
+    h.event(Event::Copy);
+    h.step();
+    assert!(
+        copied(&h, "ab´c"),
+        "{:?}",
+        h.output().platform_output.commands
+    );
+}
+
+#[test]
+fn copy_works_during_a_composition() {
+    let mut h = harness("hello");
+    cursor_to(&mut h, 0, 2);
+    // A composition in progress, then Ctrl+C: the selection being composed
+    // over is replaced by the preedit, so copy what's selected now.
+    h.event(Event::Ime(egui::ImeEvent::Preedit {
+        text: "x".into(),
+        active_range_chars: None,
+    }));
+    h.run();
+    let ctx = h.ctx.clone();
+    h.state_mut().editor.set_cursor(&ctx, 1, 3);
+    h.run();
+    h.event(Event::Copy);
+    h.step();
+    assert!(
+        copied(&h, "ll"),
+        "{} {:?}",
+        text(&h),
+        h.output().platform_output.commands
+    );
+}
+
+#[test]
+fn losing_focus_mid_composition_keeps_the_text_and_unblocks_input() {
+    let mut h = harness("ab");
+    cursor_to(&mut h, 2, 2);
+    h.event(Event::Ime(egui::ImeEvent::Preedit {
+        text: "ü".into(),
+        active_range_chars: None,
+    }));
+    h.run();
+    let ctx = h.ctx.clone();
+    // Something else takes the keyboard (a search field, the palette).
+    ctx.memory_mut(|m| m.request_focus(egui::Id::unique("elsewhere")));
+    h.run();
+    h.state_mut().editor.focus();
+    h.run();
+    assert_eq!(text(&h), "abü");
+    type_text(&mut h, "!");
+    assert_eq!(text(&h), "abü!");
+}

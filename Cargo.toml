@@ -32,7 +32,11 @@ tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
 # Option C (pure Rust, egui). See docs/plans/plan-native-rust-egui.md.
-eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit", "wayland", "x11", "persistence"] }
+# Default features are off (to use glow instead of wgpu), so everything else the
+# apps need is listed: `clipboard` (the system clipboard; without it egui keeps a
+# private in-process clipboard, so copies never reach other apps) and `links`
+# (`ctx.open_url` opens the browser; without it, it does nothing).
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit", "wayland", "x11", "persistence", "clipboard", "links"] }
 egui = "0.37"
 egui_extras = { version = "0.37", default-features = false, features = ["image"] }
 egui_kittest = "0.37"

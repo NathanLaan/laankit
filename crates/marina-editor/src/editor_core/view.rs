@@ -341,6 +341,11 @@ impl EditorState {
         let text_clip = Rect::from_min_max(pos2(clip.left() + lay.gutter, clip.top()), clip.max);
 
         let focused = ctx.memory(|m| m.has_focus(self.id));
+        // Focus moved away mid-composition: keep what was composed, as browsers
+        // do, rather than leave a composition open that swallows later input.
+        if !focused && self.core.ime.is_some() {
+            self.end_composition(time, events);
+        }
         if focused {
             ctx.memory_mut(|m| {
                 m.set_focus_lock_filter(
@@ -660,14 +665,15 @@ impl EditorState {
         for e in input {
             match e {
                 Event::Ime(ime) => self.core_ime(ime, time, events),
+                // Copying doesn't change the text, so it works mid-composition too.
+                Event::Copy => {
+                    self.copy(ui);
+                }
                 _ if self.core.ime.is_some() => {}
                 Event::Text(t) => {
                     if !t.chars().any(char::is_control) {
                         self.insert_all(&t, true, false, time, events);
                     }
-                }
-                Event::Copy => {
-                    self.copy(ui);
                 }
                 Event::Cut => {
                     if self.copy(ui) {
@@ -782,9 +788,31 @@ impl EditorState {
                 let ranges: Vec<Range<usize>> = std::iter::once(from..to).collect();
                 self.replace(ranges, vec![String::new()], false, false, time, events);
             }
+            // The input method was switched off (or never sent a final
+            // commit): keep the composed text, so the composition can't stay
+            // open and swallow every later key, copy and paste.
             #[allow(deprecated)]
-            egui::ImeEvent::Enabled | egui::ImeEvent::Disabled => {}
+            egui::ImeEvent::Disabled => self.end_composition(time, events),
+            #[allow(deprecated)]
+            egui::ImeEvent::Enabled => {}
         }
+    }
+
+    /// Ends an open composition, keeping its text as typed (one undo step).
+    fn end_composition(&mut self, time: f64, events: &mut Vec<EditorEvent>) {
+        let Some((at, n)) = self.core.ime.take() else {
+            return;
+        };
+        self.composing = false;
+        let new_text = self.text.clone();
+        self.commit(
+            new_text,
+            Selections::single(Sel::caret(at + n)),
+            false,
+            false,
+            time,
+            events,
+        );
     }
 
     /// Removes the preedit text (or the primary selection); returns where it was.
