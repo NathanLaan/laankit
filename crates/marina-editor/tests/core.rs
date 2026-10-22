@@ -287,7 +287,14 @@ fn double_and_triple_click_select_word_and_line() {
     click(&mut h, p, Modifiers::NONE);
     assert_eq!(sels(&h), vec![(6, 10)]);
     click(&mut h, p, Modifiers::NONE);
-    assert_eq!(sels(&h), vec![(0, 17)], "the line and its newline");
+    assert_eq!(sels(&h), vec![(0, 16)], "the line without its line break");
+    // The last line (no line break after it) selects to the end.
+    let q = at(&mut h, 19);
+    h.run_steps(30);
+    click(&mut h, q, Modifiers::NONE);
+    click(&mut h, q, Modifiers::NONE);
+    click(&mut h, q, Modifiers::NONE);
+    assert_eq!(sels(&h), vec![(17, 21)]);
     // A drag selects from the press to the pointer.
     let (a, b) = (at(&mut h, 1), at(&mut h, 18));
     h.run_steps(30);
@@ -298,6 +305,13 @@ fn double_and_triple_click_select_word_and_line() {
     }
     press(&mut h, b, Modifiers::NONE, false);
     assert_eq!(sels(&h), vec![(1, 18)]);
+    // Windows line endings: neither the `\r` nor the `\n` is selected.
+    let mut h = harness("first\r\nsecond");
+    let p = at(&mut h, 2);
+    click(&mut h, p, Modifiers::NONE);
+    click(&mut h, p, Modifiers::NONE);
+    click(&mut h, p, Modifiers::NONE);
+    assert_eq!(sels(&h), vec![(0, 5)]);
 }
 
 #[test]

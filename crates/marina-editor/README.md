@@ -200,7 +200,7 @@ for event in out.events { /* see the contract below */ }
 | Ctrl/Cmd+A, Home / End, Ctrl+Home / End, Ctrl+←/→ (Alt on macOS), Page Up / Down | Select all; smart Home; document start/end; by word; by page (core engine; `TextEdit` has its own) |
 | `(`, `[`, `{`, `"`, `'`                  | Auto-close, wrap a selection, step over a closer (`closeBrackets`)         |
 | ↑ ↓ Enter Tab Escape (completion open)   | Choose, accept, dismiss                                                    |
-| Triple-click                             | Select the line                                                            |
+| Triple-click                             | Select the line, without its line break                                    |
 
 ## Parity with `Editor.svelte` (CodeMirror `basicSetup`)
 

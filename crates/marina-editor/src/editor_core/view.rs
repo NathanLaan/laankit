@@ -1155,9 +1155,18 @@ impl EditorState {
         }
         if response.triple_clicked() && !mods.command {
             if let Some(c) = at {
+                // The line's text only, not its line break, so copying or
+                // typing over it leaves the following line where it was.
                 let (line, _) = self.line_col(c);
                 let chars = self.line_chars(line);
-                let end = (chars.end + 1).min(self.chars_len());
+                // Notes saved with Windows line endings keep their `\r`.
+                let end = if chars.end > chars.start
+                    && self.text[self.char_to_byte(chars.end - 1)..].starts_with('\r')
+                {
+                    chars.end - 1
+                } else {
+                    chars.end
+                };
                 self.core.sel = Selections::single(Sel::new(chars.start, end));
             }
         }
