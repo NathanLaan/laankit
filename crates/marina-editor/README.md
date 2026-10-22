@@ -184,7 +184,7 @@ for event in out.events { /* see the contract below */ }
 
 | Keys                                     | Action                                                                     |
 |------------------------------------------|----------------------------------------------------------------------------|
-| Enter                                    | Continue a list item, task or quote; end the list on an empty item (`insertNewlineContinueMarkup`); renumber the ordered items after it |
+| Enter                                    | Continue a list item, task or quote; Enter twice on an empty item ends the list (or quote) and starts a new line after a blank one; an empty nested item moves out one level; renumber the ordered items after it |
 | Backspace after `- `, `1. `, `- [ ] `, `> ` | Remove that markup (`deleteMarkupBackward`); between `()` deletes the pair |
 | Tab / Shift+Tab                          | Indent / outdent the selected lines by 2 spaces (`indentWithTab`)          |
 | Ctrl/Cmd+Shift+7 / 8                     | Ordered / unordered list (physical keys, as `event.code`)                  |

@@ -156,11 +156,13 @@ fn enter_continues_lists_as_one_undo_step() {
     type_text(&mut h, "b");
     key(&mut h, Key::Enter, Modifiers::NONE);
     key(&mut h, Key::Enter, Modifiers::NONE);
-    assert_eq!(text(&h), "- a\n- b\n");
+    // Enter twice ends the list: a blank line, and the caret on a new line.
+    assert_eq!(text(&h), "- a\n- b\n\n");
+    assert_eq!(cursor(&h), (9, 9));
     key(&mut h, Key::Z, CMD);
     assert_eq!(text(&h), "- a\n- b\n- ");
     key(&mut h, Key::Z, CMD | Modifiers::SHIFT);
-    assert_eq!(text(&h), "- a\n- b\n");
+    assert_eq!(text(&h), "- a\n- b\n\n");
 }
 
 fn plain_enter_and_backspace_type_normally() {

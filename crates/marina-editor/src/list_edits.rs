@@ -280,7 +280,10 @@ pub fn line_of(text: &str, b: usize) -> (usize, usize) {
 }
 
 /// Enter: continue a list item or blockquote, or end the list on an empty
-/// item. `None` means "not ours, insert a plain newline".
+/// item: Enter twice in a row ends the list (or quote) and starts a new line
+/// after a blank one, so the next paragraph isn't read as part of the last
+/// item. An empty nested item moves out one level instead. `None` means "not
+/// ours, insert a plain newline".
 pub fn enter_in_text(text: &str, cursor: usize) -> Option<DocEdit> {
     let b = byte_at(text, cursor);
     let (_, start) = line_of(text, b);
@@ -313,7 +316,8 @@ pub fn enter_in_text(text: &str, cursor: usize) -> Option<DocEdit> {
     }
     let content = line[content_start.min(line.len())..].trim();
 
-    // Empty item: end the list (or outdent a nested item one level).
+    // Empty item: end the list with a blank line (or outdent a nested item
+    // one level).
     if content.is_empty() && col >= line.trim_end().len() {
         let replacement = match &item {
             Some(it) if !it.indent.is_empty() => {
@@ -332,7 +336,9 @@ pub fn enter_in_text(text: &str, cursor: usize) -> Option<DocEdit> {
                     .unwrap_or("");
                 format!("{quote}{parent_indent}{} ", it.marker)
             }
-            _ => String::new(),
+            // The empty item's line becomes the blank line; the caret goes to
+            // the new line after it.
+            _ => "\n".to_string(),
         };
         let new = format!("{}{}{}", &text[..start], replacement, &text[end..]);
         let cursor = chars_in(&text[..start]) + chars_in(&replacement);
@@ -779,10 +785,14 @@ mod tests {
 
     #[test]
     fn enter_on_empty_item_ends_or_outdents() {
-        assert_eq!(enter("- a\n- |"), "- a\n|");
-        assert_eq!(enter("- a\n- [ ] |"), "- a\n|");
+        // Enter twice ends the list: a blank line, then the caret on a new one.
+        assert_eq!(enter("- a\n- |"), "- a\n\n|");
+        assert_eq!(enter("1. a\n2. |"), "1. a\n\n|");
+        assert_eq!(enter("- a\n- [ ] |"), "- a\n\n|");
+        assert_eq!(enter("- a\n- |\nnext"), "- a\n\n|\nnext");
+        // A nested empty item moves out one level instead.
         assert_eq!(enter("- a\n  - b\n  - |"), "- a\n  - b\n- |");
-        assert_eq!(enter("> a\n> |"), "> a\n|");
+        assert_eq!(enter("> a\n> |"), "> a\n\n|");
         assert_eq!(enter("- |abc"), "- \n- |abc");
     }
 
