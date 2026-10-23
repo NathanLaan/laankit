@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "apps/pageliner/src-tauri", "apps/threadliner/src-tauri", "apps/noteliner/src-tauri", "apps/threadliner/native", "apps/pageliner/native", "apps/noteliner/native", "xtask"]
+members = ["crates/*", "apps/threadliner/native", "apps/pageliner/native", "apps/noteliner/native", "xtask"]
 
 [workspace.package]
 edition = "2021"
@@ -9,7 +9,6 @@ rust-version = "1.92"
 
 [workspace.dependencies]
 marina-core = { path = "crates/marina-core" }
-marina-tauri = { path = "crates/marina-tauri" }
 marina-egui = { path = "crates/marina-egui" }
 marina-editor = { path = "crates/marina-editor" }
 marina-richtext = { path = "crates/marina-richtext" }
@@ -25,13 +24,7 @@ tokio = { version = "1", features = ["process", "time", "fs", "sync", "macros", 
 uuid = { version = "1", features = ["v4"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "deflate", "json"] }
 semver = "1"
-tauri = { version = "2", features = [] }
-tauri-build = { version = "2", features = [] }
-tauri-plugin-dialog = "2"
-tauri-plugin-opener = "2"
-tauri-plugin-single-instance = "2"
-tauri-plugin-notification = "2"
-# Option C (pure Rust, egui). See docs/plans/plan-native-rust-egui.md.
+# Pure Rust, egui. See docs/plans/plan-native-rust-egui.md.
 # Default features are off (to use glow instead of wgpu), so everything else the
 # apps need is listed: `clipboard` (the system clipboard; without it egui keeps a
 # private in-process clipboard, so copies never reach other apps) and `links`

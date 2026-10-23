@@ -63,9 +63,8 @@ work as in every Marina app (see `marina_egui::diagnostics`). Also:
 | `MARINA_FILE`     | Then select the nth note in display order, or the note with this name                     |
 | `MARINA_OPEN`     | Then open `settings[:ui\|mcp\|shortcuts]`, `sync`, `about`, `help`, `palette`, `new-file`, `new-project`, `project-settings`, `move`, `preview`, `slides`, `presentation-settings`, `present`, `log`, `search:<query>`, `tags`, `backlinks`, `history`, `attachments`, `tag-filter`, `tag-editor`, `mcp-walkthrough` or `mcp-confirm` (a sample request) |
 
-The Help pages are `assets/help-pages.json`, generated from the Svelte build's
-`lib/helpContent.js`: run `node apps/noteliner/native/scripts/gen-help.mjs` after editing it (a
-test fails when the file is stale).
+The Help pages are `assets/help-pages.json` (loaded at build time with `include_str!`); edit that
+file to change the in-app Help.
 
 ## Architecture
 

@@ -1,288 +1,103 @@
 # NoteLiner
 
-NoteLiner is a single-user outliner-style note-taking application, built with Electron and Svelte 5. It allows users to create and organize files in a hierarchical structure. Each file is written in Markdown with syntax highlighting, and all changes are automatically synced via Git.
+NoteLiner is a single-user, outliner-style note-taking app: a hierarchical tree
+of Markdown notes with syntax highlighting, live preview, tags, wikilinks,
+backlinks, slides and PDF export, where every change is committed to git and
+pushed to an optional remote for cross-device sync.
 
-NoteLiner should be considered BETA software. I wrote it for my own personal use, and it meets my specific needs.
+It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) over
+the shared `marina-*` crates — no webview, no JavaScript. The shipped binary is
+`noteliner`.
+
+> **BETA software.** Written for personal use; it meets specific needs and may
+> not meet yours.
+
+- **Run, build, install:** see the [root README](../../README.md).
+- **The native app in depth** (running, diagnostics, architecture, feature
+  parity, editor, slides, spell check, PDF export): see
+  [`native/README.md`](native/README.md).
+- **How it fits together:** [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
 ## Features
 
-- Hierarchical file organization with drag-and-drop reordering
-- Markdown editor with syntax highlighting (CodeMirror 6)
-- Live markdown preview panel
-- File attachments (paste, drag-and-drop, or file picker) with image thumbnails
+- Hierarchical note tree with drag-and-drop reordering and re-parenting
+- Markdown editor with syntax highlighting, list editing, multiple cursors,
+  folding, find/replace and `[[wikilink]]` completion
+- Live Markdown preview with math (`$…$`, `$$…$$`) typeset by Typst
+- Tags, backlinks and full-text search panes
+- File attachments (paste, drag-and-drop or file picker) with image thumbnails
 - Reusable note templates with `{{title}}`/`{{date}}` placeholder substitution
-- Automatic Git commit on every change with debounced push to remote
-- Optional MCP server — expose the open project to AI assistants (Claude Code, Claude Desktop, Cursor) via local-only stdio bridge
-- Three built-in themes: Midnight, Dark, and Light
-- Keyboard shortcuts for all major actions
+- Presentations: author slides inside a note and present full screen, with a
+  speaker view
+- PDF and HTML export (PDF rendered in-process with Typst)
+- Automatic git commit on every change with debounced push to a remote
+- Optional MCP server — expose the open project to AI assistants over a
+  local-only socket (see below)
+- Built-in themes and keyboard shortcuts for every action
 
-## Data Storage
+## Data model
 
-NoteLiner works with the concept of a **Project**, which is a folder on the user's computer containing:
+A **Project** is a folder on disk containing:
 
-1. A local Git repository, optionally linked to a remote on GitHub or GitLab.
-2. An index file (`noteliner.json`) tracking all files, their hierarchy, tags, and attachments.
+1. A local git repository, optionally linked to a remote on GitHub or GitLab.
+2. `noteliner.json` — the index: every note, its place in the hierarchy, tags
+   and attachments.
 3. Markdown files (`.md`) in the project root.
-4. An `_attachments/` directory for files attached to notes (images, PDFs, etc.).
-5. An optional `_templates/` directory holding reusable note templates (plain `.md` files).
+4. `_attachments/` — files attached to notes (images, PDFs, …; 30 MB cap).
+5. `_templates/` (optional) — reusable note skeletons (plain `.md` files).
 
-Changes are committed locally whenever a file is added, removed, or modified. Commits are pushed to the remote repository on a 30-second debounce timer, enabling cross-device sync via Git.
-
-## User Interface
-
-### Toolbar (left edge)
-
-A vertical toolbar with icon buttons:
-
-| Button | Shortcut | Description |
-|---|---|---|
-| Open Folder | `Ctrl+O` | Open a project folder. Loads existing projects or prompts to create/clone. |
-| New File | `Ctrl+N` | Create a new file in the project. |
-| Attachments | `Ctrl+B` | Toggle the attachments sidebar. |
-| Show Log | `Ctrl+L` | Toggle the git sync log panel. |
-| Project Settings | `Ctrl+Shift+,` | Configure git user name/email, view project location. |
-| Settings | `Ctrl+,` | Change application theme. |
-| About | `Ctrl+I` | Show application name and version. |
-
-### Panels
-
-- **Left sidebar** -- Resizable file tree showing the project hierarchy. Files can be dragged to reorder or re-parent. Double-click to rename, right-click for context menu.
-- **Editor** -- CodeMirror 6 markdown editor with syntax highlighting, line wrapping, and auto-save (500ms debounce). Supports paste and drag-and-drop for file attachments.
-- **Preview** (`Ctrl+P`) -- Live rendered markdown preview with image support.
-- **Attachments sidebar** (`Ctrl+B`) -- Right panel showing files attached to the current note. Images display as thumbnails; other files show a type icon. Add via paste, drag-and-drop, or the `[+]` button (native file picker). Double-click to open with the system default application.
-- **Log panel** (`Ctrl+L`) -- Bottom panel showing git sync activity in real time.
-
-### Modal Dialogs
-
-All modal dialogs support `Enter` to confirm and `Escape` to close.
-
-- **Set Up Project** -- Shown when opening a folder that isn't a NoteLiner project. Choose to create a new repository or clone from a remote URL.
-- **Project Settings** -- Git user name/email configuration and project folder location. Automatically shown if git config is missing (required for saving).
-- **Settings** -- Theme selection (Midnight, Dark, Light).
-- **About** -- Application name and version (SemVer + git commit hash).
-
-## Attachments
-
-Files can be attached to any note via:
-
-- **Paste** -- Paste from clipboard onto the editor.
-- **Drag-and-drop** -- Drop files onto the editor area.
-- **File picker** -- Click `[+]` in the attachments panel.
-
-Attachments are stored in the `_attachments/` directory and tracked in `noteliner.json`. A markdown reference is automatically inserted at the cursor: `![name](path)` for images, `[name](path)` for other files. Maximum file size is 30MB.
+Changes are committed locally whenever a note is added, removed or modified, and
+pushed to the remote on a debounce timer. Settings and data live in the
+platform config/data folders (`~/.config/NoteLiner` on Linux), shared across
+every build Marina has ever shipped, so projects open unchanged.
 
 ## Templates
 
-Templates are reusable note skeletons stored as plain markdown files in the project's `_templates/` directory. They are **not** notes — they never appear in the file tree, search, or backlinks — but they are committed to Git alongside the rest of the project, so they version and sync like everything else.
+Templates are reusable note skeletons stored as plain Markdown in the project's
+`_templates/` directory. They are **not** notes — they never appear in the tree,
+search or backlinks — but they are committed to git alongside the project.
 
-**Using a template.** When a project contains at least one template, the **New File** dialog (`Ctrl+N`) shows a *Template* dropdown. Pick a template and the new note starts from that template's body instead of a blank document. Choose *Blank* for the default behaviour.
+When a project has at least one template, the **New File** dialog shows a
+*Template* dropdown. **Save as Template** (Command Palette) saves the selected
+note's name and body as `_templates/<name>.md`. These placeholders are
+substituted when a note is created from a template (any other `{{…}}` is left
+untouched):
 
-**Creating a template.** Select a note and run **Save as Template** from the Command Palette (`Ctrl+K`). The note's current name and editor contents are saved as a new template at `_templates/<name>.md`. Re-running it with the same name overwrites the existing template. You can also author templates by hand — just drop a `.md` file into `_templates/`.
+| Placeholder  | Replaced with                 | Example              |
+|--------------|-------------------------------|----------------------|
+| `{{title}}`  | The new note's name           | `Meeting Notes`      |
+| `{{date}}`   | Current date (`YYYY-MM-DD`)   | `2026-05-31`         |
+| `{{time}}`   | Current time (`HH:MM`, 24h)   | `14:30`              |
+| `{{datetime}}` | Current date and time       | `2026-05-31 14:30`   |
 
-**Placeholders.** When a note is created from a template, the following placeholders in the template body are substituted automatically. Any other `{{...}}` text is left untouched.
+## MCP server
 
-| Placeholder | Replaced with | Example |
-|---|---|---|
-| `{{title}}` | The new note's name | `Meeting Notes` |
-| `{{date}}` | Current date (`YYYY-MM-DD`) | `2026-05-31` |
-| `{{time}}` | Current time (`HH:MM`, 24-hour) | `14:30` |
-| `{{datetime}}` | Current date and time | `2026-05-31 14:30` |
+NoteLiner can expose the currently-open project to AI assistants (Claude Code,
+Claude Desktop, Cursor, …) over the
+[Model Context Protocol](https://modelcontextprotocol.io). It is **off by
+default** and **local-only**: no TCP port is opened. NoteLiner listens on a
+user-scoped Unix domain socket, and clients connect through the built-in bridge
+(`noteliner --mcp-bridge`).
 
-## MCP Server
+Enable it in **Settings → MCP**; the first time you do, a one-screen walkthrough
+explains the setup and offers a copy-paste client snippet (always use the path
+it shows — it differs between dev and packaged installs). The server runs only
+while a project is open.
 
-NoteLiner can expose the currently-open project to external AI assistants
-(Claude Code, Claude Desktop, Cursor, ...) via the
-[Model Context Protocol](https://modelcontextprotocol.io). When enabled,
-the AI can list, read, search, and write notes — every write goes through
-the same save path as the UI and is committed to git automatically.
+**Tools** — reads: `list_notes`, `read_note`, `search`, `get_backlinks`,
+`list_attachments`, `list_tags`; writes: `create_note`, `update_note`,
+`delete_note`, `rename_note`, `set_tags`, `add_attachment`, `remove_attachment`.
+It also exposes `noteliner://` resource URIs and a handful of prompts
+(`daily_note`, `meeting_note`, `summarize_note`, `link_suggestions`).
 
-The server is local-only: no TCP port is opened. NoteLiner listens on a
-Unix domain socket (or Windows named pipe) that only the local user can
-read, and external clients connect through a small `noteliner-mcp-bridge`
-helper that pipes stdio to that socket.
+**Safety** — optional confirm-before-write (*Allow once* / *for the session* /
+*Deny*), per-tool allow/deny, single-project scope, a `chmod 0600` socket, and a
+10 MB body cap on writes. Every MCP call is logged to the Log panel, prefixed
+`[MCP]`. The server needs a Unix socket, so it is not yet available on Windows.
+See [`native/README.md`](native/README.md) for the bridge details.
 
-### Enabling
+## Historical plans
 
-Settings → MCP → toggle "Enable MCP server". Every off→on transition
-opens a one-screen walkthrough that explains the architecture and offers
-a copy-paste config snippet for your client. The server only runs while
-a project is open; closing the project (or disabling MCP) tears it down.
-
-### Client configuration
-
-Drop this into your MCP client's config file — for Claude Code, that's
-`.mcp.json` in the project root; for Claude Desktop,
-`claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "noteliner": {
-      "command": "node",
-      "args": ["/absolute/path/to/noteliner-mcp-bridge.js"]
-    }
-  }
-}
-```
-
-The exact bridge path for your install appears in Settings → MCP →
-Client Configuration with a one-click copy button. Don't hand-edit the
-path — it differs between dev runs and packaged installs.
-
-### Tools
-
-| Tool | Purpose | Kind |
-|---|---|---|
-| `list_notes` | List every note (id, name, filename, tags, parentId) | read |
-| `read_note` | Read a note's body by id or name | read |
-| `search` | Full-text search across note bodies | read |
-| `get_backlinks` | List notes linking to a target via wikilinks | read |
-| `list_attachments` | List attachments on a note | read |
-| `list_tags` | Tag histogram with note counts and ids | read |
-| `create_note` | Create a new note | write |
-| `update_note` | Replace a note's body | write |
-| `delete_note` | Delete a note (children reparent) | write |
-| `rename_note` | Rename a note (filename re-slugged) | write |
-| `set_tags` | Replace a note's tag list | write |
-| `add_attachment` | Attach a binary file (base64, 30MB cap) | write |
-| `remove_attachment` | Remove an attachment by id | write |
-
-### Resources and prompts
-
-Three resource URIs are also exposed for clients that prefer
-resource-style reads: `noteliner://index` (the full `noteliner.json`),
-`noteliner://note/{id}` (a note's body), and
-`noteliner://attachment/{filename}` (binary attachment data, base64).
-
-Four MCP prompts surface in clients that render prompts as slash
-commands: `daily_note` (with optional date/topic), `meeting_note`
-(required topic + optional attendees), `summarize_note` (server-side
-fetches the body and embeds it), and `link_suggestions` (server-side
-includes the body plus the names of all other notes so the model can
-suggest wikilink targets).
-
-### Safety
-
-- **Confirm before writes** (Settings → MCP → Safety) — when enabled,
-  NoteLiner asks for permission before running every write tool. The
-  modal offers *Allow once*, *Allow for the session*, or *Deny*.
-  Session trust is cleared when the project closes or NoteLiner quits.
-- **Per-tool allow/deny** (Settings → MCP → Tool Access) — individual
-  tools can be disabled. Disabled tools return a structured error to
-  the client. Works for both read and write tools.
-- **Single-project scope** — the server only ever exposes the
-  currently open project. Switching projects bounces the server before
-  the new project's data becomes reachable.
-- **Local-only socket** — Unix socket files are `chmod 0600`; Windows
-  named pipes are user-scoped by default. No TCP port is bound, no
-  remote transport is supported.
-- **Body size caps** — write tools reject bodies above 10MB;
-  attachments inherit the 30MB cap from `ProjectService`.
-
-Every MCP tool call is logged to the Log panel (`Ctrl+L`), prefixed
-`[MCP]`, so you can see exactly what the AI just did.
-
-## Versioning
-
-Released builds display the bare semver from `package.json` (e.g. `0.5.0`).
-Local development builds append the short git commit hash and a `dev` marker
-(e.g. `0.5.0-dev.8c6e3d6`) so it's always obvious whether you're running an
-unreleased build. The version is injected at build time via Vite's `define`.
-
-## Installation
-
-Pre-built binaries for Linux, Windows, and macOS are published from the
-[Releases page](https://github.com/NathanLaan/noteliner/releases) on each
-tag.
-
-- **Linux** — download the `.AppImage`, `chmod +x`, run. Or
-  `sudo dpkg -i noteliner_*_amd64.deb`.
-- **Windows** — download the `.exe` installer, run. The first launch may
-  show a SmartScreen warning (current builds are unsigned); click
-  "More info" → "Run anyway."
-- **macOS** — download the `.dmg`, drag NoteLiner to `/Applications`. The
-  first launch will be blocked by Gatekeeper (current builds are unsigned);
-  right-click NoteLiner in `/Applications` → "Open" → "Open" to bypass.
-
-Once a release is installed, NoteLiner checks for updates on each launch
-and downloads them in the background. The Log panel shows progress.
-
-## Development
-
-```bash
-npm install
-npm run electron:dev    # Start in development mode
-npm run build           # Build the renderer (Vite)
-npm run start           # Run the built Electron app
-```
-
-## Building Distributable Binaries
-
-```bash
-npm run build:linux     # AppImage + .deb (Linux only)
-npm run build:win       # NSIS installer + portable .exe
-npm run build:mac       # .dmg + .zip (universal)
-npm run build:all       # all three (cross-compile; works best on macOS)
-```
-
-Output lands in `dist-electron/`. Cross-compilation has limits — the
-authoritative builds happen in CI via `.github/workflows/release.yml` on
-tag push, with one runner per OS.
-
-The 512×512 build icon (`build/icon.png`) is checked in; regenerate it
-from `assets/icon.png` with `npm run build:icons` if the source icon
-changes (requires ImageMagick).
-
-## Testing
-
-Two suites cover different layers. Both run from the repo root.
-
-### End-to-end (Playwright) — UI through Electron
-
-Five focused tests that boot the real Electron app and assert against
-on-disk state: app launches, create-and-persist, rename, delete, and
-attachments. Run these whenever you touch the renderer, the IPC layer,
-or `ProjectService`.
-
-```bash
-npm run build           # tests load dist/, so build first
-npm test                # headless
-npm run test:headed     # show the Electron window
-npm run test:debug      # step through with the Playwright Inspector
-```
-
-The first run installs Playwright's bundled browsers automatically.
-
-See [`tests/README.md`](tests/README.md) for the test mandate and how
-the Electron harness works.
-
-### MCP bridge integration — protocol through the real bridge
-
-Spawns `bin/noteliner-mcp-bridge.js` as a child process and drives it
-with a synthetic JSON-RPC client — the same wire path Claude Code,
-Claude Desktop, and Cursor use. Twenty-four assertions across the six
-items from the MCP plan's Testing section: list/create round-trip,
-search parity with the in-app search, mid-call disconnect, project
-switch isolation, and stale-socket recovery.
-
-```bash
-npm run test:mcp        # ~3 seconds; requires git on PATH
-```
-
-Runs in plain Node — no Electron, no browser. Suitable for CI as well
-as a fast pre-commit check whenever you touch `src/main/mcp-service.js`
-or the bridge binary.
-
-See [`tests/integration/README.md`](tests/integration/README.md) for
-coverage details and the short manual checklist for UI-side
-verification with a real MCP client (the bits that genuinely need a
-human eyeballing the FILES pane).
-
-## Technology
-
-- [Electron](https://www.electronjs.org/) -- Desktop application framework
-- [Svelte 5](https://svelte.dev/) -- Reactive UI framework
-- [Vite](https://vitejs.dev/) -- Build tool
-- [CodeMirror 6](https://codemirror.net/) -- Text editor
-- [marked](https://marked.js.org/) -- Markdown parser
-- [Font Awesome](https://fontawesome.com/) -- Icons
+`docs/plans/` holds the planning and design notes written during development,
+including the completed phases under `docs/plans/completed/`. They are kept as a
+record and are not a guide to the current build.

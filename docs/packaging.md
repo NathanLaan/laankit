@@ -1,63 +1,36 @@
 # Packaging the native apps
 
-How ThreadLiner, PageLiner and NoteLiner (the pure-Rust egui builds in
-`apps/*/native`) are packaged for Linux, Windows and macOS, how releases are
-built in CI, and how the cutover from the Tauri/Electron builds was done and
-can be rolled back.
+How ThreadLiner, PageLiner and NoteLiner (the pure-Rust egui apps in
+`apps/*/native`) are packaged for Linux, Windows and macOS, and how releases are
+built in CI.
 
-## The cutover (2026-10-18)
+## Package identity
 
-The native builds are now *the* apps. What changed, per app:
+Per app, the packaged artifacts are named as follows:
 
-| | Before | Now |
-|---|---|---|
-| Native binary | `<app>-native` | `<app>` (`[[bin]]` in `apps/<app>/native/Cargo.toml`; the Cargo **package** is still `<app>-native`, so `cargo run -p <app>-native` works) |
-| Tauri binary | `<app>` | `<app>-tauri` (`[[bin]]` in `apps/<app>/src-tauri/Cargo.toml`), so the two don't collide in `target/` |
-| Native app id (Wayland app id / X11 WM class) | `threadliner`, `pageliner`, `noteliner` | the Tauri/Electron ids: `com.threadline.app`, `com.pageliner.app`, `com.nathanlaan.noteliner` |
-| Linux package | — | `threadliner`, `pageliner`, `noteliner`, installing `/usr/bin/<app>` |
-| Desktop entry | — | `<app id>.desktop`, named "ThreadLiner" etc., `StartupWMClass=<app id>` |
+| | Value |
+|---|---|
+| Cargo package | `<app>-native` (so `cargo run -p <app>-native` works) |
+| Installed binary | `<app>` (`[[bin]]` in `apps/<app>/native/Cargo.toml`), installed as `/usr/bin/<app>` |
+| App id (Wayland app id / X11 WM class, bundle id) | `com.threadline.app`, `com.pageliner.app`, `com.nathanlaan.noteliner` |
+| Linux package | `threadliner`, `pageliner`, `noteliner` |
+| Desktop entry | `<app id>.desktop`, named "ThreadLiner" etc., `StartupWMClass=<app id>` |
 
-The native packages **conflict with, replace and provide** the Tauri packages
-`thread-liner`, `page-liner` and `note-liner` (Debian: `Conflicts`/`Replaces`/
-`Provides`; RPM: `Conflicts`/`Obsoletes`/`Provides`), so installing one removes
-the Tauri build. The Electron packages are already named `threadliner` etc.
-(electron-builder uses the npm package name), so the native package upgrades
-them in place.
+For users upgrading from older Marina builds, each native package **conflicts
+with, replaces and provides** the former Tauri packages `thread-liner`,
+`page-liner` and `note-liner` (Debian: `Conflicts`/`Replaces`/`Provides`; RPM:
+`Conflicts`/`Obsoletes`/`Provides`), so installing one removes the older build.
+The former Electron packages were already named `threadliner` etc., so the
+native package upgrades them in place.
 
-Things that keep working:
-
-- **Settings and data.** The native builds always shared the Electron/Tauri
-  config and data folders (`marina_core::paths`), so nothing moves.
-- **eframe's own state** (theme, window, panes: `app.ron`) stays in the folder
-  named after the old app id (`~/.local/share/<app>/`): each `main.rs` points
-  `persistence_path` there (`STORAGE_ID`), so the id change resets nothing.
-- **NoteLiner's MCP bridge** is now `noteliner --mcp-bridge`; the Settings
-  snippet uses the running executable's path, so it's always right.
-- **The Tauri builds** still build and run (`npm run tauri:build -w <app>`), as
-  `/usr/bin/<app>-tauri` in packages still named `thread-liner` etc. Nothing in
-  `apps/*/src-tauri` or the Svelte/Electron code was removed.
-
-### Rolling back
-
-To go back to the Tauri build on a machine:
-
-```bash
-sudo apt remove noteliner                  # or: sudo dnf remove noteliner
-npm run tauri:build -w noteliner           # → target/release/bundle/deb/NoteLiner_<version>_amd64.deb
-sudo apt install ./target/release/bundle/deb/NoteLiner_*_amd64.deb   # installs /usr/bin/noteliner-tauri
-```
-
-To undo the cutover in the code, revert these, per app:
-
-1. `apps/<app>/native/Cargo.toml`: `[[bin]] name` back to `<app>-native`;
-   drop `conflicts`/`replaces`/`provides` (deb) and `conflicts`/`obsoletes`/
-   `provides` (rpm), and rename the packages (e.g. `<app>-native`).
-2. `apps/<app>/src-tauri/Cargo.toml`: `[[bin]] name` back to `<app>`.
-3. `apps/<app>/native/src/main.rs`: `APP_ID` back to `<app>` (and
-   `STORAGE_ID` can go: the default storage folder is the app id).
-4. `packaging/linux/*.desktop`: `Name=… (Native)`, `Exec=<app>-native`, and a
-   distinct id if both builds should coexist.
-5. The docs that mention `noteliner --mcp-bridge` and `/usr/bin/<app>`.
+- **Settings and data** live in the platform config/data folders
+  (`marina_core::paths`) shared by every build Marina has shipped, so projects
+  open unchanged.
+- **eframe's own state** (theme, window, panes: `app.ron`) lives under
+  `~/.local/share/<app>/`; each `main.rs` points `persistence_path` there via
+  `STORAGE_ID`.
+- **NoteLiner's MCP bridge** is `noteliner --mcp-bridge`; the Settings snippet
+  uses the running executable's path, so it is always correct.
 
 ## Formats
 
@@ -89,18 +62,17 @@ NoteLiner is the largest because of in-process Typst for PDF export
 
 ## Versions
 
-Every app shares one version (Cargo, npm and Tauri), set with:
+Every app shares one version, set with:
 
 ```bash
 scripts/set-version.sh 2.3.0        # or 2.3.0-rc.1
 ```
 
-It updates each app's `native` and `src-tauri` `Cargo.toml`, `tauri.conf.json`,
-the root and app `package.json`, PageLiner's fallback `appVersion`, and adds a
-dated `<release>` to each `packaging/linux/*.metainfo.xml`. Then it refreshes
-`Cargo.lock` and `package-lock.json` (workspace entries only; `NO_LOCKS=1`
-skips this). Shared crates under `crates/` keep their own versions. Package
-versions come from Cargo, so build the packages after setting the version.
+It updates each app's `native/Cargo.toml` `[package] version` and adds a dated
+`<release>` to each `packaging/linux/*.metainfo.xml`, then refreshes `Cargo.lock`
+(workspace entries only; `NO_LOCKS=1` skips this). Shared crates under `crates/`
+keep their own versions. Package versions come from Cargo, so build the packages
+after setting the version.
 
 ## Building locally
 
@@ -204,8 +176,7 @@ right-click → Open (or `xattr -d com.apple.quarantine`).
   packages as artifacts. For a tag it then attaches them to a **draft**
   GitHub release; publishing stays manual.
 - **`.github/workflows/build.yml`** (`native` job) lints and tests the native
-  crates on all three platforms; the `tauri` job still builds the Tauri
-  bundles.
+  crates on all three platforms.
 - **No UI snapshot job.** egui_kittest's `snapshot` feature renders with
   wgpu, which needs a software Vulkan driver (lavapipe) on CI and committed
   baseline images per platform; text rasterization differs between Mesa
@@ -222,7 +193,4 @@ right-click → Open (or `xattr -d com.apple.quarantine`).
   desktop entry and metainfo file (including the AppImage's).
 - Each AppImage launches (with `MARINA_SCREENSHOT`, a temporary
   `XDG_CONFIG_HOME`/`XDG_DATA_HOME`).
-- `npm run tauri:build -w threadliner -- --bundles deb` still works after the
-  rename: package `thread-liner`, `/usr/bin/threadliner-tauri`, and it leaves
-  the native `target/release/threadliner` alone.
 - Not installed: nothing was installed system-wide.
