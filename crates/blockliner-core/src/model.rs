@@ -82,9 +82,56 @@ pub enum ShapeKind {
     RoundRect,
     /// A borderless label: `id["label"]:::bl_text`.
     Text,
-    /// Any other Mermaid node shape (`[( )]`, `{{ }}`, …), kept with its
+    /// A decision: `id{"label"}`.
+    Diamond,
+    /// `id{{"label"}}`
+    Hexagon,
+    /// A cylinder: `id[("label")]`.
+    Database,
+    /// `id[["label"]]`
+    Subroutine,
+    /// Any other Mermaid node shape (`([ ])`, `(( ))`, …), kept with its
     /// delimiters so it is written back unchanged. Drawn as a rectangle.
     Other { open: String, close: String },
+}
+
+impl ShapeKind {
+    /// The four shapes behind the toolbar's More Shapes button.
+    pub const MORE: [ShapeKind; 4] = [
+        ShapeKind::Diamond,
+        ShapeKind::Hexagon,
+        ShapeKind::Database,
+        ShapeKind::Subroutine,
+    ];
+
+    /// The Mermaid brackets around the label.
+    pub fn delimiters(&self) -> (&str, &str) {
+        match self {
+            ShapeKind::Rect | ShapeKind::Text => ("[", "]"),
+            ShapeKind::RoundRect => ("(", ")"),
+            ShapeKind::Diamond => ("{", "}"),
+            ShapeKind::Hexagon => ("{{", "}}"),
+            ShapeKind::Database => ("[(", ")]"),
+            ShapeKind::Subroutine => ("[[", "]]"),
+            ShapeKind::Other { open, close } => (open, close),
+        }
+    }
+
+    /// The kind a pair of Mermaid brackets makes.
+    pub fn from_delimiters(open: &str, close: &str) -> Self {
+        match open {
+            "[" => ShapeKind::Rect,
+            "(" => ShapeKind::RoundRect,
+            "{" => ShapeKind::Diamond,
+            "{{" => ShapeKind::Hexagon,
+            "[(" => ShapeKind::Database,
+            "[[" => ShapeKind::Subroutine,
+            _ => ShapeKind::Other {
+                open: open.into(),
+                close: close.into(),
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -123,12 +170,17 @@ impl Shape {
         }
     }
 
-    /// A new shape's size, in grid cells: 8 × 3 for boxes, 10 × 2 for text.
+    /// A new shape's size, in grid cells: 8 × 3 for boxes, 10 × 2 for text,
+    /// 8 × 4 for a diamond (its label sits in the middle half) and 6 × 4
+    /// for a database.
     pub fn default_size(kind: &ShapeKind, grid: f32) -> (f32, f32) {
-        match kind {
-            ShapeKind::Text => (10.0 * grid, 2.0 * grid),
-            _ => (8.0 * grid, 3.0 * grid),
-        }
+        let (w, h) = match kind {
+            ShapeKind::Text => (10.0, 2.0),
+            ShapeKind::Diamond => (8.0, 4.0),
+            ShapeKind::Database => (6.0, 4.0),
+            _ => (8.0, 3.0),
+        };
+        (w * grid, h * grid)
     }
 }
 

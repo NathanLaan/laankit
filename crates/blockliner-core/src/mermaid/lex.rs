@@ -147,14 +147,7 @@ impl<'a> Lexer<'a> {
                 continue;
             }
             let (text, close) = self.shape_label(closes)?;
-            let kind = match open {
-                "[" => ShapeKind::Rect,
-                "(" => ShapeKind::RoundRect,
-                _ => ShapeKind::Other {
-                    open: open.into(),
-                    close: close.into(),
-                },
-            };
+            let kind = ShapeKind::from_delimiters(open, close);
             return Some(Some((kind, label::decode(&text))));
         }
         Some(None)
@@ -320,7 +313,23 @@ mod tests {
         };
         assert_eq!(
             tokenize("db[(Orders)]"),
-            Some(vec![node("db", Some((other("[(", ")]"), "Orders")))])
+            Some(vec![node("db", Some((ShapeKind::Database, "Orders")))])
+        );
+        assert_eq!(
+            tokenize("q{\"Retry?\"}"),
+            Some(vec![node("q", Some((ShapeKind::Diamond, "Retry?")))])
+        );
+        assert_eq!(
+            tokenize("h{{Prepare}}"),
+            Some(vec![node("h", Some((ShapeKind::Hexagon, "Prepare")))])
+        );
+        assert_eq!(
+            tokenize("s[[Auth]]"),
+            Some(vec![node("s", Some((ShapeKind::Subroutine, "Auth")))])
+        );
+        assert_eq!(
+            tokenize("st([Start])"),
+            Some(vec![node("st", Some((other("([", "])"), "Start")))])
         );
         assert_eq!(
             tokenize("t[/Trap\\]"),

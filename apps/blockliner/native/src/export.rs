@@ -14,6 +14,7 @@ use std::sync::{Arc, OnceLock};
 use anyhow::{anyhow, Context as _, Result};
 use blockliner_core::connect::path_midpoint;
 use blockliner_core::export::Scope;
+use blockliner_core::geometry::{self, SUBROUTINE_INSET};
 use blockliner_core::{ConnectorKind, Diagram, Point, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{Align, Color32};
@@ -220,8 +221,55 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
         fill.clone().unwrap_or_else(|| format!("\"{FILL}\"")),
         ink.clone().unwrap_or_else(|| format!("\"{INK}\"")),
     );
+    // The outline's rectangle, the stroke's middle inside the shape.
+    let inner = Rect::new(r.x + inset, r.y + inset, r.w - STROKE, r.h - STROKE);
+    let stroke = |ink: &str| format!(r#"stroke={ink} stroke-width="{}""#, num(STROKE));
     match s.kind {
         ShapeKind::Rect | ShapeKind::Other { .. } => body(out, 0.0, &or_fill, &or_ink),
+        ShapeKind::Diamond | ShapeKind::Hexagon => {
+            let points: Vec<String> = geometry::polygon(&s.kind, &inner)
+                .unwrap_or_default()
+                .iter()
+                .map(|p| format!("{},{}", num(p.x), num(p.y)))
+                .collect();
+            let _ = write!(
+                out,
+                r#"<polygon points="{}" fill={or_fill} {}/>"#,
+                points.join(" "),
+                stroke(&or_ink)
+            );
+        }
+        // Sides and the two caps' outer halves, then the lid's lower edge.
+        ShapeKind::Database => {
+            let (rx, ry) = (num(inner.w / 2.0), num(geometry::cap_height(&r) / 2.0));
+            let (left, right) = (num(inner.x), num(inner.right()));
+            let top = num(inner.y + geometry::cap_height(&r) / 2.0);
+            let bottom = num(inner.bottom() - geometry::cap_height(&r) / 2.0);
+            let _ = write!(
+                out,
+                r#"<path d="M{left},{top} A{rx},{ry} 0 0 1 {right},{top} V{bottom} A{rx},{ry} 0 0 1 {left},{bottom} Z" fill={or_fill} {}/>"#,
+                stroke(&or_ink)
+            );
+            let _ = write!(
+                out,
+                r#"<path d="M{left},{top} A{rx},{ry} 0 0 0 {right},{top}" fill="none" {}/>"#,
+                stroke(&or_ink)
+            );
+        }
+        ShapeKind::Subroutine => {
+            body(out, 0.0, &or_fill, &or_ink);
+            let k = SUBROUTINE_INSET.min(r.w / 4.0);
+            for x in [inner.x + k, inner.right() - k] {
+                let _ = write!(
+                    out,
+                    r#"<line x1="{x}" y1="{}" x2="{x}" y2="{}" {}/>"#,
+                    num(inner.y),
+                    num(inner.bottom()),
+                    stroke(&or_ink),
+                    x = num(x)
+                );
+            }
+        }
         ShapeKind::RoundRect => body(
             out,
             CORNER.min(r.h / 2.0).min(255.0) - inset,
@@ -245,13 +293,15 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
         .label_rgba()
         .map(rgb_hex)
         .unwrap_or_else(|| TEXT.to_owned());
-    let wrap = (r.w - 2.0 * LABEL_PAD).max(1.0);
+    // In its area: inside a diamond's or hexagon's outline.
+    let area = s.label_rect();
+    let wrap = (area.w - 2.0 * LABEL_PAD).max(1.0);
     text(
         out,
         ctx,
         &s.label,
-        r.center().x,
-        r.center().y,
+        area.center().x,
+        area.center().y,
         LABEL_SIZE,
         Some(wrap),
         &label_ink,

@@ -13,7 +13,7 @@ use marina_egui::theme::Palette;
 use marina_egui::toolbar::{self, ToolbarButton};
 use marina_egui::{fonts, icons, theme};
 
-use crate::canvas::Tool;
+use crate::canvas::{paint, Tool};
 use crate::commands::{tool_digit, tool_key, Act};
 
 /// `.status-bar { height: 24px }`, as in the other apps.
@@ -24,6 +24,8 @@ const ROW_HEIGHT: f32 = 30.0;
 
 pub struct ToolbarProps {
     pub tool: Tool,
+    /// The shape the More Shapes button shows and picks.
+    pub more_shape: Tool,
     /// A folder is open.
     pub can_close_folder: bool,
     /// The Properties pane is showing.
@@ -42,6 +44,15 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
         ui,
         |ui| {
             for tool in Tool::ALL {
+                if tool.is_more() {
+                    // One button for the four.
+                    if tool == Tool::MORE[0] {
+                        if let Some(t) = more_shapes_button(ui, props.more_shape, props.tool) {
+                            out.push(Act::Tool(t));
+                        }
+                    }
+                    continue;
+                }
                 if tool_button(ui, tool, props.tool == tool) {
                     out.push(Act::Tool(tool));
                 }
@@ -136,18 +147,31 @@ fn tool_button(ui: &mut Ui, tool: Tool, active: bool) -> bool {
             .active(active),
     );
     if glyph.is_empty() {
-        // The toolbar button's own ink: accent when active, brighter on hover.
-        let p = theme::palette(ui.ctx());
-        let ink = if active {
-            p.accent
-        } else if resp.hovered() {
-            p.text_primary
-        } else {
-            p.text_secondary
-        };
-        paint_tool_icon(ui, tool, resp.rect.center(), ink);
+        paint_tool_icon(
+            ui.painter(),
+            tool,
+            resp.rect.center(),
+            tool_ink(ui, &resp, active),
+        );
     }
-    // The number, so the shortcut shows without hovering (as in Excalidraw).
+    tool_number(ui, &resp, number);
+    resp.clicked()
+}
+
+/// The toolbar button's own ink: accent when active, brighter on hover.
+fn tool_ink(ui: &Ui, resp: &egui::Response, active: bool) -> Color32 {
+    let p = theme::palette(ui.ctx());
+    if active {
+        p.accent
+    } else if resp.hovered() {
+        p.text_primary
+    } else {
+        p.text_secondary
+    }
+}
+
+/// The number, so the shortcut shows without hovering (as in Excalidraw).
+fn tool_number(ui: &Ui, resp: &egui::Response, number: &str) {
     let p = theme::palette(ui.ctx());
     ui.painter().text(
         resp.rect.right_bottom() + vec2(-4.0, -1.0),
@@ -156,11 +180,101 @@ fn tool_button(ui: &mut Ui, tool: Tool, active: bool) -> bool {
         egui::FontId::proportional(9.0),
         p.text_faint,
     );
+}
+
+/// The More Shapes button: shows and picks the last of [`Tool::MORE`] used
+/// (`shown`). Its corner triangle, or a right-click, opens all four.
+fn more_shapes_button(ui: &mut Ui, shown: Tool, tool: Tool) -> Option<Tool> {
+    let number = tool_digit(shown).1;
+    let title = format!(
+        "{} — {} or {number}. More shapes: right-click, or the corner",
+        shown.name(),
+        tool_key(shown).1
+    );
+    let label = format!("More Shapes: {}", shown.name());
+    let resp = toolbar::button(
+        ui,
+        ToolbarButton::new("", &title)
+            .label(&label)
+            .active(tool.is_more()),
+    );
+    let ink = tool_ink(ui, &resp, tool == shown);
+    paint_tool_icon(ui.painter(), shown, resp.rect.center(), ink);
+    tool_number(ui, &resp, number);
+
+    // The corner opens the list; it sits over the button, so it gets the
+    // click there.
+    let corner = Rect::from_min_size(resp.rect.right_top() + vec2(-13.0, 0.0), vec2(13.0, 13.0));
+    let open = ui.interact(corner, resp.id.with("more"), Sense::click());
+    open.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Show More Shapes"));
+    let p = theme::palette(ui.ctx());
+    let tip = resp.rect.right_top() + vec2(-4.0, 4.0);
+    let triangle = vec![tip, tip + vec2(0.0, 6.0), tip + vec2(-6.0, 0.0)];
+    let fill = if open.hovered() {
+        p.text_primary
+    } else {
+        p.text_muted
+    };
+    ui.painter()
+        .add(Shape::convex_polygon(triangle, fill, Stroke::NONE));
+
+    let set = if open.clicked() || resp.secondary_clicked() {
+        Some(egui::SetOpenCommand::Toggle)
+    } else if resp.clicked() {
+        Some(egui::SetOpenCommand::Bool(false))
+    } else {
+        None
+    };
+    let mut picked = resp.clicked().then_some(shown);
+    egui::Popup::from_response(&resp)
+        .kind(egui::PopupKind::Menu)
+        .align(egui::RectAlign::RIGHT_START)
+        .gap(4.0)
+        .open_memory(set)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        .show(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for t in Tool::MORE {
+                if more_shapes_row(ui, t, t == tool) {
+                    picked = Some(t);
+                }
+            }
+        });
+    picked
+}
+
+/// A row of the More Shapes list: the shape's icon, name and letter.
+fn more_shapes_row(ui: &mut Ui, tool: Tool, active: bool) -> bool {
+    let p = theme::palette(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(190.0, 30.0), Sense::click());
+    resp.widget_info(|| {
+        egui::WidgetInfo::selected(egui::Role::MenuItemRadio, true, active, tool.name())
+    });
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, 4.0, p.bg_button);
+    }
+    let ink = if active { p.accent } else { p.text_primary };
+    let icon = pos2(rect.left() + 18.0, rect.center().y);
+    paint_tool_icon(ui.painter(), tool, icon, ink);
+    let font = FontId::proportional(theme::BODY_SIZE);
+    ui.painter().text(
+        pos2(rect.left() + 38.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        tool.name(),
+        font.clone(),
+        ink,
+    );
+    ui.painter().text(
+        pos2(rect.right() - 10.0, rect.center().y),
+        Align2::RIGHT_CENTER,
+        tool_key(tool).1,
+        font,
+        p.text_muted,
+    );
     resp.clicked()
 }
 
-fn paint_tool_icon(ui: &Ui, tool: Tool, c: Pos2, ink: Color32) {
-    let painter = ui.painter();
+fn paint_tool_icon(painter: &egui::Painter, tool: Tool, c: Pos2, ink: Color32) {
     let stroke = Stroke::new(1.6, ink);
     let shape = Rect::from_center_size(c, vec2(18.0, 12.0));
     match tool {
@@ -202,6 +316,18 @@ fn paint_tool_icon(ui: &Ui, tool: Tool, c: Pos2, ink: Color32) {
                 7.0,
                 ink,
             ));
+        }
+        // The canvas's own outlines, small.
+        Tool::Diamond | Tool::Hexagon | Tool::Database | Tool::Subroutine => {
+            let size = match tool {
+                Tool::Diamond => vec2(20.0, 14.0),
+                Tool::Database => vec2(14.0, 16.0),
+                _ => vec2(18.0, 12.0),
+            };
+            if let Some(kind) = tool.shape_kind() {
+                let r = Rect::from_center_size(c, size);
+                paint::outline(painter, r, &kind, 0.4, Color32::TRANSPARENT, stroke);
+            }
         }
         Tool::Select | Tool::Text => {}
     }

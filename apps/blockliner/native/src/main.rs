@@ -25,6 +25,8 @@ mod ui_tests_import;
 #[cfg(test)]
 mod ui_tests_lines;
 #[cfg(test)]
+mod ui_tests_more_shapes;
+#[cfg(test)]
 mod ui_tests_project;
 #[cfg(test)]
 mod ui_tests_properties;

@@ -6,9 +6,9 @@ undo and keyboard, folder and autosave, import layout, export, and packaging.
 Hand checks on Windows and macOS remain
 ([`apps/blockliner/native/README.md`](../../apps/blockliner/native/README.md),
 "Still to verify by hand"). **Phases 9 (right-angle connectors), 10 (shape
-styles) and 14 (Object Properties panel) implemented (2026-10-30); phases
-11–13 proposed** (§10): Mermaid database/subroutine/hexagon/diamond shapes,
-copy and paste, and a clickable zoom in the status bar.
+styles), 11 (Mermaid diamond/hexagon/database/subroutine shapes) and 14
+(Object Properties panel) implemented (2026-10-30); phases 12–13
+proposed** (§10): copy and paste, and a clickable zoom in the status bar.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -96,7 +96,7 @@ crates/marina-egui          theme, toolbar, palette, settings, panes (unchanged)
 
 | Module | Responsibility |
 |---|---|
-| `model` ✅ | `Diagram { direction, grid, shapes: Vec<Shape>, connectors: Vec<Connector>, preamble, passthrough }`. `Shape { id, kind: Rect \| RoundRect \| Text \| Other{open, close}, label, rect, class, external }`. `Connector { kind: Line \| Arrow, from: End, to: End, label }`. `End` is `Glued { shape, anchor: Option<N\|E\|S\|W> }` (`None` = dynamic glue, the nearest side) or `Free(Point)`. Its own `Point`/`Rect` types (f32), so it needs no egui. |
+| `model` ✅ | `Diagram { direction, grid, shapes: Vec<Shape>, connectors: Vec<Connector>, preamble, passthrough }`. `Shape { id, kind: Rect \| RoundRect \| Text \| Diamond \| Hexagon \| Database \| Subroutine \| Other{open, close}, label, rect, class, external }` (the four before `Other` from phase 11). `Connector { kind: Line \| Arrow, from: End, to: End, label }`. `End` is `Glued { shape, anchor: Option<N\|E\|S\|W> }` (`None` = dynamic glue, the nearest side) or `Free(Point)`. Its own `Point`/`Rect` types (f32), so it needs no egui. |
 | `mermaid::write` ✅ | `Diagram` → `.mmd` text. Deterministic order (stable diffs). |
 | `mermaid::read` ✅ | `.mmd` text → `Diagram`. A small hand-written lexer and reader for the `flowchart` subset in §4. Unknown statements are kept verbatim and written back. |
 | `layout` ✅ | `layered`: positions for nodes without `@shape`, a basic layered layout (§4.4), below anything already placed. |
@@ -172,8 +172,10 @@ flowchart LR
 The BlockLiner block goes **at the end** because Mermaid front matter (`---`)
 must be the first line of the file. The Mermaid part says what each shape is,
 so `@shape` lines carry only geometry. `orders_db` uses a cylinder, which the
-MVP can't draw. It keeps its delimiters (`ShapeKind::Other`), is drawn as a
-rectangle, and is written back unchanged.
+MVP couldn't draw: it kept its delimiters (`ShapeKind::Other`), was drawn as
+a rectangle, and was written back unchanged. Since phase 11 it is a
+`Database`; shapes BlockLiner still can't draw (a stadium `([ ])`, a circle
+`(( ))`, …) work the way the cylinder did.
 
 | Comment | Meaning |
 |---|---|
@@ -191,6 +193,8 @@ Any other `%% @…` line is reserved and dropped. Other `%%` comments are kept.
 | Rectangle | `id["label"]` | |
 | Round rectangle | `id("label")` | |
 | Text box | `id["label"]:::bl_text` + `classDef bl_text fill:none,stroke:none` | Renders as bare text in Mermaid. |
+| Diamond, hexagon, database, subroutine (phase 11) | `id{"label"}`, `id{{"label"}}`, `id[("label")]`, `id[["label"]]` | Written with the delimiters files already used, so those files don't change. |
+| Any other node shape | Its own delimiters, kept | Drawn as a dashed box with a badge naming the brackets. |
 | Glued line | `a --- b` | |
 | Glued arrow | `a --> b` | |
 | Free line/arrow (either end not glued) | `%% @line …` only | Mermaid cannot draw a line that is not attached to nodes. The line appears in BlockLiner but not in other Mermaid renderers. The status bar shows a hint when the diagram has such lines. |
@@ -250,7 +254,7 @@ Opening writes nothing; the layout is saved with the first edit.
 **Shapes BlockLiner can't fully edit** carry a badge on their top-right
 corner and explain themselves in the status bar when hovered or selected:
 a lock on a shape declared only in a kept statement (move and resize only),
-and the Mermaid brackets, such as `[( )]`, on a shape drawn as a box.
+and the Mermaid brackets, such as `([ ])`, on a shape drawn as a box.
 
 ---
 
@@ -439,7 +443,7 @@ file stays small; the text stays editable).
 |---|---|---|
 | **9. Right-angle connectors** ✅ | Right-Angle Line and Right-Angle Arrow tools; routes made of horizontal and vertical segments that avoid shapes where they can; switching selected connectors between straight and right-angle; a draggable middle segment. Saved in the layout block (`route=elbow`); the Mermaid edge is unchanged. | 3–4 days |
 | **10. Shape styles** ✅ | Fill and stroke colours for shapes: preset swatches and a custom hex value, from the canvas's right-click menu and the palette. Saved as Mermaid `style` lines, which BlockLiner now owns for its shapes. | 2 days |
-| **11. More Mermaid shapes** | Database `[( )]`, subroutine `[[ ]]`, hexagon `{{ }}` and diamond `{ }` as real, editable shapes with their own outlines, label areas and hit-testing, behind a "More Shapes" toolbar button. | 2 days |
+| **11. More Mermaid shapes** ✅ | Database `[( )]`, subroutine `[[ ]]`, hexagon `{{ }}` and diamond `{ }` as real, editable shapes with their own outlines, label areas and hit-testing, behind a "More Shapes" toolbar button. | 2 days |
 | **12. Copy and paste** | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` for shapes and connectors, within a diagram, between diagrams and between BlockLiner windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out. | 2 days |
 | **13. Clickable zoom** | The status bar's "Zoom 120%" becomes a button: a click goes back to 100 % (as `Ctrl+0` does), with a hover highlight, a tooltip and an accessible label. | ½ day |
 | **14. Object Properties panel** ✅ | A Properties pane in the left sidebar, below the diagram list, shown or hidden with a toolbar button and `Ctrl+I`. It shows the selection's Fill and Stroke (swatches, Default, a hex field) and changes them; a selection whose values differ shows **Mixed** until one is picked. | 2 days |
@@ -818,6 +822,31 @@ right-angle could become a layout option later.
 - **Headless UI:** each key and the flyout; a diamond's default size;
   gluing an arrow to a diamond's vertex.
 - **Export:** the golden SVG gains all four shapes.
+
+**As built** (2026-10-30), beyond the above:
+- **The More Shapes button** shows the last of the four picked (the
+  diamond to start). A click picks it; the triangle in its top-right
+  corner, or a right-click, opens the list (icon, name and letter), to the
+  button's right. Its accessible label is "More Shapes: Diamond", and the
+  corner's is "Show More Shapes". The letters change the button too.
+- **Numbers:** `4` is a command of its own ("More Shapes Tool", which picks
+  the button's shape); the four shapes' own commands have only their
+  letters. Line, Arrow, the right-angle tools and Text are now 5–9. The
+  last pick isn't remembered between runs.
+- **Import layout:** the new default sizes (diamond and database 4 cells
+  high) apply to imported shapes too, so a hand-written file with a
+  database lays out with taller ranks; `handwritten.expected.mmd` was
+  updated for that.
+- **Geometry** (`geometry.rs`): `polygon`, `cylinder`, `cap_height`,
+  `hexagon_inset`, `SUBROUTINE_INSET`, `Shape::contains` (behind
+  `shape_at`) and `Shape::label_rect`. The subroutine's inset is capped at
+  a quarter of its width, so a narrow one keeps room for its label. The
+  canvas (`paint::outline`), the toolbar icons and the SVG writer all draw
+  from these.
+- **Database in SVG:** a `<path>` with elliptical arcs (`A`), not a
+  polygon, so it stays smooth at any scale.
+- **Renders:** offscreen, dark and light, the list open, a database being
+  drawn and labelled, 200 % zoom, and the PNG export.
 
 ### 10.4 Phase 12: copy and paste
 

@@ -146,6 +146,10 @@ fn tools_from_the_toolbar_and_the_keyboard() {
         (Key::T, Tool::Text),
         (Key::J, Tool::ElbowLine),
         (Key::E, Tool::ElbowArrow),
+        (Key::D, Tool::Diamond),
+        (Key::H, Tool::Hexagon),
+        (Key::C, Tool::Database),
+        (Key::S, Tool::Subroutine),
         (Key::V, Tool::Select),
     ] {
         h.key_press(key);
@@ -153,15 +157,17 @@ fn tools_from_the_toolbar_and_the_keyboard() {
         assert_eq!(h.state().tool(), tool, "{key:?}");
     }
 
-    // The numbers follow the toolbar; with Shift the tool stays.
+    // The numbers follow the toolbar; with Shift the tool stays. 4 is More
+    // Shapes: the last of the four picked (S, above).
     for (key, tool) in [
         (Key::Num2, Tool::Rect),
         (Key::Num3, Tool::RoundRect),
-        (Key::Num4, Tool::Line),
-        (Key::Num5, Tool::Arrow),
-        (Key::Num6, Tool::ElbowLine),
-        (Key::Num7, Tool::ElbowArrow),
-        (Key::Num8, Tool::Text),
+        (Key::Num4, Tool::Subroutine),
+        (Key::Num5, Tool::Line),
+        (Key::Num6, Tool::Arrow),
+        (Key::Num7, Tool::ElbowLine),
+        (Key::Num8, Tool::ElbowArrow),
+        (Key::Num9, Tool::Text),
         (Key::Num1, Tool::Select),
     ] {
         h.key_press(key);

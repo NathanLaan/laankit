@@ -17,8 +17,10 @@ the shared `marina-*` crates — no webview, no JavaScript. The shipped binary i
 
 ## Features
 
-- **Shapes** — rectangles, rounded rectangles and text boxes; drag to draw or
-  click for a default size, move and resize on the grid, edit labels in place.
+- **Shapes** — rectangles, rounded rectangles, text boxes, and (under the
+  More Shapes button) diamonds, hexagons, databases and subroutines; drag to
+  draw or click for a default size, move and resize on the grid, edit labels
+  in place.
 - **Connectors** — straight or right-angle lines and arrows that glue to a
   shape's sides (fixed) or to the shape (turning as it moves), plus free
   lines anywhere. Right-angle routes go round shapes in the way, and their
@@ -28,7 +30,7 @@ the shared `marina-*` crates — no webview, no JavaScript. The shipped binary i
   them from the right-click menu, the palette, or the Properties pane
   (Ctrl+I), which shows "Mixed" when the selected shapes differ.
 - **Editing** — box select, nudge with the arrow keys, undo and redo, single-key
-  tools (V, R, O, L, A, J, E, T, or 1–8 in toolbar order), a right-click
+  tools (V, R, O, D, H, C, S, L, A, J, E, T, or 1–9 in toolbar order), a right-click
   menu and a command palette (Ctrl+K).
 - **A folder of diagrams** — open any folder; its `.mmd` files are the sidebar's
   diagrams. Changes autosave, and edits made elsewhere (an editor, `git pull`)

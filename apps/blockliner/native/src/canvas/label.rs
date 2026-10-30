@@ -68,7 +68,8 @@ impl Canvas {
             self.label = None;
             return;
         };
-        let screen = paint::screen_rect(view, origin, &shape.rect);
+        // The label's area: inside a diamond's or hexagon's outline.
+        let screen = paint::screen_rect(view, origin, &shape.label_rect());
 
         // Enter and Esc are ours, before the text field sees them.
         let (enter, esc) = ui.input_mut(|i| {

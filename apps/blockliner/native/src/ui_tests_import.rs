@@ -13,6 +13,7 @@ flowchart TD
   web[Web App] --> api(API Gateway)
   api --> orders
   api --> bus[(Event Bus)]
+  bus --> cache([Cache])
   subgraph payments [Payments]
     pay[Payment Service] --> psp
   end
@@ -35,14 +36,17 @@ fn a_hand_written_file_is_laid_out_in_ranks() {
     // edge (pay → psp) ranks psp too.
     assert!(y("web") < y("api"));
     assert!(y("api") < y("orders"));
-    assert_eq!(y("orders"), y("bus"));
+    let middle = |id: &str| d.shape(id).unwrap().rect.center().y;
+    // One rank, centred to the nearest grid cell (20).
+    assert!((middle("orders") - middle("bus")).abs() <= 10.0);
     assert!(y("orders") < y("pay"));
     assert!(y("pay") < y("psp"));
     let rect = |id: &str| d.shape(id).unwrap().rect;
     assert_eq!(rect("web").center().x, rect("api").center().x, "a column");
 
-    // The Event Bus is a Mermaid shape drawn as a box; psp is declared in
-    // the subgraph. Hovering says so; a plain box says nothing.
+    // The cache is a Mermaid shape drawn as a box; psp is declared in the
+    // subgraph. Hovering says so; a plain box or a database (one of
+    // BlockLiner's own shapes) says nothing.
     let note = |h: &crate::ui_tests::H| {
         let s = h.state();
         s.canvas().limitation(s.diagram()).map(|(_, text)| text)
@@ -51,10 +55,18 @@ fn a_hand_written_file_is_laid_out_in_ranks() {
         let c = rect(id).center();
         at(c.x, c.y)
     };
-    let (bus, psp, web) = (center("bus"), center("psp"), center("web"));
+    assert_eq!(
+        d.shape("bus").unwrap().kind,
+        blockliner_core::ShapeKind::Database
+    );
+    let (cache, psp, web) = (center("cache"), center("psp"), center("web"));
+    let bus = center("bus");
+    h.hover_at(cache);
+    h.run_steps(2);
+    assert!(note(&h).unwrap().contains("([ ]) shape"), "{:?}", note(&h));
     h.hover_at(bus);
     h.run_steps(2);
-    assert!(note(&h).unwrap().contains("[( )] shape"), "{:?}", note(&h));
+    assert_eq!(note(&h), None);
     h.hover_at(psp);
     h.run_steps(2);
     assert!(note(&h).unwrap().contains("not renamed or deleted"));

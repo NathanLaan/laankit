@@ -40,16 +40,15 @@ fn blockliner_files_are_unchanged_by_a_save() {
     let d = read(&input).unwrap();
     assert_eq!(write(&d), input);
 
-    assert_eq!(d.shapes.len(), 5);
+    assert_eq!(d.shapes.len(), 8);
     assert_eq!(d.shape("orders").unwrap().label, "Orders \"v2\"\nService");
     assert_eq!(d.shape("caption").unwrap().kind, ShapeKind::Text);
-    assert_eq!(
-        d.shape("db").unwrap().kind,
-        ShapeKind::Other {
-            open: "[(".into(),
-            close: ")]".into()
-        }
-    );
+    // The four shapes BlockLiner draws as themselves, delimiters unchanged.
+    let kind = |id| d.shape(id).unwrap().kind.clone();
+    assert_eq!(kind("db"), ShapeKind::Database);
+    assert_eq!(kind("valid"), ShapeKind::Diamond);
+    assert_eq!(kind("prepare"), ShapeKind::Hexagon);
+    assert_eq!(kind("auth"), ShapeKind::Subroutine);
     // The second gateway → orders edge has its own anchors.
     assert_eq!(d.connectors[1].from, End::glued("gateway", None));
     assert_eq!(d.connectors[3].from, End::glued("gateway", Some(Anchor::S)));
@@ -249,13 +248,17 @@ fn generate(rng: &mut Rng) -> Diagram {
                 ShapeKind::Rect,
                 ShapeKind::RoundRect,
                 ShapeKind::Text,
+                ShapeKind::Diamond,
+                ShapeKind::Hexagon,
+                ShapeKind::Database,
+                ShapeKind::Subroutine,
                 ShapeKind::Other {
-                    open: "[(".into(),
-                    close: ")]".into(),
+                    open: "([".into(),
+                    close: "])".into(),
                 },
                 ShapeKind::Other {
-                    open: "{{".into(),
-                    close: "}}".into(),
+                    open: "((".into(),
+                    close: "))".into(),
                 },
             ])
             .clone();

@@ -28,6 +28,10 @@ pub enum Tool {
     Select,
     Rect,
     RoundRect,
+    Diamond,
+    Hexagon,
+    Database,
+    Subroutine,
     Line,
     Arrow,
     ElbowLine,
@@ -36,11 +40,15 @@ pub enum Tool {
 }
 
 impl Tool {
-    /// In toolbar order (which the number keys follow).
-    pub const ALL: [Tool; 8] = [
+    /// In toolbar order. The four [`Tool::MORE`] shapes share one button.
+    pub const ALL: [Tool; 12] = [
         Tool::Select,
         Tool::Rect,
         Tool::RoundRect,
+        Tool::Diamond,
+        Tool::Hexagon,
+        Tool::Database,
+        Tool::Subroutine,
         Tool::Line,
         Tool::Arrow,
         Tool::ElbowLine,
@@ -48,11 +56,39 @@ impl Tool {
         Tool::Text,
     ];
 
+    /// Behind the toolbar's More Shapes button.
+    pub const MORE: [Tool; 4] = [
+        Tool::Diamond,
+        Tool::Hexagon,
+        Tool::Database,
+        Tool::Subroutine,
+    ];
+
+    /// One of the [`Tool::MORE`] shapes.
+    pub fn is_more(self) -> bool {
+        Tool::MORE.contains(&self)
+    }
+
+    /// Its place in the toolbar, from 0 (which the number keys follow).
+    pub fn slot(self) -> usize {
+        let i = Tool::ALL.iter().position(|&t| t == self).unwrap_or(0);
+        // The four more shapes (3 to 6) are one button.
+        match i {
+            0..=3 => i,
+            4..=6 => 3,
+            _ => i - 3,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Tool::Select => "Select",
             Tool::Rect => "Rectangle",
             Tool::RoundRect => "Rounded Rectangle",
+            Tool::Diamond => "Diamond",
+            Tool::Hexagon => "Hexagon",
+            Tool::Database => "Database",
+            Tool::Subroutine => "Subroutine",
             Tool::Line => "Line",
             Tool::Arrow => "Arrow",
             Tool::ElbowLine => "Right-Angle Line",
@@ -66,6 +102,10 @@ impl Tool {
         match self {
             Tool::Rect => Some(ShapeKind::Rect),
             Tool::RoundRect => Some(ShapeKind::RoundRect),
+            Tool::Diamond => Some(ShapeKind::Diamond),
+            Tool::Hexagon => Some(ShapeKind::Hexagon),
+            Tool::Database => Some(ShapeKind::Database),
+            Tool::Subroutine => Some(ShapeKind::Subroutine),
             Tool::Text => Some(ShapeKind::Text),
             _ => None,
         }

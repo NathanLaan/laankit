@@ -22,6 +22,8 @@ pub enum Act {
     CloseFolder,
     Export,
     Tool(Tool),
+    /// The More Shapes button's shape: the last of [`Tool::MORE`] used.
+    MoreShapes,
     Undo,
     Redo,
     SelectAll,
@@ -120,6 +122,11 @@ pub fn tool_key(tool: Tool) -> (Key, &'static str) {
         Tool::Select => (Key::V, "V"),
         Tool::Rect => (Key::R, "R"),
         Tool::RoundRect => (Key::O, "O"),
+        // C for a cylinder, S for a subroutine.
+        Tool::Diamond => (Key::D, "D"),
+        Tool::Hexagon => (Key::H, "H"),
+        Tool::Database => (Key::C, "C"),
+        Tool::Subroutine => (Key::S, "S"),
         Tool::Line => (Key::L, "L"),
         Tool::Arrow => (Key::A, "A"),
         // An elbow looks like a J; E for (right-angle) arrows, the most used.
@@ -129,9 +136,10 @@ pub fn tool_key(tool: Tool) -> (Key, &'static str) {
     }
 }
 
-/// A tool's number: its place in the toolbar ([`Tool::ALL`]). Bound to the
-/// physical key, so the number row works on layouts that put the digits
-/// behind Shift.
+/// A tool's number: its toolbar button ([`Tool::slot`]), so the four more
+/// shapes share 4, which picks the last one used. Bound to the physical
+/// key, so the number row works on layouts that put the digits behind
+/// Shift.
 pub fn tool_digit(tool: Tool) -> (Key, &'static str) {
     const DIGITS: [(Key, &str); 9] = [
         (Key::Num1, "1"),
@@ -144,8 +152,7 @@ pub fn tool_digit(tool: Tool) -> (Key, &'static str) {
         (Key::Num8, "8"),
         (Key::Num9, "9"),
     ];
-    let i = Tool::ALL.iter().position(|&t| t == tool).unwrap_or(0);
-    DIGITS[i]
+    DIGITS[tool.slot()]
 }
 
 pub fn registry() -> Registry<Act, View> {
@@ -190,22 +197,39 @@ pub fn registry() -> Registry<Act, View> {
             .filter(char::is_ascii_alphanumeric)
             .collect();
         let id = format!("tool.{id}");
-        r.register(
-            add(
-                &id,
-                &format!("{} Tool", tool.name()),
-                "Tools",
-                Act::Tool(tool),
-            )
-            .key(Binding::logical(Modifiers::NONE, key))
-            .key(Binding::physical(Modifiers::NONE, digit))
-            // With Shift the tool stays picked after each shape.
-            .key(Binding::logical(Modifiers::SHIFT, key))
-            .key(Binding::physical(Modifiers::SHIFT, digit))
-            .shortcut(format!("{letter}, {number}"))
-            .when(ready),
-        );
+        let command = add(
+            &id,
+            &format!("{} Tool", tool.name()),
+            "Tools",
+            Act::Tool(tool),
+        )
+        .key(Binding::logical(Modifiers::NONE, key))
+        // With Shift the tool stays picked after each shape.
+        .key(Binding::logical(Modifiers::SHIFT, key))
+        .when(ready);
+        // The more shapes' number is More Shapes'.
+        r.register(if tool.is_more() {
+            command.shortcut(letter)
+        } else {
+            command
+                .key(Binding::physical(Modifiers::NONE, digit))
+                .key(Binding::physical(Modifiers::SHIFT, digit))
+                .shortcut(format!("{letter}, {number}"))
+        });
     }
+    let (digit, number) = tool_digit(Tool::MORE[0]);
+    r.register(
+        add(
+            "tool.moreShapes",
+            "More Shapes Tool",
+            "Tools",
+            Act::MoreShapes,
+        )
+        .key(Binding::physical(Modifiers::NONE, digit))
+        .key(Binding::physical(Modifiers::SHIFT, digit))
+        .shortcut(number)
+        .when(ready),
+    );
     r.register(
         add("edit.undo", "Undo", "Edit", Act::Undo)
             .key(Binding::logical(cmd, Key::Z))
@@ -423,9 +447,15 @@ mod tests {
         assert_eq!(label("tool.select").as_deref(), Some("V, 1"));
         assert_eq!(label("tool.rectangle").as_deref(), Some("R, 2"));
         assert_eq!(label("tool.roundedrectangle").as_deref(), Some("O, 3"));
-        assert_eq!(label("tool.rightangleline").as_deref(), Some("J, 6"));
-        assert_eq!(label("tool.rightanglearrow").as_deref(), Some("E, 7"));
-        assert_eq!(label("tool.text").as_deref(), Some("T, 8"));
+        assert_eq!(label("tool.diamond").as_deref(), Some("D"));
+        assert_eq!(label("tool.hexagon").as_deref(), Some("H"));
+        assert_eq!(label("tool.database").as_deref(), Some("C"));
+        assert_eq!(label("tool.subroutine").as_deref(), Some("S"));
+        assert_eq!(label("tool.moreShapes").as_deref(), Some("4"));
+        assert_eq!(label("tool.line").as_deref(), Some("L, 5"));
+        assert_eq!(label("tool.rightangleline").as_deref(), Some("J, 7"));
+        assert_eq!(label("tool.rightanglearrow").as_deref(), Some("E, 8"));
+        assert_eq!(label("tool.text").as_deref(), Some("T, 9"));
     }
 
     #[test]

@@ -2,7 +2,7 @@
 //! hints, marquee, the shape or line being created) in theme colours.
 
 use blockliner_core::connect::{anchor_point, path_midpoint};
-use blockliner_core::geometry::Handle;
+use blockliner_core::geometry::{self, Handle, SUBROUTINE_INSET};
 use blockliner_core::route::middle_segment;
 use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
@@ -70,10 +70,11 @@ pub fn diagram(
     for s in &d.shapes {
         let r = screen_rect(view, origin, &s.rect);
         if painter.clip_rect().intersects(r) {
+            let area = screen_rect(view, origin, &s.label_rect());
             shape(
                 painter,
                 view.zoom,
-                r,
+                (r, area),
                 s,
                 p,
                 o.editing == Some(s.id.as_str()),
@@ -280,7 +281,15 @@ pub fn swatch(painter: &Painter, square: egui::Rect, look: SwatchLook, ring: boo
     }
 }
 
-fn shape(painter: &Painter, zoom: f32, r: egui::Rect, s: &Shape, p: &Palette, editing: bool) {
+/// `rects`: the shape's and its label's, on screen.
+fn shape(
+    painter: &Painter,
+    zoom: f32,
+    (r, area): (egui::Rect, egui::Rect),
+    s: &Shape,
+    p: &Palette,
+    editing: bool,
+) {
     // The shape's own colours where it has them, else the theme's.
     let fill = colour(s.style.fill.as_ref());
     let ink = colour(s.style.stroke.as_ref());
@@ -311,6 +320,9 @@ fn shape(painter: &Painter, zoom: f32, r: egui::Rect, s: &Shape, p: &Palette, ed
                 dashed_rect(painter, r, Stroke::new(1.0, p.text_faint));
             }
         }
+        kind => {
+            outline(painter, r, kind, zoom, body, stroke);
+        }
     }
     if !editing {
         let text = s
@@ -318,7 +330,7 @@ fn shape(painter: &Painter, zoom: f32, r: egui::Rect, s: &Shape, p: &Palette, ed
             .label_rgba()
             .map(|[r, g, b, a]| Color32::from_rgba_unmultiplied(r, g, b, a))
             .unwrap_or(p.text_primary);
-        label(painter, r, &s.label, zoom, text);
+        label(painter, r, area, &s.label, zoom, text);
     }
     badge(painter, r, s, p);
 }
@@ -360,6 +372,49 @@ fn badge(painter: &Painter, r: egui::Rect, s: &Shape, p: &Palette) {
     let at = egui::Rect::from_min_size(r.right_top() + vec2(-size.x - 3.0, 3.0), size);
     painter.rect_filled(at, 3.0, p.bg_base.gamma_multiply(0.85));
     painter.galley(at.center() - galley.size() / 2.0, galley, p.text_muted);
+}
+
+/// A diamond, hexagon, database or subroutine filling `r` (on screen), its
+/// stroke inside `r` as a box's is. `false` for the other kinds, which
+/// draw themselves.
+pub fn outline(
+    painter: &Painter,
+    r: egui::Rect,
+    kind: &ShapeKind,
+    zoom: f32,
+    fill: Color32,
+    stroke: Stroke,
+) -> bool {
+    let inner = r.shrink(stroke.width / 2.0);
+    let m = Rect::new(inner.left(), inner.top(), inner.width(), inner.height());
+    let screen = |points: Vec<blockliner_core::Point>| -> Vec<Pos2> {
+        points.into_iter().map(|q| Pos2::new(q.x, q.y)).collect()
+    };
+    match kind {
+        ShapeKind::Diamond | ShapeKind::Hexagon => {
+            let points = screen(geometry::polygon(kind, &m).unwrap_or_default());
+            painter.add(egui::Shape::convex_polygon(points, fill, stroke));
+        }
+        ShapeKind::Database => {
+            // The cap scales with the zoom, as the model's does.
+            let cap = (r.height() / 5.0).min(12.0 * zoom);
+            let (body, lid) = geometry::cylinder(&m, cap, 24);
+            painter.add(egui::Shape::convex_polygon(screen(body), fill, stroke));
+            painter.add(egui::Shape::line(screen(lid), stroke));
+        }
+        ShapeKind::Subroutine => {
+            painter.rect(r, 0.0, fill, stroke, StrokeKind::Inside);
+            let k = (SUBROUTINE_INSET * zoom).min(r.width() / 4.0);
+            for x in [inner.left() + k, inner.right() - k] {
+                painter.line_segment(
+                    [Pos2::new(x, inner.top()), Pos2::new(x, inner.bottom())],
+                    stroke,
+                );
+            }
+        }
+        _ => return false,
+    }
+    true
 }
 
 fn corner(r: egui::Rect, zoom: f32) -> CornerRadius {
@@ -413,17 +468,25 @@ fn edge_label(painter: &Painter, at: Pos2, text: &str, zoom: f32, p: &Palette) {
     painter.galley(r.center() - galley.size() / 2.0, galley, p.text_secondary);
 }
 
-/// The label, centred line by line, wrapped to the shape and clipped to it.
-fn label(painter: &Painter, r: egui::Rect, text: &str, zoom: f32, color: Color32) {
+/// The label, centred line by line in its `area`, wrapped to it and
+/// clipped to the shape `r`.
+fn label(
+    painter: &Painter,
+    r: egui::Rect,
+    area: egui::Rect,
+    text: &str,
+    zoom: f32,
+    color: Color32,
+) {
     let size = LABEL_SIZE * zoom;
     if text.is_empty() || size < 4.0 {
         return;
     }
-    let wrap = (r.width() - 2.0 * LABEL_PAD * zoom).max(1.0);
+    let wrap = (area.width() - 2.0 * LABEL_PAD * zoom).max(1.0);
     let mut job = LayoutJob::simple(text.to_owned(), label_font(zoom), color, wrap);
     job.halign = Align::Center;
     let galley = painter.layout_job(job);
-    let at = r.center() - galley.rect.center().to_vec2();
+    let at = area.center() - galley.rect.center().to_vec2();
     painter
         .with_clip_rect(r.intersect(painter.clip_rect()))
         .galley(at, galley, color);
@@ -459,6 +522,7 @@ pub fn preview(painter: &Painter, r: egui::Rect, kind: &ShapeKind, zoom: f32, p:
         ShapeKind::RoundRect => {
             painter.rect_stroke(r, corner(r, zoom), stroke, StrokeKind::Middle);
         }
+        kind if outline(painter, r, kind, zoom, Color32::TRANSPARENT, stroke) => {}
         _ => dashed_rect(painter, r, stroke),
     }
 }

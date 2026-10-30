@@ -113,10 +113,11 @@ fn line(out: &mut String, args: std::fmt::Arguments) {
 fn node(s: &Shape) -> String {
     let label = encode(&s.label);
     match &s.kind {
-        ShapeKind::Rect => format!("{}[\"{label}\"]{}", s.id, class(s)),
-        ShapeKind::RoundRect => format!("{}(\"{label}\"){}", s.id, class(s)),
         ShapeKind::Text => format!("{}[\"{label}\"]:::{TEXT_CLASS}", s.id),
-        ShapeKind::Other { open, close } => format!("{}{open}\"{label}\"{close}{}", s.id, class(s)),
+        kind => {
+            let (open, close) = kind.delimiters();
+            format!("{}{open}\"{label}\"{close}{}", s.id, class(s))
+        }
     }
 }
 

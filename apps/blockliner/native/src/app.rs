@@ -85,6 +85,8 @@ pub struct BlockLinerApp {
     history: History,
     canvas: Canvas,
     tool: Tool,
+    /// The More Shapes button's shape: the last of the four picked.
+    more_shape: Tool,
     /// The tool was picked with Shift, so it stays after each shape.
     sticky_tool: bool,
     /// Shift is down this frame (for picking a tool with it).
@@ -152,6 +154,7 @@ impl BlockLinerApp {
             diagram,
             canvas: Canvas::new(prefs.show_grid),
             tool: Tool::default(),
+            more_shape: Tool::MORE[0],
             sticky_tool: false,
             shift: false,
             overlay: None,
@@ -358,6 +361,13 @@ impl BlockLinerApp {
             }
             Act::Tool(tool) => {
                 self.tool = tool;
+                self.sticky_tool = self.shift;
+                if tool.is_more() {
+                    self.more_shape = tool;
+                }
+            }
+            Act::MoreShapes => {
+                self.tool = self.more_shape;
                 self.sticky_tool = self.shift;
             }
             Act::Undo => {
@@ -1003,6 +1013,7 @@ impl BlockLinerApp {
     fn main_view(&mut self, ui: &mut Ui) {
         let props = ToolbarProps {
             tool: self.tool,
+            more_shape: self.more_shape,
             can_close_folder: self.project.is_some(),
             properties_open: self.properties_visible && self.sidebar_visible,
             can_export: self.has_content(),

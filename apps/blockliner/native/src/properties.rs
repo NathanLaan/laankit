@@ -113,6 +113,10 @@ pub fn summary(d: &Diagram, selection: &[String], lines: usize) -> String {
                     ShapeKind::Rect => "Rectangle",
                     ShapeKind::RoundRect => "Rounded Rectangle",
                     ShapeKind::Text => "Text",
+                    ShapeKind::Diamond => "Diamond",
+                    ShapeKind::Hexagon => "Hexagon",
+                    ShapeKind::Database => "Database",
+                    ShapeKind::Subroutine => "Subroutine",
                     ShapeKind::Other { .. } => "Shape",
                 };
                 let label = s.label.lines().next().unwrap_or("").trim();

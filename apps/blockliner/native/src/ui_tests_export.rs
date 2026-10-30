@@ -28,9 +28,9 @@ fn context() -> egui::Context {
 }
 
 /// An arrow from a box to a round box (in the Blue swatch), a long label
-/// that wraps, a text box,
-/// an edge label, and a right-angle line from the text box up to the round
-/// box.
+/// that wraps, a text box, an edge label, a right-angle line from the text
+/// box up to the round box, and a row of the four more shapes (the
+/// database in the Green swatch).
 fn diagram() -> Diagram {
     let mut d = Diagram::new();
     d.shapes.push(Shape::new(
@@ -55,6 +55,26 @@ fn diagram() -> Diagram {
         "Async",
         Rect::new(40.0, 140.0, 200.0, 40.0),
     ));
+    for (id, kind, label, x, w, h) in [
+        ("valid", ShapeKind::Diamond, "Valid?", 40.0, 160.0, 80.0),
+        ("prepare", ShapeKind::Hexagon, "Prepare", 240.0, 160.0, 60.0),
+        (
+            "orders",
+            ShapeKind::Database,
+            "Orders DB",
+            440.0,
+            120.0,
+            80.0,
+        ),
+        ("auth", ShapeKind::Subroutine, "Auth", 600.0, 160.0, 60.0),
+    ] {
+        let mut s = Shape::new(id, kind, label, Rect::new(x, 220.0, w, h));
+        if id == "orders" {
+            s.style
+                .set_fill(Some(Colour::parse(blockliner_core::style::PRESETS[2].fill)));
+        }
+        d.shapes.push(s);
+    }
     let mut arrow = Connector::new(
         ConnectorKind::Arrow,
         End::glued("api", None),
@@ -100,6 +120,11 @@ fn the_svg_matches_its_golden_file() {
         svg.contains("<polyline points=\"240,160 360,160 360,100\""),
         "{svg}"
     );
+    // A diamond is its four side midpoints, the stroke inside the shape.
+    assert!(
+        svg.contains(r#"<polygon points="120,220.75 199.25,260 120,299.25 40.75,260""#),
+        "{svg}"
+    );
     assert!(export::svg(&ctx, &d, &s, true).contains("class=\"grid\""));
     export::png(&svg, 1.0).expect("resvg reads it");
 }
@@ -109,14 +134,14 @@ fn a_png_is_the_page_times_the_scale() {
     let ctx = context();
     let d = diagram();
     let s = scope(&d, Objects::All).unwrap();
-    // The page: x 40..420, y 40..180, plus two cells around.
-    assert_eq!(s.bounds, Rect::new(0.0, 0.0, 460.0, 220.0));
+    // The page: x 40..760, y 40..300, plus two cells around.
+    assert_eq!(s.bounds, Rect::new(0.0, 0.0, 800.0, 340.0));
     for scale in [1, 2] {
         let o = options(Format::Png, false, scale);
-        assert_eq!(export::size(&s, &o), (460 * scale, 220 * scale));
+        assert_eq!(export::size(&s, &o), (800 * scale, 340 * scale));
         let bytes = export::render(&ctx, &d, &s, &o).unwrap();
         let png = image::load_from_memory(&bytes).unwrap().into_rgba8();
-        assert_eq!(png.dimensions(), (460 * scale, 220 * scale));
+        assert_eq!(png.dimensions(), (800 * scale, 340 * scale));
         let px = |x: u32, y: u32| png.get_pixel(x * scale, y * scale).0;
         assert_eq!(px(5, 5), [255, 255, 255, 255], "white background");
         // The api box's left edge, in the stroke's ink.
