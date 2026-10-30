@@ -67,7 +67,6 @@ The app (`apps/blockliner/native`):
 | `canvas`   | The grid, painting, pan and zoom, the tools and their gestures, the label editor            |
 | `views`    | The toolbar, the diagram sidebar, empty states and the status bar                           |
 | `overlays` | Settings, About, Export, New/Rename Diagram, delete confirmation                            |
-| `picker`   | The folder and save dialogs; on Linux on their own thread, so the window keeps answering the compositor |
 | `export`   | The SVG writer (labels wrapped by egui, as on the canvas) and PNG through `resvg`            |
 | `ui_tests*`| egui_kittest flows, headless (below)                                                        |
 

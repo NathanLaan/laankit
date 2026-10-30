@@ -59,6 +59,7 @@ cargo run -p marina-egui --example gallery
 | `toast`       | Info, success and error notices at the bottom centre                                            |
 | `diagnostics` | `MARINA_SCREENSHOT`, `MARINA_SCREENSHOT_EXIT`, `MARINA_THEME`, `MARINA_SCALE`                   |
 | `dialog`      | Compact and full-size modals (`.modal-compact`, `.modal`), text inputs, buttons, `confirm`       |
+| `file_dialog` | `FileDialogs`: runs an `rfd` dialog on its own thread on Linux, so the window keeps answering the compositor (no "not responding" prompt) |
 | `commands`, `palette`, `settings`, `panes`, `about`, `not_ported` | Command registry and palette, settings shell, pane host, about dialog, "not in the native build yet" panel |
 
 ## Fonts

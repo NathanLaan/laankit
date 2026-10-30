@@ -11,7 +11,6 @@ mod commands;
 mod config;
 mod export;
 mod overlays;
-mod picker;
 mod views;
 
 #[cfg(test)]

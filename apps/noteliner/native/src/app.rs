@@ -14,6 +14,7 @@ use marina_egui::about::{AboutAction, AboutIcon, AboutModal, UpdateStatus};
 use marina_egui::commands::{Recents, Registry};
 use marina_egui::diagnostics::{self, Screenshot};
 use marina_egui::dialog::Confirm;
+use marina_egui::file_dialog::FileDialogs;
 use marina_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
 use marina_egui::theme::{self, ThemeState};
 use marina_egui::titlebar::{self, TitleBar, TitleBarAction};
@@ -111,6 +112,19 @@ impl Project {
     }
 }
 
+/// A file dialog's answer, and what it's for.
+enum Picked {
+    Folder(PathBuf),
+    Import(PathBuf),
+    /// Files to attach to the note `file_id`.
+    Attachments {
+        file_id: String,
+        paths: Vec<PathBuf>,
+    },
+    /// The New Project form's folder.
+    NewProjectLocation(PathBuf),
+}
+
 pub struct NoteLinerApp {
     backend: Backend,
     theme: ThemeState,
@@ -165,6 +179,9 @@ pub struct NoteLinerApp {
     palette: Option<CommandPalette>,
     registry: Registry<Act, View>,
     toasts: Toasts,
+    /// The file and folder dialogs, off the UI thread where they would
+    /// freeze it.
+    dialogs: FileDialogs<Picked>,
     update: UpdateStatus,
     last_wheel_zoom: f64,
     /// The window bounds last seen, and when they changed.
@@ -226,6 +243,7 @@ impl NoteLinerApp {
             palette: None,
             registry,
             toasts: Toasts::default(),
+            dialogs: FileDialogs::new(),
             update: UpdateStatus::Idle,
             last_wheel_zoom: f64::NEG_INFINITY,
             bounds: None,
@@ -249,6 +267,7 @@ impl NoteLinerApp {
         egui_extras::install_image_loaders(ctx);
         self.theme.apply(ctx);
         self.backend.attach(ctx);
+        self.dialogs.attach(ctx);
         self.editor.attach(ctx);
         if self.prefs.spell_check {
             self.spell.start(&self.backend.paths().user_data);
@@ -874,11 +893,32 @@ impl NoteLinerApp {
 
     /// `handleOpenFolder`.
     fn pick_folder(&mut self) {
-        if let Some(folder) = rfd::FileDialog::new()
-            .set_title("Open Folder")
-            .pick_folder()
-        {
-            self.open_folder(folder);
+        self.dialogs.start(|| {
+            rfd::FileDialog::new()
+                .set_title("Open Folder")
+                .pick_folder()
+                .map(Picked::Folder)
+        });
+    }
+
+    /// A file dialog's answer.
+    fn picked(&mut self) {
+        let Some(picked) = self.dialogs.poll() else {
+            return;
+        };
+        match picked {
+            Picked::Folder(folder) => self.open_folder(folder),
+            Picked::Import(path) => self.import(path),
+            Picked::Attachments { file_id, paths } => {
+                for path in paths {
+                    self.attach_file(&file_id, &path, false);
+                }
+            }
+            Picked::NewProjectLocation(folder) => {
+                if let Some(Overlay::NewProject(form)) = &mut self.overlay {
+                    form.location = folder.display().to_string();
+                }
+            }
         }
     }
 
@@ -1214,23 +1254,28 @@ impl NoteLinerApp {
         if self.project.is_none() {
             return;
         }
-        let picked = rfd::FileDialog::new()
-            .set_title("Import Document")
-            .add_filter("Documents", &["docx", "pptx"])
-            .add_filter("Word Document", &["docx"])
-            .add_filter("PowerPoint Presentation", &["pptx"])
-            .pick_file();
-        if let Some(path) = picked {
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            self.overlay = Some(Overlay::Busy {
-                title: "Importing",
-                message: format!("Importing {name}..."),
-            });
-            self.backend.import(path);
-        }
+        self.dialogs.start(|| {
+            rfd::FileDialog::new()
+                .set_title("Import Document")
+                .add_filter("Documents", &["docx", "pptx"])
+                .add_filter("Word Document", &["docx"])
+                .add_filter("PowerPoint Presentation", &["pptx"])
+                .pick_file()
+                .map(Picked::Import)
+        });
+    }
+
+    /// Imports the document picked in [`Self::import_dialog`].
+    fn import(&mut self, path: PathBuf) {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.overlay = Some(Overlay::Busy {
+            title: "Importing",
+            message: format!("Importing {name}..."),
+        });
+        self.backend.import(path);
     }
 
     // --- Commands --------------------------------------------------------------
@@ -1554,6 +1599,7 @@ impl NoteLinerApp {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
         self.handle_events(&ctx);
+        self.picked();
         self.editor_took_drop = false;
         self.update_editor_inputs();
         self.update_deck();
@@ -2246,13 +2292,12 @@ impl NoteLinerApp {
                 let Some(id) = self.project.as_ref().and_then(|p| p.selected.clone()) else {
                     return;
                 };
-                let files = rfd::FileDialog::new()
-                    .set_title("Add Attachments")
-                    .pick_files()
-                    .unwrap_or_default();
-                for path in files {
-                    self.attach_file(&id, &path, false);
-                }
+                self.dialogs.start(move || {
+                    let paths = rfd::FileDialog::new()
+                        .set_title("Add Attachments")
+                        .pick_files()?;
+                    Some(Picked::Attachments { file_id: id, paths })
+                });
             }
             AttachmentAction::Open(path) => {
                 if let Err(e) = open::that_detached(&path) {
@@ -2461,9 +2506,11 @@ impl NoteLinerApp {
                     None => {}
                 }
                 if browse {
-                    if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                        form.location = folder.display().to_string();
-                    }
+                    self.dialogs.start(|| {
+                        rfd::FileDialog::new()
+                            .pick_folder()
+                            .map(Picked::NewProjectLocation)
+                    });
                 }
             }
             Overlay::Setup(form) => match overlays::setup(ctx, form) {

@@ -12,6 +12,7 @@ use marina_egui::about::{AboutAction, AboutIcon, AboutModal};
 use marina_egui::commands::{Recents, Registry};
 use marina_egui::diagnostics::{self, Screenshot};
 use marina_egui::dialog::{self, Confirm};
+use marina_egui::file_dialog::FileDialogs;
 use marina_egui::palette::{CommandPalette, PaletteOutcome};
 use marina_egui::theme::{self, ThemeState};
 use marina_egui::titlebar::{self, TitleBar, TitleBarAction};
@@ -28,7 +29,6 @@ use crate::overlays::export::{ExportAction, ExportState};
 use crate::overlays::name::{NameAction, NameState};
 use crate::overlays::settings::{SettingsAction, SettingsState};
 use crate::overlays::{self, Overlay};
-use crate::picker::Picker;
 use crate::views::{self, SaveState, SidebarAction, StatusProps, ToolbarProps};
 
 /// eframe storage keys.
@@ -87,17 +87,19 @@ pub struct BlockLinerApp {
     /// `MARINA_OPEN`: a dialog to open on the first frame, for screenshots.
     open_on_start: Option<String>,
     /// The folder and save dialogs, off the UI thread where they'd freeze it.
-    picker: Picker<Pick>,
+    dialogs: FileDialogs<Picked>,
     /// Tests: export here instead of asking with the save dialog.
     #[cfg(test)]
     export_to: Option<PathBuf>,
 }
 
-/// What a file dialog's answer is for.
-enum Pick {
-    Folder,
-    /// The Export dialog's choices when Export… was pressed.
+/// A file dialog's answer.
+enum Picked {
+    Folder(PathBuf),
+    /// Where to export, with the Export dialog's choices when Export… was
+    /// pressed.
     Export {
+        path: PathBuf,
         options: export::Options,
         selected_only: bool,
     },
@@ -143,7 +145,12 @@ impl BlockLinerApp {
             toasts: Toasts::default(),
             screenshot: Screenshot::from_env(),
             open_on_start: std::env::var("MARINA_OPEN").ok(),
-            picker: Picker::new(),
+            // Tests answer in place, with no dialog.
+            dialogs: if cfg!(test) {
+                FileDialogs::in_place()
+            } else {
+                FileDialogs::new()
+            },
             #[cfg(test)]
             export_to: None,
         };
@@ -160,7 +167,7 @@ impl BlockLinerApp {
         }
         self.initialized = true;
         self.backend.attach(ctx);
-        self.picker.attach(ctx);
+        self.dialogs.attach(ctx);
         fonts::install(ctx);
         self.theme.apply(ctx);
         match self.open_on_start.take().as_deref() {
@@ -372,21 +379,23 @@ impl BlockLinerApp {
     // --- The folder and its diagrams ------------------------------------------
 
     fn pick_folder(&mut self) {
-        self.picker.start(Pick::Folder, || {
+        self.dialogs.start(|| {
             rfd::FileDialog::new()
                 .set_title("Open Folder")
                 .pick_folder()
+                .map(Picked::Folder)
         });
     }
 
     /// A file dialog's answer.
     fn picked(&mut self, ctx: &egui::Context) {
-        let Some((pick, path)) = self.picker.poll() else {
+        let Some(picked) = self.dialogs.poll() else {
             return;
         };
-        match pick {
-            Pick::Folder => self.open_project(path, None),
-            Pick::Export {
+        match picked {
+            Picked::Folder(folder) => self.open_project(folder, None),
+            Picked::Export {
+                path,
                 options,
                 selected_only,
             } => {
@@ -698,11 +707,14 @@ impl BlockLinerApp {
         };
         let name = format!("{}{suffix}.{}", doc.name, o.format.ext());
         let ask = self.save_dialog(project.folder.clone(), name, o.format);
-        let pick = Pick::Export {
-            options: o,
-            selected_only: state.selected_only,
-        };
-        self.picker.start(pick, ask);
+        let selected_only = state.selected_only;
+        self.dialogs.start(move || {
+            ask().map(|path| Picked::Export {
+                path,
+                options: o,
+                selected_only,
+            })
+        });
     }
 
     /// The system save dialog, in the project folder.
@@ -1010,7 +1022,7 @@ impl BlockLinerApp {
             Overlay::Export(state) => {
                 let scope = self.export_scope(state.selected_only);
                 let size = scope.as_ref().map(|s| export::size(s, &state.options));
-                match overlays::export::show(ctx, state, size, self.picker.busy()) {
+                match overlays::export::show(ctx, state, size, self.dialogs.busy()) {
                     Some(ExportAction::Close) => keep = false,
                     Some(ExportAction::Export) => self.ask_export(state),
                     None => {}

@@ -10,6 +10,7 @@ use marina_egui::about::{AboutAction, AboutIcon, AboutModal, UpdateStatus};
 use marina_egui::commands::{Recents, Registry};
 use marina_egui::diagnostics::{self, Screenshot};
 use marina_egui::dialog::Confirm;
+use marina_egui::file_dialog::FileDialogs;
 use marina_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
 use marina_egui::panes::PaneLayout;
 use marina_egui::theme::{self, ThemeState};
@@ -74,6 +75,8 @@ pub struct PageLinerApp {
     palette: Option<CommandPalette>,
     registry: Registry<Act, View>,
     toasts: Toasts,
+    /// The Import dialog, off the UI thread where it would freeze it.
+    imports: FileDialogs<Vec<PathBuf>>,
     update: UpdateStatus,
     last_wheel_zoom: f64,
     screenshot: Option<Screenshot>,
@@ -118,6 +121,7 @@ impl PageLinerApp {
             palette: None,
             registry,
             toasts: Toasts::default(),
+            imports: FileDialogs::new(),
             update: UpdateStatus::Idle,
             last_wheel_zoom: f64::NEG_INFINITY,
             screenshot: Screenshot::from_env(),
@@ -138,6 +142,7 @@ impl PageLinerApp {
         egui_extras::install_image_loaders(ctx);
         self.theme.apply(ctx);
         self.backend.attach(ctx);
+        self.imports.attach(ctx);
     }
 
     // --- Accessors for tests ------------------------------------------------
@@ -336,15 +341,15 @@ impl PageLinerApp {
 
     /// `importBooks`: the file dialog.
     fn import_dialog(&mut self) {
-        let picked = rfd::FileDialog::new()
-            .set_title("Import Books")
-            .add_filter("E-Books & Documents", &["epub", "pdf"])
-            .add_filter("EPUB", &["epub"])
-            .add_filter("PDF", &["pdf"])
-            .pick_files();
-        if let Some(paths) = picked.filter(|p| !p.is_empty()) {
-            self.backend.import(paths);
-        }
+        self.imports.start(|| {
+            rfd::FileDialog::new()
+                .set_title("Import Books")
+                .add_filter("E-Books & Documents", &["epub", "pdf"])
+                .add_filter("EPUB", &["epub"])
+                .add_filter("PDF", &["pdf"])
+                .pick_files()
+                .filter(|p| !p.is_empty())
+        });
     }
 
     /// Files dropped on the window are imported (a native addition).
@@ -478,6 +483,9 @@ impl PageLinerApp {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
         self.handle_events(&ctx);
+        if let Some(paths) = self.imports.poll() {
+            self.backend.import(paths);
+        }
         self.dispatch_keys(&ctx);
         self.wheel_zoom(&ctx);
 

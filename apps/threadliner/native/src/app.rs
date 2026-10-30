@@ -8,6 +8,7 @@ use marina_egui::about::{AboutAction, AboutIcon, AboutModal, UpdateStatus};
 use marina_egui::commands::{Recents, Registry};
 use marina_egui::diagnostics::{self, Screenshot};
 use marina_egui::dialog::Confirm;
+use marina_egui::file_dialog::FileDialogs;
 use marina_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
 use marina_egui::theme::{self, ThemeId, ThemeState};
 use marina_egui::titlebar::{self, TitleBar, TitleBarAction};
@@ -85,6 +86,9 @@ pub struct ThreadLinerApp {
     palette: Option<CommandPalette>,
     registry: Registry<Act, View>,
     toasts: Toasts,
+    /// The setup's Browse… folder dialog, off the UI thread where it would
+    /// freeze it.
+    browse: FileDialogs<std::path::PathBuf>,
     update: UpdateStatus,
     last_wheel_zoom: f64,
     screenshot: Option<Screenshot>,
@@ -128,6 +132,7 @@ impl ThreadLinerApp {
             palette: None,
             registry,
             toasts: Toasts::default(),
+            browse: FileDialogs::new(),
             update: UpdateStatus::Idle,
             last_wheel_zoom: f64::NEG_INFINITY,
             screenshot: Screenshot::from_env(),
@@ -149,6 +154,7 @@ impl ThreadLinerApp {
         egui_extras::install_image_loaders(ctx);
         self.theme.apply(ctx);
         self.backend.attach(ctx);
+        self.browse.attach(ctx);
     }
 
     // --- Accessors for tests ------------------------------------------------
@@ -657,6 +663,9 @@ impl ThreadLinerApp {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
         self.handle_events(&ctx);
+        if let Some(dir) = self.browse.poll() {
+            self.setup.data_dir = dir.display().to_string();
+        }
         self.tick_sync(&ctx);
         self.dispatch_keys(&ctx);
         self.wheel_zoom(&ctx);
@@ -952,14 +961,11 @@ impl ThreadLinerApp {
                 }
             }
             ViewAction::OpenUrl(url) => ctx.open_url(egui::OpenUrl::new_tab(url)),
-            ViewAction::Browse => {
-                let picked = rfd::FileDialog::new()
+            ViewAction::Browse => self.browse.start(|| {
+                rfd::FileDialog::new()
                     .set_title("Select Data Folder")
-                    .pick_folder();
-                if let Some(dir) = picked {
-                    self.setup.data_dir = dir.display().to_string();
-                }
-            }
+                    .pick_folder()
+            }),
             ViewAction::Setup => {
                 let dir = self.setup.data_dir.trim().to_string();
                 if dir.is_empty() {
