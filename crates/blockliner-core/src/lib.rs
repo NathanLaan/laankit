@@ -6,11 +6,13 @@
 //! |-----------|--------------------------------------------------------------------|
 //! | `model`   | `Diagram`, shapes, connectors, the geometry types and edits        |
 //! | `geometry`| Rectangle helpers, resize handles, hit-testing                     |
+//! | `connect` | Where connectors meet shapes, and hit-testing them                 |
 //! | `snap`    | Grid snapping                                                      |
 //! | `mermaid` | `read` / `write` between a `Diagram` and `.mmd` text               |
 //! | `ids`     | Mermaid node ids made from labels                                  |
 //! | `layout`  | Positions for shapes the file gives none for                       |
 
+pub mod connect;
 pub mod geometry;
 pub mod ids;
 pub mod layout;

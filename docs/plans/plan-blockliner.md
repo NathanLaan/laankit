@@ -1,7 +1,8 @@
 # BlockLiner — Architecture Diagramming App
 
 Status: **In progress (2026-10-29).** Design decisions settled (§9). Phases 0
-(app scaffold), 1 (`crates/blockliner-core`) and 2 (shapes) implemented.
+(app scaffold), 1 (`crates/blockliner-core`), 2 (shapes) and 3 (connectors)
+implemented.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -88,8 +89,9 @@ crates/marina-egui          theme, toolbar, palette, settings, panes (unchanged)
 | `mermaid::write` ✅ | `Diagram` → `.mmd` text. Deterministic order (stable diffs). |
 | `mermaid::read` ✅ | `.mmd` text → `Diagram`. A small hand-written lexer and reader for the `flowchart` subset in §4. Unknown statements are kept verbatim and written back. |
 | `layout` ✅ (placeholder) | Positions for nodes without `@shape`. Phase 1 places them in a simple row-by-row grid; phase 6 replaces this with the layered layout (§4.4). |
-| `geometry` ✅ (rects, handles, resize, shape hit-testing) | Anchor positions, connector endpoint resolution, hit-testing (point-in-rect, distance-to-segment), marquee intersection. |
-| `snap` ✅ | `snap(point, grid)`, `snap_rect`, nearest-anchor search within a radius. |
+| `geometry` ✅ | Rectangle helpers, resize handles and maths, shape hit-testing, marquee containment. |
+| `connect` ✅ | Anchor positions, connector end resolution (fixed and dynamic glue), distance-to-segment, connector and anchor hit-testing, `glue_at`, removing connectors. |
+| `snap` ✅ | `snap(v, grid)`, `snap_point`. |
 | `history` | Undo/redo as a stack of whole `Diagram` snapshots, with coalescing for drags. Diagrams are small, so snapshots are simpler than an operation log and cannot get out of sync. |
 | `ids` ✅ | Readable Mermaid node ids from labels (`"Orders DB"` → `orders_db`, de-duplicated). |
 
@@ -108,8 +110,8 @@ Same file layout as `apps/pageliner/native`:
 | `app.rs` | `BlockLinerApp`: owns backend, open diagram, `EditorState`, overlays, palette, toasts. Routes events, commands and canvas actions. |
 | `canvas/view.rs`, `canvas/grid.rs` ✅ | Pan/zoom transform (zoom steps 10–600 %, zoom about a point) and the grid (minor lines, a major line every 5 cells, only majors when cells get small). |
 | `canvas/mod.rs` ✅ | The canvas widget: `ui.allocate_painter`, view transform (pan + zoom), grid drawing, item painting, input dispatch to the active tool. Returns `CanvasAction`s (`Changed`, `SelectionChanged`, `EditLabel(id)`). |
-| `canvas/tools.rs` ✅ (shape tools) | A small state machine per tool: `Idle → Dragging{start} → commit`. Rect tools snap the start and end corners. Line tools show anchor hints on hover and glue when released over one. |
-| `canvas/paint.rs` ✅ (shapes) | Draws shapes, connectors, arrowheads, selection handles and anchor hints with theme colours from `marina_egui::theme`. |
+| `canvas/tools.rs` ✅ | A small state machine per tool: `Idle → Dragging{start} → commit`. Rect tools snap the start and end corners. Line tools show anchor hints on hover and glue when released over one. |
+| `canvas/paint.rs` ✅ | Draws shapes, connectors, arrowheads, selection handles and anchor hints with theme colours from `marina_egui::theme`. |
 | `canvas/label.rs` ✅ | Inline label editing: an `egui::TextEdit` placed over the shape (multi-line, `Enter` commits, `Shift+Enter` adds a line, `Esc` cancels). |
 | `views.rs` | Sidebar (diagram list for the project), toolbar (`marina_egui::toolbar` with tool buttons), status bar (zoom %, grid size, cursor position in grid units, save state). |
 | `overlays/` | Settings (grid size, show grid, title bar), rename/delete confirmations, About. |
@@ -237,6 +239,19 @@ saved on the first edit.
   over a shape glues to the nearest anchor, otherwise to the snapped grid
   point. A selected connector shows endpoint handles, which can be dragged
   to re-glue or un-glue.
+- **Glue:** dropping a line end within 8 screen points of a side midpoint
+  glues it there (a fixed anchor, written as `@edge … from=E`). Dropping it
+  elsewhere on a shape glues it *dynamically*: it uses whichever side
+  midpoint is nearest the other end, so it turns as shapes move, and needs
+  no `@edge` line. A line can't join a shape to itself. The shape a line end
+  would glue to shows its four anchors while drawing or dragging, with the
+  chosen one filled, or the shape outlined for dynamic glue.
+- **Lines** are selected by clicking within 5 screen points, box-selected
+  when both ends are inside, and deleted with Delete. Dragging a line moves
+  its free ends only; glued ends stay with their shapes. A single selected
+  line shows its two ends as handles (filled when glued), and dragging one
+  re-glues or frees it. Edge labels read from a file are drawn at the
+  midpoint, read-only.
 - **Moving:** a drag moves the selection by whole grid steps. The delta is
   snapped, not each item's position, so items that are not on the grid
   (after `Alt` placement) keep their offset. Glued connectors follow.
@@ -287,7 +302,7 @@ saved on the first edit.
 | **0. Scaffold** ✅ | `blockliner-core` + `apps/blockliner/native` crates in the workspace; window opens with toolbar, empty canvas, grid, pan/zoom; icon (`assets/icon.svg/png`); `config.rs` paths. | 1 day |
 | **1. Core model + Mermaid** ✅ | `model`, `mermaid::read/write`, `ids`, layout comments, passthrough, golden + round-trip tests. Can be built in parallel with phase 0. | 2–3 days |
 | **2. Shapes** ✅ | Select, Rect, RoundRect, Text tools; snap; move; resize handles; marquee; delete; inline label editing; painting with theme colours. | 3–4 days |
-| **3. Connectors** | Line/Arrow tools, anchors, glue/unglue, endpoint handles, arrowheads, hit-testing on segments, free lines. | 2–3 days |
+| **3. Connectors** ✅ | Line/Arrow tools, anchors, glue/unglue, endpoint handles, arrowheads, hit-testing on segments, free lines. | 2–3 days |
 | **4. History + keyboard** | Snapshot undo/redo with gesture coalescing; nudge; select all; command registry and palette entries. | 1 day |
 | **5. Project + persistence** | Backend: open folder, diagram list sidebar, new/rename/delete, debounced atomic autosave, external-change reload; `lastProject`. | 2 days |
 | **6. Import layout** | `layout::layered` for nodes without positions; "not editable" badge for unsupported node shapes. | 1–2 days |

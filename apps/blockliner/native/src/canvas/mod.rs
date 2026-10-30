@@ -11,6 +11,8 @@
 //! | Select: click, Shift+click              | Selects, toggles                         |
 //! | Select: drag a shape / handle / empty   | Moves / resizes / box-selects            |
 //! | Select: double-click a shape            | Edits its label                          |
+//! | Line / Arrow: drag                      | Draws a connector (ends glue to shapes)  |
+//! | Select: drag a selected line's end      | Re-glues or frees that end               |
 //! | Alt while dragging                      | No snapping                              |
 
 mod grid;
@@ -21,7 +23,7 @@ pub mod view;
 
 use blockliner_core::geometry::Handle;
 use blockliner_core::snap::snap_point;
-use blockliner_core::{Diagram, Point, Rect as ModelRect};
+use blockliner_core::{Connector, Diagram, End, Point, Rect as ModelRect};
 use egui::{CursorIcon, Key, PointerButton, Pos2, Rect, Sense, Ui, Vec2};
 use marina_egui::theme;
 
@@ -29,8 +31,12 @@ pub use tools::Tool;
 use tools::{Gesture, Hit, Mods};
 use view::View;
 
-/// How close (in screen points) the pointer must be to grab a handle.
+/// How close (in screen points) the pointer must be to grab a handle…
 const HANDLE_HIT: f32 = 6.0;
+/// …to pick a line…
+const LINE_HIT: f32 = 5.0;
+/// …and for a line end to glue to an anchor rather than the shape's body.
+const ANCHOR_HIT: f32 = 8.0;
 
 fn pt(p: Pos2) -> Point {
     Point::new(p.x, p.y)
@@ -43,8 +49,8 @@ fn pos(x: f32, y: f32) -> Pos2 {
 /// What a frame of the canvas reports back.
 #[derive(Default)]
 pub struct Output {
-    /// A shape tool made its shape; the app goes back to Select unless the
-    /// tool was picked with Shift.
+    /// A shape or line tool made its shape or line; the app goes back to
+    /// Select unless the tool was picked with Shift.
     pub tool_done: bool,
 }
 
@@ -55,8 +61,12 @@ pub struct Canvas {
     pub pointer: Option<Pos2>,
     /// Selected shape ids, in the order they were selected.
     pub selection: Vec<String>,
+    /// Selected connectors, by index.
+    pub lines: Vec<usize>,
     gesture: Gesture,
     hover: Option<Hit>,
+    /// Where a line end being drawn or dragged would glue (anchor hints).
+    target: Option<End>,
     label: Option<label::LabelEdit>,
     /// Last frame's rectangle, for zooming about the centre from the keyboard.
     rect: Rect,
@@ -69,8 +79,10 @@ impl Canvas {
             show_grid,
             pointer: None,
             selection: Vec::new(),
+            lines: Vec::new(),
             gesture: Gesture::Idle,
             hover: None,
+            target: None,
             label: None,
             rect: Rect::ZERO,
         }
@@ -81,6 +93,14 @@ impl Canvas {
     #[cfg(test)]
     pub fn origin(&self) -> Pos2 {
         self.rect.min
+    }
+
+    pub fn has_selection(&self) -> bool {
+        !self.selection.is_empty() || !self.lines.is_empty()
+    }
+
+    pub fn selected_count(&self) -> usize {
+        self.selection.len() + self.lines.len()
     }
 
     /// One [`view::ZOOM_STEPS`] step in (`dir > 0`) or out, about the centre.
@@ -101,6 +121,7 @@ impl Canvas {
         let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
         self.rect = rect;
         self.selection.retain(|id| d.shape(id).is_some());
+        self.lines.retain(|&i| i < d.connectors.len());
 
         let (space, alt, shift) = ui.input(|i| {
             (
@@ -136,6 +157,7 @@ impl Canvas {
             out = self.input(ui, &resp, d, tool, mods);
         } else {
             self.hover = None;
+            self.target = None;
         }
 
         let painter = ui.painter_at(rect);
@@ -146,7 +168,9 @@ impl Canvas {
         }
         let overlays = paint::Overlays {
             selection: &self.selection,
+            lines: &self.lines,
             hover: self.hover.as_ref(),
+            target: self.target.as_ref(),
             editing: self.label.as_ref().map(|l| l.id.as_str()),
         };
         paint::diagram(&painter, self.view, rect.min, d, &p, &overlays);
@@ -165,6 +189,18 @@ impl Canvas {
                 let r = paint::screen_rect(self.view, rect.min, &r);
                 paint::preview(&painter, r, kind, self.view.zoom, &p);
             }
+            // The line being drawn, to where it would end if let go now.
+            Gesture::Connect { kind, from, now } => {
+                let to = self.target.clone().unwrap_or_else(|| {
+                    End::Free(if alt { *now } else { snap_point(*now, d.grid) })
+                });
+                let line = Connector::new(*kind, from.clone(), to);
+                if let Some((a, b)) = d.connector_points(&line) {
+                    let a = self.view.to_screen(rect.min, pos(a.x, a.y));
+                    let b = self.view.to_screen(rect.min, pos(b.x, b.y));
+                    paint::line_preview(&painter, a, b, *kind, self.view.zoom, &p);
+                }
+            }
             _ => {}
         }
         self.label_editor(ui, d);
@@ -182,6 +218,8 @@ impl Canvas {
             resize_cursor(*handle)
         } else if matches!(self.gesture, Gesture::Move { .. }) {
             CursorIcon::Move
+        } else if matches!(self.gesture, Gesture::Endpoint { .. }) {
+            CursorIcon::Crosshair
         } else if !hovered {
             return;
         } else if tool != Tool::Select {
@@ -189,7 +227,8 @@ impl Canvas {
         } else {
             match &self.hover {
                 Some(Hit::Handle(_, h)) => resize_cursor(*h),
-                Some(Hit::Shape(_)) => CursorIcon::Move,
+                Some(Hit::Endpoint(..)) => CursorIcon::Crosshair,
+                Some(Hit::Shape(_) | Hit::Line(_)) => CursorIcon::Move,
                 None => return,
             }
         };

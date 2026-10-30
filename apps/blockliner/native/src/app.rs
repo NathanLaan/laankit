@@ -125,6 +125,11 @@ impl BlockLinerApp {
     }
 
     #[cfg(test)]
+    pub fn selected_lines(&self) -> &[usize] {
+        &self.canvas.lines
+    }
+
+    #[cfg(test)]
     pub fn editing_label(&self) -> bool {
         self.canvas.is_editing_label()
     }
@@ -142,7 +147,7 @@ impl BlockLinerApp {
     fn view(&self) -> View {
         View {
             modal_open: self.overlay.is_some() || self.palette.is_some(),
-            has_selection: !self.canvas.selection.is_empty(),
+            has_selection: self.canvas.has_selection(),
         }
     }
 
@@ -277,7 +282,8 @@ impl BlockLinerApp {
             let status = StatusProps {
                 tool: self.tool,
                 pointer: self.canvas.pointer,
-                selected: self.canvas.selection.len(),
+                selected: self.canvas.selected_count(),
+                free_lines: self.diagram.has_free_lines(),
                 grid: self.diagram.grid,
                 zoom: self.canvas.view.zoom,
                 scale: &self.theme.scale,

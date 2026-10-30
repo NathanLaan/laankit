@@ -2,42 +2,11 @@
 //! clicking, label editing (and ids from first labels), sticky tools, move
 //! and resize with and without snapping, box selection, delete, and shapes
 //! that the Mermaid file declares in kept statements.
-//!
-//! The canvas starts at 100 % with the model origin at its top-left corner,
-//! just right of the 48 px toolbar, so `at(x, y)` is model (x, y). kittest
-//! wraps the app in an 8 px outer margin (the real window has none).
 
-use blockliner_core::{read, Rect, Shape, ShapeKind};
-use egui::{pos2, Event, Key, Modifiers, PointerButton, Pos2};
-use egui_kittest::Harness;
-
-use crate::app::BlockLinerApp;
 use crate::canvas::Tool;
-use crate::ui_tests::{drag, harness};
-
-type H = Harness<'static, BlockLinerApp>;
-
-const KITTEST_MARGIN: f32 = 8.0;
-
-fn at(x: f32, y: f32) -> Pos2 {
-    pos2(
-        KITTEST_MARGIN + marina_egui::toolbar::WIDTH + x,
-        KITTEST_MARGIN + y,
-    )
-}
-
-fn click(h: &mut H, p: Pos2) {
-    for pressed in [true, false] {
-        h.event(Event::PointerMoved(p));
-        h.event(Event::PointerButton {
-            pos: p,
-            button: PointerButton::Primary,
-            pressed,
-            modifiers: Modifiers::NONE,
-        });
-        h.step();
-    }
-}
+use crate::ui_tests::{at, click, drag, harness, two_shapes, H};
+use blockliner_core::{read, Rect, Shape, ShapeKind};
+use egui::{Event, Key, Modifiers, PointerButton};
 
 fn type_text(h: &mut H, text: &str) {
     h.event(Event::Text(text.into()));
@@ -49,23 +18,6 @@ fn shape<'a>(h: &'a H, id: &str) -> &'a Shape {
         .diagram()
         .shape(id)
         .unwrap_or_else(|| panic!("no shape {id}"))
-}
-
-fn two_shapes(h: &mut H) {
-    let d = h.state_mut().diagram_mut();
-    d.shapes.push(Shape::new(
-        "a",
-        ShapeKind::Rect,
-        "A",
-        Rect::new(100.0, 100.0, 160.0, 60.0),
-    ));
-    d.shapes.push(Shape::new(
-        "b",
-        ShapeKind::RoundRect,
-        "B",
-        Rect::new(400.0, 300.0, 160.0, 60.0),
-    ));
-    h.run_steps(2);
 }
 
 #[test]

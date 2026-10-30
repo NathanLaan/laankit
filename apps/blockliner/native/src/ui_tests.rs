@@ -2,6 +2,7 @@
 //! picking tools from the toolbar and the keyboard, zooming and panning the
 //! canvas, and the grid settings reaching `ui-preferences.json`.
 
+use blockliner_core::{Rect, Shape, ShapeKind};
 use egui::{pos2, Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
@@ -10,6 +11,8 @@ use serde_json::Value;
 use crate::app::BlockLinerApp;
 use crate::canvas::Tool;
 use crate::config::Paths;
+
+pub(crate) type H = Harness<'static, BlockLinerApp>;
 
 pub(crate) fn harness() -> (tempfile::TempDir, Paths, Harness<'static, BlockLinerApp>) {
     let tmp = tempfile::tempdir().unwrap();
@@ -56,6 +59,49 @@ pub(crate) fn drag(
         h.event(event);
         h.step();
     }
+}
+
+/// kittest wraps the app in an 8 px outer margin (the real window has none).
+const KITTEST_MARGIN: f32 = 8.0;
+
+/// The canvas starts at 100 % with the model origin at its top-left corner,
+/// just right of the 48 px toolbar, so `at(x, y)` is model (x, y).
+pub(crate) fn at(x: f32, y: f32) -> Pos2 {
+    pos2(
+        KITTEST_MARGIN + marina_egui::toolbar::WIDTH + x,
+        KITTEST_MARGIN + y,
+    )
+}
+
+pub(crate) fn click(h: &mut H, p: Pos2) {
+    for pressed in [true, false] {
+        h.event(Event::PointerMoved(p));
+        h.event(Event::PointerButton {
+            pos: p,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+        h.step();
+    }
+}
+
+/// `a` at (100, 100) and `b` at (400, 300), both 160 × 60.
+pub(crate) fn two_shapes(h: &mut H) {
+    let d = h.state_mut().diagram_mut();
+    d.shapes.push(Shape::new(
+        "a",
+        ShapeKind::Rect,
+        "A",
+        Rect::new(100.0, 100.0, 160.0, 60.0),
+    ));
+    d.shapes.push(Shape::new(
+        "b",
+        ShapeKind::RoundRect,
+        "B",
+        Rect::new(400.0, 300.0, 160.0, 60.0),
+    ));
+    h.run_steps(2);
 }
 
 #[test]

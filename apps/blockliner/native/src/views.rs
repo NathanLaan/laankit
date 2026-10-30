@@ -131,6 +131,8 @@ pub struct StatusProps<'a> {
     /// The pointer in model coordinates, when over the canvas.
     pub pointer: Option<Pos2>,
     pub selected: usize,
+    /// Some connector has an end that isn't glued, so Mermaid won't show it.
+    pub free_lines: bool,
     pub grid: f32,
     pub zoom: f32,
     /// The UI scale id (`100`, `125`, …).
@@ -147,13 +149,29 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) {
     painter.hline(rect.x_range(), rect.top(), Stroke::new(1.0, p.border));
     let font = FontId::proportional(12.0);
     let y = rect.center().y;
-    painter.text(
+    let tool = painter.text(
         pos2(rect.left() + 10.0, y),
         Align2::LEFT_CENTER,
         props.tool.name(),
         font.clone(),
         p.text_secondary,
     );
+    if props.free_lines {
+        let icon = painter.text(
+            pos2(tool.right() + 16.0, y),
+            Align2::LEFT_CENTER,
+            icons::TRIANGLE_EXCLAMATION,
+            icons::font(10.0),
+            p.text_muted,
+        );
+        painter.text(
+            pos2(icon.right() + 6.0, y),
+            Align2::LEFT_CENTER,
+            "Unattached lines show only in BlockLiner, not in Mermaid",
+            font.clone(),
+            p.text_muted,
+        );
+    }
 
     let mut parts = Vec::new();
     if props.selected > 0 {

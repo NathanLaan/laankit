@@ -146,6 +146,8 @@ pub enum Anchor {
 }
 
 impl Anchor {
+    pub const ALL: [Anchor; 4] = [Anchor::N, Anchor::E, Anchor::S, Anchor::W];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::N => "N",

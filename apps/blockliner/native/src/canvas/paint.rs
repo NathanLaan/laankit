@@ -1,23 +1,31 @@
-//! Drawing the diagram and the editing overlays (selection, handles,
-//! marquee, the shape being created) in theme colours.
+//! Drawing the diagram and the editing overlays (selection, handles, anchor
+//! hints, marquee, the shape or line being created) in theme colours.
 
+use blockliner_core::connect::anchor_point;
 use blockliner_core::geometry::Handle;
-use blockliner_core::{Diagram, Rect, Shape, ShapeKind};
+use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{vec2, Align, Color32, CornerRadius, FontId, Painter, Pos2, Stroke, StrokeKind};
 use marina_egui::theme::Palette;
 
 use super::view::View;
 use super::{pos, tools::Hit};
+use crate::views::arrowhead;
 
 /// Label text size at 100 %, in diagram pixels.
 pub const LABEL_SIZE: f32 = 14.0;
 /// Space between a label and its shape's sides, at 100 %.
 pub const LABEL_PAD: f32 = 6.0;
+/// Edge label text size at 100 %.
+const EDGE_LABEL_SIZE: f32 = 12.0;
 /// The round rectangle's corner radius at 100 %.
 const CORNER: f32 = 12.0;
+/// Arrowhead length at 100 %.
+const ARROW: f32 = 12.0;
 /// Handles are this many screen points square, at any zoom.
 pub const HANDLE_SIZE: f32 = 8.0;
+/// Endpoint handles and anchor hints: radius in screen points.
+const DOT: f32 = 4.5;
 
 pub fn label_font(zoom: f32) -> FontId {
     FontId::proportional(LABEL_SIZE * zoom)
@@ -30,14 +38,22 @@ pub fn screen_rect(view: View, origin: Pos2, r: &Rect) -> egui::Rect {
     )
 }
 
+fn stroke_width(zoom: f32) -> f32 {
+    (1.5 * zoom).clamp(1.0, 4.0)
+}
+
 /// What the overlays need besides the diagram.
 pub struct Overlays<'a> {
     pub selection: &'a [String],
+    pub lines: &'a [usize],
     pub hover: Option<&'a Hit>,
+    /// Where a line end being drawn or dragged would glue.
+    pub target: Option<&'a End>,
     /// The shape whose label is being edited (its text field draws the label).
     pub editing: Option<&'a str>,
 }
 
+/// Shapes, then connectors on top, then the overlays.
 pub fn diagram(
     painter: &Painter,
     view: View,
@@ -46,30 +62,48 @@ pub fn diagram(
     p: &Palette,
     o: &Overlays<'_>,
 ) {
+    let to_screen = |x: f32, y: f32| view.to_screen(origin, pos(x, y));
     for s in &d.shapes {
         let r = screen_rect(view, origin, &s.rect);
-        if !painter.clip_rect().intersects(r) {
-            continue;
+        if painter.clip_rect().intersects(r) {
+            shape(
+                painter,
+                view.zoom,
+                r,
+                s,
+                p,
+                o.editing == Some(s.id.as_str()),
+            );
         }
-        shape(
-            painter,
-            view.zoom,
-            r,
-            s,
-            p,
-            o.editing == Some(s.id.as_str()),
-        );
     }
+
+    let width = stroke_width(view.zoom);
+    for (i, c) in d.connectors.iter().enumerate() {
+        let Some((a, b)) = d.connector_points(c) else {
+            continue;
+        };
+        let (a, b) = (to_screen(a.x, a.y), to_screen(b.x, b.y));
+        let selected = o.lines.contains(&i);
+        if !selected && o.hover == Some(&Hit::Line(i)) {
+            painter.line_segment(
+                [a, b],
+                Stroke::new(width + 4.0, p.accent.gamma_multiply(0.3)),
+            );
+        }
+        let ink = if selected { p.accent } else { p.text_secondary };
+        connector(painter, a, b, c.kind, Stroke::new(width, ink), view.zoom);
+        if let Some(text) = &c.label {
+            edge_label(painter, a.lerp(b, 0.5), text, view.zoom, p);
+        }
+    }
+
+    // Hover and selection outlines.
     if let Some(Hit::Shape(id) | Hit::Handle(id, _)) = o.hover {
         if !o.selection.contains(id) {
             if let Some(s) = d.shape(id) {
                 let r = screen_rect(view, origin, &s.rect).expand(2.0);
-                painter.rect_stroke(
-                    r,
-                    0.0,
-                    Stroke::new(1.0, p.accent.gamma_multiply(0.5)),
-                    StrokeKind::Middle,
-                );
+                let stroke = Stroke::new(1.0, p.accent.gamma_multiply(0.5));
+                painter.rect_stroke(r, 0.0, stroke, StrokeKind::Middle);
             }
         }
     }
@@ -79,39 +113,80 @@ pub fn diagram(
             painter.rect_stroke(r, 0.0, Stroke::new(1.5, p.accent), StrokeKind::Middle);
         }
     }
-    if let [id] = o.selection {
-        if let Some(s) = d.shape(id) {
-            for h in Handle::ALL {
-                let c = h.position(&s.rect);
-                let at = view.to_screen(origin, pos(c.x, c.y));
-                let r = egui::Rect::from_center_size(at, vec2(HANDLE_SIZE, HANDLE_SIZE));
-                painter.rect(
-                    r,
-                    1.0,
-                    p.bg_base,
-                    Stroke::new(1.5, p.accent),
-                    StrokeKind::Middle,
-                );
+
+    // A single selected shape has resize handles; a single selected line has
+    // endpoint handles, filled where the end is glued.
+    match (o.selection, o.lines) {
+        ([id], []) => {
+            if let Some(s) = d.shape(id) {
+                for h in Handle::ALL {
+                    let c = h.position(&s.rect);
+                    let r = egui::Rect::from_center_size(
+                        to_screen(c.x, c.y),
+                        vec2(HANDLE_SIZE, HANDLE_SIZE),
+                    );
+                    painter.rect(
+                        r,
+                        1.0,
+                        p.bg_base,
+                        Stroke::new(1.5, p.accent),
+                        StrokeKind::Middle,
+                    );
+                }
+            }
+        }
+        ([], [i]) => {
+            if let Some(c) = d.connectors.get(*i) {
+                if let Some((a, b)) = d.connector_points(c) {
+                    for (end, at) in [(&c.from, a), (&c.to, b)] {
+                        let fill = if end.shape().is_some() {
+                            p.accent
+                        } else {
+                            p.bg_base
+                        };
+                        painter.circle(
+                            to_screen(at.x, at.y),
+                            DOT,
+                            fill,
+                            Stroke::new(1.5, p.accent),
+                        );
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    // Anchor hints on the shape a line end would glue to: its four anchors,
+    // the one it would take filled, or the whole shape outlined for dynamic
+    // glue.
+    if let Some(End::Glued { shape, anchor }) = o.target {
+        if let Some(s) = d.shape(shape) {
+            if anchor.is_none() {
+                let r = screen_rect(view, origin, &s.rect).expand(3.0);
+                painter.rect_stroke(r, 0.0, Stroke::new(1.5, p.accent), StrokeKind::Middle);
+            }
+            for a in Anchor::ALL {
+                let at = anchor_point(&s.rect, a);
+                let fill = if *anchor == Some(a) {
+                    p.accent
+                } else {
+                    p.bg_base
+                };
+                painter.circle(to_screen(at.x, at.y), DOT, fill, Stroke::new(1.5, p.accent));
             }
         }
     }
 }
 
 fn shape(painter: &Painter, zoom: f32, r: egui::Rect, s: &Shape, p: &Palette, editing: bool) {
-    let stroke = Stroke::new((1.5 * zoom).clamp(1.0, 4.0), p.text_secondary);
+    let stroke = Stroke::new(stroke_width(zoom), p.text_secondary);
     match &s.kind {
         ShapeKind::Rect => {
             painter.rect(r, 0.0, p.bg_surface, stroke, StrokeKind::Inside);
         }
         ShapeKind::RoundRect => {
-            let radius = (CORNER * zoom).min(r.height() / 2.0).min(255.0);
-            painter.rect(
-                r,
-                CornerRadius::same(radius as u8),
-                p.bg_surface,
-                stroke,
-                StrokeKind::Inside,
-            );
+            painter.rect(r, corner(r, zoom), p.bg_surface, stroke, StrokeKind::Inside);
         }
         // Other Mermaid shapes are drawn as rectangles, dashed so they read
         // as "not quite this".
@@ -129,6 +204,45 @@ fn shape(painter: &Painter, zoom: f32, r: egui::Rect, s: &Shape, p: &Palette, ed
     if !editing {
         label(painter, r, &s.label, zoom, p.text_primary);
     }
+}
+
+fn corner(r: egui::Rect, zoom: f32) -> CornerRadius {
+    CornerRadius::same((CORNER * zoom).min(r.height() / 2.0).min(255.0) as u8)
+}
+
+/// A straight connector; an arrow's line stops at the head's base so the
+/// tip stays sharp.
+fn connector(painter: &Painter, a: Pos2, b: Pos2, kind: ConnectorKind, stroke: Stroke, zoom: f32) {
+    match kind {
+        ConnectorKind::Line => {
+            painter.line_segment([a, b], stroke);
+        }
+        ConnectorKind::Arrow => {
+            let len = (b - a).length();
+            let head = (ARROW * zoom).clamp(6.0, 24.0).min(len);
+            if len > 0.0 {
+                let base = b - (b - a) / len * head * 0.8;
+                painter.line_segment([a, base], stroke);
+                painter.add(arrowhead(a, b, head, stroke.color));
+            }
+        }
+    }
+}
+
+/// An edge label from the file, on a patch of background at the midpoint.
+fn edge_label(painter: &Painter, at: Pos2, text: &str, zoom: f32, p: &Palette) {
+    let size = EDGE_LABEL_SIZE * zoom;
+    if text.is_empty() || size < 4.0 {
+        return;
+    }
+    let galley = painter.layout_no_wrap(
+        text.to_owned(),
+        FontId::proportional(size),
+        p.text_secondary,
+    );
+    let r = egui::Rect::from_center_size(at, galley.size()).expand(3.0 * zoom);
+    painter.rect_filled(r, 2.0, p.bg_base);
+    painter.galley(r.center() - galley.size() / 2.0, galley, p.text_secondary);
 }
 
 /// The label, centred line by line, wrapped to the shape and clipped to it.
@@ -160,11 +274,12 @@ pub fn dashed_rect(painter: &Painter, r: egui::Rect, stroke: Stroke) {
 
 /// The box selection.
 pub fn marquee(painter: &Painter, r: egui::Rect, p: &Palette) {
+    let stroke = Stroke::new(1.0, p.accent);
     painter.rect(
         r,
         0.0,
         p.accent.gamma_multiply(0.08),
-        Stroke::new(1.0, p.accent),
+        stroke,
         StrokeKind::Middle,
     );
 }
@@ -174,14 +289,27 @@ pub fn preview(painter: &Painter, r: egui::Rect, kind: &ShapeKind, zoom: f32, p:
     let stroke = Stroke::new(1.5, p.accent);
     match kind {
         ShapeKind::RoundRect => {
-            let radius = (CORNER * zoom).min(r.height() / 2.0).min(255.0);
-            painter.rect_stroke(
-                r,
-                CornerRadius::same(radius as u8),
-                stroke,
-                StrokeKind::Middle,
-            );
+            painter.rect_stroke(r, corner(r, zoom), stroke, StrokeKind::Middle);
         }
         _ => dashed_rect(painter, r, stroke),
     }
+}
+
+/// The line a drag will create.
+pub fn line_preview(
+    painter: &Painter,
+    a: Pos2,
+    b: Pos2,
+    kind: ConnectorKind,
+    zoom: f32,
+    p: &Palette,
+) {
+    connector(
+        painter,
+        a,
+        b,
+        kind,
+        Stroke::new(stroke_width(zoom), p.accent),
+        zoom,
+    );
 }
