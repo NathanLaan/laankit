@@ -1,5 +1,9 @@
-//! The app: owns the open diagram, the canvas, the current tool and the open
-//! dialog; routes commands (keyboard, palette, toolbar) and dialog actions.
+//! The app: owns the open folder and diagram, the canvas, the current tool
+//! and the open dialog; routes commands (keyboard, palette, toolbar,
+//! sidebar) and dialog actions, autosaves, and picks up outside changes.
+
+use std::path::PathBuf;
+use std::time::Duration;
 
 use blockliner_core::history::History;
 use blockliner_core::Diagram;
@@ -7,6 +11,7 @@ use egui::{Frame, Ui};
 use marina_egui::about::{AboutAction, AboutIcon, AboutModal};
 use marina_egui::commands::{Recents, Registry};
 use marina_egui::diagnostics::{self, Screenshot};
+use marina_egui::dialog::{self, Confirm};
 use marina_egui::palette::{CommandPalette, PaletteOutcome};
 use marina_egui::theme::{self, ThemeState};
 use marina_egui::titlebar::{self, TitleBar, TitleBarAction};
@@ -14,12 +19,14 @@ use marina_egui::toast::Toasts;
 use marina_egui::{fonts, icons, window};
 use serde_json::{json, Value};
 
+use crate::backend::{self, Backend, Change, Event};
 use crate::canvas::{Canvas, Tool};
 use crate::commands::{self, Act, View};
 use crate::config::Paths;
+use crate::overlays::name::{NameAction, NameState};
 use crate::overlays::settings::{SettingsAction, SettingsState};
 use crate::overlays::{self, Overlay};
-use crate::views::{self, StatusProps, ToolbarProps};
+use crate::views::{self, SaveState, SidebarAction, StatusProps, ToolbarProps};
 
 /// eframe storage keys.
 const THEME_KEY: &str = "blockliner-theme";
@@ -27,14 +34,40 @@ const RECENTS_KEY: &str = "blockliner-recents";
 const DESCRIPTION: &str =
     "A diagram editor for software architecture, saving Mermaid flowcharts. Built on the marina framework.";
 const REPO_URL: &str = "https://github.com/NathanLaan/marina";
+/// How often to look at the folder for outside changes, in seconds.
+const SCAN_SECONDS: f64 = 1.0;
+
+/// The open folder.
+struct Project {
+    folder: PathBuf,
+    /// Its diagrams, as the sidebar lists them.
+    names: Vec<String>,
+}
+
+/// The diagram open on the canvas.
+struct Doc {
+    name: String,
+    /// The diagram as last read or handed to the autosave: the canvas has
+    /// unsaved edits while it differs.
+    saved: Diagram,
+}
 
 pub struct BlockLinerApp {
     paths: Paths,
     theme: ThemeState,
     /// Whether the window was built undecorated, with Marina's title bar.
     custom_titlebar: bool,
+    sidebar_visible: bool,
     status_bar_visible: bool,
     initialized: bool,
+    backend: Backend,
+    project: Option<Project>,
+    doc: Option<Doc>,
+    /// egui time of the last look at the folder.
+    last_scan: f64,
+    /// The window title last sent.
+    title: String,
+    /// The open diagram; an empty one while none is open.
     diagram: Diagram,
     history: History,
     canvas: Canvas,
@@ -68,12 +101,18 @@ impl BlockLinerApp {
             grid: prefs.grid_size,
             ..Diagram::new()
         };
-        Self {
+        let mut app = Self {
             paths,
             theme,
             custom_titlebar: prefs.custom_titlebar,
+            sidebar_visible: prefs.sidebar_visible,
             status_bar_visible: prefs.status_bar_visible,
             initialized: false,
+            backend: Backend::new(backend::SAVE_DELAY),
+            project: None,
+            doc: None,
+            last_scan: 0.0,
+            title: String::new(),
             history: History::new(&diagram),
             diagram,
             canvas: Canvas::new(prefs.show_grid),
@@ -86,7 +125,11 @@ impl BlockLinerApp {
             toasts: Toasts::default(),
             screenshot: Screenshot::from_env(),
             open_on_start: std::env::var("MARINA_OPEN").ok(),
+        };
+        if let Some(folder) = prefs.last_project {
+            app.open_project(folder, prefs.last_diagram);
         }
+        app
     }
 
     /// Fonts and the theme, once per context.
@@ -95,6 +138,7 @@ impl BlockLinerApp {
             return;
         }
         self.initialized = true;
+        self.backend.attach(ctx);
         fonts::install(ctx);
         self.theme.apply(ctx);
         match self.open_on_start.take().as_deref() {
@@ -147,9 +191,44 @@ impl BlockLinerApp {
         self.overlay.is_some()
     }
 
+    #[cfg(test)]
+    pub fn diagram_names(&self) -> Vec<String> {
+        self.project
+            .as_ref()
+            .map(|p| p.names.clone())
+            .unwrap_or_default()
+    }
+
+    #[cfg(test)]
+    pub fn doc_name(&self) -> Option<&str> {
+        self.doc.as_ref().map(|d| d.name.as_str())
+    }
+
+    #[cfg(test)]
+    pub fn is_saving(&self) -> bool {
+        self.backend.is_saving()
+    }
+
+    #[cfg(test)]
+    pub fn flush(&self) {
+        self.backend.flush();
+    }
+
+    #[cfg(test)]
+    pub fn set_save_delay(&mut self, delay: Duration) {
+        self.backend.set_save_delay(delay);
+    }
+
+    #[cfg(test)]
+    pub fn window_title(&self) -> &str {
+        &self.title
+    }
+
     fn view(&self) -> View {
         View {
             modal_open: self.overlay.is_some() || self.palette.is_some(),
+            project_open: self.project.is_some(),
+            doc_open: self.doc.is_some(),
             has_selection: self.canvas.has_selection(),
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
@@ -175,6 +254,27 @@ impl BlockLinerApp {
 
     fn apply(&mut self, act: Act) {
         match act {
+            Act::NewDiagram => {
+                if let Some(project) = &self.project {
+                    let name = backend::unique_name("Untitled", &project.names);
+                    self.overlay = Some(Overlay::Name(NameState::new_diagram(name)));
+                }
+            }
+            Act::RenameDiagram => {
+                if let Some(doc) = &self.doc {
+                    self.overlay = Some(Overlay::Name(NameState::rename(&doc.name)));
+                }
+            }
+            Act::DeleteDiagram => {
+                if let Some(doc) = &self.doc {
+                    self.overlay = Some(Overlay::ConfirmDelete(doc.name.clone()));
+                }
+            }
+            Act::OpenFolder => self.pick_folder(),
+            Act::ToggleSidebar => {
+                self.sidebar_visible = !self.sidebar_visible;
+                self.set_prefs(json!({ "sidebarVisible": self.sidebar_visible }));
+            }
             Act::Tool(tool) => {
                 self.tool = tool;
                 self.sticky_tool = self.shift;
@@ -230,6 +330,259 @@ impl BlockLinerApp {
             self.canvas.show_grid,
             self.diagram.grid,
         )));
+    }
+
+    // --- The folder and its diagrams ------------------------------------------
+
+    fn pick_folder(&mut self) {
+        if let Some(folder) = rfd::FileDialog::new()
+            .set_title("Open Folder")
+            .pick_folder()
+        {
+            self.open_project(folder, None);
+        }
+    }
+
+    /// Opens `folder` and the diagram `want` in it, else its first one.
+    pub fn open_project(&mut self, folder: PathBuf, want: Option<String>) {
+        let names = match Backend::list(&folder) {
+            Ok(names) => names,
+            Err(e) => {
+                self.toasts
+                    .error(format!("Couldn't open {}: {e}", folder.display()));
+                return;
+            }
+        };
+        self.close_doc();
+        let pick = want
+            .filter(|n| names.contains(n))
+            .or_else(|| names.first().cloned());
+        self.set_prefs(json!({ "lastProject": folder.to_string_lossy() }));
+        self.project = Some(Project { folder, names });
+        if let Some(name) = pick {
+            self.open_diagram(&name);
+        }
+    }
+
+    fn path(&self, name: &str) -> Option<PathBuf> {
+        Some(backend::file(&self.project.as_ref()?.folder, name))
+    }
+
+    /// Writes the open diagram's waiting edits and closes it.
+    fn close_doc(&mut self) {
+        self.backend.flush();
+        self.backend.close();
+        self.doc = None;
+        self.load(Diagram {
+            grid: self.paths.prefs().grid_size,
+            ..Diagram::new()
+        });
+    }
+
+    /// Puts `d` on the canvas as a fresh start: no selection, no undo.
+    fn load(&mut self, d: Diagram) {
+        self.canvas.clear(true);
+        self.history.reset(&d);
+        self.diagram = d;
+    }
+
+    fn open_diagram(&mut self, name: &str) {
+        let Some(path) = self.path(name) else {
+            return;
+        };
+        let opened = Backend::read(&path).and_then(|text| {
+            let d = blockliner_core::read(&text)?;
+            Ok((text, d))
+        });
+        match opened {
+            Ok((text, d)) => {
+                self.close_doc();
+                self.backend.watch(&path, &text);
+                self.doc = Some(Doc {
+                    name: name.to_owned(),
+                    saved: d.clone(),
+                });
+                self.load(d);
+                self.set_prefs(json!({ "lastDiagram": name }));
+            }
+            Err(e) => self.toasts.error(format!("Couldn't open “{name}”: {e:#}")),
+        }
+    }
+
+    /// The folder's diagrams, read again.
+    fn relist(&mut self) {
+        let Some(project) = &mut self.project else {
+            return;
+        };
+        if let Ok(names) = Backend::list(&project.folder) {
+            project.names = names;
+        }
+    }
+
+    /// Whether another diagram than `except` is called `name`, ignoring
+    /// case: the folder may also be used where file names ignore it.
+    fn taken(&self, name: &str, except: Option<&str>) -> bool {
+        let name = name.to_lowercase();
+        self.project.as_ref().is_some_and(|p| {
+            p.names
+                .iter()
+                .any(|n| Some(n.as_str()) != except && n.to_lowercase() == name)
+        })
+    }
+
+    /// A new, empty diagram called `name`, opened.
+    fn create(&mut self, name: &str) -> anyhow::Result<()> {
+        if self.taken(name, None) {
+            anyhow::bail!(backend::TAKEN);
+        }
+        let path = self
+            .path(name)
+            .ok_or_else(|| anyhow::anyhow!("No folder is open."))?;
+        let d = Diagram {
+            grid: self.paths.prefs().grid_size,
+            ..Diagram::new()
+        };
+        self.backend.create(&path, &blockliner_core::write(&d))?;
+        self.relist();
+        self.open_diagram(name);
+        Ok(())
+    }
+
+    fn rename(&mut self, from: &str, to: &str) -> anyhow::Result<()> {
+        if from == to {
+            return Ok(());
+        }
+        if self.taken(to, Some(from)) {
+            anyhow::bail!(backend::TAKEN);
+        }
+        let (Some(a), Some(b)) = (self.path(from), self.path(to)) else {
+            return Ok(());
+        };
+        self.backend.rename(&a, &b)?;
+        self.relist();
+        if let Some(doc) = self.doc.as_mut().filter(|d| d.name == from) {
+            doc.name = to.to_owned();
+            self.set_prefs(json!({ "lastDiagram": to }));
+        }
+        Ok(())
+    }
+
+    /// Deletes the diagram `name`; if it was open, opens its neighbour.
+    fn delete(&mut self, name: &str) {
+        let Some(path) = self.path(name) else {
+            return;
+        };
+        let index = self
+            .project
+            .as_ref()
+            .and_then(|p| p.names.iter().position(|n| n == name));
+        if let Err(e) = self.backend.delete(&path) {
+            self.toasts
+                .error(format!("Couldn't delete “{name}”: {e:#}"));
+            return;
+        }
+        self.relist();
+        if self.doc.as_ref().is_some_and(|d| d.name == name) {
+            self.close_doc();
+            let names = self
+                .project
+                .as_ref()
+                .map(|p| p.names.clone())
+                .unwrap_or_default();
+            if let Some(next) = index.and_then(|i| names.get(i.min(names.len().saturating_sub(1))))
+            {
+                self.open_diagram(&next.clone());
+            }
+        }
+    }
+
+    /// Hands the diagram to the autosave when it changed. Only between
+    /// gestures, so a drag is written once, when it ends.
+    fn autosave(&mut self) {
+        let (Some(project), Some(doc)) = (&self.project, &mut self.doc) else {
+            return;
+        };
+        if self.diagram != doc.saved {
+            doc.saved = self.diagram.clone();
+            self.backend.save(
+                backend::file(&project.folder, &doc.name),
+                blockliner_core::write(&self.diagram),
+            );
+        }
+    }
+
+    /// About once a second: the folder's diagrams, and whether the open one
+    /// changed on disk. An outside edit is reloaded (as an undoable step); a
+    /// deleted file closes the diagram.
+    fn watch_folder(&mut self, ctx: &egui::Context) {
+        if self.project.is_none() {
+            return;
+        }
+        let now = ctx.input(|i| i.time);
+        ctx.request_repaint_after(Duration::from_secs_f64(SCAN_SECONDS));
+        if now - self.last_scan < SCAN_SECONDS {
+            return;
+        }
+        self.last_scan = now;
+        self.relist();
+        if self.canvas.is_busy() {
+            return;
+        }
+        let Some(name) = self.doc.as_ref().map(|d| d.name.clone()) else {
+            return;
+        };
+        match self.backend.check() {
+            None => {}
+            Some(Change::Removed) => {
+                self.close_doc();
+                self.toasts.info(format!(
+                    "“{name}” was deleted or renamed outside BlockLiner."
+                ));
+            }
+            Some(Change::Edited(text)) => match blockliner_core::read(&text) {
+                Ok(d) => {
+                    if d != self.diagram {
+                        self.canvas.clear(false);
+                        self.diagram = d.clone();
+                        self.toasts
+                            .info(format!("Reloaded “{name}”: it changed on disk."));
+                    }
+                    if let Some(doc) = &mut self.doc {
+                        doc.saved = d;
+                    }
+                }
+                Err(e) => self
+                    .toasts
+                    .error(format!("“{name}” changed on disk and can't be read: {e}")),
+            },
+        }
+    }
+
+    fn backend_events(&mut self) {
+        for event in self.backend.poll() {
+            match event {
+                Event::Saved(_) => {}
+                Event::SaveFailed { path, message } => {
+                    let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
+                    self.toasts.error(format!(
+                        "Couldn't save “{}”: {message}",
+                        name.unwrap_or_default()
+                    ));
+                }
+            }
+        }
+    }
+
+    /// "Name — BlockLiner" while a diagram is open.
+    fn update_title(&mut self, ctx: &egui::Context) {
+        let title = match &self.doc {
+            Some(doc) => format!("{} — BlockLiner", doc.name),
+            None => "BlockLiner".to_owned(),
+        };
+        if title != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.title = title;
+        }
     }
 
     // --- Per-frame work --------------------------------------------------------
@@ -296,6 +649,8 @@ impl BlockLinerApp {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
         self.shift = ctx.input(|i| i.modifiers.shift);
+        self.backend_events();
+        self.watch_folder(&ctx);
         self.dispatch_keys(&ctx);
 
         if self.custom_titlebar {
@@ -305,6 +660,7 @@ impl BlockLinerApp {
         self.overlays(&ctx);
         self.palette(&ctx);
         self.toasts.show(&ctx);
+        self.update_title(&ctx);
         if self.custom_titlebar {
             window::window_edges(&ctx);
         }
@@ -316,7 +672,7 @@ impl BlockLinerApp {
     fn titlebar(&mut self, ui: &mut Ui) {
         let bar = TitleBar {
             app_name: "BlockLiner",
-            toolbar_visible: true,
+            toolbar_visible: self.sidebar_visible,
         };
         let mut act = None;
         let actions = titlebar::show(ui, &bar, &mut self.theme, |ui| {
@@ -329,8 +685,8 @@ impl BlockLinerApp {
         });
         for a in actions {
             match a {
-                // There's no sidebar to toggle yet (plan phase 5).
-                TitleBarAction::ToggleToolbar => {}
+                // The title bar's panel toggle shows and hides the sidebar.
+                TitleBarAction::ToggleToolbar => act = Some(Act::ToggleSidebar),
                 // Already applied by the title bar; saved with the theme.
                 TitleBarAction::ScaleChanged(_) => {}
             }
@@ -348,8 +704,14 @@ impl BlockLinerApp {
         };
         let acts = views::toolbar(ui, &props);
         if self.status_bar_visible {
+            let save = match &self.doc {
+                None => SaveState::None,
+                Some(_) if self.backend.is_saving() => SaveState::Saving,
+                Some(_) => SaveState::Saved,
+            };
             let status = StatusProps {
                 tool: self.tool,
+                save,
                 pointer: self.canvas.pointer,
                 selected: self.canvas.selected_count(),
                 free_lines: self.diagram.has_free_lines(),
@@ -364,10 +726,34 @@ impl BlockLinerApp {
                 .frame(Frame::NONE)
                 .show(ui, |ui| views::status_bar(ui, &status));
         }
+        let mut acts = acts;
+        let mut side = Vec::new();
+        if let (Some(project), true) = (&self.project, self.sidebar_visible) {
+            let p = theme::palette(ui.ctx());
+            let (min, default, max) = views::SIDEBAR_WIDTH;
+            let folder = project
+                .folder
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| project.folder.display().to_string());
+            let open = self.doc.as_ref().map(|d| d.name.as_str());
+            egui::Panel::left("blockliner-sidebar")
+                .resizable(true)
+                .default_size(default)
+                .size_range(min..=max)
+                .frame(Frame::NONE.fill(p.bg_surface))
+                .show(ui, |ui| {
+                    side = views::sidebar(ui, &folder, &project.names, open);
+                });
+        }
         let keys = !self.view().modal_open && !ui.ctx().egui_wants_keyboard_input();
         egui::CentralPanel::default()
             .frame(Frame::NONE)
             .show(ui, |ui| {
+                if self.doc.is_none() {
+                    acts.extend(views::empty_state(ui, self.project.is_some()));
+                    return;
+                }
                 let out = self.canvas.show(ui, &mut self.diagram, self.tool, keys);
                 if out.tool_done && !self.sticky_tool {
                     self.tool = Tool::Select;
@@ -376,9 +762,21 @@ impl BlockLinerApp {
         for act in acts {
             self.apply(act);
         }
-        // One undo step per finished change (see `History`).
+        for action in side {
+            match action {
+                SidebarAction::Open(name) => self.open_diagram(&name),
+                SidebarAction::New => self.apply(Act::NewDiagram),
+                SidebarAction::Rename(name) => {
+                    self.overlay = Some(Overlay::Name(NameState::rename(&name)));
+                }
+                SidebarAction::Delete(name) => self.overlay = Some(Overlay::ConfirmDelete(name)),
+            }
+        }
+        // One undo step per finished change (see `History`), and the
+        // autosave after it.
         if !self.canvas.is_busy() {
             self.history.observe(&self.diagram);
+            self.autosave();
         }
     }
 
@@ -420,6 +818,41 @@ impl BlockLinerApp {
                     Some(_) | None => {}
                 }
             }
+            Overlay::Name(state) => match overlays::name::show(ctx, state) {
+                Some(NameAction::Close) => keep = false,
+                Some(NameAction::Submit(text)) => {
+                    let result = backend::valid_name(&text)
+                        .map_err(anyhow::Error::msg)
+                        .and_then(|name| match state.renaming.clone() {
+                            Some(from) => self.rename(&from, &name),
+                            None => self.create(&name),
+                        });
+                    match result {
+                        Ok(()) => keep = false,
+                        Err(e) => state.refuse(format!("{e:#}")),
+                    }
+                }
+                None => {}
+            },
+            Overlay::ConfirmDelete(name) => {
+                let message = format!("Delete “{name}”?");
+                match dialog::confirm(
+                    ctx,
+                    "blockliner-delete",
+                    "Delete Diagram",
+                    &message,
+                    Some("The file is deleted from the folder. This can't be undone."),
+                    "Delete",
+                ) {
+                    Some(Confirm::Yes) => {
+                        let name = name.clone();
+                        self.delete(&name);
+                        keep = false;
+                    }
+                    Some(Confirm::No) => keep = false,
+                    None => {}
+                }
+            }
         }
         if keep && self.overlay.is_none() {
             self.overlay = Some(overlay);
@@ -454,6 +887,10 @@ impl eframe::App for BlockLinerApp {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         self.save_state(storage);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.backend.flush();
     }
 }
 

@@ -13,6 +13,10 @@ use crate::canvas::Tool;
 /// Everything a shortcut, button or palette entry can ask for.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Act {
+    NewDiagram,
+    RenameDiagram,
+    DeleteDiagram,
+    OpenFolder,
     Tool(Tool),
     Undo,
     Redo,
@@ -27,6 +31,7 @@ pub enum Act {
     ZoomOut,
     ZoomReset,
     ToggleGrid,
+    ToggleSidebar,
     ToggleStatusBar,
     Settings,
     About,
@@ -36,6 +41,9 @@ pub enum Act {
 /// What the commands' `when` predicates read.
 pub struct View {
     pub modal_open: bool,
+    pub project_open: bool,
+    /// A diagram is open on the canvas.
+    pub doc_open: bool,
     pub has_selection: bool,
     pub can_undo: bool,
     pub can_redo: bool,
@@ -44,6 +52,14 @@ pub struct View {
 /// No shortcut opens a second dialog over the first.
 fn ready(v: &View) -> bool {
     !v.modal_open
+}
+
+fn in_project(v: &View) -> bool {
+    ready(v) && v.project_open
+}
+
+fn editing(v: &View) -> bool {
+    ready(v) && v.doc_open
 }
 
 fn selected(v: &View) -> bool {
@@ -77,6 +93,25 @@ pub fn registry() -> Registry<Act, View> {
     let shift = cmd | Modifiers::SHIFT;
     let add =
         |id: &str, label: &str, section: &str, act: Act| Command::new(id, label, section, act);
+    r.register(
+        add("file.new", "New Diagram", "File", Act::NewDiagram)
+            .key(Binding::logical(cmd, Key::N))
+            .shortcut("Ctrl+N")
+            .when(in_project),
+    );
+    r.register(
+        add("file.rename", "Rename Diagram", "File", Act::RenameDiagram)
+            .key(Binding::logical(Modifiers::NONE, Key::F2))
+            .shortcut("F2")
+            .when(editing),
+    );
+    r.register(add("file.delete", "Delete Diagram", "File", Act::DeleteDiagram).when(editing));
+    r.register(
+        add("file.openFolder", "Open Folder", "File", Act::OpenFolder)
+            .key(Binding::logical(cmd, Key::O))
+            .shortcut("Ctrl+O")
+            .when(ready),
+    );
     for tool in Tool::ALL {
         let (key, text) = tool_key(tool);
         let id = format!("tool.{}", tool.name().to_lowercase().replace(' ', ""));
@@ -168,6 +203,17 @@ pub fn registry() -> Registry<Act, View> {
     );
     r.register(
         add(
+            "view.toggleSidebar",
+            "Toggle Sidebar",
+            "View",
+            Act::ToggleSidebar,
+        )
+        .key(Binding::logical(cmd, Key::E))
+        .shortcut("Ctrl+E")
+        .when(in_project),
+    );
+    r.register(
+        add(
             "view.toggleStatusBar",
             "Toggle Status Bar",
             "View",
@@ -212,6 +258,8 @@ mod tests {
         let r = registry();
         let view = View {
             modal_open: false,
+            project_open: true,
+            doc_open: true,
             has_selection: true,
             can_undo: true,
             can_redo: true,
@@ -227,6 +275,8 @@ mod tests {
         assert!(r
             .applicable_commands(&View {
                 modal_open: true,
+                project_open: true,
+                doc_open: true,
                 has_selection: true,
                 can_undo: true,
                 can_redo: true,

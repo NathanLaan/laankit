@@ -5,6 +5,7 @@
 //! `docs/plans/plan-blockliner.md`.
 
 mod app;
+mod backend;
 mod canvas;
 mod commands;
 mod config;
@@ -17,6 +18,8 @@ mod ui_tests;
 mod ui_tests_history;
 #[cfg(test)]
 mod ui_tests_lines;
+#[cfg(test)]
+mod ui_tests_project;
 #[cfg(test)]
 mod ui_tests_shapes;
 

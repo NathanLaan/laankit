@@ -1,11 +1,12 @@
 //! The app's own files in `~/.config/BlockLiner` (the platform equivalent
 //! elsewhere):
 //!
-//! | Path                  | Holds                                                          |
-//! |-----------------------|----------------------------------------------------------------|
-//! | `ui-preferences.json` | `customTitlebar`, `statusBarVisible`, `showGrid`, `gridSize`   |
+//! | Path                  | Holds                                                                    |
+//! |-----------------------|--------------------------------------------------------------------------|
+//! | `ui-preferences.json` | `customTitlebar`, `sidebarVisible`, `statusBarVisible`, `showGrid`,      |
+//! |                       | `gridSize`, `lastProject` (a folder path), `lastDiagram` (a name in it)  |
 //!
-//! Diagrams live in a folder the user picks, not here (plan phase 5).
+//! Diagrams live in the folder the user opens, not here.
 
 use std::path::PathBuf;
 
@@ -23,13 +24,18 @@ pub struct Paths {
     pub user_data: PathBuf,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Prefs {
     pub custom_titlebar: bool,
+    pub sidebar_visible: bool,
     pub status_bar_visible: bool,
     pub show_grid: bool,
     /// The grid for new diagrams; one of [`GRID_SIZES`].
     pub grid_size: f32,
+    /// The folder open when BlockLiner last closed.
+    pub last_project: Option<PathBuf>,
+    /// The diagram open in it.
+    pub last_diagram: Option<String>,
 }
 
 impl Paths {
@@ -62,11 +68,20 @@ impl Paths {
             .map(|g| g as f32)
             .filter(|g| GRID_SIZES.contains(g))
             .unwrap_or(DEFAULT_GRID);
+        let text = |k: &str| {
+            m.get(k)
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+        };
         Prefs {
             custom_titlebar: flag("customTitlebar"),
+            sidebar_visible: flag("sidebarVisible"),
             status_bar_visible: flag("statusBarVisible"),
             show_grid: flag("showGrid"),
             grid_size,
+            last_project: text("lastProject").map(PathBuf::from),
+            last_diagram: text("lastDiagram"),
         }
     }
 
@@ -82,10 +97,13 @@ impl Paths {
 fn defaults() -> Map<String, Value> {
     let v = json!({
         "customTitlebar": false,
+        "sidebarVisible": true,
         "statusBarVisible": true,
         "showGrid": true,
         // Whole numbers, so the file says `20`, not `20.0`.
         "gridSize": DEFAULT_GRID as i64,
+        "lastProject": null,
+        "lastDiagram": null,
     });
     v.as_object().cloned().unwrap_or_default()
 }
@@ -120,9 +138,12 @@ mod tests {
             paths.prefs(),
             Prefs {
                 custom_titlebar: false,
+                sidebar_visible: true,
                 status_bar_visible: true,
                 show_grid: true,
                 grid_size: 20.0,
+                last_project: None,
+                last_diagram: None,
             }
         );
     }
@@ -139,7 +160,7 @@ mod tests {
         let raw = std::fs::read_to_string(paths.ui_prefs()).unwrap();
         assert_eq!(
             raw,
-            "{\n  \"customTitlebar\": false,\n  \"statusBarVisible\": true,\n  \"showGrid\": false,\n  \"gridSize\": 40,\n  \"future\": 1\n}"
+            "{\n  \"customTitlebar\": false,\n  \"sidebarVisible\": true,\n  \"statusBarVisible\": true,\n  \"showGrid\": false,\n  \"gridSize\": 40,\n  \"lastProject\": null,\n  \"lastDiagram\": null,\n  \"future\": 1\n}"
         );
         let prefs = paths.prefs();
         assert!(!prefs.show_grid);

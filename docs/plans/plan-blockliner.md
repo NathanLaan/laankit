@@ -1,8 +1,8 @@
 # BlockLiner — Architecture Diagramming App
 
-Status: **In progress (2026-10-29).** Design decisions settled (§9). Phases 0
-(app scaffold), 1 (`crates/blockliner-core`), 2 (shapes), 3 (connectors) and 4
-(undo and keyboard) implemented.
+Status: **In progress (2026-10-30).** Design decisions settled (§9). Phases 0
+(app scaffold), 1 (`crates/blockliner-core`), 2 (shapes), 3 (connectors), 4
+(undo and keyboard) and 5 (folder and autosave) implemented.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -104,18 +104,18 @@ Same file layout as `apps/pageliner/native`:
 | File | Contents |
 |---|---|
 | `main.rs` | Viewport (title, `APP_ID`, icon, custom title bar), `persistence_path`. Copy of PageLiner's. |
-| `config.rs` | `Paths` / `Prefs` in `~/.config/BlockLiner/ui-preferences.json`: `customTitlebar`, `sidebarVisible`, `statusBarVisible`, `gridSize`, `showGrid`, `lastProject`. |
-| `commands.rs` | `Act` enum + `Registry`: tool selection (`V` select, `R` rect, `O` round rect, `L` line, `A` arrow, `T` text), undo/redo, delete, zoom, toggle grid, new/rename/delete diagram, open project, settings, palette. |
-| `backend.rs` | Tokio runtime: list/read/write `.mmd` files, debounced autosave through `marina_core::debounce`, atomic writes. Request/`Event` channels, the same as ThreadLiner/PageLiner. |
-| `app.rs` | `BlockLinerApp`: owns backend, open diagram, `EditorState`, overlays, palette, toasts. Routes events, commands and canvas actions. |
+| `config.rs` ✅ | `Paths` / `Prefs` in `~/.config/BlockLiner/ui-preferences.json`: `customTitlebar`, `sidebarVisible`, `statusBarVisible`, `gridSize`, `showGrid`, `lastProject`, `lastDiagram`. |
+| `commands.rs` ✅ | `Act` enum + `Registry`: tool selection (`V` select, `R` rect, `O` round rect, `L` line, `A` arrow, `T` text), undo/redo, delete, nudge, zoom, toggle grid/sidebar/status bar, new/rename/delete diagram, open folder, settings, palette. |
+| `backend.rs` ✅ | The project folder. List, read, create, rename and delete are small local files, so they run synchronously and return their result. The autosave runs on a small tokio runtime: debounced (0.8 s) through `marina_core::debounce`, atomic (temp file + rename), with `flush` before switching diagrams, renaming and quitting. `check` reports outside changes to the open file (not our own writes). |
+| `app.rs` ✅ | `BlockLinerApp`: owns the backend, the open folder and diagram, the canvas, overlays, palette, toasts. Routes commands, sidebar and dialog actions; autosaves when the canvas is idle; looks at the folder once a second. |
 | `canvas/view.rs`, `canvas/grid.rs` ✅ | Pan/zoom transform (zoom steps 10–600 %, zoom about a point) and the grid (minor lines, a major line every 5 cells, only majors when cells get small). |
 | `canvas/mod.rs` ✅ | The canvas widget: `ui.allocate_painter`, view transform (pan + zoom), grid drawing, item painting, input dispatch to the active tool. Returns `CanvasAction`s (`Changed`, `SelectionChanged`, `EditLabel(id)`). |
 | `canvas/tools.rs` ✅ | A small state machine per tool: `Idle → Dragging{start} → commit`. Rect tools snap the start and end corners. Line tools show anchor hints on hover and glue when released over one. |
 | `canvas/paint.rs` ✅ | Draws shapes, connectors, arrowheads, selection handles and anchor hints with theme colours from `marina_egui::theme`. |
 | `canvas/label.rs` ✅ | Inline label editing: an `egui::TextEdit` placed over the shape (multi-line, `Enter` commits, `Shift+Enter` adds a line, `Esc` cancels). |
-| `views.rs` | Sidebar (diagram list for the project), toolbar (`marina_egui::toolbar` with tool buttons), status bar (zoom %, grid size, cursor position in grid units, save state). |
-| `overlays/` | Settings (grid size, show grid, title bar), rename/delete confirmations, About. |
-| `ui_tests.rs` | `egui_kittest` headless flows (§6). |
+| `views.rs` ✅ | Sidebar (the folder's diagrams, New button, right-click Rename/Delete), toolbar (`marina_egui::toolbar` with tool buttons; Open Folder, Settings, About), the empty states (no folder, no diagram), status bar (tool, save state, selection, cursor position in grid units, grid size, zoom, UI scale). |
+| `overlays/` ✅ | Settings (grid size, show grid, title bar), the New/Rename name dialog, the delete confirmation, About. |
+| `ui_tests*.rs` ✅ | `egui_kittest` headless flows (§6), against a temp config folder and project folder. |
 
 **Zoom keys.** Unlike the other apps, Ctrl+= / Ctrl+- / Ctrl+0 and
 Ctrl+wheel zoom the *canvas*, as in other drawing tools. The UI scale stays in
@@ -272,6 +272,24 @@ saved on the first edit.
   label. `Ctrl+Z` undoes, and `Ctrl+Shift+Z` / `Ctrl+Y` redo. A new change
   after an undo drops the redo trail. Undo during a drag cancels the drag
   first. While a label is being edited, `Ctrl+Z` belongs to the text field.
+- **Files:** `Ctrl+O` (or the toolbar's folder button) opens a folder; its
+  `.mmd` files are the sidebar's diagrams (not subfolders), and the next
+  start reopens the folder and diagram (`lastProject`, `lastDiagram`).
+  `Ctrl+N` makes a new diagram (the name dialog suggests "Untitled",
+  selected), `F2` renames the open one, and a row's right-click menu renames
+  or deletes any of them (Delete Diagram is also in the palette). Names
+  clash case-insensitively, since the folder may be synced to a system
+  where file names ignore case. Deleting asks first and opens the neighbour.
+  `Ctrl+E` (or the title bar's panel button) hides the sidebar.
+- **Autosave:** once the canvas is idle (the same moment the undo history is
+  taken), a changed diagram is handed to the autosave, which writes it 0.8 s
+  after edits pause. Opening a file writes nothing, so a hand-written file is
+  only rewritten when it's edited. The status bar says "Edited" or "Saved",
+  and the window title names the diagram.
+- **Outside changes:** about once a second the app relists the folder and
+  checks the open file. A change made elsewhere (an editor, `git pull`) is
+  reloaded as one undoable step, unless BlockLiner's own edits are waiting
+  to be written, in which case they win. A deleted file closes the diagram.
 - **Keyboard:** arrow keys nudge the selection by one grid step (`Shift`: 5
   steps, `Alt`: 1 px), moving the free ends of selected lines too.
   `Delete`/`Backspace` deletes. `Ctrl+A` selects all shapes and lines. `Esc`
@@ -309,7 +327,7 @@ saved on the first edit.
 | **2. Shapes** ✅ | Select, Rect, RoundRect, Text tools; snap; move; resize handles; marquee; delete; inline label editing; painting with theme colours. | 3–4 days |
 | **3. Connectors** ✅ | Line/Arrow tools, anchors, glue/unglue, endpoint handles, arrowheads, hit-testing on segments, free lines. | 2–3 days |
 | **4. History + keyboard** ✅ | Snapshot undo/redo with gesture coalescing; nudge; select all; command registry and palette entries. | 1 day |
-| **5. Project + persistence** | Backend: open folder, diagram list sidebar, new/rename/delete, debounced atomic autosave, external-change reload; `lastProject`. | 2 days |
+| **5. Project + persistence** ✅ | Backend: open folder, diagram list sidebar, new/rename/delete, debounced atomic autosave, external-change reload; `lastProject`. | 2 days |
 | **6. Import layout** | `layout::layered` for nodes without positions; "not editable" badge for unsupported node shapes. | 1–2 days |
 | **7. Ship** | Packaging and CI (§8), README, `ARCHITECTURE.md`, kittest flows, hand checks on Linux/Windows/macOS. | 1–2 days |
 

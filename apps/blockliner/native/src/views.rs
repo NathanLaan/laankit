@@ -1,15 +1,26 @@
-//! The chrome around the canvas: the toolbar (tools at the top, Settings and
-//! About at the bottom) and the status bar.
+//! The chrome around the canvas: the toolbar (tools at the top; Open
+//! Folder, Settings and About at the bottom), the sidebar listing the
+//! folder's diagrams, the empty states and the status bar.
 
-use egui::{pos2, vec2, Align2, Color32, FontId, Pos2, Rect, Shape, Stroke, Ui};
+use egui::text::{LayoutJob, TextWrapping};
+use egui::{
+    pos2, vec2, Align2, Color32, FontId, Pos2, Rect, RichText, ScrollArea, Sense, Shape, Stroke,
+    StrokeKind, Ui,
+};
+use marina_egui::dialog::{self, ButtonKind};
+use marina_egui::panes::{self, HEADER_HEIGHT};
+use marina_egui::theme::Palette;
 use marina_egui::toolbar::{self, ToolbarButton};
-use marina_egui::{icons, theme};
+use marina_egui::{fonts, icons, theme};
 
 use crate::canvas::Tool;
 use crate::commands::{tool_key, Act};
 
 /// `.status-bar { height: 24px }`, as in the other apps.
 pub const STATUS_BAR_HEIGHT: f32 = 24.0;
+/// The sidebar's (min, default, max) width.
+pub const SIDEBAR_WIDTH: (f32, f32, f32) = (160.0, 220.0, 420.0);
+const ROW_HEIGHT: f32 = 30.0;
 
 pub struct ToolbarProps {
     pub tool: Tool,
@@ -39,6 +50,14 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
                     bottom.push(act);
                 }
             };
+            b(
+                ui,
+                icons::FOLDER_OPEN,
+                "Open Folder (Ctrl+O)",
+                "Open Folder",
+                false,
+                Act::OpenFolder,
+            );
             b(
                 ui,
                 icons::GEAR,
@@ -126,8 +145,219 @@ pub fn arrowhead(from: Pos2, to: Pos2, size: f32, fill: Color32) -> Shape {
     )
 }
 
+/// What the sidebar asks for.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SidebarAction {
+    Open(String),
+    New,
+    Rename(String),
+    Delete(String),
+}
+
+/// The open folder's diagrams: a header with the folder's name and a New
+/// button, then a row per diagram (right-click to rename or delete).
+pub fn sidebar(
+    ui: &mut Ui,
+    folder: &str,
+    names: &[String],
+    open: Option<&str>,
+) -> Vec<SidebarAction> {
+    let p = theme::palette(ui.ctx());
+    let mut out = Vec::new();
+    ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+
+    let (header, _) =
+        ui.allocate_exact_size(vec2(ui.available_width(), HEADER_HEIGHT), Sense::hover());
+    let painter = ui.painter();
+    painter.rect_filled(header, 0.0, p.bg_base);
+    painter.hline(
+        header.x_range(),
+        header.bottom() - 0.5,
+        Stroke::new(1.0, p.border),
+    );
+    let button = Rect::from_center_size(
+        pos2(header.right() - 22.0, header.center().y),
+        vec2(24.0, 24.0),
+    );
+    let title = one_line(
+        ui,
+        &folder.to_uppercase(),
+        fonts::Style {
+            weight: Some(fonts::SEMIBOLD),
+            ..Default::default()
+        }
+        .font(11.0),
+        p.text_muted,
+        button.left() - header.left() - 20.0,
+    );
+    ui.painter().galley(
+        pos2(
+            header.left() + 16.0,
+            header.center().y - title.size().y / 2.0,
+        ),
+        title,
+        p.text_muted,
+    );
+    let new = panes::header_button(
+        ui,
+        &p,
+        ui.scope_id().with("new-diagram"),
+        button,
+        icons::PLUS,
+        "New Diagram (Ctrl+N)",
+    );
+    if new.clicked() {
+        out.push(SidebarAction::New);
+    }
+
+    ScrollArea::vertical()
+        .id_salt("blockliner-diagrams")
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.add_space(4.0);
+            if names.is_empty() {
+                ui.add_space(12.0);
+                ui.vertical_centered(|ui| dialog::muted_text(ui, "No diagrams yet."));
+            }
+            for name in names {
+                let active = open == Some(name.as_str());
+                let resp = row(ui, &p, name, active);
+                if resp.clicked() && !active {
+                    out.push(SidebarAction::Open(name.clone()));
+                }
+                resp.context_menu(|ui| {
+                    if ui.button("Rename…").clicked() {
+                        out.push(SidebarAction::Rename(name.clone()));
+                        ui.close();
+                    }
+                    if ui.button("Delete…").clicked() {
+                        out.push(SidebarAction::Delete(name.clone()));
+                        ui.close();
+                    }
+                });
+            }
+            ui.add_space(4.0);
+        });
+    out
+}
+
+/// A diagram row: icon and name, the selected wash with an accent outline
+/// when it's open.
+fn row(ui: &mut Ui, p: &Palette, name: &str, active: bool) -> egui::Response {
+    let (rect, resp) =
+        ui.allocate_exact_size(vec2(ui.available_width(), ROW_HEIGHT), Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::ListItem, true, active, name));
+    if active {
+        ui.painter().rect(
+            rect,
+            0.0,
+            p.bg_selected,
+            Stroke::new(1.0, p.accent),
+            StrokeKind::Inside,
+        );
+    } else if resp.hovered() {
+        ui.painter().rect_filled(rect, 0.0, p.bg_item_hover);
+    }
+    let ink = if active {
+        p.text_primary
+    } else {
+        p.text_secondary
+    };
+    let icon = ui.painter().text(
+        pos2(rect.left() + 16.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        icons::OBJECT_GROUP,
+        icons::font(12.0),
+        if active { p.accent } else { p.text_muted },
+    );
+    let text = one_line(
+        ui,
+        name,
+        FontId::proportional(13.0),
+        ink,
+        rect.right() - icon.right() - 18.0,
+    );
+    ui.painter().galley(
+        pos2(icon.right() + 8.0, rect.center().y - text.size().y / 2.0),
+        text,
+        ink,
+    );
+    resp
+}
+
+/// One line of text, cut with an ellipsis at `width`.
+fn one_line(
+    ui: &Ui,
+    text: &str,
+    font: FontId,
+    color: Color32,
+    width: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = LayoutJob::simple_singleline(text.to_owned(), font, color);
+    job.wrap = TextWrapping::truncate_at_width(width.max(1.0));
+    ui.fonts_mut(|f| f.layout_job(job))
+}
+
+/// Where the canvas goes when there's nothing to draw: no folder open, or
+/// no diagram in it.
+pub fn empty_state(ui: &mut Ui, project_open: bool) -> Option<Act> {
+    let p = theme::palette(ui.ctx());
+    ui.painter().rect_filled(ui.max_rect(), 0.0, p.bg_base);
+    let (glyph, title, detail, button, act) = if project_open {
+        (
+            icons::OBJECT_GROUP,
+            "No diagram open",
+            "Pick one in the sidebar, or start a new one.",
+            "New Diagram",
+            Act::NewDiagram,
+        )
+    } else {
+        (
+            icons::FOLDER_OPEN,
+            "No folder open",
+            "BlockLiner keeps each diagram as a Mermaid file (.mmd) in a folder you choose.",
+            "Open Folder…",
+            Act::OpenFolder,
+        )
+    };
+    let mut out = None;
+    let top = (ui.available_height() / 2.0 - 90.0).max(16.0);
+    ui.vertical_centered(|ui| {
+        ui.add_space(top);
+        ui.label(
+            RichText::new(glyph)
+                .font(icons::font(40.0))
+                .color(p.text_faint),
+        );
+        ui.add_space(12.0);
+        ui.label(
+            fonts::weight(title, fonts::SEMIBOLD)
+                .size(16.0)
+                .color(p.text_primary),
+        );
+        ui.add_space(4.0);
+        dialog::muted_text(ui, detail);
+        ui.add_space(14.0);
+        if dialog::button(ui, button, ButtonKind::Primary, true).clicked() {
+            out = Some(act);
+        }
+    });
+    out
+}
+
+/// Whether the open diagram is on disk.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SaveState {
+    /// No diagram open.
+    None,
+    Saved,
+    /// Edits are waiting for the autosave.
+    Saving,
+}
+
 pub struct StatusProps<'a> {
     pub tool: Tool,
+    pub save: SaveState,
     /// The pointer in model coordinates, when over the canvas.
     pub pointer: Option<Pos2>,
     pub selected: usize,
@@ -149,13 +379,27 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) {
     painter.hline(rect.x_range(), rect.top(), Stroke::new(1.0, p.border));
     let font = FontId::proportional(12.0);
     let y = rect.center().y;
-    let tool = painter.text(
+    let mut tool = painter.text(
         pos2(rect.left() + 10.0, y),
         Align2::LEFT_CENTER,
         props.tool.name(),
         font.clone(),
         p.text_secondary,
     );
+    let save = match props.save {
+        SaveState::None => None,
+        SaveState::Saved => Some("Saved"),
+        SaveState::Saving => Some("Edited"),
+    };
+    if let Some(save) = save {
+        tool = painter.text(
+            pos2(tool.right() + 16.0, y),
+            Align2::LEFT_CENTER,
+            save,
+            font.clone(),
+            p.text_muted,
+        );
+    }
     if props.free_lines {
         let icon = painter.text(
             pos2(tool.right() + 16.0, y),

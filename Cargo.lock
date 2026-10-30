@@ -716,9 +716,11 @@ dependencies = [
  "log",
  "marina-core",
  "marina-egui",
+ "rfd",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "winresource",
 ]
 

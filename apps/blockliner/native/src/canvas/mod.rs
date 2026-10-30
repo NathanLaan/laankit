@@ -95,6 +95,21 @@ impl Canvas {
         self.rect.min
     }
 
+    /// Forgets the selection, any gesture or label edit and the hover, for a
+    /// diagram that was replaced (opened, or reloaded from disk). `view`:
+    /// also back to 100 % at the origin.
+    pub fn clear(&mut self, view: bool) {
+        self.selection.clear();
+        self.lines.clear();
+        self.gesture = Gesture::Idle;
+        self.hover = None;
+        self.target = None;
+        self.label = None;
+        if view {
+            self.view = View::default();
+        }
+    }
+
     pub fn has_selection(&self) -> bool {
         !self.selection.is_empty() || !self.lines.is_empty()
     }

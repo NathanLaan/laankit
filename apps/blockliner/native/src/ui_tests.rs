@@ -1,8 +1,8 @@
-//! Drives the app headlessly (egui_kittest) against a temp config folder:
-//! picking tools from the toolbar and the keyboard, zooming and panning the
+//! Drives the app headlessly (egui_kittest) against a temp config folder
+//! and project folder: picking tools from the toolbar and the keyboard, zooming and panning the
 //! canvas, and the grid settings reaching `ui-preferences.json`.
 
-use blockliner_core::{Rect, Shape, ShapeKind};
+use blockliner_core::{Diagram, Rect, Shape, ShapeKind};
 use egui::{pos2, Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
@@ -14,11 +14,34 @@ use crate::config::Paths;
 
 pub(crate) type H = Harness<'static, BlockLinerApp>;
 
+/// The app with the diagram `Diagram` open from `<tmp>/project`, the
+/// sidebar hidden (so the canvas starts just right of the toolbar).
 pub(crate) fn harness() -> (tempfile::TempDir, Paths, Harness<'static, BlockLinerApp>) {
     let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path().join("project");
+    std::fs::create_dir(&project).unwrap();
+    std::fs::write(
+        project.join("Diagram.mmd"),
+        blockliner_core::write(&Diagram::new()),
+    )
+    .unwrap();
     let paths = Paths {
         user_data: tmp.path().join("BlockLiner"),
     };
+    paths
+        .set_prefs(&serde_json::json!({
+            "lastProject": project,
+            "sidebarVisible": false,
+        }))
+        .unwrap();
+    app_harness(paths.clone(), tmp)
+}
+
+/// The app over `paths` as they are.
+pub(crate) fn app_harness(
+    paths: Paths,
+    tmp: tempfile::TempDir,
+) -> (tempfile::TempDir, Paths, Harness<'static, BlockLinerApp>) {
     let h = Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
         // 60 fps, so two clicks a few frames apart are a double click
