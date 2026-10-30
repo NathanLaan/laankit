@@ -4,13 +4,16 @@
 //! | Path                  | Holds                                                                    |
 //! |-----------------------|--------------------------------------------------------------------------|
 //! | `ui-preferences.json` | `customTitlebar`, `sidebarVisible`, `statusBarVisible`, `showGrid`,      |
-//! |                       | `gridSize`, `lastProject` (a folder path), `lastDiagram` (a name in it)  |
+//! |                       | `gridSize`, `lastProject` (a folder path), `lastDiagram` (a name in it), |
+//! |                       | `exportFormat` (`png`/`svg`), `exportGrid`, `exportScale` (1, 2 or 3)    |
 //!
 //! Diagrams live in the folder the user opens, not here.
 
 use std::path::PathBuf;
 
 use blockliner_core::model::DEFAULT_GRID;
+
+use crate::export::{self, Format};
 use serde_json::{json, Map, Value};
 
 /// Names the user-data folder.
@@ -36,6 +39,8 @@ pub struct Prefs {
     pub last_project: Option<PathBuf>,
     /// The diagram open in it.
     pub last_diagram: Option<String>,
+    /// The Export dialog's last choices.
+    pub export: export::Options,
 }
 
 impl Paths {
@@ -82,6 +87,18 @@ impl Paths {
             grid_size,
             last_project: text("lastProject").map(PathBuf::from),
             last_diagram: text("lastDiagram"),
+            export: export::Options {
+                format: text("exportFormat")
+                    .and_then(|f| Format::parse(&f))
+                    .unwrap_or_default(),
+                grid: flag("exportGrid"),
+                scale: m
+                    .get("exportScale")
+                    .and_then(Value::as_u64)
+                    .map(|s| s as u32)
+                    .filter(|s| export::SCALES.contains(s))
+                    .unwrap_or(2),
+            },
         }
     }
 
@@ -104,6 +121,9 @@ fn defaults() -> Map<String, Value> {
         "gridSize": DEFAULT_GRID as i64,
         "lastProject": null,
         "lastDiagram": null,
+        "exportFormat": "png",
+        "exportGrid": false,
+        "exportScale": 2,
     });
     v.as_object().cloned().unwrap_or_default()
 }
@@ -144,6 +164,11 @@ mod tests {
                 grid_size: 20.0,
                 last_project: None,
                 last_diagram: None,
+                export: export::Options {
+                    format: Format::Png,
+                    grid: false,
+                    scale: 2,
+                },
             }
         );
     }
@@ -160,7 +185,7 @@ mod tests {
         let raw = std::fs::read_to_string(paths.ui_prefs()).unwrap();
         assert_eq!(
             raw,
-            "{\n  \"customTitlebar\": false,\n  \"sidebarVisible\": true,\n  \"statusBarVisible\": true,\n  \"showGrid\": false,\n  \"gridSize\": 40,\n  \"lastProject\": null,\n  \"lastDiagram\": null,\n  \"future\": 1\n}"
+            "{\n  \"customTitlebar\": false,\n  \"sidebarVisible\": true,\n  \"statusBarVisible\": true,\n  \"showGrid\": false,\n  \"gridSize\": 40,\n  \"lastProject\": null,\n  \"lastDiagram\": null,\n  \"exportFormat\": \"png\",\n  \"exportGrid\": false,\n  \"exportScale\": 2,\n  \"future\": 1\n}"
         );
         let prefs = paths.prefs();
         assert!(!prefs.show_grid);

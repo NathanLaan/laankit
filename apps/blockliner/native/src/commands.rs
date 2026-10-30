@@ -17,6 +17,7 @@ pub enum Act {
     RenameDiagram,
     DeleteDiagram,
     OpenFolder,
+    Export,
     Tool(Tool),
     Undo,
     Redo,
@@ -44,6 +45,8 @@ pub struct View {
     pub project_open: bool,
     /// A diagram is open on the canvas.
     pub doc_open: bool,
+    /// The open diagram has something to export.
+    pub has_content: bool,
     pub has_selection: bool,
     pub can_undo: bool,
     pub can_redo: bool,
@@ -60,6 +63,10 @@ fn in_project(v: &View) -> bool {
 
 fn editing(v: &View) -> bool {
     ready(v) && v.doc_open
+}
+
+fn exportable(v: &View) -> bool {
+    editing(v) && v.has_content
 }
 
 fn selected(v: &View) -> bool {
@@ -111,6 +118,12 @@ pub fn registry() -> Registry<Act, View> {
             .key(Binding::logical(cmd, Key::O))
             .shortcut("Ctrl+O")
             .when(ready),
+    );
+    r.register(
+        add("file.export", "Export…", "File", Act::Export)
+            .key(Binding::physical(shift, Key::E))
+            .shortcut("Ctrl+Shift+E")
+            .when(exportable),
     );
     for tool in Tool::ALL {
         let (key, text) = tool_key(tool);
@@ -260,6 +273,7 @@ mod tests {
             modal_open: false,
             project_open: true,
             doc_open: true,
+            has_content: true,
             has_selection: true,
             can_undo: true,
             can_redo: true,
@@ -277,6 +291,7 @@ mod tests {
                 modal_open: true,
                 project_open: true,
                 doc_open: true,
+                has_content: true,
                 has_selection: true,
                 can_undo: true,
                 can_redo: true,

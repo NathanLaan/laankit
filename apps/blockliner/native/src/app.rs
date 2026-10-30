@@ -23,6 +23,8 @@ use crate::backend::{self, Backend, Change, Event};
 use crate::canvas::{Canvas, Tool};
 use crate::commands::{self, Act, View};
 use crate::config::Paths;
+use crate::export;
+use crate::overlays::export::{ExportAction, ExportState};
 use crate::overlays::name::{NameAction, NameState};
 use crate::overlays::settings::{SettingsAction, SettingsState};
 use crate::overlays::{self, Overlay};
@@ -83,6 +85,9 @@ pub struct BlockLinerApp {
     screenshot: Option<Screenshot>,
     /// `MARINA_OPEN`: a dialog to open on the first frame, for screenshots.
     open_on_start: Option<String>,
+    /// Tests: export here instead of asking with the save dialog.
+    #[cfg(test)]
+    export_to: Option<PathBuf>,
 }
 
 impl BlockLinerApp {
@@ -125,6 +130,8 @@ impl BlockLinerApp {
             toasts: Toasts::default(),
             screenshot: Screenshot::from_env(),
             open_on_start: std::env::var("MARINA_OPEN").ok(),
+            #[cfg(test)]
+            export_to: None,
         };
         if let Some(folder) = prefs.last_project {
             app.open_project(folder, prefs.last_diagram);
@@ -220,6 +227,11 @@ impl BlockLinerApp {
     }
 
     #[cfg(test)]
+    pub fn set_export_to(&mut self, path: PathBuf) {
+        self.export_to = Some(path);
+    }
+
+    #[cfg(test)]
     pub fn window_title(&self) -> &str {
         &self.title
     }
@@ -229,6 +241,7 @@ impl BlockLinerApp {
             modal_open: self.overlay.is_some() || self.palette.is_some(),
             project_open: self.project.is_some(),
             doc_open: self.doc.is_some(),
+            has_content: self.has_content(),
             has_selection: self.canvas.has_selection(),
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
@@ -271,6 +284,15 @@ impl BlockLinerApp {
                 }
             }
             Act::OpenFolder => self.pick_folder(),
+            Act::Export => {
+                if self.has_content() {
+                    self.overlay = Some(Overlay::Export(ExportState {
+                        options: self.paths.prefs().export,
+                        selected_only: false,
+                        has_selection: self.canvas.has_selection(),
+                    }));
+                }
+            }
             Act::ToggleSidebar => {
                 self.sidebar_visible = !self.sidebar_visible;
                 self.set_prefs(json!({ "sidebarVisible": self.sidebar_visible }));
@@ -585,6 +607,91 @@ impl BlockLinerApp {
         }
     }
 
+    // --- Export ----------------------------------------------------------------
+
+    fn has_content(&self) -> bool {
+        self.doc.is_some()
+            && (!self.diagram.shapes.is_empty() || !self.diagram.connectors.is_empty())
+    }
+
+    fn export_scope(&self, selected_only: bool) -> Option<blockliner_core::export::Scope> {
+        use blockliner_core::export::{scope, Objects};
+        let objects = if selected_only {
+            Objects::Selected {
+                shapes: &self.canvas.selection,
+                lines: &self.canvas.lines,
+            }
+        } else {
+            Objects::All
+        };
+        scope(&self.diagram, objects)
+    }
+
+    /// Where to export: the system save dialog, in the project folder.
+    #[cfg(not(test))]
+    fn save_path(
+        &self,
+        folder: &std::path::Path,
+        name: &str,
+        format: export::Format,
+    ) -> Option<PathBuf> {
+        rfd::FileDialog::new()
+            .set_title("Export Diagram")
+            .set_directory(folder)
+            .set_file_name(name)
+            .add_filter(format.label(), &[format.ext()])
+            .save_file()
+    }
+
+    /// Tests never open the save dialog.
+    #[cfg(test)]
+    fn save_path(&self, _: &std::path::Path, _: &str, _: export::Format) -> Option<PathBuf> {
+        self.export_to.clone()
+    }
+
+    /// Asks where, then writes the image. Returns whether it was written
+    /// (the dialog then closes).
+    fn export(
+        &mut self,
+        ctx: &egui::Context,
+        scope: &blockliner_core::export::Scope,
+        state: &ExportState,
+    ) -> bool {
+        let (Some(project), Some(doc)) = (&self.project, &self.doc) else {
+            return false;
+        };
+        let o = state.options;
+        let suffix = if state.selected_only {
+            " (selection)"
+        } else {
+            ""
+        };
+        let name = format!("{}{suffix}.{}", doc.name, o.format.ext());
+        let picked = self.save_path(&project.folder.clone(), &name, o.format);
+        let Some(path) = picked else {
+            return false;
+        };
+        let written = export::render(ctx, &self.diagram, scope, &o)
+            .and_then(|bytes| export::write(&path, &bytes));
+        match written {
+            Ok(()) => {
+                let file = path.file_name().map(|f| f.to_string_lossy().into_owned());
+                self.toasts
+                    .success(format!("Exported “{}”", file.unwrap_or_default()));
+                self.set_prefs(json!({
+                    "exportFormat": o.format.ext(),
+                    "exportGrid": o.grid,
+                    "exportScale": o.scale,
+                }));
+                true
+            }
+            Err(e) => {
+                self.toasts.error(format!("Couldn't export: {e:#}"));
+                false
+            }
+        }
+    }
+
     // --- Per-frame work --------------------------------------------------------
 
     /// Commands first, so their keys don't reach other widgets. Nothing fires
@@ -699,6 +806,8 @@ impl BlockLinerApp {
     fn main_view(&mut self, ui: &mut Ui) {
         let props = ToolbarProps {
             tool: self.tool,
+            can_export: self.has_content(),
+            export_open: matches!(self.overlay, Some(Overlay::Export(_))),
             settings_open: matches!(self.overlay, Some(Overlay::Settings(_))),
             about_open: matches!(self.overlay, Some(Overlay::About)),
         };
@@ -817,6 +926,19 @@ impl BlockLinerApp {
                     Some(AboutAction::Close) => keep = false,
                     Some(AboutAction::OpenUrl(url)) => ctx.open_url(egui::OpenUrl::new_tab(url)),
                     Some(_) | None => {}
+                }
+            }
+            Overlay::Export(state) => {
+                let scope = self.export_scope(state.selected_only);
+                let size = scope.as_ref().map(|s| export::size(s, &state.options));
+                match overlays::export::show(ctx, state, size) {
+                    Some(ExportAction::Close) => keep = false,
+                    Some(ExportAction::Export) => {
+                        if let Some(scope) = scope {
+                            keep = !self.export(ctx, &scope, state);
+                        }
+                    }
+                    None => {}
                 }
             }
             Overlay::Name(state) => match overlays::name::show(ctx, state) {

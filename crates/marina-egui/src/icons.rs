@@ -69,6 +69,7 @@ pub const FILE_AUDIO: &str = "\u{f1c7}";
 pub const FILE_CIRCLE_PLUS: &str = "\u{e494}";
 pub const FILE_CIRCLE_QUESTION: &str = "\u{e4ef}";
 pub const FILE_CODE: &str = "\u{f1c9}";
+pub const FILE_EXPORT: &str = "\u{f56e}";
 pub const FILE_CSV: &str = "\u{f6dd}";
 pub const FILE_EXCEL: &str = "\u{f1c3}";
 pub const FILE_IMPORT: &str = "\u{f56f}";

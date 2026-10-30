@@ -15,9 +15,9 @@
 //! | Select: drag a selected line's end      | Re-glues or frees that end               |
 //! | Alt while dragging                      | No snapping                              |
 
-mod grid;
+pub mod grid;
 mod label;
-mod paint;
+pub mod paint;
 mod tools;
 pub mod view;
 

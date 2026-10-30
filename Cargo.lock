@@ -716,6 +716,7 @@ dependencies = [
  "log",
  "marina-core",
  "marina-egui",
+ "resvg 0.45.1",
  "rfd",
  "serde",
  "serde_json",

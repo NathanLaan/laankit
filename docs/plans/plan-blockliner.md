@@ -2,8 +2,8 @@
 
 Status: **In progress (2026-10-30).** Design decisions settled (§9). Phases 0
 (app scaffold), 1 (`crates/blockliner-core`), 2 (shapes), 3 (connectors), 4
-(undo and keyboard), 5 (folder and autosave) and 6 (import layout)
-implemented.
+(undo and keyboard), 5 (folder and autosave), 6 (import layout) and 7
+(export) implemented.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -56,6 +56,9 @@ text boxes is `bl_text`.
 - **Files:** a project is a plain folder of `.mmd` files. Edits autosave
   (debounced). BlockLiner does **no git syncing**. If the folder happens to be
   a git repo, the user commits it with their own tools.
+- **Export:** an Export dialog writes the diagram as a **PNG** or **SVG**
+  image, exactly as laid out on the canvas, with or without the grid, for
+  all objects or only the selected ones (§5.1).
 - **Mermaid round-trip:** BlockLiner reads back what it writes, exactly
   (§4). It also imports a hand-written flowchart that has no layout data and
   lays it out automatically (§4.4).
@@ -63,8 +66,7 @@ text boxes is `bl_text`.
 ### Not in the MVP (later phases, §7)
 
 Orthogonal/elbow routing, edge labels, colours/styles, `subgraph` containers
-(boundaries), copy/paste and duplicate, alignment/distribute, SVG/PNG export,
-a stencil library (database, queue, actor, cloud), multiple pages, and
+(boundaries), copy/paste and duplicate, alignment/distribute, a stencil library (database, queue, actor, cloud), multiple pages, and
 Mermaid diagram types other than `flowchart`.
 
 ---
@@ -94,6 +96,7 @@ crates/marina-egui          theme, toolbar, palette, settings, panes (unchanged)
 | `connect` ✅ | Anchor positions, connector end resolution (fixed and dynamic glue), distance-to-segment, connector and anchor hit-testing, `glue_at`, removing connectors. |
 | `snap` ✅ | `snap(v, grid)`, `snap_point`. |
 | `history` ✅ | Undo/redo as whole `Diagram` snapshots (200 kept). The app calls `observe` whenever the canvas is idle, so each finished change is one step without per-edit bookkeeping. Diagrams are small, so snapshots are simpler than an operation log and cannot get out of sync. |
+| `export` ✅ | What an export contains: `scope(d, selection, lines) -> Scope { shapes, connectors, bounds }` for all objects or only the selected ones, and the page bounds (the objects' extent plus a margin, on the grid). No drawing: that needs text layout, which lives in the app (§5.1). |
 | `ids` ✅ | Readable Mermaid node ids from labels (`"Orders DB"` → `orders_db`, de-duplicated). |
 
 Everything in the core is unit-tested without a window.
@@ -106,7 +109,7 @@ Same file layout as `apps/pageliner/native`:
 |---|---|
 | `main.rs` | Viewport (title, `APP_ID`, icon, custom title bar), `persistence_path`. Copy of PageLiner's. |
 | `config.rs` ✅ | `Paths` / `Prefs` in `~/.config/BlockLiner/ui-preferences.json`: `customTitlebar`, `sidebarVisible`, `statusBarVisible`, `gridSize`, `showGrid`, `lastProject`, `lastDiagram`. |
-| `commands.rs` ✅ | `Act` enum + `Registry`: tool selection (`V` select, `R` rect, `O` round rect, `L` line, `A` arrow, `T` text), undo/redo, delete, nudge, zoom, toggle grid/sidebar/status bar, new/rename/delete diagram, open folder, settings, palette. |
+| `commands.rs` ✅ | `Act` enum + `Registry`: tool selection (`V` select, `R` rect, `O` round rect, `L` line, `A` arrow, `T` text), undo/redo, delete, nudge, zoom, toggle grid/sidebar/status bar, new/rename/delete diagram, open folder, export (phase 7, `Ctrl+Shift+E`), settings, palette. |
 | `backend.rs` ✅ | The project folder. List, read, create, rename and delete are small local files, so they run synchronously and return their result. The autosave runs on a small tokio runtime: debounced (0.8 s) through `marina_core::debounce`, atomic (temp file + rename), with `flush` before switching diagrams, renaming and quitting. `check` reports outside changes to the open file (not our own writes). |
 | `app.rs` ✅ | `BlockLinerApp`: owns the backend, the open folder and diagram, the canvas, overlays, palette, toasts. Routes commands, sidebar and dialog actions; autosaves when the canvas is idle; looks at the folder once a second. |
 | `canvas/view.rs`, `canvas/grid.rs` ✅ | Pan/zoom transform (zoom steps 10–600 %, zoom about a point) and the grid (minor lines, a major line every 5 cells, only majors when cells get small). |
@@ -115,7 +118,8 @@ Same file layout as `apps/pageliner/native`:
 | `canvas/paint.rs` ✅ | Draws shapes, connectors, arrowheads, selection handles and anchor hints with theme colours from `marina_egui::theme`. |
 | `canvas/label.rs` ✅ | Inline label editing: an `egui::TextEdit` placed over the shape (multi-line, `Enter` commits, `Shift+Enter` adds a line, `Esc` cancels). |
 | `views.rs` ✅ | Sidebar (the folder's diagrams, New button, right-click Rename/Delete), toolbar (`marina_egui::toolbar` with tool buttons; Open Folder, Settings, About), the empty states (no folder, no diagram), status bar (tool, save state, selection, cursor position in grid units, grid size, zoom, UI scale). |
-| `overlays/` ✅ | Settings (grid size, show grid, title bar), the New/Rename name dialog, the delete confirmation, About. |
+| `overlays/` ✅ | Settings (grid size, show grid, title bar), the New/Rename name dialog, the delete confirmation, About, and `overlays/export.rs`, the Export dialog (§5.1). |
+| `export.rs` ✅ | Draws a `Scope` as SVG text (shapes, connectors, arrowheads, labels, optional grid) in the export colours; labels wrap exactly as on the canvas, using egui's text layout for the line breaks. PNG output rasterises that SVG with `resvg`, loading the bundled fonts (`marina_egui::fonts::bundled_faces`) so text matches. Writes are atomic (`marina_core::json::write_string` / temp file + rename). |
 | `ui_tests*.rs` ✅ | `egui_kittest` headless flows (§6), against a temp config folder and project folder. |
 
 **Zoom keys.** Unlike the other apps, Ctrl+= / Ctrl+- / Ctrl+0 and
@@ -308,6 +312,67 @@ and the Mermaid brackets, such as `[( )]`, on a shape drawn as a box.
   `Delete`/`Backspace` deletes. `Ctrl+A` selects all shapes and lines. `Esc`
   cancels a label edit or gesture, else clears the selection.
 
+
+### 5.1 Export
+
+**Opening it.** An **Export** button in the toolbar's bottom group (above
+Settings; Font Awesome `file-export`, added to `marina_egui::icons`),
+`Ctrl+Shift+E`, and "Export…" in the command palette. It's available while a
+diagram is open and has something in it.
+
+**The dialog** (a compact `marina_egui::dialog::Dialog`, titled "Export
+Diagram"):
+
+| Option | Choices | Default |
+|---|---|---|
+| Format | **PNG** · **SVG** (a two-way segmented control) | the last one used |
+| Objects | **All Objects** · **Selected Objects Only** (radio) | All Objects; Selected Objects Only is disabled when nothing is selected |
+| Grid | **Show grid** (toggle) | off |
+| Scale | **1×** · **2×** · **3×** (PNG only; hidden for SVG) | 2×, so text stays sharp on high-DPI screens and in documents |
+
+Below the options, a muted line gives the output size ("1240 × 680 px" for
+PNG, "620 × 340" for SVG), updated as options change. **Export…** opens the
+system save dialog (`rfd::FileDialog::save_file`) in the project folder,
+with the name `<diagram>.png` / `.svg` (`<diagram> (selection)` for a
+selection export) and the format's filter. Saving closes the dialog with a
+success toast naming the file; a failed write shows an error toast and
+leaves the dialog open. **Cancel**, `Esc` and the X close it. The format,
+grid and scale choices are remembered (`exportFormat`, `exportGrid`,
+`exportScale` in `ui-preferences.json`); the Objects choice is not, since it
+depends on the selection at the time.
+
+**What's included.**
+
+- *All Objects:* every shape and connector.
+- *Selected Objects Only:* the selected shapes and lines, plus connectors
+  glued at both ends to selected shapes, so a selected group keeps its
+  arrows. A connector glued to a shape that isn't exported is left out
+  (it would point at nothing).
+- Never: the selection outline, handles, anchor hints, hover highlight, the
+  limitation badges, or the label being edited (an edit in progress is
+  committed first).
+
+**Page.** The bounds of the included objects plus a margin of two grid
+cells, rounded outward to the grid, so with the grid shown the lines match
+the canvas cells. Coordinates are model pixels (100 % zoom); a PNG multiplies
+them by the scale. The page starts at the bounds' top-left corner, so an
+export never has a large empty area just because the shapes are far from the
+origin.
+
+**Look.** Exports go into documents and wikis, so they always use the light
+palette (white background, dark ink) whatever the app's theme. Shapes,
+round-rect corners, stroke widths and arrowheads match the canvas at 100 %.
+`Other` Mermaid shapes are drawn with a solid outline (the canvas's dashes
+are an editing cue). Edge labels from the file are drawn as on the canvas.
+The grid, when shown, uses the canvas's minor and major line pattern in
+light grey.
+
+**SVG details.** Plain SVG 1.1: `<rect>`, `<line>`, `<polygon>` (arrowheads),
+`<text>` with one `<tspan>` per wrapped line, `font-family` set to the UI
+font with `sans-serif` as a fallback. One `<g id="…">` per shape, named by its
+Mermaid id, so the file is easy to restyle or script. No embedded fonts (the
+file stays small; the text stays editable).
+
 ---
 
 ## 6. Testing
@@ -326,6 +391,15 @@ and the Mermaid brackets, such as `[( )]`, on a shape drawn as a box.
   - `Alt` placement off the grid; grid size change in Settings;
   - opening a hand-written fixture shows the auto-laid-out nodes, and saving
     keeps the passthrough lines.
+- **Export (phase 7):** core tests for `scope` (all vs selected; connectors
+  kept only with both ends exported; free lines; bounds on the grid with
+  the margin). App tests: the SVG for a small diagram is a golden file; a
+  PNG's pixel size is the page size × scale; the grid toggle adds or drops
+  the grid group; a kittest flow opens the dialog, picks SVG and Selected
+  Objects Only, and checks the written file (the save dialog is bypassed in
+  tests with a test-only path). The golden SVG is
+  `apps/blockliner/native/tests/fixtures/export.svg`
+  (`BLOCKLINER_BLESS=1` rewrites it).
 - **Screenshots** for visual checks are rendered offscreen with
   `egui_kittest` + wgpu (`MARINA_SCREENSHOT`-style), never in a real window.
 
@@ -342,20 +416,22 @@ and the Mermaid brackets, such as `[( )]`, on a shape drawn as a box.
 | **4. History + keyboard** ✅ | Snapshot undo/redo with gesture coalescing; nudge; select all; command registry and palette entries. | 1 day |
 | **5. Project + persistence** ✅ | Backend: open folder, diagram list sidebar, new/rename/delete, debounced atomic autosave, external-change reload; `lastProject`. | 2 days |
 | **6. Import layout** ✅ | `layout::layered` for nodes without positions; "not editable" badge for unsupported node shapes. | 1–2 days |
-| **7. Ship** | Packaging and CI (§8), README, `ARCHITECTURE.md`, kittest flows, hand checks on Linux/Windows/macOS. | 1–2 days |
+| **7. Export** ✅ | Export dialog (§5.1): PNG and SVG, show/hide grid, All Objects or Selected Objects Only, PNG scale; `blockliner_core::export::scope`; app `export.rs` (SVG writer, `resvg` PNG); toolbar button, `Ctrl+Shift+E`, palette entry; remembered options. | 2–3 days |
+| **8. Ship** | Packaging and CI (§8), README, `ARCHITECTURE.md`, kittest flows, hand checks on Linux/Windows/macOS. | 1–2 days |
 
-**MVP total: about 2.5–3 weeks.**
+**MVP total: about 3–3.5 weeks.**
 
 ### After the MVP (in rough value order)
 
-1. **SVG/PNG export** of the canvas as drawn (exact layout, unlike Mermaid's).
-2. **Edge labels** (`a -- "HTTPS" --> b`) and **orthogonal routing**.
-3. **Subgraphs as boundary containers** (system/trust boundaries), which
+1. **Edge labels** (`a -- "HTTPS" --> b`) and **orthogonal routing**.
+2. **Subgraphs as boundary containers** (system/trust boundaries), which
    architecture diagrams use a lot. Maps to Mermaid `subgraph`.
-4. Copy/paste, duplicate, align/distribute, z-order.
-5. Styles (fill/stroke colour → `style`/`classDef`) and more shapes
+3. Copy/paste, duplicate, align/distribute, z-order.
+4. Styles (fill/stroke colour → `style`/`classDef`) and more shapes
    (`[( )]` database, `[[ ]]` subroutine, `{{ }}` hexagon).
-6. "Copy as Mermaid" and opening `.mmd` files from NoteLiner.
+5. "Copy as Mermaid" and opening `.mmd` files from NoteLiner.
+6. More export options: a dark or transparent background, PDF, and
+   "copy image to clipboard".
 
 ---
 
@@ -368,7 +444,9 @@ Adding a fourth app touches these places outside the new crates:
   `[workspace.dependencies]`.
 - `apps/blockliner/native/Cargo.toml`: copy PageLiner's packaging metadata
   (`deb`, `generate-rpm`, `packager`) with the new names, binary
-  `blockliner`, `rfd = "0.15"` for the folder picker.
+  `blockliner`, `rfd = "0.15"` for the folder picker and the export save
+  dialog, and `resvg` (the workspace's 0.45, as `marina-richtext` uses, with
+  only the `text` feature) for PNG export.
 - `apps/blockliner/native/build.rs`: Windows icon, copied.
 - Package `depends`/`requires`: as PageLiner's **minus `git`**, which
   BlockLiner never runs.
@@ -398,3 +476,6 @@ Adding a fourth app touches these places outside the new crates:
 | 4 | Render Mermaid's own layout in-app as a "preview" tab? | No. There is no pure-Rust Mermaid renderer, and this app has no webview. The canvas is the view. |
 | 5 | Reuse `noteliner-slides`' colour/theme helpers? | Only `marina_egui::theme` for MVP. Shape styles come later. |
 | 6 | Should canvas primitives move to a shared crate (`marina-canvas`)? | Not yet. Extract them only if NoteLiner slides or a second app needs them, the same approach as the SlideLiner plan. |
+| 7 | Export colours: follow the app theme, or always light? | **Light, always** (white background, dark ink): exports end up in documents and wikis, and an export shouldn't change with the theme. A dark or transparent background can be an option later (§7). |
+| 8 | Draw exports separately for SVG and PNG, or once? | **Once, as SVG**; PNG rasterises that SVG with `resvg` and the bundled fonts. One drawing path means the two formats can't drift apart. |
+| 9 | Where does the export drawing live? | **In the app** (`export.rs`), not in `blockliner-core`: label wrapping must match the canvas, which uses egui's text layout. The core holds only what is exported and the page bounds (`export::scope`), which is easy to unit-test. |

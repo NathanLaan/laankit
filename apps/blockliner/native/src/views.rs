@@ -1,5 +1,5 @@
 //! The chrome around the canvas: the toolbar (tools at the top; Open
-//! Folder, Settings and About at the bottom), the sidebar listing the
+//! Folder, Export, Settings and About at the bottom), the sidebar listing the
 //! folder's diagrams, the empty states and the status bar.
 
 use egui::text::{LayoutJob, TextWrapping};
@@ -24,6 +24,9 @@ const ROW_HEIGHT: f32 = 30.0;
 
 pub struct ToolbarProps {
     pub tool: Tool,
+    /// A diagram with something in it is open.
+    pub can_export: bool,
+    pub export_open: bool,
     pub settings_open: bool,
     pub about_open: bool,
 }
@@ -45,7 +48,11 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
         },
         |ui| {
             let mut b = |ui: &mut Ui, glyph, title, label, active: bool, act: Act| {
-                let button = ToolbarButton::new(glyph, title).label(label).active(active);
+                let disabled = act == Act::Export && !props.can_export;
+                let button = ToolbarButton::new(glyph, title)
+                    .label(label)
+                    .active(active)
+                    .disabled(disabled);
                 if toolbar::button(ui, button).clicked() {
                     bottom.push(act);
                 }
@@ -57,6 +64,14 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
                 "Open Folder",
                 false,
                 Act::OpenFolder,
+            );
+            b(
+                ui,
+                icons::FILE_EXPORT,
+                "Export (Ctrl+Shift+E)",
+                "Export",
+                props.export_open,
+                Act::Export,
             );
             b(
                 ui,

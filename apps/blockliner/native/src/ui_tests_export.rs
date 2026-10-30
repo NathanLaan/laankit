@@ -1,0 +1,172 @@
+//! Exporting, headlessly: the SVG for a small diagram (a golden file;
+//! `BLOCKLINER_BLESS=1` rewrites it), the PNG's size and colours, the grid
+//! option, and the Export dialog from the keyboard to the written file.
+
+use std::path::Path;
+
+use blockliner_core::export::{scope, Objects};
+use blockliner_core::{Connector, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
+use egui::{Key, Modifiers};
+use egui_kittest::kittest::Queryable;
+
+use crate::export::{self, Format, Options};
+use crate::ui_tests::{at, click, harness, two_shapes};
+
+const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/export.svg");
+
+/// A context with the app's fonts, ready to lay out text.
+fn context() -> egui::Context {
+    let ctx = egui::Context::default();
+    marina_egui::fonts::install(&ctx);
+    let mut out = ctx.run_ui(egui::RawInput::default(), |_| {});
+    // No renderer to hand the font atlas to.
+    out.textures_delta.clear();
+    ctx
+}
+
+/// An arrow from a box to a round box, a long label that wraps, a text box
+/// and an edge label.
+fn diagram() -> Diagram {
+    let mut d = Diagram::new();
+    d.shapes.push(Shape::new(
+        "api",
+        ShapeKind::Rect,
+        "API Gateway & <Auth>",
+        Rect::new(40.0, 40.0, 160.0, 60.0),
+    ));
+    d.shapes.push(Shape::new(
+        "db",
+        ShapeKind::RoundRect,
+        "Orders database with a long name",
+        Rect::new(300.0, 40.0, 120.0, 60.0),
+    ));
+    d.shapes.push(Shape::new(
+        "note",
+        ShapeKind::Text,
+        "Async",
+        Rect::new(40.0, 140.0, 200.0, 40.0),
+    ));
+    let mut arrow = Connector::new(
+        ConnectorKind::Arrow,
+        End::glued("api", None),
+        End::glued("db", None),
+    );
+    arrow.label = Some("SQL".into());
+    d.connectors.push(arrow);
+    d
+}
+
+fn options(format: Format, grid: bool, scale: u32) -> Options {
+    Options {
+        format,
+        grid,
+        scale,
+    }
+}
+
+#[test]
+fn the_svg_matches_its_golden_file() {
+    let ctx = context();
+    let d = diagram();
+    let s = scope(&d, Objects::All).unwrap();
+    let svg = export::svg(&ctx, &d, &s, false);
+    if std::env::var_os("BLOCKLINER_BLESS").is_some() {
+        std::fs::write(GOLDEN, &svg).unwrap();
+    }
+    assert_eq!(svg, std::fs::read_to_string(GOLDEN).unwrap());
+    // It parses, and escapes what it must.
+    assert!(svg.contains(">API Gateway &amp;</tspan>"), "{svg}");
+    assert!(svg.contains(">&lt;Auth&gt;</tspan>"), "{svg}");
+    assert!(!svg.contains("class=\"grid\""));
+    assert!(export::svg(&ctx, &d, &s, true).contains("class=\"grid\""));
+    export::png(&svg, 1.0).expect("resvg reads it");
+}
+
+#[test]
+fn a_png_is_the_page_times_the_scale() {
+    let ctx = context();
+    let d = diagram();
+    let s = scope(&d, Objects::All).unwrap();
+    // The page: x 40..420, y 40..180, plus two cells around.
+    assert_eq!(s.bounds, Rect::new(0.0, 0.0, 460.0, 220.0));
+    for scale in [1, 2] {
+        let o = options(Format::Png, false, scale);
+        assert_eq!(export::size(&s, &o), (460 * scale, 220 * scale));
+        let bytes = export::render(&ctx, &d, &s, &o).unwrap();
+        let png = image::load_from_memory(&bytes).unwrap().into_rgba8();
+        assert_eq!(png.dimensions(), (460 * scale, 220 * scale));
+        let px = |x: u32, y: u32| png.get_pixel(x * scale, y * scale).0;
+        assert_eq!(px(5, 5), [255, 255, 255, 255], "white background");
+        // The api box's left edge, in the stroke's ink.
+        let edge = px(40, 70);
+        assert!(edge[0] < 140 && edge[3] == 255, "{edge:?}");
+    }
+}
+
+fn written(path: &Path) -> String {
+    std::fs::read_to_string(path).unwrap()
+}
+
+#[test]
+fn the_export_dialog_writes_the_selection_as_svg() {
+    let (tmp, paths, mut h) = harness();
+    h.run_steps(2);
+    two_shapes(&mut h);
+    let out = tmp.path().join("out.svg");
+    h.state_mut().set_export_to(out.clone());
+
+    // Nothing selected: the selection choice is off.
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::E);
+    h.run_steps(3);
+    assert!(h.state().has_overlay());
+    // Clicking it does nothing: still all of a and b, as a 2× PNG.
+    h.get_by_label("Selected Objects Only").click();
+    h.run_steps(2);
+    h.get_by_label("1080 × 680 px");
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+    assert!(!h.state().has_overlay());
+
+    // Select a, then export it alone as SVG with the grid.
+    click(&mut h, at(150.0, 120.0));
+    h.run_steps(2);
+    h.get_by_label("Export").click();
+    h.run_steps(3);
+    h.get_by_label("SVG").click();
+    h.run_steps(2);
+    h.get_by_label("Selected Objects Only").click();
+    h.run_steps(2);
+    h.get_by_label("Show grid").click();
+    h.run_steps(2);
+    // The page around a (100..260 × 100..160) and its margin.
+    h.get_by_label("240 × 140");
+    h.get_by_label("Export…").click();
+    h.run_steps(3);
+
+    assert!(!h.state().has_overlay(), "closed once written");
+    let svg = written(&out);
+    assert!(
+        svg.contains("<g id=\"a\">") && !svg.contains("<g id=\"b\">"),
+        "{svg}"
+    );
+    assert!(svg.contains("class=\"grid\""));
+    // The choices are remembered, except which objects.
+    let prefs = paths.prefs().export;
+    assert_eq!(prefs, options(Format::Svg, true, 2));
+
+    // Next time: SVG and the grid again; a PNG export of everything.
+    let png = tmp.path().join("out.png");
+    h.state_mut().set_export_to(png.clone());
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::E);
+    h.run_steps(3);
+    h.get_by_label("PNG").click();
+    h.run_steps(2);
+    h.get_by_label("1×").click();
+    h.run_steps(2);
+    // a and b: 100..560 × 100..360, and the margin.
+    h.get_by_label("540 × 340 px");
+    h.get_by_label("Export…").click();
+    h.run_steps(3);
+    let image = image::open(&png).unwrap();
+    assert_eq!((image.width(), image.height()), (540, 340));
+}

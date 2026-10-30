@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="220" viewBox="0 0 460 220" font-family="Inter, sans-serif">
+<rect x="0" y="0" width="460" height="220" fill="#ffffff"/>
+<g id="api"><rect x="40.75" y="40.75" width="158.5" height="58.5" rx="0" fill="#f7f8fa" stroke="#4b5563" stroke-width="1.5"/><text x="120" font-size="14" fill="#1f2937" text-anchor="middle" dominant-baseline="central"><tspan x="120" y="61.5">API Gateway &amp;</tspan><tspan x="120" y="78.5">&lt;Auth&gt;</tspan></text></g>
+<g id="db"><rect x="300.75" y="40.75" width="118.5" height="58.5" rx="11.25" fill="#f7f8fa" stroke="#4b5563" stroke-width="1.5"/><text x="360" font-size="14" fill="#1f2937" text-anchor="middle" dominant-baseline="central"><tspan x="360" y="53">Orders</tspan><tspan x="360" y="70">database with a</tspan><tspan x="360" y="87">long name</tspan></text></g>
+<g id="note"><text x="140" font-size="14" fill="#1f2937" text-anchor="middle" dominant-baseline="central"><tspan x="140" y="160">Async</tspan></text></g>
+<g class="connector"><line x1="200" y1="70" x2="290.4" y2="70" stroke="#4b5563" stroke-width="1.5"/><polygon points="300,70 288,75.4 288,64.6" fill="#4b5563"/><rect x="235.11" y="59.5" width="29.78" height="21" rx="2" fill="#ffffff"/><text x="250" font-size="12" fill="#4b5563" text-anchor="middle" dominant-baseline="central"><tspan x="250" y="70">SQL</tspan></text></g>
+</svg>

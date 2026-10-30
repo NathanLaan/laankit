@@ -14,6 +14,7 @@
 //! | `layout`  | Positions for shapes the file gives none for                       |
 
 pub mod connect;
+pub mod export;
 pub mod geometry;
 pub mod history;
 pub mod ids;

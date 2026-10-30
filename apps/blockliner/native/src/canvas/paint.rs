@@ -18,11 +18,11 @@ pub const LABEL_SIZE: f32 = 14.0;
 /// Space between a label and its shape's sides, at 100 %.
 pub const LABEL_PAD: f32 = 6.0;
 /// Edge label text size at 100 %.
-const EDGE_LABEL_SIZE: f32 = 12.0;
+pub const EDGE_LABEL_SIZE: f32 = 12.0;
 /// The round rectangle's corner radius at 100 %.
-const CORNER: f32 = 12.0;
+pub const CORNER: f32 = 12.0;
 /// Arrowhead length at 100 %.
-const ARROW: f32 = 12.0;
+pub const ARROW: f32 = 12.0;
 /// Handles are this many screen points square, at any zoom.
 pub const HANDLE_SIZE: f32 = 8.0;
 /// Endpoint handles and anchor hints: radius in screen points.

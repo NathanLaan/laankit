@@ -9,11 +9,14 @@ mod backend;
 mod canvas;
 mod commands;
 mod config;
+mod export;
 mod overlays;
 mod views;
 
 #[cfg(test)]
 mod ui_tests;
+#[cfg(test)]
+mod ui_tests_export;
 #[cfg(test)]
 mod ui_tests_history;
 #[cfg(test)]
