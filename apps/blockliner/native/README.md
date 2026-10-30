@@ -19,6 +19,9 @@ install as `/usr/bin/blockliner`.
   sidebar's diagrams. The next start reopens the folder and diagram. A path on the command line
   (a `.mmd` file or a folder) opens that instead; the Linux desktop entry passes the file a file
   manager opens with BlockLiner.
+- **Closing.** Close Folder (the toolbar button after Open Folder, or the palette) saves the open
+  diagram and goes back to "No folder open"; the next start then opens no folder. If the save
+  fails, the folder stays open and the error is shown.
 - **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and
   Marina's title bar (takes a restart).
 - **Command palette.** Ctrl+K: every command.
@@ -27,7 +30,7 @@ install as `/usr/bin/blockliner`.
 
 | Keys | Does |
 |---|---|
-| V, R, O, L, A, T | Select, Rectangle, Rounded Rectangle, Line, Arrow, Text tool (Shift: keep the tool after each shape) |
+| V, R, O, L, A, T, or 1–6 | Select, Rectangle, Rounded Rectangle, Line, Arrow, Text tool (Shift: keep the tool after each shape). The numbers follow the toolbar and show in each tool button's corner; they're physical keys, so the number row works on any layout |
 | Drag / click (shape tool) | Draws a shape (click: the default 8 × 3 cells) |
 | Double-click a shape | Edits its label (Enter commits, Shift+Enter adds a line, Esc cancels) |
 | Arrow keys | Nudge one grid step (Shift: 5 steps, Alt: 1 px) |

@@ -35,7 +35,8 @@ impl Canvas {
         self.label.is_some()
     }
 
-    pub(super) fn commit_label(&mut self, d: &mut Diagram) {
+    /// Puts the label being edited, if any, into the diagram.
+    pub fn commit_label(&mut self, d: &mut Diagram) {
         let Some(edit) = self.label.take() else {
             return;
         };

@@ -81,6 +81,7 @@ pub const FILE_ZIPPER: &str = "\u{f1c6}";
 pub const FILTER: &str = "\u{f0b0}";
 pub const FOLDER: &str = "\u{f07b}";
 pub const FOLDER_OPEN: &str = "\u{f07c}";
+pub const FOLDER_MINUS: &str = "\u{f65d}";
 pub const FONT: &str = "\u{f031}";
 pub const GEAR: &str = "\u{f013}";
 pub const HIGHLIGHTER: &str = "\u{f591}";

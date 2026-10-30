@@ -22,10 +22,11 @@ the shared `marina-*` crates — no webview, no JavaScript. The shipped binary i
 - **Connectors** — lines and arrows that glue to a shape's sides (fixed) or to
   the shape (turning as it moves), plus free lines anywhere.
 - **Editing** — box select, nudge with the arrow keys, undo and redo, single-key
-  tools (V, R, O, L, A, T) and a command palette (Ctrl+K).
+  tools (V, R, O, L, A, T, or 1–6 in toolbar order) and a command palette
+  (Ctrl+K).
 - **A folder of diagrams** — open any folder; its `.mmd` files are the sidebar's
   diagrams. Changes autosave, and edits made elsewhere (an editor, `git pull`)
-  reload as an undoable step.
+  reload as an undoable step. Close Folder saves and goes back to no folder.
 - **Plain Mermaid in** — a flowchart without BlockLiner's layout (pasted from a
   README, say) is laid out automatically when opened. What BlockLiner doesn't
   model (subgraphs, styles, other arrow types) is kept as written.

@@ -220,10 +220,11 @@ impl Backend {
             });
     }
 
-    /// Writes any waiting edits now, on this thread.
-    pub fn flush(&self) {
+    /// Writes any waiting edits now, on this thread. `false` when that
+    /// write failed (which also arrives as [`Event::SaveFailed`]).
+    pub fn flush(&self) -> bool {
         self.core.saver.cancel();
-        self.core.write_pending();
+        self.core.write_pending()
     }
 
     /// Edits are waiting for the autosave.
@@ -267,12 +268,14 @@ impl Backend {
 }
 
 impl Core {
-    fn write_pending(&self) {
+    /// `false` when the write failed; `true` when it succeeded, or there
+    /// was nothing to write.
+    fn write_pending(&self) -> bool {
         let _w = self.writing.lock().unwrap();
         // Still pending while it's written, so `is_saving` stays true until
         // the file is on disk.
         let Some((path, text)) = self.pending.lock().unwrap().clone() else {
-            return;
+            return true;
         };
         let result = marina_core::json::write_string(&path, &text);
         {
@@ -281,6 +284,7 @@ impl Core {
                 *pending = None;
             }
         }
+        let written = result.is_ok();
         let event = match result {
             Ok(()) => {
                 if let Some(open) = self.open.lock().unwrap().as_mut() {
@@ -300,6 +304,7 @@ impl Core {
         if let Some(ctx) = self.ctx.lock().unwrap().as_ref() {
             ctx.request_repaint();
         }
+        written
     }
 }
 

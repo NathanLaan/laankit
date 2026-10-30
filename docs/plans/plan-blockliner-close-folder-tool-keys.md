@@ -1,7 +1,10 @@
 # BlockLiner — Close Folder and Tool Shortcuts
 
-Status: **Proposed (2026-10-30).** Builds on the BlockLiner MVP
-([`plan-blockliner.md`](plan-blockliner.md)). Two small features:
+Status: **Implemented (2026-10-30)** with the recommendations: no Close Folder
+shortcut, `1`–`6` as the second set of tool keys, and the number hints always
+shown (the offscreen render looked calm enough, so there's no Settings
+toggle). Builds on the BlockLiner MVP ([`plan-blockliner.md`](plan-blockliner.md)).
+Two small features:
 
 1. A **Close Folder** button.
 2. **Keyboard shortcuts** for the Rectangle, Rounded Rectangle, Line, Arrow
@@ -139,8 +142,9 @@ keys, which drawing tools commonly offer.
   (`Binding::physical`, as Export's `Ctrl+Shift+E` is), so the number row
   works even on layouts that put the digits behind Shift (AZERTY types
   `&é"'(-` there).
-- `commands::tool_key` returns both keys. The registry's `shortcut` text
-  becomes "R, 2", for the palette and Settings.
+- `commands::tool_digit` gives each tool's number, beside `tool_key`'s
+  letter. The registry's `shortcut` text becomes "R, 2", for the palette and
+  Settings.
 
 **Alternative: Visio's keys.** Visio uses `Ctrl+1` pointer, `Ctrl+2` text,
 `Ctrl+6` line and `Ctrl+8` rectangle. It has no keys for a rounded

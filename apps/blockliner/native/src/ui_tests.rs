@@ -151,6 +151,33 @@ fn tools_from_the_toolbar_and_the_keyboard() {
         assert_eq!(h.state().tool(), tool, "{key:?}");
     }
 
+    // The numbers follow the toolbar; with Shift the tool stays.
+    for (key, tool) in [
+        (Key::Num2, Tool::Rect),
+        (Key::Num3, Tool::RoundRect),
+        (Key::Num4, Tool::Line),
+        (Key::Num5, Tool::Arrow),
+        (Key::Num6, Tool::Text),
+        (Key::Num1, Tool::Select),
+    ] {
+        h.key_press(key);
+        h.run_steps(2);
+        assert_eq!(h.state().tool(), tool, "{key:?}");
+    }
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    h.key_press_modifiers(Modifiers::SHIFT, Key::Num2);
+    h.run_steps(2);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    assert_eq!(h.state().tool(), Tool::Rect);
+    click(&mut h, at(200.0, 200.0));
+    h.run_steps(3);
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    assert_eq!(h.state().diagram().shapes.len(), 1);
+    assert_eq!(h.state().tool(), Tool::Rect, "kept after the shape");
+    h.key_press(Key::Num1);
+    h.run_steps(2);
+
     // With a dialog open the single-key shortcuts are off.
     h.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
     h.run_steps(2);

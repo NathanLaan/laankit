@@ -238,9 +238,15 @@ impl BlockLinerApp {
         self.backend.is_saving()
     }
 
+    /// Runs a command as if from the palette or a shortcut.
+    #[cfg(test)]
+    pub fn run(&mut self, act: Act) {
+        self.apply(act);
+    }
+
     #[cfg(test)]
     pub fn flush(&self) {
-        self.backend.flush();
+        let _ = self.backend.flush();
     }
 
     #[cfg(test)]
@@ -306,6 +312,7 @@ impl BlockLinerApp {
                 }
             }
             Act::OpenFolder => self.pick_folder(),
+            Act::CloseFolder => self.close_folder(),
             Act::Export => {
                 if self.has_content() {
                     self.overlay = Some(Overlay::Export(ExportState {
@@ -406,6 +413,23 @@ impl BlockLinerApp {
                 }
             }
         }
+    }
+
+    /// Saves the open diagram and goes back to "No folder open"; the next
+    /// start opens no folder either. A failed save keeps the folder open
+    /// (its error is shown), so closing never loses an edit.
+    fn close_folder(&mut self) {
+        if self.project.is_none() {
+            return;
+        }
+        self.canvas.commit_label(&mut self.diagram);
+        self.autosave();
+        if !self.backend.flush() {
+            return;
+        }
+        self.close_doc();
+        self.project = None;
+        self.set_prefs(json!({ "lastProject": "", "lastDiagram": "" }));
     }
 
     /// Opens `folder` and the diagram `want` in it, else its first one.
@@ -897,6 +921,7 @@ impl BlockLinerApp {
     fn main_view(&mut self, ui: &mut Ui) {
         let props = ToolbarProps {
             tool: self.tool,
+            can_close_folder: self.project.is_some(),
             can_export: self.has_content(),
             export_open: matches!(self.overlay, Some(Overlay::Export(_))),
             settings_open: matches!(self.overlay, Some(Overlay::Settings(_))),

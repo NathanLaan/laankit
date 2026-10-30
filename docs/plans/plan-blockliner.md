@@ -299,7 +299,9 @@ and the Mermaid brackets, such as `[( )]`, on a shape drawn as a box.
   or deletes any of them (Delete Diagram is also in the palette). Names
   clash case-insensitively, since the folder may be synced to a system
   where file names ignore case. Deleting asks first and opens the neighbour.
-  `Ctrl+E` (or the title bar's panel button) hides the sidebar.
+  `Ctrl+E` (or the title bar's panel button) hides the sidebar. Close
+  Folder (toolbar, palette) saves, closes and clears `lastProject`
+  ([`plan-blockliner-close-folder-tool-keys.md`](plan-blockliner-close-folder-tool-keys.md)).
 - **Autosave:** once the canvas is idle (the same moment the undo history is
   taken), a changed diagram is handed to the autosave, which writes it 0.8 s
   after edits pause. Opening a file writes nothing, so a hand-written file is

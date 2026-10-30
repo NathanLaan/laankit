@@ -4,7 +4,7 @@
 //! | Path                  | Holds                                                                    |
 //! |-----------------------|--------------------------------------------------------------------------|
 //! | `ui-preferences.json` | `customTitlebar`, `sidebarVisible`, `statusBarVisible`, `showGrid`,      |
-//! |                       | `gridSize`, `lastProject` (a folder path), `lastDiagram` (a name in it), |
+//! |                       | `gridSize`, `lastProject` (a folder path; empty after Close Folder), `lastDiagram` (a name in it), |
 //! |                       | `exportFormat` (`png`/`svg`), `exportGrid`, `exportScale` (1, 2 or 3)    |
 //!
 //! Diagrams live in the folder the user opens, not here.

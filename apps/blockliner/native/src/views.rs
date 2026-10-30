@@ -14,7 +14,7 @@ use marina_egui::toolbar::{self, ToolbarButton};
 use marina_egui::{fonts, icons, theme};
 
 use crate::canvas::Tool;
-use crate::commands::{tool_key, Act};
+use crate::commands::{tool_digit, tool_key, Act};
 
 /// `.status-bar { height: 24px }`, as in the other apps.
 pub const STATUS_BAR_HEIGHT: f32 = 24.0;
@@ -24,6 +24,8 @@ const ROW_HEIGHT: f32 = 30.0;
 
 pub struct ToolbarProps {
     pub tool: Tool,
+    /// A folder is open.
+    pub can_close_folder: bool,
     /// A diagram with something in it is open.
     pub can_export: bool,
     pub export_open: bool,
@@ -48,7 +50,11 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
         },
         |ui| {
             let mut b = |ui: &mut Ui, glyph, title, label, active: bool, act: Act| {
-                let disabled = act == Act::Export && !props.can_export;
+                let disabled = match act {
+                    Act::Export => !props.can_export,
+                    Act::CloseFolder => !props.can_close_folder,
+                    _ => false,
+                };
                 let button = ToolbarButton::new(glyph, title)
                     .label(label)
                     .active(active)
@@ -64,6 +70,14 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
                 "Open Folder",
                 false,
                 Act::OpenFolder,
+            );
+            b(
+                ui,
+                icons::FOLDER_MINUS,
+                "Close Folder",
+                "Close Folder",
+                false,
+                Act::CloseFolder,
             );
             b(
                 ui,
@@ -98,7 +112,8 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
 /// A tool button. Select and Text use Font Awesome glyphs; the shape and
 /// line tools draw what they make, since no icon says "rounded rectangle".
 fn tool_button(ui: &mut Ui, tool: Tool, active: bool) -> bool {
-    let title = format!("{} ({})", tool.name(), tool_key(tool).1);
+    let number = tool_digit(tool).1;
+    let title = format!("{} — {} or {number}", tool.name(), tool_key(tool).1);
     let glyph = match tool {
         Tool::Select => icons::ARROW_POINTER,
         Tool::Text => icons::FONT,
@@ -122,6 +137,15 @@ fn tool_button(ui: &mut Ui, tool: Tool, active: bool) -> bool {
         };
         paint_tool_icon(ui, tool, resp.rect.center(), ink);
     }
+    // The number, so the shortcut shows without hovering (as in Excalidraw).
+    let p = theme::palette(ui.ctx());
+    ui.painter().text(
+        resp.rect.right_bottom() + vec2(-4.0, -1.0),
+        egui::Align2::RIGHT_BOTTOM,
+        number,
+        egui::FontId::proportional(9.0),
+        p.text_faint,
+    );
     resp.clicked()
 }
 

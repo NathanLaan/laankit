@@ -272,3 +272,92 @@ fn the_command_line_opens_a_diagram_or_a_folder() {
     h.run_steps(2);
     assert_eq!(h.state().doc_name(), Some("a"));
 }
+
+#[test]
+fn close_folder_saves_and_forgets_the_folder() {
+    let (_tmp, paths, mut h) = harness();
+    h.state_mut().set_save_delay(Duration::from_secs(60));
+    h.run_steps(2);
+    let folder = project(&paths);
+
+    // An edit still waiting for the autosave is written on closing.
+    add_shape(&mut h, "waiting");
+    assert!(h.state().is_saving());
+    h.get_by_label("Close Folder").click();
+    h.run_steps(3);
+    assert!(read(&folder, "Diagram").contains("waiting[\"waiting\"]"));
+
+    assert_eq!(h.state().doc_name(), None);
+    assert_eq!(h.state().window_title(), "BlockLiner");
+    h.get_by_label("No folder open");
+    let prefs = paths.prefs();
+    assert_eq!(prefs.last_project, None, "the next start opens no folder");
+    assert_eq!(prefs.last_diagram, None);
+
+    // Nothing to close now: the button does nothing, the palette lacks it.
+    h.get_by_label("Close Folder").click();
+    h.run_steps(2);
+    h.get_by_label("No folder open");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::K);
+    h.run_steps(3);
+    h.event(Event::Text("Close Folder".into()));
+    h.run_steps(2);
+    h.key_press(Key::Enter);
+    h.run_steps(3);
+    h.get_by_label("No folder open");
+}
+
+#[test]
+fn close_folder_keeps_a_label_being_edited() {
+    let (_tmp, paths, mut h) = harness();
+    h.run_steps(2);
+    let folder = project(&paths);
+    h.key_press(Key::R);
+    h.run_steps(2);
+    drag(
+        &mut h,
+        PointerButton::Primary,
+        at(100.0, 100.0),
+        at(260.0, 160.0),
+    );
+    h.run_steps(3);
+    h.event(Event::Text("Gateway".into()));
+    h.step();
+    // The text field has the keys: a number is typed, not a tool.
+    h.key_press(Key::Num4);
+    h.run_steps(2);
+    assert_eq!(h.state().tool(), crate::canvas::Tool::Select);
+    assert!(h.state().editing_label());
+
+    // Straight from the command, with the label still open (a toolbar
+    // click would commit it on its own).
+    h.state_mut().run(crate::commands::Act::CloseFolder);
+    h.run_steps(3);
+    assert_eq!(h.state().doc_name(), None);
+    assert!(
+        read(&folder, "Diagram").contains("gateway[\"Gateway\"]"),
+        "{}",
+        read(&folder, "Diagram")
+    );
+}
+
+/// A write that fails keeps the folder open, so nothing is lost.
+#[cfg(unix)]
+#[test]
+fn close_folder_stays_open_when_the_save_fails() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (_tmp, paths, mut h) = harness();
+    h.state_mut().set_save_delay(Duration::from_secs(60));
+    h.run_steps(2);
+    let folder = project(&paths);
+    add_shape(&mut h, "unsaved");
+    fs::set_permissions(&folder, fs::Permissions::from_mode(0o555)).unwrap();
+    h.get_by_label("Close Folder").click();
+    h.run_steps(3);
+    fs::set_permissions(&folder, fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(h.state().doc_name(), Some("Diagram"));
+    assert_eq!(project(&paths), folder);
+    h.get_by_label_contains("Couldn't save");
+}

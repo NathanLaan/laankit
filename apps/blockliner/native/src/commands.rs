@@ -17,6 +17,7 @@ pub enum Act {
     RenameDiagram,
     DeleteDiagram,
     OpenFolder,
+    CloseFolder,
     Export,
     Tool(Tool),
     Undo,
@@ -81,8 +82,8 @@ fn redoable(v: &View) -> bool {
     ready(v) && v.can_redo
 }
 
-/// A tool's single-key shortcut (Visio-style; never fires while a text field
-/// has the keyboard).
+/// A tool's letter (Excalidraw's; never fires while a text field has the
+/// keyboard).
 pub fn tool_key(tool: Tool) -> (Key, &'static str) {
     match tool {
         Tool::Select => (Key::V, "V"),
@@ -91,6 +92,19 @@ pub fn tool_key(tool: Tool) -> (Key, &'static str) {
         Tool::Line => (Key::L, "L"),
         Tool::Arrow => (Key::A, "A"),
         Tool::Text => (Key::T, "T"),
+    }
+}
+
+/// A tool's number: its place in the toolbar. Bound to the physical key, so
+/// the number row works on layouts that put the digits behind Shift.
+pub fn tool_digit(tool: Tool) -> (Key, &'static str) {
+    match tool {
+        Tool::Select => (Key::Num1, "1"),
+        Tool::Rect => (Key::Num2, "2"),
+        Tool::RoundRect => (Key::Num3, "3"),
+        Tool::Line => (Key::Num4, "4"),
+        Tool::Arrow => (Key::Num5, "5"),
+        Tool::Text => (Key::Num6, "6"),
     }
 }
 
@@ -125,8 +139,10 @@ pub fn registry() -> Registry<Act, View> {
             .shortcut("Ctrl+Shift+E")
             .when(exportable),
     );
+    r.register(add("file.closeFolder", "Close Folder", "File", Act::CloseFolder).when(in_project));
     for tool in Tool::ALL {
-        let (key, text) = tool_key(tool);
+        let (key, letter) = tool_key(tool);
+        let (digit, number) = tool_digit(tool);
         let id = format!("tool.{}", tool.name().to_lowercase().replace(' ', ""));
         r.register(
             add(
@@ -136,9 +152,11 @@ pub fn registry() -> Registry<Act, View> {
                 Act::Tool(tool),
             )
             .key(Binding::logical(Modifiers::NONE, key))
+            .key(Binding::physical(Modifiers::NONE, digit))
             // With Shift the tool stays picked after each shape.
             .key(Binding::logical(Modifiers::SHIFT, key))
-            .shortcut(text)
+            .key(Binding::physical(Modifiers::SHIFT, digit))
+            .shortcut(format!("{letter}, {number}"))
             .when(ready),
         );
     }
@@ -297,6 +315,16 @@ mod tests {
                 can_redo: true,
             })
             .is_empty());
+    }
+
+    #[test]
+    fn tools_list_their_letter_and_number() {
+        let r = registry();
+        let label = |id: &str| r.get(id).and_then(|c| c.shortcut_label());
+        assert_eq!(label("tool.select").as_deref(), Some("V, 1"));
+        assert_eq!(label("tool.rectangle").as_deref(), Some("R, 2"));
+        assert_eq!(label("tool.roundedrectangle").as_deref(), Some("O, 3"));
+        assert_eq!(label("tool.text").as_deref(), Some("T, 6"));
     }
 
     #[test]
