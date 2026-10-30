@@ -17,6 +17,8 @@ mod views;
 #[cfg(test)]
 mod ui_tests;
 #[cfg(test)]
+mod ui_tests_clipboard;
+#[cfg(test)]
 mod ui_tests_export;
 #[cfg(test)]
 mod ui_tests_history;

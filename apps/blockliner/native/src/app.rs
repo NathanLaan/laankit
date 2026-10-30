@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use blockliner_core::clipboard;
 use blockliner_core::history::History;
 use blockliner_core::style::{Colour, Style, PRESETS};
 use blockliner_core::Diagram;
@@ -87,6 +88,13 @@ pub struct BlockLinerApp {
     tool: Tool,
     /// The More Shapes button's shape: the last of the four picked.
     more_shape: Tool,
+    /// The last copy's (or paste's) clipboard text, and how many times it's
+    /// been pasted, so each paste of the same copy steps further.
+    clip: Option<(String, usize)>,
+    /// For the end of the frame (commands run without the context): text
+    /// for the system clipboard, and a paste to ask for.
+    copy_out: Option<String>,
+    paste_request: bool,
     /// The tool was picked with Shift, so it stays after each shape.
     sticky_tool: bool,
     /// Shift is down this frame (for picking a tool with it).
@@ -155,6 +163,9 @@ impl BlockLinerApp {
             canvas: Canvas::new(prefs.show_grid),
             tool: Tool::default(),
             more_shape: Tool::MORE[0],
+            clip: None,
+            copy_out: None,
+            paste_request: false,
             sticky_tool: false,
             shift: false,
             overlay: None,
@@ -231,6 +242,12 @@ impl BlockLinerApp {
     #[cfg(test)]
     pub fn diagram_mut(&mut self) -> &mut Diagram {
         &mut self.diagram
+    }
+
+    /// The last copy's clipboard text.
+    #[cfg(test)]
+    pub fn clipboard_text(&self) -> Option<&str> {
+        self.clip.as_ref().map(|(text, _)| text.as_str())
     }
 
     #[cfg(test)]
@@ -389,6 +406,15 @@ impl BlockLinerApp {
                 self.canvas
                     .nudge(&mut self.diagram, f32::from(dx) * g, f32::from(dy) * g);
             }
+            Act::Copy => {
+                self.copy();
+            }
+            Act::Cut => {
+                if self.copy() {
+                    self.canvas.delete_selection(&mut self.diagram);
+                }
+            }
+            Act::Paste => self.paste_request = true,
             Act::Delete => {
                 self.canvas.delete_selection(&mut self.diagram);
             }
@@ -414,6 +440,46 @@ impl BlockLinerApp {
             Act::About => self.overlay = Some(Overlay::About),
             Act::Palette => self.palette = Some(CommandPalette::new()),
         }
+    }
+
+    /// The selection to the clipboard as Mermaid (`clipboard::copy`).
+    /// `false` when nothing is selected.
+    fn copy(&mut self) -> bool {
+        let Some(clip) = clipboard::copy(&self.diagram, &self.canvas.selection, &self.canvas.lines)
+        else {
+            return false;
+        };
+        let text = blockliner_core::write(&clip);
+        self.clip = Some((text.clone(), 0));
+        self.copy_out = Some(text);
+        true
+    }
+
+    /// Clipboard text into the diagram, selected: a flowchart (a copy, or
+    /// one from elsewhere) where `clipboard::offset` puts it, else a text
+    /// box in the middle of the view.
+    fn paste(&mut self, text: &str) {
+        if self.doc.is_none() || self.canvas.is_busy() {
+            return;
+        }
+        let n = match &self.clip {
+            Some((last, n)) if last == text => n + 1,
+            _ => 1,
+        };
+        self.clip = Some((text.to_owned(), n));
+        let view = self.canvas.visible();
+        let (shapes, lines) = match clipboard::parse(text) {
+            Some(clip) => {
+                let (dx, dy) = clipboard::offset(&clip, n, view, self.diagram.grid);
+                clipboard::paste(&mut self.diagram, &clip, dx, dy)
+            }
+            None => match clipboard::paste_text(&mut self.diagram, text, view.center()) {
+                Some(id) => (vec![id], Vec::new()),
+                None => return,
+            },
+        };
+        self.canvas.select_only(shapes, lines);
+        self.tool = Tool::Select;
     }
 
     /// The selected shapes' fill (or `stroke`): a preset, the default, or
@@ -911,6 +977,35 @@ impl BlockLinerApp {
             self.apply(act);
         }
         self.nudge_keys(ctx);
+        self.clipboard_events(ctx);
+    }
+
+    /// egui's copy, cut and paste events: the platform's keys, or the
+    /// clipboard a Paste command asked for. Called only while no text field
+    /// has the keyboard (a label being edited keeps them).
+    fn clipboard_events(&mut self, ctx: &egui::Context) {
+        if self.view().modal_open || self.doc.is_none() {
+            return;
+        }
+        let events = ctx.input_mut(|i| {
+            let mut out = Vec::new();
+            i.events.retain(|e| match e {
+                egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) => {
+                    out.push(e.clone());
+                    false
+                }
+                _ => true,
+            });
+            out
+        });
+        for e in events {
+            match e {
+                egui::Event::Copy => self.apply(Act::Copy),
+                egui::Event::Cut => self.apply(Act::Cut),
+                egui::Event::Paste(text) => self.paste(&text),
+                _ => {}
+            }
+        }
     }
 
     /// The arrow keys nudge the selection: one grid step, five with Shift,
@@ -974,6 +1069,12 @@ impl BlockLinerApp {
         self.overlays(&ctx);
         self.palette(&ctx);
         self.toasts.show(&ctx);
+        if let Some(text) = self.copy_out.take() {
+            ctx.copy_text(text);
+        }
+        if std::mem::take(&mut self.paste_request) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+        }
         self.update_title(&ctx);
         if self.custom_titlebar {
             window::window_edges(&ctx);
@@ -1120,6 +1221,9 @@ impl BlockLinerApp {
                     self.tool = Tool::Select;
                 }
                 acts.extend(out.menu.map(|m| match m {
+                    MenuAction::Cut => Act::Cut,
+                    MenuAction::Copy => Act::Copy,
+                    MenuAction::Paste => Act::Paste,
                     MenuAction::RouteElbow => Act::RouteElbow,
                     MenuAction::RouteStraight => Act::RouteStraight,
                     MenuAction::Fill(s) => Act::Fill(s),

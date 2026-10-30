@@ -15,6 +15,7 @@
 //! | Select: drag a selected line's end      | Re-glues or frees that end               |
 //! | Select: drag a right-angle line's middle| Moves its middle segment (double-click: automatic again) |
 //! | Right-click                             | Selects what's under it; the context menu |
+//! | Copy / Cut / Paste (egui's events)      | Handled by the app (`App::clipboard_events`) |
 //! | Alt while dragging                      | No snapping                              |
 
 pub mod grid;
@@ -62,6 +63,9 @@ pub struct Output {
 /// The canvas's right-click menu. Each is also a command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuAction {
+    Cut,
+    Copy,
+    Paste,
     RouteElbow,
     RouteStraight,
     Fill(Swatch),
@@ -216,6 +220,19 @@ impl Canvas {
         self.view.zoom_at(self.rect.min, self.rect.center(), 1.0);
     }
 
+    /// The part of the diagram on screen, in model coordinates (as of last
+    /// frame).
+    pub fn visible(&self) -> ModelRect {
+        let size = self.rect.size() / self.view.zoom;
+        ModelRect::new(self.view.pan.x, self.view.pan.y, size.x, size.y)
+    }
+
+    /// Selects exactly these shapes and lines (a paste's).
+    pub fn select_only(&mut self, shapes: Vec<String>, lines: Vec<usize>) {
+        self.selection = shapes;
+        self.lines = lines;
+    }
+
     /// Fills the rest of `ui`. `keys`: whether Space may start a pan (no
     /// dialog or text field has the keyboard).
     pub fn show(&mut self, ui: &mut Ui, d: &mut Diagram, tool: Tool, keys: bool) -> Output {
@@ -326,6 +343,18 @@ impl Canvas {
         let style = self.selected_style(d);
         let mut picked = None;
         resp.context_menu(|ui| {
+            let mut item = |ui: &mut Ui, text: &str, keys: &str, on: bool, act: MenuAction| {
+                if menu_item(ui, text, keys, on) {
+                    picked = Some(act);
+                    ui.close();
+                }
+            };
+            if any {
+                item(ui, "Cut", "Ctrl+X", true, MenuAction::Cut);
+                item(ui, "Copy", "Ctrl+C", true, MenuAction::Copy);
+            }
+            item(ui, "Paste", "Ctrl+V", true, MenuAction::Paste);
+            ui.separator();
             if stylable {
                 for (title, stroke) in [("Fill", false), ("Stroke", true)] {
                     ui.menu_button(title, |ui| {
@@ -347,11 +376,7 @@ impl Canvas {
                 ui.separator();
             }
             let mut item = |ui: &mut Ui, text: &str, keys: &str, on: bool, act: MenuAction| {
-                let mut button = egui::Button::new(text);
-                if !keys.is_empty() {
-                    button = button.shortcut_text(keys);
-                }
-                if ui.add_enabled(on, button).clicked() {
+                if menu_item(ui, text, keys, on) {
                     picked = Some(act);
                     ui.close();
                 }
@@ -410,6 +435,15 @@ fn resize_cursor(h: Handle) -> CursorIcon {
         Handle::N | Handle::S => CursorIcon::ResizeVertical,
         Handle::E | Handle::W => CursorIcon::ResizeHorizontal,
     }
+}
+
+/// A menu row with its shortcut on the right; `true` when clicked.
+fn menu_item(ui: &mut Ui, text: &str, keys: &str, on: bool) -> bool {
+    let mut button = egui::Button::new(text);
+    if !keys.is_empty() {
+        button = button.shortcut_text(keys);
+    }
+    ui.add_enabled(on, button).clicked()
 }
 
 /// A Fill or Stroke submenu: Default, the presets with their swatches, and

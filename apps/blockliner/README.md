@@ -29,6 +29,10 @@ the shared `marina-*` crates — no webview, no JavaScript. The shipped binary i
   saved as Mermaid `style` lines, with labels kept readable on the fill. Set
   them from the right-click menu, the palette, or the Properties pane
   (Ctrl+I), which shows "Mixed" when the selected shapes differ.
+- **Copy and paste** — Ctrl+C, Ctrl+X and Ctrl+V, within a diagram, between
+  diagrams and between windows. The clipboard holds Mermaid, so a copy also
+  pastes into a README, and a flowchart copied from elsewhere pastes in laid
+  out; other text pastes as a text box.
 - **Editing** — box select, nudge with the arrow keys, undo and redo, single-key
   tools (V, R, O, D, H, C, S, L, A, J, E, T, or 1–9 in toolbar order), a right-click
   menu and a command palette (Ctrl+K).

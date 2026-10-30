@@ -6,9 +6,9 @@ undo and keyboard, folder and autosave, import layout, export, and packaging.
 Hand checks on Windows and macOS remain
 ([`apps/blockliner/native/README.md`](../../apps/blockliner/native/README.md),
 "Still to verify by hand"). **Phases 9 (right-angle connectors), 10 (shape
-styles), 11 (Mermaid diamond/hexagon/database/subroutine shapes) and 14
-(Object Properties panel) implemented (2026-10-30); phases 12–13
-proposed** (§10): copy and paste, and a clickable zoom in the status bar.
+styles), 11 (Mermaid diamond/hexagon/database/subroutine shapes), 12 (copy
+and paste) and 14 (Object Properties panel) implemented (2026-10-30); phase
+13 proposed** (§10): a clickable zoom in the status bar.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -444,7 +444,7 @@ file stays small; the text stays editable).
 | **9. Right-angle connectors** ✅ | Right-Angle Line and Right-Angle Arrow tools; routes made of horizontal and vertical segments that avoid shapes where they can; switching selected connectors between straight and right-angle; a draggable middle segment. Saved in the layout block (`route=elbow`); the Mermaid edge is unchanged. | 3–4 days |
 | **10. Shape styles** ✅ | Fill and stroke colours for shapes: preset swatches and a custom hex value, from the canvas's right-click menu and the palette. Saved as Mermaid `style` lines, which BlockLiner now owns for its shapes. | 2 days |
 | **11. More Mermaid shapes** ✅ | Database `[( )]`, subroutine `[[ ]]`, hexagon `{{ }}` and diamond `{ }` as real, editable shapes with their own outlines, label areas and hit-testing, behind a "More Shapes" toolbar button. | 2 days |
-| **12. Copy and paste** | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` for shapes and connectors, within a diagram, between diagrams and between BlockLiner windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out. | 2 days |
+| **12. Copy and paste** ✅ | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` for shapes and connectors, within a diagram, between diagrams and between BlockLiner windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out. | 2 days |
 | **13. Clickable zoom** | The status bar's "Zoom 120%" becomes a button: a click goes back to 100 % (as `Ctrl+0` does), with a hover highlight, a tooltip and an accessible label. | ½ day |
 | **14. Object Properties panel** ✅ | A Properties pane in the left sidebar, below the diagram list, shown or hidden with a toolbar button and `Ctrl+I`. It shows the selection's Fill and Stroke (swatches, Default, a hex field) and changes them; a selection whose values differ shows **Mixed** until one is picked. | 2 days |
 
@@ -919,6 +919,39 @@ block, through `mermaid::write`). So:
   - paste into a second diagram;
   - plain text becomes a text box;
   - nothing happens while a label is being edited.
+
+**As built** (2026-10-30), beyond the above:
+- **`clipboard.rs`** has `copy`, `parse` (a flowchart with something in
+  it, else `None` for plain text), `extent`, `offset` (the placement
+  rule), `paste` and `paste_text`. `copy` has its own selection rule rather
+  than reusing `export::scope`, which drops connectors to shapes left
+  behind instead of freeing their ends.
+- **Freed ends** are placed where the drawn line ends now (its path's
+  first or last point), so a dynamically glued end keeps its look. A freed
+  edge loses its label, as every free line does (there's nowhere to keep
+  it).
+- **Stepping:** the app remembers the last clipboard text and how many
+  times it's been pasted. Pasting the same text again steps another two
+  cells, whether it came from this window's copy or from elsewhere. A new
+  copy starts again at one step.
+- **Text boxes** from plain text are about 8 px a character wide (10 to
+  30 cells) and a cell a line, plus one, centred in the view. Line breaks
+  are kept; `\r\n` becomes `\n`.
+- **Pasted flowcharts** keep their shapes, edges, labels and `style`
+  colours; the rest of their kept statements (subgraphs, `classDef`, …)
+  doesn't come along, and their shapes become ordinary ones.
+- **Events and focus:** the clipboard events are read with the other keys,
+  only when no dialog or text field has the keyboard, and while the canvas
+  isn't mid-drag. A paste switches to the Select tool.
+- **Menu:** Cut and Copy (on a selection) and Paste now head the
+  right-click menu; on empty canvas it's Paste, Delete (off) and Select
+  All. Their labels carry the shortcut ("Copy Ctrl+C"), as egui's menu
+  buttons do.
+- **Tests:** 8 core tests, and 6 headless ones, including that a copy
+  reaches the platform clipboard (`OutputCommand::CopyText`) and that the
+  menu's Paste sends `ViewportCommand::RequestPaste`. A real paste from the
+  system clipboard (egui-winit turning Ctrl+V into a paste event) is left
+  for the hand checks.
 
 ### 10.5 Phase 13: clickable zoom
 

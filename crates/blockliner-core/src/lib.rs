@@ -4,6 +4,7 @@
 //!
 //! | Module    | Holds                                                              |
 //! |-----------|--------------------------------------------------------------------|
+//! | `clipboard`| Copy and paste: the selection as Mermaid, pasted with new ids   |
 //! | `model`   | `Diagram`, shapes, connectors, the geometry types and edits        |
 //! | `geometry`| Rectangle helpers, resize handles, hit-testing                     |
 //! | `connect` | Where connectors meet shapes, their paths, and hit-testing them    |
@@ -15,6 +16,7 @@
 //! | `layout`  | Positions for shapes the file gives none for                       |
 //! | `style`   | Shape colours: `style` lines, presets, label contrast              |
 
+pub mod clipboard;
 pub mod connect;
 pub mod export;
 pub mod geometry;

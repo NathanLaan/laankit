@@ -33,13 +33,14 @@ install as `/usr/bin/blockliner`.
 | V, R, O, L, A, J, E, T, or 1–9 | Select, Rectangle, Rounded Rectangle, Line, Arrow, Right-Angle Line, Right-Angle Arrow, Text tool (Shift: keep the tool after each shape). The numbers follow the toolbar and show in each tool button's corner; they're physical keys, so the number row works on any layout |
 | D, H, C, S, or 4 | Diamond, Hexagon, Database (cylinder), Subroutine. They share the More Shapes button: 4 (or a click) picks the one it shows, the last used; its corner triangle or a right-click lists all four |
 | Drag a right-angle line's middle handle | Moves its middle segment across (double-click the handle: automatic again) |
-| Right-click | Selects what's under it, then a menu: Fill ▸ and Stroke ▸ (eight presets, Default, Custom…) and Reset Style for shapes, Right-Angle / Straight for lines, Delete, Select All |
+| Right-click | Selects what's under it, then a menu: Cut, Copy, Paste, Fill ▸ and Stroke ▸ (eight presets, Default, Custom…) and Reset Style for shapes, Right-Angle / Straight for lines, Delete, Select All |
 | Drag / click (shape tool) | Draws a shape (click: the default size, 8 × 3 cells; 8 × 4 for a diamond, 6 × 4 for a database) |
 | Double-click a shape | Edits its label (Enter commits, Shift+Enter adds a line, Esc cancels) |
 | Arrow keys | Nudge one grid step (Shift: 5 steps, Alt: 1 px) |
 | Alt while dragging | No snapping |
 | Delete / Backspace, Esc | Delete the selection; cancel the gesture or clear the selection |
 | Ctrl+A, Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y | Select all, undo, redo |
+| Ctrl+C, Ctrl+X, Ctrl+V | Copy, cut, paste. The clipboard holds the selection as Mermaid; a paste lands two cells down and right (further each time), or in the middle of the view if that's off screen. Plain text pastes as a text box |
 | Ctrl+N, F2, Ctrl+O | New diagram, rename it, open a folder |
 | Ctrl+Shift+E | Export (PNG or SVG) |
 | Wheel, middle drag, Space + drag | Pan |
@@ -62,6 +63,7 @@ install as `/usr/bin/blockliner`.
 | `history`  | Undo and redo as whole-diagram snapshots                                                    |
 | `export`   | Which objects an export contains, and the page around them                                  |
 | `style`    | Shape colours: `Colour`, `Style` (a shape's `style` line), the presets, label contrast        |
+| `clipboard`| Copy and paste: the selection as a diagram (ends on shapes left behind freed), new ids and placement on paste, plain text as a text box |
 
 The app (`apps/blockliner/native`):
 
@@ -126,5 +128,7 @@ BLOCKLINER_BLESS=1 cargo test -p blockliner-native the_svg_matches   # rewrite t
   and `*.mermaid`). Windows and macOS have no file association yet.
 - The undecorated window on Windows and macOS.
 - Trackpad pan and pinch zoom on macOS.
+- Copy and paste through the system clipboard (Ctrl+C/X/V and the menu's Paste) on each
+  platform, between two BlockLiner windows, and into and out of a text editor.
 - Exported SVGs in browsers and in Inkscape (text uses the Inter font when installed, else the
   system sans-serif).

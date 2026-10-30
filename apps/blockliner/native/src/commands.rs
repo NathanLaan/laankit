@@ -27,6 +27,13 @@ pub enum Act {
     Undo,
     Redo,
     SelectAll,
+    /// The selection to the clipboard, as Mermaid…
+    Copy,
+    /// …and deleted…
+    Cut,
+    /// …and back: asks for the clipboard, which arrives as egui's paste
+    /// event.
+    Paste,
     Delete,
     /// The selected connectors become right-angle…
     RouteElbow,
@@ -249,6 +256,21 @@ pub fn registry() -> Registry<Act, View> {
             .shortcut("Ctrl+A")
             .when(ready),
     );
+    // No key bindings: egui turns the platform's copy, cut and paste keys
+    // into its clipboard events, which `App::clipboard_events` reads.
+    for (id, label, keys, act, when) in [
+        (
+            "edit.cut",
+            "Cut",
+            "Ctrl+X",
+            Act::Cut,
+            selected as fn(&View) -> bool,
+        ),
+        ("edit.copy", "Copy", "Ctrl+C", Act::Copy, selected),
+        ("edit.paste", "Paste", "Ctrl+V", Act::Paste, editing),
+    ] {
+        r.register(add(id, label, "Edit", act).shortcut(keys).when(when));
+    }
     // No key bindings: the arrow keys are read in `App::nudge_keys`, which
     // also handles Shift (5 steps) and Alt (1 px). These entries put them in
     // the palette and the shortcuts list.
