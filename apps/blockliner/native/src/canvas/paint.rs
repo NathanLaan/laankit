@@ -204,6 +204,82 @@ pub fn colour(c: Option<&blockliner_core::style::Colour>) -> Option<Color32> {
     Some(Color32::from_rgba_unmultiplied(r, g, b, a))
 }
 
+/// How a colour swatch looks.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SwatchLook {
+    /// The theme's colour: an empty square.
+    Default,
+    /// A colour: a fill with its edge, or (`outline`) only the edge, for a
+    /// stroke.
+    Colour {
+        fill: Color32,
+        edge: Color32,
+        outline: bool,
+    },
+    /// Different values: split diagonally.
+    Mixed,
+}
+
+/// Preset `i` as a swatch: a fill shows with its paired stroke, as a shape
+/// would; a stroke as an outline.
+pub fn preset_look(i: usize, stroke: bool, p: &Palette) -> SwatchLook {
+    use blockliner_core::style::{Colour, PRESETS};
+    let c = |hex: &str| colour(Some(&Colour::parse(hex))).unwrap_or(p.text_faint);
+    let preset = PRESETS[i];
+    if stroke {
+        SwatchLook::Colour {
+            fill: p.bg_base,
+            edge: c(preset.stroke),
+            outline: true,
+        }
+    } else {
+        SwatchLook::Colour {
+            fill: c(preset.fill),
+            edge: c(preset.stroke),
+            outline: false,
+        }
+    }
+}
+
+/// A swatch square; `ring` marks it as the current value.
+pub fn swatch(painter: &Painter, square: egui::Rect, look: SwatchLook, ring: bool, p: &Palette) {
+    match look {
+        SwatchLook::Default => {
+            let edge = Stroke::new(1.0, p.text_faint);
+            painter.rect_stroke(square, 2.0, edge, StrokeKind::Inside);
+        }
+        SwatchLook::Colour {
+            fill,
+            edge,
+            outline,
+        } => {
+            let width = if outline { 2.5 } else { 1.5 };
+            painter.rect(
+                square,
+                2.0,
+                fill,
+                Stroke::new(width, edge),
+                StrokeKind::Inside,
+            );
+        }
+        SwatchLook::Mixed => {
+            painter.rect_filled(square, 2.0, p.bg_base);
+            let half = vec![square.left_top(), square.right_top(), square.left_bottom()];
+            painter.add(egui::Shape::convex_polygon(
+                half,
+                p.text_muted,
+                Stroke::NONE,
+            ));
+            let edge = Stroke::new(1.0, p.text_faint);
+            painter.rect_stroke(square, 2.0, edge, StrokeKind::Inside);
+        }
+    }
+    if ring {
+        let ring = Stroke::new(1.5, p.accent);
+        painter.rect_stroke(square.expand(3.0), 4.0, ring, StrokeKind::Inside);
+    }
+}
+
 fn shape(painter: &Painter, zoom: f32, r: egui::Rect, s: &Shape, p: &Palette, editing: bool) {
     // The shape's own colours where it has them, else the theme's.
     let fill = colour(s.style.fill.as_ref());

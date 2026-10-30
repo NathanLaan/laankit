@@ -46,6 +46,7 @@ pub enum Act {
     ZoomReset,
     ToggleGrid,
     ToggleSidebar,
+    ToggleProperties,
     ToggleStatusBar,
     Settings,
     About,
@@ -323,6 +324,17 @@ pub fn registry() -> Registry<Act, View> {
         .key(Binding::logical(cmd, Key::E))
         .shortcut("Ctrl+E")
         .when(in_project),
+    );
+    r.register(
+        add(
+            "view.toggleProperties",
+            "Toggle Properties",
+            "View",
+            Act::ToggleProperties,
+        )
+        .key(Binding::logical(cmd, Key::I))
+        .shortcut("Ctrl+I")
+        .when(ready),
     );
     r.register(
         add(

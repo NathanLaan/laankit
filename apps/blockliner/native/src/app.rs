@@ -31,11 +31,14 @@ use crate::overlays::export::{ExportAction, ExportState};
 use crate::overlays::name::{NameAction, NameState};
 use crate::overlays::settings::{SettingsAction, SettingsState};
 use crate::overlays::{self, Overlay};
+use crate::properties::{self, PropertiesAction, PropertiesProps, PropertiesState};
 use crate::views::{self, SaveState, SidebarAction, StatusProps, ToolbarProps};
 
 /// eframe storage keys.
 const THEME_KEY: &str = "blockliner-theme";
 const RECENTS_KEY: &str = "blockliner-recents";
+/// The Properties pane's height, kept with eframe's other layout state.
+const PROPERTIES_HEIGHT_KEY: &str = "blockliner-properties-height";
 const DESCRIPTION: &str =
     "A diagram editor for software architecture, saving Mermaid flowcharts. Built on the marina framework.";
 const REPO_URL: &str = "https://github.com/NathanLaan/marina";
@@ -63,6 +66,11 @@ pub struct BlockLinerApp {
     /// Whether the window was built undecorated, with Marina's title bar.
     custom_titlebar: bool,
     sidebar_visible: bool,
+    /// The Properties pane below the diagram list (`Ctrl+I`).
+    properties_visible: bool,
+    properties: PropertiesState,
+    /// Its height, set with the divider above it.
+    properties_height: f32,
     status_bar_visible: bool,
     initialized: bool,
     backend: Backend,
@@ -128,6 +136,11 @@ impl BlockLinerApp {
             theme,
             custom_titlebar: prefs.custom_titlebar,
             sidebar_visible: prefs.sidebar_visible,
+            properties_visible: prefs.properties_visible,
+            properties: PropertiesState::default(),
+            properties_height: storage
+                .and_then(|s| eframe::get_value(s, PROPERTIES_HEIGHT_KEY))
+                .unwrap_or(properties::DEFAULT_HEIGHT),
             status_bar_visible: prefs.status_bar_visible,
             initialized: false,
             backend: Backend::new(backend::SAVE_DELAY),
@@ -326,6 +339,18 @@ impl BlockLinerApp {
                         has_selection: self.canvas.has_selection(),
                     }));
                 }
+            }
+            // Hides the pane if it's showing; otherwise shows it, bringing
+            // back a hidden sidebar with it.
+            Act::ToggleProperties => {
+                let showing = self.properties_visible && self.sidebar_visible;
+                self.properties_visible = !showing;
+                let mut patch = json!({ "propertiesVisible": !showing });
+                if !showing && !self.sidebar_visible {
+                    self.sidebar_visible = true;
+                    patch["sidebarVisible"] = json!(true);
+                }
+                self.set_prefs(patch);
             }
             Act::ToggleSidebar => {
                 self.sidebar_visible = !self.sidebar_visible;
@@ -979,6 +1004,7 @@ impl BlockLinerApp {
         let props = ToolbarProps {
             tool: self.tool,
             can_close_folder: self.project.is_some(),
+            properties_open: self.properties_visible && self.sidebar_visible,
             can_export: self.has_content(),
             export_open: matches!(self.overlay, Some(Overlay::Export(_))),
             settings_open: matches!(self.overlay, Some(Overlay::Settings(_))),
@@ -1011,6 +1037,12 @@ impl BlockLinerApp {
         }
         let mut acts = acts;
         let mut side = Vec::new();
+        let mut pane = None;
+        let props = PropertiesProps::new(
+            &self.diagram,
+            &self.canvas.selection,
+            self.canvas.selected_style(&self.diagram),
+        );
         if let (Some(project), true) = (&self.project, self.sidebar_visible) {
             let p = theme::palette(ui.ctx());
             let (min, default, max) = views::SIDEBAR_WIDTH;
@@ -1026,7 +1058,42 @@ impl BlockLinerApp {
                 .size_range(min..=max)
                 .frame(Frame::NONE.fill(p.bg_surface))
                 .show(ui, |ui| {
-                    side = views::sidebar(ui, &folder, &project.names, open);
+                    if !self.properties_visible {
+                        side = views::sidebar(ui, &folder, &project.names, open);
+                        return;
+                    }
+                    // The list above, Properties below, a divider between.
+                    let full = ui.max_rect();
+                    let most = (full.height() - properties::MIN_HEIGHT).max(properties::MIN_HEIGHT);
+                    let height = self.properties_height.clamp(properties::MIN_HEIGHT, most);
+                    let split = full.bottom() - height;
+                    let (top, bottom) = full.split_top_bottom_at_y(split);
+                    side = ui
+                        .scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
+                            views::sidebar(ui, &folder, &project.names, open)
+                        })
+                        .inner;
+                    let bar = egui::Rect::from_center_size(
+                        egui::pos2(full.center().x, split),
+                        egui::vec2(full.width(), 6.0),
+                    );
+                    let drag = ui.interact(
+                        bar,
+                        ui.scope_id().with("properties-split"),
+                        egui::Sense::drag(),
+                    );
+                    if drag.dragged() {
+                        self.properties_height =
+                            (height - drag.drag_delta().y).clamp(properties::MIN_HEIGHT, most);
+                    }
+                    if drag.hovered() || drag.dragged() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeRow);
+                    }
+                    pane = ui
+                        .scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
+                            properties::show(ui, &mut self.properties, &props)
+                        })
+                        .inner;
                 });
         }
         let keys = !self.view().modal_open && !ui.ctx().egui_wants_keyboard_input();
@@ -1053,6 +1120,14 @@ impl BlockLinerApp {
             });
         for act in acts {
             self.apply(act);
+        }
+        match pane {
+            Some(PropertiesAction::Fill(s)) => self.apply(Act::Fill(s)),
+            Some(PropertiesAction::Stroke(s)) => self.apply(Act::Stroke(s)),
+            Some(PropertiesAction::FillHex(c)) => self.apply_colour(Some(c), false),
+            Some(PropertiesAction::StrokeHex(c)) => self.apply_colour(Some(c), true),
+            Some(PropertiesAction::ResetStyle) => self.apply(Act::ResetStyle),
+            None => {}
         }
         for action in side {
             match action {
@@ -1187,6 +1262,7 @@ impl BlockLinerApp {
     pub fn save_state(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, THEME_KEY, &self.theme);
         eframe::set_value(storage, RECENTS_KEY, &self.registry.recents());
+        eframe::set_value(storage, PROPERTIES_HEIGHT_KEY, &self.properties_height);
     }
 }
 

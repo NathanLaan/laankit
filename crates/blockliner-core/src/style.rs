@@ -290,6 +290,52 @@ impl Style {
     }
 }
 
+/// One property (a fill, a stroke) across a selection of shapes.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Common {
+    /// No shapes to ask.
+    None,
+    /// They all have this value (`None`: all the default).
+    Same(Option<Colour>),
+    /// They differ.
+    Mixed,
+}
+
+/// What `values` have in common. Colours compare by what they draw (so
+/// `#DBEAFE` matches `#dbeafe`), else by their text; the default counts as
+/// a value of its own.
+pub fn common<'a>(values: impl IntoIterator<Item = Option<&'a Colour>>) -> Common {
+    let mut values = values.into_iter();
+    let Some(first) = values.next() else {
+        return Common::None;
+    };
+    for v in values {
+        if !same(first, v) {
+            return Common::Mixed;
+        }
+    }
+    Common::Same(first.cloned())
+}
+
+fn same(a: Option<&Colour>, b: Option<&Colour>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => match (a.rgba, b.rgba) {
+            (Some(x), Some(y)) => x == y,
+            _ => a.text.eq_ignore_ascii_case(&b.text),
+        },
+        _ => false,
+    }
+}
+
+/// The preset whose fill (or `stroke`) is `c`, for ringing its swatch.
+pub fn preset_index(c: &Colour, stroke: bool) -> Option<usize> {
+    PRESETS.iter().position(|p| {
+        let hex = if stroke { p.stroke } else { p.fill };
+        same(Some(&Colour::parse(hex)), Some(c))
+    })
+}
+
 fn preset_of_fill(fill: &Colour) -> Option<Preset> {
     PRESETS.into_iter().find(|p| p.fill == fill.text)
 }
@@ -398,6 +444,32 @@ mod tests {
         let mut s = Style::parse("color:#ff0000").unwrap();
         s.set_fill(Some(Colour::parse(blue.fill)));
         assert_eq!(s.color.as_ref().unwrap().text, "#ff0000");
+    }
+
+    #[test]
+    fn what_a_selection_has_in_common() {
+        let c = Colour::parse;
+        let (blue, upper, red) = (c("#dbeafe"), c("#DBEAFE"), c("red"));
+        assert_eq!(common([]), Common::None);
+        assert_eq!(common([None, None]), Common::Same(None));
+        assert_eq!(common([Some(&blue)]), Common::Same(Some(blue.clone())));
+        assert_eq!(
+            common([Some(&blue), Some(&upper)]),
+            Common::Same(Some(blue.clone())),
+            "same colour, different case"
+        );
+        assert_eq!(common([Some(&blue), Some(&red)]), Common::Mixed);
+        assert_eq!(
+            common([Some(&blue), None]),
+            Common::Mixed,
+            "default is a value"
+        );
+        let (odd, odd2) = (c("rgb(1,2,3)"), c("RGB(1,2,3)"));
+        assert_eq!(common([Some(&odd), Some(&odd2)]), Common::Same(Some(odd)));
+
+        assert_eq!(preset_index(&upper, false), Some(1));
+        assert_eq!(preset_index(&c("#3b82f6"), true), Some(1));
+        assert_eq!(preset_index(&c("#3b82f6"), false), None);
     }
 
     #[test]

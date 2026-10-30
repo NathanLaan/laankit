@@ -11,6 +11,7 @@ mod commands;
 mod config;
 mod export;
 mod overlays;
+mod properties;
 mod views;
 
 #[cfg(test)]
@@ -25,6 +26,8 @@ mod ui_tests_import;
 mod ui_tests_lines;
 #[cfg(test)]
 mod ui_tests_project;
+#[cfg(test)]
+mod ui_tests_properties;
 #[cfg(test)]
 mod ui_tests_routes;
 #[cfg(test)]

@@ -25,7 +25,7 @@ pub mod view;
 
 use blockliner_core::geometry::Handle;
 use blockliner_core::snap::snap_point;
-use blockliner_core::style::{Colour, Style, PRESETS};
+use blockliner_core::style::{common, preset_index, Common, Style, PRESETS};
 use blockliner_core::{Connector, Diagram, End, Point, Rect as ModelRect};
 use egui::{CursorIcon, Key, PointerButton, Pos2, Rect, Sense, Ui, Vec2};
 use marina_egui::theme;
@@ -69,6 +69,19 @@ pub enum MenuAction {
     ResetStyle,
     Delete,
     SelectAll,
+}
+
+/// What [`Canvas::selected_style`] reports.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SelectionStyle {
+    pub fill: Common,
+    pub stroke: Common,
+    /// Selected shapes that can take colours…
+    pub shapes: usize,
+    /// …selected lines (which can't yet)…
+    pub lines: usize,
+    /// …and selected shapes declared in kept statements (which can't).
+    pub external: Vec<String>,
 }
 
 /// A colour choice for the selected shapes' fill or stroke.
@@ -122,6 +135,21 @@ impl Canvas {
         self.selection
             .iter()
             .any(|id| d.shape(id).is_some_and(|s| !s.external))
+    }
+
+    /// What the selected shapes' fills and strokes have in common, and how
+    /// many shapes, lines and kept-statement shapes are selected.
+    pub fn selected_style(&self, d: &Diagram) -> SelectionStyle {
+        let shapes: Vec<&blockliner_core::Shape> =
+            self.selection.iter().filter_map(|id| d.shape(id)).collect();
+        let (own, external): (Vec<_>, Vec<_>) = shapes.into_iter().partition(|s| !s.external);
+        SelectionStyle {
+            fill: common(own.iter().map(|s| s.style.fill.as_ref())),
+            stroke: common(own.iter().map(|s| s.style.stroke.as_ref())),
+            shapes: own.len(),
+            lines: self.lines.len(),
+            external: external.iter().map(|s| s.id.clone()).collect(),
+        }
     }
 
     /// Changes the style of each selected shape BlockLiner declares.
@@ -295,12 +323,14 @@ impl Canvas {
         let (straight, elbow) = self.selected_routes(d);
         let (lines, any) = (!self.lines.is_empty(), self.has_selection());
         let stylable = self.stylable(d);
+        let style = self.selected_style(d);
         let mut picked = None;
         resp.context_menu(|ui| {
             if stylable {
                 for (title, stroke) in [("Fill", false), ("Stroke", true)] {
                     ui.menu_button(title, |ui| {
-                        if let Some(s) = swatches(ui, stroke) {
+                        let current = if stroke { &style.stroke } else { &style.fill };
+                        if let Some(s) = swatches(ui, stroke, current) {
                             picked = Some(if stroke {
                                 MenuAction::Stroke(s)
                             } else {
@@ -383,59 +413,50 @@ fn resize_cursor(h: Handle) -> CursorIcon {
 }
 
 /// A Fill or Stroke submenu: Default, the presets with their swatches, and
-/// Custom…. Returns the one clicked.
-fn swatches(ui: &mut Ui, stroke: bool) -> Option<Swatch> {
+/// Custom…, the current value (`current`) ringed. Returns the one clicked.
+fn swatches(ui: &mut Ui, stroke: bool, current: &Common) -> Option<Swatch> {
     let p = theme::palette(ui.ctx());
+    let ringed = current_swatch(current, stroke);
     let mut picked = None;
-    // Each row: (fill, edge) of its square, its name, what it picks.
-    let mut row =
-        |ui: &mut Ui, swatch: Option<(egui::Color32, egui::Color32)>, text: &str, s: Swatch| {
-            let (rect, resp) = ui.allocate_exact_size(egui::vec2(150.0, 24.0), Sense::click());
-            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text));
-            if resp.hovered() {
-                ui.painter().rect_filled(rect, 3.0, p.bg_item_hover);
-            }
-            let square = Rect::from_center_size(
-                egui::pos2(rect.left() + 14.0, rect.center().y),
-                egui::vec2(14.0, 14.0),
-            );
-            match swatch {
-                Some((fill, edge)) => {
-                    let width = if stroke { 2.5 } else { 1.5 };
-                    let edge = egui::Stroke::new(width, edge);
-                    ui.painter()
-                        .rect(square, 2.0, fill, edge, egui::StrokeKind::Inside);
-                }
-                None => {
-                    let edge = egui::Stroke::new(1.0, p.text_faint);
-                    ui.painter()
-                        .rect_stroke(square, 2.0, edge, egui::StrokeKind::Inside);
-                }
-            }
-            ui.painter().text(
-                egui::pos2(square.right() + 10.0, rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                text,
-                egui::FontId::proportional(13.0),
-                p.text_primary,
-            );
-            if resp.clicked() {
-                picked = Some(s);
-            }
-        };
-    row(ui, None, "Default", Swatch::Default);
-    // A fill shows with its paired stroke, as a shape would; a stroke as an
-    // outline.
+    // Each row: its square, its name, what it picks.
+    let mut row = |ui: &mut Ui, look: paint::SwatchLook, text: &str, s: Swatch| {
+        let (rect, resp) = ui.allocate_exact_size(egui::vec2(150.0, 24.0), Sense::click());
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text));
+        if resp.hovered() {
+            ui.painter().rect_filled(rect, 3.0, p.bg_item_hover);
+        }
+        let square = Rect::from_center_size(
+            egui::pos2(rect.left() + 14.0, rect.center().y),
+            egui::vec2(14.0, 14.0),
+        );
+        paint::swatch(ui.painter(), square, look, ringed == Some(s), &p);
+        ui.painter().text(
+            egui::pos2(square.right() + 10.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            text,
+            egui::FontId::proportional(13.0),
+            p.text_primary,
+        );
+        if resp.clicked() {
+            picked = Some(s);
+        }
+    };
+    row(ui, paint::SwatchLook::Default, "Default", Swatch::Default);
     for (i, preset) in PRESETS.iter().enumerate() {
-        let c = |hex: &str| paint::colour(Some(&Colour::parse(hex)));
-        let square = if stroke {
-            c(preset.stroke).map(|s| (p.bg_base, s))
-        } else {
-            c(preset.fill).zip(c(preset.stroke))
-        };
-        row(ui, square, preset.name, Swatch::Preset(i));
+        let look = paint::preset_look(i, stroke, &p);
+        row(ui, look, preset.name, Swatch::Preset(i));
     }
     ui.separator();
-    row(ui, None, "Custom…", Swatch::Custom);
+    row(ui, paint::SwatchLook::Default, "Custom…", Swatch::Custom);
     picked
+}
+
+/// The swatch that shows `current`: Default, a preset, or none (a custom
+/// colour, or Mixed).
+pub fn current_swatch(current: &Common, stroke: bool) -> Option<Swatch> {
+    match current {
+        Common::Same(None) => Some(Swatch::Default),
+        Common::Same(Some(c)) => preset_index(c, stroke).map(Swatch::Preset),
+        Common::None | Common::Mixed => None,
+    }
 }

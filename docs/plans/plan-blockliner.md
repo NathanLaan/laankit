@@ -5,10 +5,10 @@ Phases 0–8 done: app scaffold, `crates/blockliner-core`, shapes, connectors,
 undo and keyboard, folder and autosave, import layout, export, and packaging.
 Hand checks on Windows and macOS remain
 ([`apps/blockliner/native/README.md`](../../apps/blockliner/native/README.md),
-"Still to verify by hand"). **Phases 9 (right-angle connectors) and 10
-(shape styles) implemented (2026-10-30); phases 11–14 proposed** (§10):
-Mermaid database/subroutine/hexagon/diamond shapes, copy and paste, a
-clickable zoom in the status bar, and an Object Properties panel.
+"Still to verify by hand"). **Phases 9 (right-angle connectors), 10 (shape
+styles) and 14 (Object Properties panel) implemented (2026-10-30); phases
+11–13 proposed** (§10): Mermaid database/subroutine/hexagon/diamond shapes,
+copy and paste, and a clickable zoom in the status bar.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -442,7 +442,7 @@ file stays small; the text stays editable).
 | **11. More Mermaid shapes** | Database `[( )]`, subroutine `[[ ]]`, hexagon `{{ }}` and diamond `{ }` as real, editable shapes with their own outlines, label areas and hit-testing, behind a "More Shapes" toolbar button. | 2 days |
 | **12. Copy and paste** | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` for shapes and connectors, within a diagram, between diagrams and between BlockLiner windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out. | 2 days |
 | **13. Clickable zoom** | The status bar's "Zoom 120%" becomes a button: a click goes back to 100 % (as `Ctrl+0` does), with a hover highlight, a tooltip and an accessible label. | ½ day |
-| **14. Object Properties panel** | A Properties pane in the left sidebar, below the diagram list, shown or hidden with a toolbar button and `Ctrl+I`. It shows the selection's Fill and Stroke (swatches, Default, a hex field) and changes them; a selection whose values differ shows **Mixed** until one is picked. | 2 days |
+| **14. Object Properties panel** ✅ | A Properties pane in the left sidebar, below the diagram list, shown or hidden with a toolbar button and `Ctrl+I`. It shows the selection's Fill and Stroke (swatches, Default, a hex field) and changes them; a selection whose values differ shows **Mixed** until one is picked. | 2 days |
 
 **Phases 9–14: about 2½ weeks.** They are independent; this order puts the
 most-wanted first. Copy and paste comes after the shape phases so it carries
@@ -1037,6 +1037,30 @@ indeterminate state:
     other.
 - **Renders:** offscreen, dark and light, with a single shape, a Mixed
   selection, and a short window where the pane scrolls.
+
+**As built** (2026-10-30), beyond the above:
+- **Toggling acts on what's on screen:** Ctrl+I (or the button) hides the
+  pane if it's showing, and otherwise shows it, bringing back a hidden
+  sidebar. A pane that's "on" but inside a hidden sidebar is shown, not
+  turned off.
+- **Accessible labels:** the current-value swatch reads "Current fill:
+  Mixed" (or a hex value, or "Default"). The swatch buttons read "Fill:
+  Blue" and so on, matching the palette's names, so the two don't collide.
+- **Height:** 380 by default (the whole pane, Reset Style included, at the
+  640 px minimum window), at least 120, and the list keeps at least 120
+  above it. Dragging the divider (the pane header's top edge) changes it;
+  it's kept in eframe's storage.
+- **The hex field** follows the selection whenever it isn't being typed
+  in, and drops a stale error then. An empty field puts the value back. A
+  refused value keeps its text and the error until the field is edited or
+  the selection changes.
+- **Module:** `properties.rs` (the pane, its state and the summary and
+  reason text), with `Canvas::selected_style` and the core's
+  `style::common` / `style::preset_index` behind it. `paint::swatch` and
+  `paint::preset_look` draw both the panel's and the menu's swatches, and
+  `canvas::current_swatch` decides the ring for both.
+- **Not done:** a test that the menu's ring matches the panel's. Both use
+  `current_swatch`, which has its own unit test.
 
 ### 10.7 Docs per phase
 

@@ -43,7 +43,7 @@ install as `/usr/bin/blockliner`.
 | Ctrl+Shift+E | Export (PNG or SVG) |
 | Wheel, middle drag, Space + drag | Pan |
 | Ctrl + wheel, pinch, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom |
-| Ctrl+', Ctrl+E, Ctrl+J | Toggle the grid, the sidebar, the status bar |
+| Ctrl+', Ctrl+E, Ctrl+I, Ctrl+J | Toggle the grid, the sidebar, the Properties pane (fill and stroke of the selection), the status bar |
 | Ctrl+K, Ctrl+,, Ctrl+Shift+I | Command palette, Settings, About |
 
 ## Architecture
@@ -73,6 +73,7 @@ The app (`apps/blockliner/native`):
 | `commands` | The marina-egui command registry: shortcuts, palette and the Settings shortcut list         |
 | `canvas`   | The grid, painting, pan and zoom, the tools and their gestures, the label editor            |
 | `views`    | The toolbar, the diagram sidebar, empty states and the status bar                           |
+| `properties` | The Properties pane below the diagram list: the selection's Fill and Stroke (Mixed when they differ), hex fields, Reset Style |
 | `overlays` | Settings, About, Export, New/Rename Diagram, delete confirmation, Custom colour              |
 | `export`   | The SVG writer (labels wrapped by egui, as on the canvas) and PNG through `resvg`            |
 | `ui_tests*`| egui_kittest flows, headless (below)                                                        |

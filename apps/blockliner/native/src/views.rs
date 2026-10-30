@@ -26,6 +26,8 @@ pub struct ToolbarProps {
     pub tool: Tool,
     /// A folder is open.
     pub can_close_folder: bool,
+    /// The Properties pane is showing.
+    pub properties_open: bool,
     /// A diagram with something in it is open.
     pub can_export: bool,
     pub export_open: bool,
@@ -78,6 +80,14 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
                 "Close Folder",
                 false,
                 Act::CloseFolder,
+            );
+            b(
+                ui,
+                icons::SLIDERS,
+                "Properties (Ctrl+I)",
+                "Properties",
+                props.properties_open,
+                Act::ToggleProperties,
             );
             b(
                 ui,

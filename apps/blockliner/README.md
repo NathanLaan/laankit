@@ -24,7 +24,9 @@ the shared `marina-*` crates — no webview, no JavaScript. The shipped binary i
   lines anywhere. Right-angle routes go round shapes in the way, and their
   middle segment can be dragged.
 - **Colours** — fill and stroke from eight preset swatches or any hex value,
-  saved as Mermaid `style` lines, with labels kept readable on the fill.
+  saved as Mermaid `style` lines, with labels kept readable on the fill. Set
+  them from the right-click menu, the palette, or the Properties pane
+  (Ctrl+I), which shows "Mixed" when the selected shapes differ.
 - **Editing** — box select, nudge with the arrow keys, undo and redo, single-key
   tools (V, R, O, L, A, J, E, T, or 1–8 in toolbar order), a right-click
   menu and a command palette (Ctrl+K).

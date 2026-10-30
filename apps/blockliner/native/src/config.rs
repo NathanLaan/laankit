@@ -3,7 +3,7 @@
 //!
 //! | Path                  | Holds                                                                    |
 //! |-----------------------|--------------------------------------------------------------------------|
-//! | `ui-preferences.json` | `customTitlebar`, `sidebarVisible`, `statusBarVisible`, `showGrid`,      |
+//! | `ui-preferences.json` | `customTitlebar`, `sidebarVisible`, `propertiesVisible`, `statusBarVisible`, `showGrid`, |
 //! |                       | `gridSize`, `lastProject` (a folder path; empty after Close Folder), `lastDiagram` (a name in it), |
 //! |                       | `exportFormat` (`png`/`svg`), `exportGrid`, `exportScale` (1, 2 or 3)    |
 //!
@@ -31,6 +31,8 @@ pub struct Paths {
 pub struct Prefs {
     pub custom_titlebar: bool,
     pub sidebar_visible: bool,
+    /// The Properties pane, below the diagram list.
+    pub properties_visible: bool,
     pub status_bar_visible: bool,
     pub show_grid: bool,
     /// The grid for new diagrams; one of [`GRID_SIZES`].
@@ -82,6 +84,7 @@ impl Paths {
         Prefs {
             custom_titlebar: flag("customTitlebar"),
             sidebar_visible: flag("sidebarVisible"),
+            properties_visible: flag("propertiesVisible"),
             status_bar_visible: flag("statusBarVisible"),
             show_grid: flag("showGrid"),
             grid_size,
@@ -115,6 +118,7 @@ fn defaults() -> Map<String, Value> {
     let v = json!({
         "customTitlebar": false,
         "sidebarVisible": true,
+        "propertiesVisible": true,
         "statusBarVisible": true,
         "showGrid": true,
         // Whole numbers, so the file says `20`, not `20.0`.
@@ -159,6 +163,7 @@ mod tests {
             Prefs {
                 custom_titlebar: false,
                 sidebar_visible: true,
+                properties_visible: true,
                 status_bar_visible: true,
                 show_grid: true,
                 grid_size: 20.0,
@@ -185,7 +190,7 @@ mod tests {
         let raw = std::fs::read_to_string(paths.ui_prefs()).unwrap();
         assert_eq!(
             raw,
-            "{\n  \"customTitlebar\": false,\n  \"sidebarVisible\": true,\n  \"statusBarVisible\": true,\n  \"showGrid\": false,\n  \"gridSize\": 40,\n  \"lastProject\": null,\n  \"lastDiagram\": null,\n  \"exportFormat\": \"png\",\n  \"exportGrid\": false,\n  \"exportScale\": 2,\n  \"future\": 1\n}"
+            "{\n  \"customTitlebar\": false,\n  \"sidebarVisible\": true,\n  \"propertiesVisible\": true,\n  \"statusBarVisible\": true,\n  \"showGrid\": false,\n  \"gridSize\": 40,\n  \"lastProject\": null,\n  \"lastDiagram\": null,\n  \"exportFormat\": \"png\",\n  \"exportGrid\": false,\n  \"exportScale\": 2,\n  \"future\": 1\n}"
         );
         let prefs = paths.prefs();
         assert!(!prefs.show_grid);
