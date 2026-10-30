@@ -888,6 +888,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "chartliner-core"
+version = "0.1.0"
+
+[[package]]
+name = "chartliner-native"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chartliner-core",
+ "eframe",
+ "egui",
+ "egui_kittest",
+ "env_logger",
+ "image",
+ "log",
+ "marina-core",
+ "marina-egui",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "winresource",
+]
+
+[[package]]
 name = "chinese-number"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

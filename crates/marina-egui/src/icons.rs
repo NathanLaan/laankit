@@ -30,6 +30,7 @@ pub fn font(size: f32) -> FontId {
 
 pub const ARROW_DOWN: &str = "\u{f063}";
 pub const ARROW_LEFT: &str = "\u{f060}";
+pub const ARROW_POINTER: &str = "\u{f245}";
 pub const ARROW_RIGHT: &str = "\u{f061}";
 pub const ARROWS_ROTATE: &str = "\u{f021}";
 pub const ARROWS_UP_DOWN_LEFT_RIGHT: &str = "\u{f047}";
@@ -79,6 +80,7 @@ pub const FILE_ZIPPER: &str = "\u{f1c6}";
 pub const FILTER: &str = "\u{f0b0}";
 pub const FOLDER: &str = "\u{f07b}";
 pub const FOLDER_OPEN: &str = "\u{f07c}";
+pub const FONT: &str = "\u{f031}";
 pub const GEAR: &str = "\u{f013}";
 pub const HIGHLIGHTER: &str = "\u{f591}";
 pub const HOUSE: &str = "\u{f015}";

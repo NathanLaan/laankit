@@ -1,0 +1,37 @@
+[package]
+name = "chartliner-native"
+version = "0.1.0"
+description = "ChartLiner: a Visio-style diagram editor for software architecture, saving Mermaid flowcharts. An egui UI over chartliner-core (docs/plans/plan-chartliner.md)."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "chartliner"
+path = "src/main.rs"
+
+[dependencies]
+chartliner-core.workspace = true
+marina-core.workspace = true
+marina-egui.workspace = true
+anyhow.workspace = true
+eframe.workspace = true
+egui.workspace = true
+env_logger.workspace = true
+image.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# build.rs embeds the icon in the .exe (Windows hosts only).
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+
+[dev-dependencies]
+egui_kittest.workspace = true
+tempfile = "3"
+
+# Packaging metadata (deb, generate-rpm, packager) is added in plan phase 7,
+# with the packaging/linux files it points at.
