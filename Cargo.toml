@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "apps/threadliner/native", "apps/pageliner/native", "apps/noteliner/native", "apps/chartliner/native", "xtask"]
+members = ["crates/*", "apps/threadliner/native", "apps/pageliner/native", "apps/noteliner/native", "apps/blockliner/native", "xtask"]
 
 [workspace.package]
 edition = "2021"
@@ -15,7 +15,7 @@ marina-richtext = { path = "crates/marina-richtext" }
 pageliner-epub = { path = "crates/pageliner-epub" }
 noteliner-export = { path = "crates/noteliner-export" }
 noteliner-slides = { path = "crates/noteliner-slides" }
-chartliner-core = { path = "crates/chartliner-core" }
+blockliner-core = { path = "crates/blockliner-core" }
 anyhow = "1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }

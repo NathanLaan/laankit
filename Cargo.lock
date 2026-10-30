@@ -699,6 +699,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "blockliner-core"
+version = "0.1.0"
+
+[[package]]
+name = "blockliner-native"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blockliner-core",
+ "eframe",
+ "egui",
+ "egui_kittest",
+ "env_logger",
+ "image",
+ "log",
+ "marina-core",
+ "marina-egui",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "winresource",
+]
+
+[[package]]
 name = "brotli"
 version = "8.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -885,30 +909,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "rand_core 0.10.1",
-]
-
-[[package]]
-name = "chartliner-core"
-version = "0.1.0"
-
-[[package]]
-name = "chartliner-native"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chartliner-core",
- "eframe",
- "egui",
- "egui_kittest",
- "env_logger",
- "image",
- "log",
- "marina-core",
- "marina-egui",
- "serde",
- "serde_json",
- "tempfile",
- "winresource",
 ]
 
 [[package]]

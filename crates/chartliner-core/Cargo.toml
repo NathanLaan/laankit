@@ -1,9 +1,0 @@
-[package]
-name = "chartliner-core"
-version = "0.1.0"
-description = "ChartLiner's backend: the diagram model and its Mermaid flowchart reader/writer (layout kept in %% comments). UI-framework independent."
-edition.workspace = true
-license.workspace = true
-rust-version.workspace = true
-
-[dependencies]

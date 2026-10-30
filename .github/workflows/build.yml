@@ -21,9 +21,9 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Lint
-        run: cargo clippy -p marina-core -p marina-egui -p marina-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p marina-editor -p noteliner-export -p noteliner-slides -p chartliner-core -p chartliner-native --all-targets -- -D warnings
+        run: cargo clippy -p marina-core -p marina-egui -p marina-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p marina-editor -p noteliner-export -p noteliner-slides -p blockliner-core -p blockliner-native --all-targets -- -D warnings
       - name: Test
         run: |
           git config --global user.name ci
           git config --global user.email ci@localhost
-          cargo test -p marina-core -p marina-egui -p marina-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p marina-editor -p noteliner-export -p noteliner-slides -p chartliner-core -p chartliner-native
+          cargo test -p marina-core -p marina-egui -p marina-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p marina-editor -p noteliner-export -p noteliner-slides -p blockliner-core -p blockliner-native

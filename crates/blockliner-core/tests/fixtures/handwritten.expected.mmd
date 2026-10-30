@@ -1,0 +1,38 @@
+---
+title: Shop
+---
+%%{init: {"theme": "neutral"}}%%
+flowchart TD
+  web["Web App"]
+  api("API Gateway")
+  orders["orders"]
+  bus[("Event Bus")]
+  orders_db[("Orders DB")]
+  note1["Retries are async"]:::bl_text
+  web --> api
+  api -->|"REST"| orders
+  api -->|"events"| bus
+  orders --- orders_db
+    %% Edge services
+  orders -.-> audit
+    subgraph payments [Payments]
+        pay[Payment Service] --> psp
+    end
+  a1 & a2 --> api
+  classDef hot fill:#f96
+  class api hot
+  click web "https://example.com"
+  classDef bl_text fill:none,stroke:none
+
+%% blockliner 1 grid=20
+%% @shape web x=40 y=40 w=160 h=60
+%% @shape api x=280 y=40 w=160 h=60
+%% @shape orders x=520 y=40 w=160 h=60
+%% @shape bus x=760 y=40 w=160 h=60
+%% @shape orders_db x=40 y=140 w=160 h=60
+%% @shape audit x=280 y=140 w=160 h=60
+%% @shape pay x=520 y=140 w=160 h=60
+%% @shape psp x=760 y=140 w=160 h=60
+%% @shape a1 x=40 y=240 w=160 h=60
+%% @shape a2 x=280 y=240 w=160 h=60
+%% @shape note1 x=520 y=240 w=200 h=40
