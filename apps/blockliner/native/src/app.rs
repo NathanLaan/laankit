@@ -715,6 +715,7 @@ impl BlockLinerApp {
                 pointer: self.canvas.pointer,
                 selected: self.canvas.selected_count(),
                 free_lines: self.diagram.has_free_lines(),
+                limitation: self.canvas.limitation(&self.diagram),
                 grid: self.diagram.grid,
                 zoom: self.canvas.view.zoom,
                 scale: &self.theme.scale,

@@ -363,6 +363,9 @@ pub struct StatusProps<'a> {
     pub selected: usize,
     /// Some connector has an end that isn't glued, so Mermaid won't show it.
     pub free_lines: bool,
+    /// Why the shape under the pointer or selected isn't fully editable.
+    /// With its icon.
+    pub limitation: Option<(&'static str, String)>,
     pub grid: f32,
     pub zoom: f32,
     /// The UI scale id (`100`, `125`, …).
@@ -400,18 +403,26 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) {
             p.text_muted,
         );
     }
-    if props.free_lines {
+    let warning = match &props.limitation {
+        Some((glyph, text)) => Some((*glyph, text.as_str())),
+        None if props.free_lines => Some((
+            icons::TRIANGLE_EXCLAMATION,
+            "Unattached lines show only in BlockLiner, not in Mermaid",
+        )),
+        None => None,
+    };
+    if let Some((glyph, text)) = warning {
         let icon = painter.text(
             pos2(tool.right() + 16.0, y),
             Align2::LEFT_CENTER,
-            icons::TRIANGLE_EXCLAMATION,
+            glyph,
             icons::font(10.0),
             p.text_muted,
         );
         painter.text(
             pos2(icon.right() + 6.0, y),
             Align2::LEFT_CENTER,
-            "Unattached lines show only in BlockLiner, not in Mermaid",
+            text,
             font.clone(),
             p.text_muted,
         );

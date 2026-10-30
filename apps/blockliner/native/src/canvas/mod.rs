@@ -114,6 +114,20 @@ impl Canvas {
         !self.selection.is_empty() || !self.lines.is_empty()
     }
 
+    /// Why the shape under the pointer, else the one selected shape, isn't
+    /// fully editable (see [`paint::limitation`]).
+    pub fn limitation(&self, d: &Diagram) -> Option<(&'static str, String)> {
+        let hovered = match &self.hover {
+            Some(Hit::Shape(id) | Hit::Handle(id, _)) => Some(id),
+            _ => None,
+        };
+        let id = hovered.or(match (self.selection.as_slice(), self.lines.as_slice()) {
+            ([id], []) => Some(id),
+            _ => None,
+        })?;
+        paint::limitation(d.shape(id)?)
+    }
+
     pub fn selected_count(&self) -> usize {
         self.selection.len() + self.lines.len()
     }

@@ -2,7 +2,8 @@
 
 Status: **In progress (2026-10-30).** Design decisions settled (§9). Phases 0
 (app scaffold), 1 (`crates/blockliner-core`), 2 (shapes), 3 (connectors), 4
-(undo and keyboard) and 5 (folder and autosave) implemented.
+(undo and keyboard), 5 (folder and autosave) and 6 (import layout)
+implemented.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -88,7 +89,7 @@ crates/marina-egui          theme, toolbar, palette, settings, panes (unchanged)
 | `model` ✅ | `Diagram { direction, grid, shapes: Vec<Shape>, connectors: Vec<Connector>, preamble, passthrough }`. `Shape { id, kind: Rect \| RoundRect \| Text \| Other{open, close}, label, rect, class, external }`. `Connector { kind: Line \| Arrow, from: End, to: End, label }`. `End` is `Glued { shape, anchor: Option<N\|E\|S\|W> }` (`None` = dynamic glue, the nearest side) or `Free(Point)`. Its own `Point`/`Rect` types (f32), so it needs no egui. |
 | `mermaid::write` ✅ | `Diagram` → `.mmd` text. Deterministic order (stable diffs). |
 | `mermaid::read` ✅ | `.mmd` text → `Diagram`. A small hand-written lexer and reader for the `flowchart` subset in §4. Unknown statements are kept verbatim and written back. |
-| `layout` ✅ (placeholder) | Positions for nodes without `@shape`. Phase 1 places them in a simple row-by-row grid; phase 6 replaces this with the layered layout (§4.4). |
+| `layout` ✅ | `layered`: positions for nodes without `@shape`, a basic layered layout (§4.4), below anything already placed. |
 | `geometry` ✅ | Rectangle helpers, resize handles and maths, shape hit-testing, marquee containment. |
 | `connect` ✅ | Anchor positions, connector end resolution (fixed and dynamic glue), distance-to-segment, connector and anchor hit-testing, `glue_at`, removing connectors. |
 | `snap` ✅ | `snap(v, grid)`, `snap_point`. |
@@ -221,9 +222,21 @@ edited), `layout::layered` places them:
    parents. One pass is enough for MVP-sized diagrams.
 3. Space ranks and slots by cell size, snapped to the grid.
 
-This is a basic Sugiyama-style layout without crossing minimisation. That is
-good enough for a starting point the user then rearranges, and the result is
-saved on the first edit.
+Ranks come from the connectors and also from the edges in statements kept
+verbatim (a subgraph's `pay --> psp`, `a1 & a2 --> api`), so their nodes are
+ranked too. Cycles are broken at the edge that closes them (depth-first, in
+file order). Each rank is centred across the widest one.
+
+This is a basic Sugiyama-style layout without crossing minimisation or dummy
+nodes, so a long edge (spanning ranks, or closing a cycle) is a straight
+line that can cross a box in between, until elbow routing (§7, after the
+MVP). That is good enough for a starting point the user then rearranges.
+Opening writes nothing; the layout is saved with the first edit.
+
+**Shapes BlockLiner can't fully edit** carry a badge on their top-right
+corner and explain themselves in the status bar when hovered or selected:
+a lock on a shape declared only in a kept statement (move and resize only),
+and the Mermaid brackets, such as `[( )]`, on a shape drawn as a box.
 
 ---
 
@@ -328,7 +341,7 @@ saved on the first edit.
 | **3. Connectors** ✅ | Line/Arrow tools, anchors, glue/unglue, endpoint handles, arrowheads, hit-testing on segments, free lines. | 2–3 days |
 | **4. History + keyboard** ✅ | Snapshot undo/redo with gesture coalescing; nudge; select all; command registry and palette entries. | 1 day |
 | **5. Project + persistence** ✅ | Backend: open folder, diagram list sidebar, new/rename/delete, debounced atomic autosave, external-change reload; `lastProject`. | 2 days |
-| **6. Import layout** | `layout::layered` for nodes without positions; "not editable" badge for unsupported node shapes. | 1–2 days |
+| **6. Import layout** ✅ | `layout::layered` for nodes without positions; "not editable" badge for unsupported node shapes. | 1–2 days |
 | **7. Ship** | Packaging and CI (§8), README, `ARCHITECTURE.md`, kittest flows, hand checks on Linux/Windows/macOS. | 1–2 days |
 
 **MVP total: about 2.5–3 weeks.**

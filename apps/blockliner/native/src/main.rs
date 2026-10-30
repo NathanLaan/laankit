@@ -17,6 +17,8 @@ mod ui_tests;
 #[cfg(test)]
 mod ui_tests_history;
 #[cfg(test)]
+mod ui_tests_import;
+#[cfg(test)]
 mod ui_tests_lines;
 #[cfg(test)]
 mod ui_tests_project;

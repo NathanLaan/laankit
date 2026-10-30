@@ -6,6 +6,7 @@ use blockliner_core::geometry::Handle;
 use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{vec2, Align, Color32, CornerRadius, FontId, Painter, Pos2, Stroke, StrokeKind};
+use marina_egui::icons;
 use marina_egui::theme::Palette;
 
 use super::view::View;
@@ -26,6 +27,8 @@ const ARROW: f32 = 12.0;
 pub const HANDLE_SIZE: f32 = 8.0;
 /// Endpoint handles and anchor hints: radius in screen points.
 const DOT: f32 = 4.5;
+/// The limitation badge's text size, in screen points at any zoom.
+const BADGE_SIZE: f32 = 10.0;
 
 pub fn label_font(zoom: f32) -> FontId {
     FontId::proportional(LABEL_SIZE * zoom)
@@ -204,6 +207,46 @@ fn shape(painter: &Painter, zoom: f32, r: egui::Rect, s: &Shape, p: &Palette, ed
     if !editing {
         label(painter, r, &s.label, zoom, p.text_primary);
     }
+    badge(painter, r, s, p);
+}
+
+/// What BlockLiner can't fully edit about a shape, as the badge on its
+/// top-right corner shows it: a lock for a shape declared in a kept
+/// statement, or the Mermaid brackets of a shape drawn as a box. With the
+/// icon for the status bar.
+pub fn limitation(s: &Shape) -> Option<(&'static str, String)> {
+    if s.external {
+        return Some((icons::LOCK, format!(
+            "“{}” is declared in a Mermaid statement BlockLiner keeps as is: it can be moved and resized, not renamed or deleted",
+            s.id
+        )));
+    }
+    match &s.kind {
+        ShapeKind::Other { open, close } => Some((icons::CIRCLE_INFO, format!(
+            "“{}” is a Mermaid {open} {close} shape, drawn here as a box; it keeps its shape when saved",
+            s.id
+        ))),
+        _ => None,
+    }
+}
+
+fn badge(painter: &Painter, r: egui::Rect, s: &Shape, p: &Palette) {
+    let (text, font) = match &s.kind {
+        _ if s.external => (icons::LOCK.to_owned(), icons::font(BADGE_SIZE - 1.0)),
+        ShapeKind::Other { open, close } => {
+            (format!("{open} {close}"), FontId::monospace(BADGE_SIZE))
+        }
+        _ => return,
+    };
+    // Only where it fits beside the label.
+    if r.width() < 48.0 || r.height() < 24.0 {
+        return;
+    }
+    let galley = painter.layout_no_wrap(text, font, p.text_muted);
+    let size = galley.size() + vec2(8.0, 4.0);
+    let at = egui::Rect::from_min_size(r.right_top() + vec2(-size.x - 3.0, 3.0), size);
+    painter.rect_filled(at, 3.0, p.bg_base.gamma_multiply(0.85));
+    painter.galley(at.center() - galley.size() / 2.0, galley, p.text_muted);
 }
 
 fn corner(r: egui::Rect, zoom: f32) -> CornerRadius {

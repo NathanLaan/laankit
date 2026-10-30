@@ -88,6 +88,7 @@ pub const INDENT: &str = "\u{f03c}";
 pub const LAYER_GROUP: &str = "\u{f5fd}";
 pub const LINK: &str = "\u{f0c1}";
 pub const LIST_OL: &str = "\u{f0cb}";
+pub const LOCK: &str = "\u{f023}";
 pub const LIST_UL: &str = "\u{f0ca}";
 pub const MAGNIFYING_GLASS: &str = "\u{f002}";
 pub const MINUS: &str = "\u{f068}";

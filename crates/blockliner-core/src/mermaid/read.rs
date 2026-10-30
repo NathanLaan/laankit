@@ -173,6 +173,9 @@ struct Body {
     nodes: Vec<Node>,
     index: HashMap<String, usize>,
     edges: Vec<Edge>,
+    /// Edges in statements kept verbatim: not connectors, but they still
+    /// rank the nodes they join in the layout.
+    hints: Vec<(String, String)>,
     passthrough: Vec<String>,
 }
 
@@ -237,10 +240,30 @@ impl Body {
         }
     }
 
+    /// Declares a verbatim statement's nodes and notes its edges as layout
+    /// hints: `a & b --> c` joins each of `a`, `b` to `c`.
     fn declare_all(&mut self, tokens: Vec<Token>, external: bool) {
+        let (mut prev, mut group) = (Vec::new(), Vec::new());
         for token in tokens {
-            if let Token::Node(n) = token {
-                self.declare(n, external);
+            match token {
+                Token::Node(n) => {
+                    group.push(n.id.clone());
+                    self.declare(n, external);
+                }
+                Token::Amp => {}
+                Token::Link { .. } => {
+                    self.hint(&prev, &group);
+                    prev = std::mem::take(&mut group);
+                }
+            }
+        }
+        self.hint(&prev, &group);
+    }
+
+    fn hint(&mut self, from: &[String], to: &[String]) {
+        for a in from {
+            for b in to {
+                self.hints.push((a.clone(), b.clone()));
             }
         }
     }
@@ -325,7 +348,7 @@ impl Body {
         }
 
         d.passthrough = self.passthrough;
-        layout::place(d, &unplaced);
+        layout::layered(d, &unplaced, &self.hints);
     }
 }
 
