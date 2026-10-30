@@ -199,12 +199,15 @@ fn grid_lines(out: &mut String, b: Rect, g: f32) {
 fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
     let r = s.rect;
     let _ = write!(out, r#"<g id="{}">"#, escape(&s.id));
-    // The stroke sits inside the shape, as on the canvas.
+    // The stroke sits inside the shape, as on the canvas. The shape's own
+    // colours where it has them, else the export's.
     let inset = STROKE / 2.0;
-    let body = |out: &mut String, radius: f32| {
+    let fill = paint(s.style.fill.as_ref());
+    let ink = paint(s.style.stroke.as_ref());
+    let body = |out: &mut String, radius: f32, fill: &str, stroke: &str| {
         let _ = write!(
             out,
-            r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" fill="{FILL}" stroke="{INK}" stroke-width="{}"/>"#,
+            r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" fill={fill} stroke={stroke} stroke-width="{}"/>"#,
             num(r.x + inset),
             num(r.y + inset),
             num(r.w - STROKE),
@@ -213,11 +216,35 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
             num(STROKE)
         );
     };
+    let (or_fill, or_ink) = (
+        fill.clone().unwrap_or_else(|| format!("\"{FILL}\"")),
+        ink.clone().unwrap_or_else(|| format!("\"{INK}\"")),
+    );
     match s.kind {
-        ShapeKind::Rect | ShapeKind::Other { .. } => body(out, 0.0),
-        ShapeKind::RoundRect => body(out, CORNER.min(r.h / 2.0).min(255.0) - inset),
+        ShapeKind::Rect | ShapeKind::Other { .. } => body(out, 0.0, &or_fill, &or_ink),
+        ShapeKind::RoundRect => body(
+            out,
+            CORNER.min(r.h / 2.0).min(255.0) - inset,
+            &or_fill,
+            &or_ink,
+        ),
+        // Bare text, unless it has colours of its own.
+        ShapeKind::Text if fill.is_some() || ink.is_some() => {
+            let none = "\"none\"".to_owned();
+            body(
+                out,
+                0.0,
+                fill.as_ref().unwrap_or(&none),
+                ink.as_ref().unwrap_or(&none),
+            );
+        }
         ShapeKind::Text => {}
     }
+    let label_ink = s
+        .style
+        .label_rgba()
+        .map(rgb_hex)
+        .unwrap_or_else(|| TEXT.to_owned());
     let wrap = (r.w - 2.0 * LABEL_PAD).max(1.0);
     text(
         out,
@@ -227,7 +254,7 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
         r.center().y,
         LABEL_SIZE,
         Some(wrap),
-        TEXT,
+        &label_ink,
     );
     out.push_str("</g>\n");
 }
@@ -357,6 +384,31 @@ fn layout(ctx: &egui::Context, text: &str, size: f32, wrap: Option<f32>) -> Arc<
     );
     job.halign = Align::Center;
     ctx.fonts_mut(|f| f.layout_job(job))
+}
+
+/// A style colour as SVG attribute text (quoted), with its opacity when
+/// it isn't opaque; `None` when BlockLiner can't draw it.
+fn paint(c: Option<&blockliner_core::style::Colour>) -> Option<String> {
+    let rgba = c?.rgba?;
+    Some(if rgba[3] == 255 {
+        format!("\"{}\"", rgb_hex(rgba))
+    } else if rgba[3] == 0 {
+        "\"none\"".to_owned()
+    } else {
+        // `fill="#rrggbb" fill-opacity=…` would need the attribute name;
+        // rgba() works for fill and stroke alike.
+        format!(
+            "\"rgba({},{},{},{})\"",
+            rgba[0],
+            rgba[1],
+            rgba[2],
+            num(f32::from(rgba[3]) / 255.0)
+        )
+    })
+}
+
+fn rgb_hex([r, g, b, _]: [u8; 4]) -> String {
+    format!("#{r:02x}{g:02x}{b:02x}")
 }
 
 /// A coordinate, without needless decimals.

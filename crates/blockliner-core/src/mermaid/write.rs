@@ -21,6 +21,16 @@ pub fn write(d: &Diagram) -> String {
     for c in d.connectors.iter().filter(|c| c.is_edge()) {
         line(&mut out, format_args!("  {}", edge(c)));
     }
+    for s in d
+        .shapes
+        .iter()
+        .filter(|s| !s.external && !s.style.is_empty())
+    {
+        line(
+            &mut out,
+            format_args!("  style {} {}", s.id, s.style.props()),
+        );
+    }
     for p in &d.passthrough {
         line(&mut out, format_args!("{p}"));
     }

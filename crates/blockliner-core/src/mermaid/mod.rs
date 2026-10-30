@@ -29,6 +29,9 @@
 //!
 //! Right-angle routes live only here: Mermaid draws its own curve for the
 //! edge, as it does for every edge.
+//!
+//! A shape's colours are an ordinary Mermaid `style <id> …` line, after the
+//! edges ([`crate::style`]); other `style` lines are kept as written.
 
 mod label;
 mod lex;

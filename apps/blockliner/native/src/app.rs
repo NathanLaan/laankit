@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use blockliner_core::history::History;
+use blockliner_core::style::{Colour, Style, PRESETS};
 use blockliner_core::Diagram;
 use egui::{Frame, Ui};
 use marina_egui::about::{AboutAction, AboutIcon, AboutModal};
@@ -21,10 +22,11 @@ use marina_egui::{fonts, icons, window};
 use serde_json::{json, Value};
 
 use crate::backend::{self, Backend, Change, Event};
-use crate::canvas::{Canvas, MenuAction, Tool};
+use crate::canvas::{Canvas, MenuAction, Swatch, Tool};
 use crate::commands::{self, Act, View};
 use crate::config::Paths;
 use crate::export;
+use crate::overlays::colour::{ColourAction, ColourState};
 use crate::overlays::export::{ExportAction, ExportState};
 use crate::overlays::name::{NameAction, NameState};
 use crate::overlays::settings::{SettingsAction, SettingsState};
@@ -273,6 +275,7 @@ impl BlockLinerApp {
             has_selection: self.canvas.has_selection(),
             straight_selected: self.canvas.selected_routes(&self.diagram).0,
             elbow_selected: self.canvas.selected_routes(&self.diagram).1,
+            stylable: self.canvas.stylable(&self.diagram),
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
         }
@@ -360,6 +363,9 @@ impl BlockLinerApp {
             Act::RouteStraight => {
                 self.canvas.set_route(&mut self.diagram, false);
             }
+            Act::Fill(swatch) => self.style(swatch, false),
+            Act::Stroke(swatch) => self.style(swatch, true),
+            Act::ResetStyle => self.canvas.style_selection(&mut self.diagram, Style::reset),
             Act::Escape => self.canvas.escape(&mut self.diagram),
             Act::ZoomIn => self.canvas.zoom_step(1),
             Act::ZoomOut => self.canvas.zoom_step(-1),
@@ -373,6 +379,49 @@ impl BlockLinerApp {
             Act::About => self.overlay = Some(Overlay::About),
             Act::Palette => self.palette = Some(CommandPalette::new()),
         }
+    }
+
+    /// The selected shapes' fill (or `stroke`): a preset, the default, or
+    /// the Custom… dialog.
+    fn style(&mut self, swatch: Swatch, stroke: bool) {
+        let colour = match swatch {
+            Swatch::Default => None,
+            Swatch::Preset(i) => {
+                let preset = PRESETS[i];
+                Some(Colour::parse(if stroke {
+                    preset.stroke
+                } else {
+                    preset.fill
+                }))
+            }
+            Swatch::Custom => {
+                let first = self
+                    .canvas
+                    .selection
+                    .iter()
+                    .find_map(|id| self.diagram.shape(id).filter(|s| !s.external));
+                let current = first.and_then(|s| {
+                    if stroke {
+                        s.style.stroke.as_ref()
+                    } else {
+                        s.style.fill.as_ref()
+                    }
+                });
+                self.overlay = Some(Overlay::Colour(ColourState::new(stroke, current)));
+                return;
+            }
+        };
+        self.apply_colour(colour, stroke);
+    }
+
+    fn apply_colour(&mut self, colour: Option<Colour>, stroke: bool) {
+        self.canvas.style_selection(&mut self.diagram, |s| {
+            if stroke {
+                s.set_stroke(colour.clone());
+            } else {
+                s.set_fill(colour.clone());
+            }
+        });
     }
 
     fn set_show_grid(&mut self, on: bool) {
@@ -995,6 +1044,9 @@ impl BlockLinerApp {
                 acts.extend(out.menu.map(|m| match m {
                     MenuAction::RouteElbow => Act::RouteElbow,
                     MenuAction::RouteStraight => Act::RouteStraight,
+                    MenuAction::Fill(s) => Act::Fill(s),
+                    MenuAction::Stroke(s) => Act::Stroke(s),
+                    MenuAction::ResetStyle => Act::ResetStyle,
                     MenuAction::Delete => Act::Delete,
                     MenuAction::SelectAll => Act::SelectAll,
                 }));
@@ -1080,6 +1132,15 @@ impl BlockLinerApp {
                         Ok(()) => keep = false,
                         Err(e) => state.refuse(format!("{e:#}")),
                     }
+                }
+                None => {}
+            },
+            Overlay::Colour(state) => match overlays::colour::show(ctx, state) {
+                Some(ColourAction::Close) => keep = false,
+                Some(ColourAction::Apply(c)) => {
+                    let stroke = state.stroke;
+                    self.apply_colour(Some(c), stroke);
+                    keep = false;
                 }
                 None => {}
             },

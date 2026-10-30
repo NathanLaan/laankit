@@ -198,30 +198,51 @@ pub fn diagram(
     }
 }
 
+/// A style colour, if it has one BlockLiner can draw.
+pub fn colour(c: Option<&blockliner_core::style::Colour>) -> Option<Color32> {
+    let [r, g, b, a] = c?.rgba?;
+    Some(Color32::from_rgba_unmultiplied(r, g, b, a))
+}
+
 fn shape(painter: &Painter, zoom: f32, r: egui::Rect, s: &Shape, p: &Palette, editing: bool) {
-    let stroke = Stroke::new(stroke_width(zoom), p.text_secondary);
+    // The shape's own colours where it has them, else the theme's.
+    let fill = colour(s.style.fill.as_ref());
+    let ink = colour(s.style.stroke.as_ref());
+    let stroke = Stroke::new(stroke_width(zoom), ink.unwrap_or(p.text_secondary));
+    let body = fill.unwrap_or(p.bg_surface);
     match &s.kind {
         ShapeKind::Rect => {
-            painter.rect(r, 0.0, p.bg_surface, stroke, StrokeKind::Inside);
+            painter.rect(r, 0.0, body, stroke, StrokeKind::Inside);
         }
         ShapeKind::RoundRect => {
-            painter.rect(r, corner(r, zoom), p.bg_surface, stroke, StrokeKind::Inside);
+            painter.rect(r, corner(r, zoom), body, stroke, StrokeKind::Inside);
         }
         // Other Mermaid shapes are drawn as rectangles, dashed so they read
         // as "not quite this".
         ShapeKind::Other { .. } => {
-            painter.rect_filled(r, 0.0, p.bg_surface);
+            painter.rect_filled(r, 0.0, body);
             dashed_rect(painter, r, stroke);
         }
-        // Bare text; an empty one keeps a faint outline so it can be found.
+        // Bare text, unless it's been given colours; an empty one keeps a
+        // faint outline so it can be found.
         ShapeKind::Text => {
-            if s.label.is_empty() && !editing {
+            let none = egui::Stroke::NONE;
+            let outline = if ink.is_some() { stroke } else { none };
+            if fill.is_some() || ink.is_some() {
+                let fill = fill.unwrap_or(Color32::TRANSPARENT);
+                painter.rect(r, 0.0, fill, outline, StrokeKind::Inside);
+            } else if s.label.is_empty() && !editing {
                 dashed_rect(painter, r, Stroke::new(1.0, p.text_faint));
             }
         }
     }
     if !editing {
-        label(painter, r, &s.label, zoom, p.text_primary);
+        let text = s
+            .style
+            .label_rgba()
+            .map(|[r, g, b, a]| Color32::from_rgba_unmultiplied(r, g, b, a))
+            .unwrap_or(p.text_primary);
+        label(painter, r, &s.label, zoom, text);
     }
     badge(painter, r, s, p);
 }

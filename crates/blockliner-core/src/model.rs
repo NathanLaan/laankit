@@ -2,6 +2,7 @@
 //! pointing down; the canvas maps them to the screen.
 
 use crate::ids;
+use crate::style::Style;
 
 /// The default grid spacing, in diagram pixels.
 pub const DEFAULT_GRID: f32 = 20.0;
@@ -100,6 +101,8 @@ pub struct Shape {
     /// an unsupported edge). It is positioned and drawn, but its declaration
     /// stays in that statement, so it is not editable.
     pub external: bool,
+    /// Its `style` line: fill, stroke and label colours.
+    pub style: Style,
 }
 
 impl Shape {
@@ -116,6 +119,7 @@ impl Shape {
             rect,
             class: None,
             external: false,
+            style: Style::default(),
         }
     }
 

@@ -12,6 +12,7 @@ use crate::model::{
     Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect, Route, Shape,
     ShapeKind,
 };
+use crate::style::Style;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReadError {
@@ -178,6 +179,9 @@ struct Body {
     /// rank the nodes they join in the layout.
     hints: Vec<(String, String)>,
     passthrough: Vec<String>,
+    /// `style <id> …` lines, kept in `passthrough` until the build knows
+    /// whether `id` is a shape BlockLiner models (then the style is its).
+    styles: Vec<(usize, String, Style)>,
 }
 
 impl Body {
@@ -187,6 +191,15 @@ impl Body {
             return; // The writer adds it back when a text box needs it.
         }
         if KEYWORDS.contains(&word) {
+            if word == "style" {
+                let rest = stmt["style".len()..].trim_start();
+                let (id, props) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+                // `style a,b …` names several shapes: it stays as written.
+                if let (false, Some(style)) = (id.contains(','), Style::parse(props)) {
+                    let at = self.passthrough.len();
+                    self.styles.push((at, id.to_owned(), style));
+                }
+            }
             self.passthrough.push(format!("  {stmt}"));
             return;
         }
@@ -322,8 +335,25 @@ impl Body {
                 rect,
                 class: n.class.filter(|_| !text),
                 external: n.external,
+                style: Style::default(),
             });
         }
+
+        // A shape's own `style` lines become its style (later ones win);
+        // those for external or unknown nodes stay as written.
+        let mut absorbed = Vec::new();
+        for (at, id, style) in self.styles {
+            if let Some(s) = d.shape_mut(&id).filter(|s| !s.external) {
+                s.style.merge(style);
+                absorbed.push(at);
+            }
+        }
+        let mut i = 0;
+        self.passthrough.retain(|_| {
+            let keep = !absorbed.contains(&i);
+            i += 1;
+            keep
+        });
 
         let mut seen: HashMap<(String, String), usize> = HashMap::new();
         for e in self.edges {
@@ -555,5 +585,33 @@ mod tests {
                 "  end"
             ]
         );
+    }
+
+    #[test]
+    fn own_style_lines_become_the_shapes_style() {
+        let d = read(
+            "flowchart LR\n  a --> b\n  style a fill:#f9f,stroke-width:2px\n  classDef hot fill:red\n  \
+             style a stroke:#333,stroke-width:4px\n  style a,b fill:#000\n  style c fill:#fff\n  \
+             b -.-> c\n  style b fill:rgb(1, 2, 3)\n  style  b  color:#123\n",
+        )
+        .unwrap();
+        let a = &d.shape("a").unwrap().style;
+        // Merged in order, the later line winning.
+        assert_eq!(a.props(), "fill:#f9f,stroke:#333,stroke-width:4px");
+        let b = &d.shape("b").unwrap().style;
+        assert_eq!(b.fill.as_ref().unwrap().text, "rgb(1, 2, 3)");
+        assert_eq!(b.fill.as_ref().unwrap().rgba, None, "kept, not drawn");
+        assert_eq!(b.color.as_ref().unwrap().text, "#123");
+        // Several ids, and an external shape's style, stay as written.
+        assert_eq!(
+            d.passthrough,
+            [
+                "  classDef hot fill:red",
+                "  style a,b fill:#000",
+                "  style c fill:#fff",
+                "  b -.-> c",
+            ]
+        );
+        assert!(d.shape("c").unwrap().style.is_empty());
     }
 }

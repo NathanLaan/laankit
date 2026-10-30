@@ -8,7 +8,9 @@
 use egui::{Key, Modifiers};
 use marina_egui::commands::{Binding, Command, Registry, ShortcutEntry};
 
-use crate::canvas::Tool;
+use blockliner_core::style::PRESETS;
+
+use crate::canvas::{Swatch, Tool};
 
 /// Everything a shortcut, button or palette entry can ask for.
 #[derive(Clone, Debug, PartialEq)]
@@ -28,6 +30,12 @@ pub enum Act {
     RouteElbow,
     /// …or straight.
     RouteStraight,
+    /// The selected shapes' fill…
+    Fill(Swatch),
+    /// …or stroke.
+    Stroke(Swatch),
+    /// Both back to the theme's.
+    ResetStyle,
     /// Move the selection by this many grid steps (the arrow keys go
     /// through `App::nudge_keys`, which also reads Shift and Alt).
     Nudge(i8, i8),
@@ -57,6 +65,8 @@ pub struct View {
     pub straight_selected: bool,
     /// …or a right-angle one.
     pub elbow_selected: bool,
+    /// Selected shapes can take colours.
+    pub stylable: bool,
     pub can_undo: bool,
     pub can_redo: bool,
 }
@@ -88,6 +98,10 @@ fn has_straight(v: &View) -> bool {
 
 fn has_elbow(v: &View) -> bool {
     ready(v) && v.elbow_selected
+}
+
+fn stylable(v: &View) -> bool {
+    ready(v) && v.stylable
 }
 
 fn undoable(v: &View) -> bool {
@@ -243,6 +257,24 @@ pub fn registry() -> Registry<Act, View> {
         )
         .when(has_elbow),
     );
+    // Colours: palette-only (and the right-click menu).
+    for (part, make) in [
+        ("Fill", Act::Fill as fn(Swatch) -> Act),
+        ("Stroke", Act::Stroke),
+    ] {
+        let mut swatch = |id: String, name: &str, s: Swatch| {
+            let label = format!("{part}: {name}");
+            r.register(add(&id, &label, "Style", make(s)).when(stylable));
+        };
+        let key = part.to_lowercase();
+        swatch(format!("style.{key}.default"), "Default", Swatch::Default);
+        for (i, preset) in PRESETS.iter().enumerate() {
+            let id = format!("style.{key}.{}", preset.name.to_lowercase());
+            swatch(id, preset.name, Swatch::Preset(i));
+        }
+        swatch(format!("style.{key}.custom"), "Custom…", Swatch::Custom);
+    }
+    r.register(add("style.reset", "Reset Style", "Style", Act::ResetStyle).when(stylable));
     r.register(
         add("edit.delete", "Delete", "Edit", Act::Delete)
             .key(Binding::logical(Modifiers::NONE, Key::Delete))
@@ -344,6 +376,7 @@ mod tests {
             has_selection: true,
             straight_selected: true,
             elbow_selected: true,
+            stylable: true,
             can_undo: true,
             can_redo: true,
         };
@@ -364,6 +397,7 @@ mod tests {
                 has_selection: true,
                 straight_selected: true,
                 elbow_selected: true,
+                stylable: true,
                 can_undo: true,
                 can_redo: true,
             })

@@ -5,6 +5,7 @@
 use std::path::Path;
 
 use blockliner_core::export::{scope, Objects};
+use blockliner_core::style::Colour;
 use blockliner_core::{
     Anchor, Connector, ConnectorKind, Diagram, End, Rect, Route, Shape, ShapeKind,
 };
@@ -26,7 +27,8 @@ fn context() -> egui::Context {
     ctx
 }
 
-/// An arrow from a box to a round box, a long label that wraps, a text box,
+/// An arrow from a box to a round box (in the Blue swatch), a long label
+/// that wraps, a text box,
 /// an edge label, and a right-angle line from the text box up to the round
 /// box.
 fn diagram() -> Diagram {
@@ -37,12 +39,16 @@ fn diagram() -> Diagram {
         "API Gateway & <Auth>",
         Rect::new(40.0, 40.0, 160.0, 60.0),
     ));
-    d.shapes.push(Shape::new(
+    let mut db = Shape::new(
         "db",
         ShapeKind::RoundRect,
         "Orders database with a long name",
         Rect::new(300.0, 40.0, 120.0, 60.0),
-    ));
+    );
+    // The Blue swatch: its own fill, stroke and label colour.
+    db.style
+        .set_fill(Some(Colour::parse(blockliner_core::style::PRESETS[1].fill)));
+    d.shapes.push(db);
     d.shapes.push(Shape::new(
         "note",
         ShapeKind::Text,

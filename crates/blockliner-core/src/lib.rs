@@ -13,6 +13,7 @@
 //! | `ids`     | Mermaid node ids made from labels                                  |
 //! | `history` | Undo and redo                                                      |
 //! | `layout`  | Positions for shapes the file gives none for                       |
+//! | `style`   | Shape colours: `style` lines, presets, label contrast              |
 
 pub mod connect;
 pub mod export;
@@ -24,6 +25,7 @@ pub mod mermaid;
 pub mod model;
 pub mod route;
 pub mod snap;
+pub mod style;
 
 pub use mermaid::{read, write, ReadError};
 pub use model::{

@@ -6,6 +6,8 @@
 
 use std::path::PathBuf;
 
+use blockliner_core::style::{Colour, Style};
+
 use blockliner_core::{
     read, write, Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect,
     Route, Shape, ShapeKind,
@@ -54,6 +56,9 @@ fn blockliner_files_are_unchanged_by_a_save() {
     assert_eq!(d.connectors[2].label.as_deref(), Some("SQL"));
     assert!(d.has_free_lines());
     assert_eq!(d.connectors[5].to, End::Free(Point::new(700.0, 300.0)));
+    // `style db …` is db's own now.
+    assert_eq!(d.shape("db").unwrap().style.props(), "fill:#eef");
+    assert!(d.passthrough.is_empty());
 }
 
 #[test]
@@ -185,6 +190,22 @@ impl Rng {
         (0..self.below(5)).map(|_| *self.pick(PARTS)).collect()
     }
 
+    fn style(&mut self) -> Style {
+        const COLOURS: &[&str] = &["#dbeafe", "#f9f", "red", "#11223380", "rgb(1,2,3)", "none"];
+        let mut s = Style::default();
+        let colour = |rng: &mut Rng| rng.chance(50).then(|| Colour::parse(rng.pick(COLOURS)));
+        s.fill = colour(self);
+        s.stroke = colour(self);
+        s.color = colour(self);
+        if self.chance(30) {
+            s.extra.push(("stroke-width".into(), "4px".into()));
+        }
+        if self.chance(20) {
+            s.extra.push(("stroke-dasharray".into(), "5 5".into()));
+        }
+        s
+    }
+
     fn route(&mut self) -> Route {
         match self.below(4) {
             0 | 1 => Route::Straight,
@@ -247,6 +268,9 @@ fn generate(rng: &mut Rng) -> Diagram {
         let mut shape = Shape::new(d.new_id(&label), kind, label, rect);
         if shape.kind != ShapeKind::Text && rng.chance(20) {
             shape.class = Some("hot".into());
+        }
+        if rng.chance(40) {
+            shape.style = rng.style();
         }
         d.shapes.push(shape);
     }

@@ -32,7 +32,7 @@ install as `/usr/bin/blockliner`.
 |---|---|
 | V, R, O, L, A, J, E, T, or 1–8 | Select, Rectangle, Rounded Rectangle, Line, Arrow, Right-Angle Line, Right-Angle Arrow, Text tool (Shift: keep the tool after each shape). The numbers follow the toolbar and show in each tool button's corner; they're physical keys, so the number row works on any layout |
 | Drag a right-angle line's middle handle | Moves its middle segment across (double-click the handle: automatic again) |
-| Right-click | Selects what's under it, then a menu: Right-Angle / Straight (for lines), Delete, Select All |
+| Right-click | Selects what's under it, then a menu: Fill ▸ and Stroke ▸ (eight presets, Default, Custom…) and Reset Style for shapes, Right-Angle / Straight for lines, Delete, Select All |
 | Drag / click (shape tool) | Draws a shape (click: the default 8 × 3 cells) |
 | Double-click a shape | Edits its label (Enter commits, Shift+Enter adds a line, Esc cancels) |
 | Arrow keys | Nudge one grid step (Shift: 5 steps, Alt: 1 px) |
@@ -60,6 +60,7 @@ install as `/usr/bin/blockliner`.
 | `ids`      | Mermaid ids from labels (`"Orders DB"` → `orders_db`)                                       |
 | `history`  | Undo and redo as whole-diagram snapshots                                                    |
 | `export`   | Which objects an export contains, and the page around them                                  |
+| `style`    | Shape colours: `Colour`, `Style` (a shape's `style` line), the presets, label contrast        |
 
 The app (`apps/blockliner/native`):
 
@@ -72,7 +73,7 @@ The app (`apps/blockliner/native`):
 | `commands` | The marina-egui command registry: shortcuts, palette and the Settings shortcut list         |
 | `canvas`   | The grid, painting, pan and zoom, the tools and their gestures, the label editor            |
 | `views`    | The toolbar, the diagram sidebar, empty states and the status bar                           |
-| `overlays` | Settings, About, Export, New/Rename Diagram, delete confirmation                            |
+| `overlays` | Settings, About, Export, New/Rename Diagram, delete confirmation, Custom colour              |
 | `export`   | The SVG writer (labels wrapped by egui, as on the canvas) and PNG through `resvg`            |
 | `ui_tests*`| egui_kittest flows, headless (below)                                                        |
 

@@ -5,9 +5,10 @@ Phases 0–8 done: app scaffold, `crates/blockliner-core`, shapes, connectors,
 undo and keyboard, folder and autosave, import layout, export, and packaging.
 Hand checks on Windows and macOS remain
 ([`apps/blockliner/native/README.md`](../../apps/blockliner/native/README.md),
-"Still to verify by hand"). **Phase 9 (right-angle connectors) implemented
-(2026-10-30); phases 10–12 proposed** (§10): shape styles, Mermaid
-database/subroutine/hexagon/diamond shapes, copy and paste.
+"Still to verify by hand"). **Phases 9 (right-angle connectors) and 10
+(shape styles) implemented (2026-10-30); phases 11–14 proposed** (§10):
+Mermaid database/subroutine/hexagon/diamond shapes, copy and paste, a
+clickable zoom in the status bar, and an Object Properties panel.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -195,6 +196,7 @@ Any other `%% @…` line is reserved and dropped. Other `%%` comments are kept.
 | Free line/arrow (either end not glued) | `%% @line …` only | Mermaid cannot draw a line that is not attached to nodes. The line appears in BlockLiner but not in other Mermaid renderers. The status bar shows a hint when the diagram has such lines. |
 | Multi-line label | `<br>` inside the quoted label | `"` is escaped as `#quot;`. `#` and `<br` are escaped (`#35;`, `#lt;`) only where they would otherwise be decoded, so `C#` stays `C#`. |
 | Edge label (read and kept; editing comes after the MVP) | `a -->\|"label"\| b` | Also reads `a -- label --> b`. |
+| Shape colours (phase 10) | `style id fill:#dbeafe,stroke:#3b82f6,color:#111827` | One line per styled shape, after the edges. Other properties (`stroke-width`, …) are kept. |
 
 New diagrams default to `LR`. A file's own direction is kept. `graph` is
 written back as `flowchart`.
@@ -206,7 +208,8 @@ written back as `flowchart`.
   example after a hand edit), BlockLiner drops it. A node with no comment
   gets an automatic position.
 - **Statements BlockLiner doesn't model are kept** verbatim and in order:
-  `classDef`, `class`, `style`, `click`, `linkStyle`, other `%%` comments,
+  `classDef`, `class`, `style` (except a shape's own, since phase 10),
+  `click`, `linkStyle`, other `%%` comments,
   whole `subgraph … end` blocks, and edges with other link styles (`-.->`,
   `==>`, `a & b --> c`, …). They are written after the nodes and edges. Nodes
   that are declared only inside them are marked `external`. Those nodes are
@@ -435,13 +438,18 @@ file stays small; the text stays editable).
 | Phase | Deliverable | Effort |
 |---|---|---|
 | **9. Right-angle connectors** ✅ | Right-Angle Line and Right-Angle Arrow tools; routes made of horizontal and vertical segments that avoid shapes where they can; switching selected connectors between straight and right-angle; a draggable middle segment. Saved in the layout block (`route=elbow`); the Mermaid edge is unchanged. | 3–4 days |
-| **10. Shape styles** | Fill and stroke colours for shapes: preset swatches and a custom hex value, from the canvas's right-click menu and the palette. Saved as Mermaid `style` lines, which BlockLiner now owns for its shapes. | 2 days |
+| **10. Shape styles** ✅ | Fill and stroke colours for shapes: preset swatches and a custom hex value, from the canvas's right-click menu and the palette. Saved as Mermaid `style` lines, which BlockLiner now owns for its shapes. | 2 days |
 | **11. More Mermaid shapes** | Database `[( )]`, subroutine `[[ ]]`, hexagon `{{ }}` and diamond `{ }` as real, editable shapes with their own outlines, label areas and hit-testing, behind a "More Shapes" toolbar button. | 2 days |
 | **12. Copy and paste** | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` for shapes and connectors, within a diagram, between diagrams and between BlockLiner windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out. | 2 days |
+| **13. Clickable zoom** | The status bar's "Zoom 120%" becomes a button: a click goes back to 100 % (as `Ctrl+0` does), with a hover highlight, a tooltip and an accessible label. | ½ day |
+| **14. Object Properties panel** | A Properties pane in the left sidebar, below the diagram list, shown or hidden with a toolbar button and `Ctrl+I`. It shows the selection's Fill and Stroke (swatches, Default, a hex field) and changes them; a selection whose values differ shows **Mixed** until one is picked. | 2 days |
 
-**Phases 9–12: about 2 weeks.** They are independent; this order puts the
-most-wanted first. Copy and paste goes last so it carries routes, colours
-and the new shapes from the start.
+**Phases 9–14: about 2½ weeks.** They are independent; this order puts the
+most-wanted first. Copy and paste comes after the shape phases so it carries
+routes, colours and the new shapes from the start. Phase 13 is small and
+could go anywhere. Phase 14 builds on phase 10's styles and is the natural
+home for phase 11's shapes' properties later; it can follow phase 10 at
+any point.
 
 ### After phase 12 (ideas, in rough value order)
 
@@ -510,6 +518,9 @@ Adding a fourth app touches these places outside the new crates:
 | 12 | Where do colours get picked? | **The canvas's right-click menu** (new in phase 9/10, also holding cut/copy/paste and straight/right-angle) and **palette commands**. A floating style bar or an inspector pane is a bigger UI change, left for when there are more properties than two colours. |
 | 13 | Keys for the new tools (§10.0)? | `D` diamond, `H` hexagon, `C` database (cylinder), `S` subroutine, `J` right-angle line, `E` right-angle arrow. None clashes; the `Ctrl+` versions of C, E and J stay copy, sidebar and status bar. |
 | 14 | Pasting text that isn't a flowchart? | **A new text box** with that text, at the centre of the view, as Excalidraw does. Pasting a flowchart imports its nodes and edges. |
+| 15 | Properties: a pane in the left sidebar, or a right-hand inspector? | **Left, below the diagram list**, as asked. It keeps one side panel to manage, and the canvas keeps its full width on the right. A right-hand inspector (Figma, Visio's Format Shape) could come later if properties grow beyond colours. |
+| 16 | Showing values that differ across a multiple selection? | **"Mixed"**, the near-universal convention (Figma, Sketch, Inkscape, Office): a mixed swatch, an empty field with a "Mixed" placeholder, no swatch ringed; choosing a value sets it on all. Each property is judged on its own. |
+| 17 | The Properties shortcut? | **`Ctrl+I`**: free in BlockLiner, and the inspector/info key on macOS. `F4` (Visio's) was the alternative, but function keys are awkward on laptops. |
 
 ---
 
@@ -715,6 +726,35 @@ right-angle could become a layout option later.
   - Reset Style.
 - **Export:** the golden SVG with a styled shape.
 
+**As built** (2026-10-30), beyond the above:
+- **Core:** `blockliner_core::style` holds `Colour`, `Style`, `PRESETS` and
+  `contrast`. `Style::set_fill` implements the pairing rules: a preset
+  fill brings its stroke when the stroke was unset or came with the old
+  fill; the label colour follows the fill unless it was set by hand;
+  Default takes a paired stroke away with the fill; a custom fill leaves
+  the stroke alone.
+- **Reader:** a shape's `style` lines are found in the body, held in place
+  among the kept statements, and only taken over once the build knows the
+  id is a shape BlockLiner declares. `style a,b …`, lines for external
+  shapes, and lines whose properties don't read as `key:value` stay where
+  they were. `written.mmd` already had `style db fill:#eef`; it is now
+  `db`'s, and the file is still byte-identical through a save.
+- **External shapes** can't be styled: their `style` line isn't
+  BlockLiner's to write, so the menu and palette ignore them.
+- **Swatches:** the Fill submenu shows each preset's fill with its paired
+  stroke as a border; the Stroke submenu shows the stroke as an outline.
+  (Pale fills alone were hard to tell apart on the dark theme.)
+- **Custom…:** a refused value keeps the dialog open, says why, and is
+  selected again so typing replaces it (as the name dialog does). It
+  accepts `#rgb` / `#rrggbb` with or without the `#`, in any case, and
+  stores lower case.
+- **Label editing** uses the label colour too, so typing on a pale fill
+  in the dark theme stays readable.
+- **Export:** colours with alpha are written as `rgba(…)`, and `none` as
+  `none`.
+- **Palette:** "Fill: Blue", "Stroke: Red", "Fill: Custom…", "Reset Style"
+  and so on (group Style), available while a declared shape is selected.
+
 ### 10.3 Phase 11: more Mermaid shapes
 
 **What the user sees.**
@@ -851,7 +891,154 @@ block, through `mermaid::write`). So:
   - plain text becomes a text box;
   - nothing happens while a label is being edited.
 
-### 10.5 Docs per phase
+### 10.5 Phase 13: clickable zoom
+
+**What the user sees.**
+- **The zoom readout** at the right of the status bar ("Zoom 120%") is a
+  button. Clicking it puts the canvas back to 100 %, about the centre of the
+  view, exactly as `Ctrl+0` and the palette's "Zoom to 100%" do.
+- **Hover:** a rounded highlight behind the text, the pointing-hand cursor,
+  and the tooltip "Reset zoom to 100% (Ctrl+0)".
+- **At 100 %** the readout looks and behaves the same; a click just does
+  nothing visible. Hiding or greying it would make the readout jump.
+- **Everything else is unchanged:** the other readouts (selection count,
+  pointer cell, grid, UI scale) stay plain text, and Ctrl + wheel, pinch and
+  the keys zoom as before.
+
+**Code.**
+- **`views::status_bar`** draws its right-hand readouts from right to left
+  as plain painter text today. The zoom readout gets an `ui.interact` rect
+  over its text (padded a few points), with the hover fill
+  (`p.bg_item_hover`), `on_hover_text`, `CursorIcon::PointingHand`, and
+  `widget_info` with the Button role and the label "Zoom 120%". The
+  function returns `Option<Act>` (`Some(Act::ZoomReset)` on a click), and
+  the app applies it like a toolbar action.
+- **No new command:** `Act::ZoomReset` and `Canvas::zoom_reset` already
+  exist.
+
+**Tests (headless).**
+- Zoom in twice with `Ctrl+=`: the readout reads "Zoom 150%". Clicking it
+  gives 100 %, and the readout says so.
+- The click is one zoom change, not a diagram change: nothing is added to
+  the undo history, and nothing is saved.
+- With the status bar hidden (`Ctrl+J`), there's nothing to click and
+  `Ctrl+0` still works.
+- An offscreen render of the hover state.
+
+**Later, if wanted:** a right-click menu on the readout with presets (50 %,
+100 %, 200 %) and "Zoom to Fit", which would need a fit-to-diagram
+command first.
+
+### 10.6 Phase 14: Object Properties panel
+
+**What the user sees.**
+- **Where:** the left sidebar gets a second pane, **Properties**, below the
+  diagram list.
+  - **Layout:** the list keeps the top and scrolls as now. Properties sits
+    at the bottom at its natural height (scrolling itself if the window is
+    short) with a header like the list's: "PROPERTIES".
+  - **Splitter:** a draggable divider between the two panes sets the
+    Properties height, remembered with the sidebar width.
+- **Showing and hiding:**
+  - **The controls:** a toolbar button (Font Awesome `sliders`, already in
+    `marina_egui::icons`) in the bottom group after Close Folder, the
+    shortcut `Ctrl+I` (free in BlockLiner; "Inspector"/"Get Info" on
+    macOS), and "Toggle Properties" in the palette. The button shows as
+    active while the pane is visible.
+  - **Remembered:** the choice is saved as `propertiesVisible` (default on).
+  - **Hidden sidebar:** if the sidebar is hidden (`Ctrl+E`) when
+    Properties is turned on, the sidebar comes back with it. `Ctrl+E`
+    still hides the whole sidebar, panes and all.
+  - **No folder open:** there's no sidebar then, so no pane; the toggle
+    still records the choice for later.
+- **What it shows:**
+  - **A summary line:** "2 shapes, 1 line", "Rectangle “API Gateway”",
+    or "Nothing selected".
+  - **Fill and Stroke rows,** for the selected shapes BlockLiner declares
+    (text boxes included). Each row has:
+    - a **current value** swatch and its hex text (or "Default", or
+      "Mixed");
+    - **swatches** for Default and the eight presets, the current one
+      ringed;
+    - a **hex field** (`#rgb` / `#rrggbb`), applied on Enter or when it
+      loses focus. An invalid value shows the dialog's message under the
+      field and changes nothing.
+  - **Reset Style** under the rows, as in the right-click menu.
+  - **Nothing stylable** (no selection, only lines, only external shapes):
+    the rows are greyed out with a one-line reason, for example "Select
+    shapes to change their fill and stroke", "Lines take no colours yet",
+    or "“c” is declared in a kept Mermaid statement".
+  - **Mixed selections:** shapes and lines together apply to the shapes
+    only, and say so: "1 line not affected".
+- **Same rules as the menu:**
+  - A preset fill brings its stroke and label colour (`Style::set_fill`).
+  - Each change is one undo step.
+  - The right-click menu and the palette keep working. The menu's
+    swatches gain the same ring on the current value.
+
+**Different values in a multiple selection.** The usual approach, used by
+Figma, Sketch, Inkscape, Office and Keynote alike, is a **Mixed**
+indeterminate state:
+- **When it applies:** a row is **Mixed** when the stylable selected shapes
+  don't all have the same value for it. Default counts as a value, so one
+  blue shape and one default shape are Mixed. Values compare by colour (so
+  `#DBEAFE` and `#dbeafe` match), falling back to the text for colours
+  BlockLiner can't draw.
+- **How it looks:**
+  - the current-value swatch shows a mixed pattern: split diagonally, or
+    a dash where there's no single colour;
+  - the hex field is empty with the placeholder "Mixed";
+  - no swatch is ringed;
+  - the accessible label reads "Fill: Mixed".
+- **Picking a swatch or typing a hex value sets it on all of them** (the
+  selection then shows that value), as one undo step. Nothing is changed
+  just by opening the panel or leaving a Mixed field alone. This matches
+  how the right-click menu already applies a choice to every selected
+  shape.
+- **Mixed doesn't spread:** each row is judged on its own, so a selection
+  can show one shared Fill and a Mixed Stroke.
+
+**Code.**
+- **`views::properties` (new, in `views.rs` or a `views/properties.rs`):**
+  draws the pane from a `PropertiesProps` snapshot and returns
+  `Option<PropertiesAction>`: `Fill(Swatch)`, `Stroke(Swatch)`,
+  `FillHex(Colour)`, `StrokeHex(Colour)` or `ResetStyle`. The app maps
+  them to the existing `Act::Fill` / `Act::Stroke` / `Act::ResetStyle`
+  paths (`apply_colour`), so the panel adds no new editing code.
+- **`Canvas::selected_style(&Diagram) -> SelectionStyle`:** for each of
+  fill and stroke, `Value::None` (nothing stylable), `Value::Same(Option<Colour>)`
+  or `Value::Mixed`, plus the counts behind the summary line. Pure and
+  unit-tested; the right-click menu uses it for its ring too.
+- **The swatch row** shares its drawing with the menu's `swatches()`
+  (moved to a small shared function), so the two can't drift.
+- **Sidebar layout:** the existing resizable `SidePanel` holds a vertical
+  split. The list takes the space above, and Properties the space below
+  the divider. Its height is kept in eframe's storage with the other
+  layout state.
+- **Commands:** `Act::ToggleProperties`, registered as "Toggle Properties"
+  with `Ctrl+I` (`.when(ready)`). `View`/`ToolbarProps` gain
+  `properties_visible`. `config.rs` reads and writes `propertiesVisible`.
+- **Window height:** one more toolbar button. Re-check the minimum height
+  (640, from phase 9) in an offscreen render, after phase 11's More Shapes
+  button too.
+
+**Tests.**
+- **Core and app units:** `selected_style` gives Same, Mixed and None in
+  each case, including Default against a colour, case-different hex, and
+  external shapes and lines ignored.
+- **Headless UI:**
+  - toggling with the button and `Ctrl+I` (and the pref surviving a
+    restart), and the sidebar coming back when it was hidden;
+  - two shapes with different fills show "Fill: Mixed", and a preset swatch
+    then makes them both that fill (one undo step);
+  - a hex value typed and applied with Enter, and an invalid one refused;
+  - lines-only and empty selections show their reason with the rows off;
+  - the menu and the panel stay in step: a choice in one shows in the
+    other.
+- **Renders:** offscreen, dark and light, with a single shape, a Mixed
+  selection, and a short window where the pane scrolls.
+
+### 10.7 Docs per phase
 
 - **README tables:** the native README's keys and features tables
   (`apps/blockliner/native/README.md`, `apps/blockliner/README.md`).

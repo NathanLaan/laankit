@@ -117,10 +117,16 @@ impl Canvas {
             (rows as f32 * row).min(screen.height()).max(row),
         );
         let area = egui::Rect::from_center_size(screen.center(), size);
+        // The colour the label will be drawn in, so it reads on the fill.
+        let ink = shape
+            .style
+            .label_rgba()
+            .map(|[r, g, b, a]| egui::Color32::from_rgba_unmultiplied(r, g, b, a))
+            .unwrap_or(p.text_primary);
         let field = TextEdit::multiline(&mut edit.text)
             .id_salt(("blockliner-label", edit.id.as_str()))
             .font(font)
-            .text_color(p.text_primary)
+            .text_color(ink)
             .align(Align2::CENTER_TOP)
             .frame(Frame::NONE)
             .margin(Margin::ZERO)

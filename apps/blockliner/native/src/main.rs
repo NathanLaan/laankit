@@ -29,6 +29,8 @@ mod ui_tests_project;
 mod ui_tests_routes;
 #[cfg(test)]
 mod ui_tests_shapes;
+#[cfg(test)]
+mod ui_tests_styles;
 
 use config::Paths;
 
