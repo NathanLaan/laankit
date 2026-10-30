@@ -57,7 +57,7 @@ non-Linux tool to learn. Its own `.deb` isn't used.
 | ThreadLiner | 27 MB | 7.9 MB | 8.5 MB | 12 MB |
 | PageLiner | 32 MB | 9.5 MB | 11 MB | 14 MB |
 | NoteLiner | 60 MB | 18 MB | 19 MB | 24 MB |
-| BlockLiner (0.1.0, 2026-10-30) | 22 MB | 6.6 MB | 7.1 MB | 9.8 MB |
+| BlockLiner (measured 2026-10-30) | 22 MB | 6.6 MB | 7.1 MB | 9.8 MB |
 
 NoteLiner is the largest because of in-process Typst for PDF export
 (`noteliner-export`, about 34 MB of the binary).

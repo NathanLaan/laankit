@@ -704,7 +704,7 @@ version = "0.1.0"
 
 [[package]]
 name = "blockliner-native"
-version = "0.1.0"
+version = "2.3.1"
 dependencies = [
  "anyhow",
  "blockliner-core",
@@ -3794,7 +3794,7 @@ dependencies = [
 
 [[package]]
 name = "noteliner-native"
-version = "2.2.5"
+version = "2.3.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4319,7 +4319,7 @@ dependencies = [
 
 [[package]]
 name = "pageliner-native"
-version = "2.2.5"
+version = "2.3.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6186,7 +6186,7 @@ dependencies = [
 
 [[package]]
 name = "threadliner-native"
-version = "2.2.5"
+version = "2.3.1"
 dependencies = [
  "anyhow",
  "chrono",
