@@ -13,6 +13,8 @@ mod views;
 
 #[cfg(test)]
 mod ui_tests;
+#[cfg(test)]
+mod ui_tests_shapes;
 
 use config::Paths;
 

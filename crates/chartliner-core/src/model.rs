@@ -273,4 +273,86 @@ impl Diagram {
     pub fn has_free_lines(&self) -> bool {
         self.connectors.iter().any(|c| !c.is_edge())
     }
+
+    /// Adds a shape on top of the others, with an id made from `label`.
+    /// Returns the id.
+    pub fn add_shape(&mut self, kind: ShapeKind, rect: Rect, label: &str) -> String {
+        let id = self.new_id(label);
+        self.shapes.push(Shape::new(id.clone(), kind, label, rect));
+        id
+    }
+
+    /// Removes the shapes with these ids, and the connectors glued to them
+    /// (a Mermaid edge can't have a missing end). Returns how many shapes
+    /// went.
+    pub fn remove_shapes(&mut self, ids: &[String]) -> usize {
+        let before = self.shapes.len();
+        self.shapes.retain(|s| !ids.contains(&s.id));
+        let gone = |e: &End| e.shape().is_some_and(|id| ids.iter().any(|x| x == id));
+        self.connectors.retain(|c| !gone(&c.from) && !gone(&c.to));
+        before - self.shapes.len()
+    }
+
+    /// Gives a shape a new id, updating the connectors glued to it. `false`
+    /// if `from` doesn't exist or `to` is taken.
+    pub fn rename_shape(&mut self, from: &str, to: &str) -> bool {
+        if from == to {
+            return self.shape(from).is_some();
+        }
+        if self.shape(to).is_some() {
+            return false;
+        }
+        let Some(shape) = self.shape_mut(from) else {
+            return false;
+        };
+        shape.id = to.to_string();
+        for c in &mut self.connectors {
+            for end in [&mut c.from, &mut c.to] {
+                if let End::Glued { shape, .. } = end {
+                    if shape == from {
+                        *shape = to.to_string();
+                    }
+                }
+            }
+        }
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn edits() {
+        let mut d = Diagram::new();
+        let r = Rect::new(0.0, 0.0, 10.0, 10.0);
+        let api = d.add_shape(ShapeKind::Rect, r, "API");
+        let api2 = d.add_shape(ShapeKind::Rect, r, "API");
+        let db = d.add_shape(ShapeKind::RoundRect, r, "Orders DB");
+        assert_eq!(
+            (api.as_str(), api2.as_str(), db.as_str()),
+            ("api", "api_2", "orders_db")
+        );
+        d.connectors.push(Connector::new(
+            ConnectorKind::Arrow,
+            End::glued("api", None),
+            End::glued("orders_db", None),
+        ));
+        d.connectors.push(Connector::new(
+            ConnectorKind::Line,
+            End::glued("api_2", None),
+            End::Free(Point::new(5.0, 5.0)),
+        ));
+
+        assert!(d.rename_shape("orders_db", "db"));
+        assert_eq!(d.connectors[0].to, End::glued("db", None));
+        assert!(!d.rename_shape("db", "api"), "taken");
+        assert!(!d.rename_shape("nope", "x"));
+
+        assert_eq!(d.remove_shapes(&["api_2".into(), "nope".into()]), 1);
+        assert_eq!(d.connectors.len(), 1, "the line glued to api_2 went too");
+        assert_eq!(d.remove_shapes(&["db".into()]), 1);
+        assert!(d.connectors.is_empty());
+    }
 }

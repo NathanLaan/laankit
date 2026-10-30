@@ -14,6 +14,9 @@ use crate::canvas::Tool;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Act {
     Tool(Tool),
+    Delete,
+    /// Cancel the drag in progress, else clear the selection.
+    Escape,
     ZoomIn,
     ZoomOut,
     ZoomReset,
@@ -27,11 +30,16 @@ pub enum Act {
 /// What the commands' `when` predicates read.
 pub struct View {
     pub modal_open: bool,
+    pub has_selection: bool,
 }
 
 /// No shortcut opens a second dialog over the first.
 fn ready(v: &View) -> bool {
     !v.modal_open
+}
+
+fn selected(v: &View) -> bool {
+    ready(v) && v.has_selection
 }
 
 /// A tool's single-key shortcut (Visio-style; never fires while a text field
@@ -64,10 +72,25 @@ pub fn registry() -> Registry<Act, View> {
                 Act::Tool(tool),
             )
             .key(Binding::logical(Modifiers::NONE, key))
+            // With Shift the tool stays picked after each shape.
+            .key(Binding::logical(Modifiers::SHIFT, key))
             .shortcut(text)
             .when(ready),
         );
     }
+    r.register(
+        add("edit.delete", "Delete", "Edit", Act::Delete)
+            .key(Binding::logical(Modifiers::NONE, Key::Delete))
+            .key(Binding::logical(Modifiers::NONE, Key::Backspace))
+            .shortcut("Delete")
+            .when(selected),
+    );
+    r.register(
+        add("edit.escape", "Clear Selection", "Edit", Act::Escape)
+            .key(Binding::logical(Modifiers::NONE, Key::Escape))
+            .shortcut("Esc")
+            .when(ready),
+    );
     r.register(
         add("view.zoomIn", "Zoom In", "View", Act::ZoomIn)
             .key(Binding::logical(cmd, Key::Equals))
@@ -137,7 +160,10 @@ mod tests {
     #[test]
     fn every_tool_has_a_command() {
         let r = registry();
-        let view = View { modal_open: false };
+        let view = View {
+            modal_open: false,
+            has_selection: true,
+        };
         for tool in Tool::ALL {
             assert!(
                 r.applicable_commands(&view)
@@ -146,7 +172,12 @@ mod tests {
                 "{tool:?}"
             );
         }
-        assert!(r.applicable_commands(&View { modal_open: true }).is_empty());
+        assert!(r
+            .applicable_commands(&View {
+                modal_open: true,
+                has_selection: true,
+            })
+            .is_empty());
     }
 
     #[test]

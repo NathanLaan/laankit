@@ -37,6 +37,10 @@ pub struct ChartLinerApp {
     diagram: Diagram,
     canvas: Canvas,
     tool: Tool,
+    /// The tool was picked with Shift, so it stays after each shape.
+    sticky_tool: bool,
+    /// Shift is down this frame (for picking a tool with it).
+    shift: bool,
     overlay: Option<Overlay>,
     palette: Option<CommandPalette>,
     registry: Registry<Act, View>,
@@ -71,6 +75,8 @@ impl ChartLinerApp {
             diagram,
             canvas: Canvas::new(prefs.show_grid),
             tool: Tool::default(),
+            sticky_tool: false,
+            shift: false,
             overlay: None,
             palette: None,
             registry,
@@ -114,6 +120,21 @@ impl ChartLinerApp {
     }
 
     #[cfg(test)]
+    pub fn selection(&self) -> &[String] {
+        &self.canvas.selection
+    }
+
+    #[cfg(test)]
+    pub fn editing_label(&self) -> bool {
+        self.canvas.is_editing_label()
+    }
+
+    #[cfg(test)]
+    pub fn diagram_mut(&mut self) -> &mut Diagram {
+        &mut self.diagram
+    }
+
+    #[cfg(test)]
     pub fn has_overlay(&self) -> bool {
         self.overlay.is_some()
     }
@@ -121,6 +142,7 @@ impl ChartLinerApp {
     fn view(&self) -> View {
         View {
             modal_open: self.overlay.is_some() || self.palette.is_some(),
+            has_selection: !self.canvas.selection.is_empty(),
         }
     }
 
@@ -143,7 +165,14 @@ impl ChartLinerApp {
 
     fn apply(&mut self, act: Act) {
         match act {
-            Act::Tool(tool) => self.tool = tool,
+            Act::Tool(tool) => {
+                self.tool = tool;
+                self.sticky_tool = self.shift;
+            }
+            Act::Delete => {
+                self.canvas.delete_selection(&mut self.diagram);
+            }
+            Act::Escape => self.canvas.escape(&mut self.diagram),
             Act::ZoomIn => self.canvas.zoom_step(1),
             Act::ZoomOut => self.canvas.zoom_step(-1),
             Act::ZoomReset => self.canvas.zoom_reset(),
@@ -192,6 +221,7 @@ impl ChartLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
+        self.shift = ctx.input(|i| i.modifiers.shift);
         self.dispatch_keys(&ctx);
 
         if self.custom_titlebar {
@@ -247,6 +277,7 @@ impl ChartLinerApp {
             let status = StatusProps {
                 tool: self.tool,
                 pointer: self.canvas.pointer,
+                selected: self.canvas.selection.len(),
                 grid: self.diagram.grid,
                 zoom: self.canvas.view.zoom,
                 scale: &self.theme.scale,
@@ -262,7 +293,10 @@ impl ChartLinerApp {
         egui::CentralPanel::default()
             .frame(Frame::NONE)
             .show(ui, |ui| {
-                self.canvas.show(ui, &self.diagram, self.tool, keys);
+                let out = self.canvas.show(ui, &mut self.diagram, self.tool, keys);
+                if out.tool_done && !self.sticky_tool {
+                    self.tool = Tool::Select;
+                }
             });
         for act in acts {
             self.apply(act);
@@ -317,7 +351,10 @@ impl ChartLinerApp {
         let Some(mut palette) = self.palette.take() else {
             return;
         };
-        let view = View { modal_open: false };
+        let view = View {
+            modal_open: false,
+            ..self.view()
+        };
         match palette.show(ctx, &mut self.registry, &view, &mut |_| Vec::new()) {
             PaletteOutcome::Open => self.palette = Some(palette),
             PaletteOutcome::Closed => {}

@@ -1,7 +1,7 @@
 # ChartLiner — Architecture Diagramming App
 
 Status: **In progress (2026-10-29).** Design decisions settled (§9). Phases 0
-(app scaffold) and 1 (`crates/chartliner-core`) implemented.
+(app scaffold), 1 (`crates/chartliner-core`) and 2 (shapes) implemented.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -82,8 +82,8 @@ crates/marina-egui          theme, toolbar, palette, settings, panes (unchanged)
 | `mermaid::write` ✅ | `Diagram` → `.mmd` text. Deterministic order (stable diffs). |
 | `mermaid::read` ✅ | `.mmd` text → `Diagram`. A small hand-written lexer and reader for the `flowchart` subset in §4. Unknown statements are kept verbatim and written back. |
 | `layout` ✅ (placeholder) | Positions for nodes without `@shape`. Phase 1 places them in a simple row-by-row grid; phase 6 replaces this with the layered layout (§4.4). |
-| `geometry` | Anchor positions, connector endpoint resolution, hit-testing (point-in-rect, distance-to-segment), marquee intersection. |
-| `snap` | `snap(point, grid)`, `snap_rect`, nearest-anchor search within a radius. |
+| `geometry` ✅ (rects, handles, resize, shape hit-testing) | Anchor positions, connector endpoint resolution, hit-testing (point-in-rect, distance-to-segment), marquee intersection. |
+| `snap` ✅ | `snap(point, grid)`, `snap_rect`, nearest-anchor search within a radius. |
 | `history` | Undo/redo as a stack of whole `Diagram` snapshots, with coalescing for drags. Diagrams are small, so snapshots are simpler than an operation log and cannot get out of sync. |
 | `ids` ✅ | Readable Mermaid node ids from labels (`"Orders DB"` → `orders_db`, de-duplicated). |
 
@@ -101,10 +101,10 @@ Same file layout as `apps/pageliner/native`:
 | `backend.rs` | Tokio runtime: list/read/write `.mmd` files, debounced autosave through `marina_core::debounce`, atomic writes. Request/`Event` channels, the same as ThreadLiner/PageLiner. |
 | `app.rs` | `ChartLinerApp`: owns backend, open diagram, `EditorState`, overlays, palette, toasts. Routes events, commands and canvas actions. |
 | `canvas/view.rs`, `canvas/grid.rs` ✅ | Pan/zoom transform (zoom steps 10–600 %, zoom about a point) and the grid (minor lines, a major line every 5 cells, only majors when cells get small). |
-| `canvas/mod.rs` | The canvas widget: `ui.allocate_painter`, view transform (pan + zoom), grid drawing, item painting, input dispatch to the active tool. Returns `CanvasAction`s (`Changed`, `SelectionChanged`, `EditLabel(id)`). |
-| `canvas/tools.rs` | A small state machine per tool: `Idle → Dragging{start} → commit`. Rect tools snap the start and end corners. Line tools show anchor hints on hover and glue when released over one. |
-| `canvas/paint.rs` | Draws shapes, connectors, arrowheads, selection handles and anchor hints with theme colours from `marina_egui::theme`. |
-| `canvas/label.rs` | Inline label editing: an `egui::TextEdit` placed over the shape (multi-line, `Enter` commits, `Shift+Enter` adds a line, `Esc` cancels). |
+| `canvas/mod.rs` ✅ | The canvas widget: `ui.allocate_painter`, view transform (pan + zoom), grid drawing, item painting, input dispatch to the active tool. Returns `CanvasAction`s (`Changed`, `SelectionChanged`, `EditLabel(id)`). |
+| `canvas/tools.rs` ✅ (shape tools) | A small state machine per tool: `Idle → Dragging{start} → commit`. Rect tools snap the start and end corners. Line tools show anchor hints on hover and glue when released over one. |
+| `canvas/paint.rs` ✅ (shapes) | Draws shapes, connectors, arrowheads, selection handles and anchor hints with theme colours from `marina_egui::theme`. |
+| `canvas/label.rs` ✅ | Inline label editing: an `egui::TextEdit` placed over the shape (multi-line, `Enter` commits, `Shift+Enter` adds a line, `Esc` cancels). |
 | `views.rs` | Sidebar (diagram list for the project), toolbar (`marina_egui::toolbar` with tool buttons), status bar (zoom %, grid size, cursor position in grid units, save state). |
 | `overlays/` | Settings (grid size, show grid, title bar), rename/delete confirmations, About. |
 | `ui_tests.rs` | `egui_kittest` headless flows (§6). |
@@ -236,6 +236,15 @@ saved on the first edit.
   (after `Alt` placement) keep their offset. Glued connectors follow.
 - **Resizing:** 8 handles. Edges snap to the grid. The minimum size is one
   grid cell.
+- **Ids:** a new shape takes its Mermaid id from its first label
+  (`"Orders DB"` → `orders_db`); after that the id stays put when the label
+  changes. An empty first label leaves `node`, `node_2`, ….
+- **Deleting** a shape also deletes the connectors glued to it, since a
+  Mermaid edge can't have a missing end. Shapes declared only in kept
+  statements (`external`) can be moved and resized but not relabelled or
+  deleted.
+- **Esc** cancels a label edit, else a drag (moved or resized shapes go
+  back), else clears the selection.
 - **Undo:** one history entry per completed gesture (a drag is one entry,
   not one per frame), plus one per label edit and one per delete.
 - **Keyboard:** arrow keys nudge by one grid step (`Shift`: 5 steps).
@@ -271,7 +280,7 @@ saved on the first edit.
 |---|---|---|
 | **0. Scaffold** ✅ | `chartliner-core` + `apps/chartliner/native` crates in the workspace; window opens with toolbar, empty canvas, grid, pan/zoom; icon (`assets/icon.svg/png`); `config.rs` paths. | 1 day |
 | **1. Core model + Mermaid** ✅ | `model`, `mermaid::read/write`, `ids`, layout comments, passthrough, golden + round-trip tests. Can be built in parallel with phase 0. | 2–3 days |
-| **2. Shapes** | Select, Rect, RoundRect, Text tools; snap; move; resize handles; marquee; delete; inline label editing; painting with theme colours. | 3–4 days |
+| **2. Shapes** ✅ | Select, Rect, RoundRect, Text tools; snap; move; resize handles; marquee; delete; inline label editing; painting with theme colours. | 3–4 days |
 | **3. Connectors** | Line/Arrow tools, anchors, glue/unglue, endpoint handles, arrowheads, hit-testing on segments, free lines. | 2–3 days |
 | **4. History + keyboard** | Snapshot undo/redo with gesture coalescing; nudge; select all; command registry and palette entries. | 1 day |
 | **5. Project + persistence** | Backend: open folder, diagram list sidebar, new/rename/delete, debounced atomic autosave, external-change reload; `lastProject`. | 2 days |

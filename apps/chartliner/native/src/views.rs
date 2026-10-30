@@ -130,6 +130,7 @@ pub struct StatusProps<'a> {
     pub tool: Tool,
     /// The pointer in model coordinates, when over the canvas.
     pub pointer: Option<Pos2>,
+    pub selected: usize,
     pub grid: f32,
     pub zoom: f32,
     /// The UI scale id (`100`, `125`, …).
@@ -155,6 +156,9 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) {
     );
 
     let mut parts = Vec::new();
+    if props.selected > 0 {
+        parts.push(format!("{} selected", props.selected));
+    }
     if let Some(at) = props.pointer {
         let cell = |v: f32| (v / props.grid).floor() as i64;
         parts.push(format!("{}, {}", cell(at.x), cell(at.y)));

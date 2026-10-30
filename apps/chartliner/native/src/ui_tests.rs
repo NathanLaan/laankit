@@ -11,13 +11,16 @@ use crate::app::ChartLinerApp;
 use crate::canvas::Tool;
 use crate::config::Paths;
 
-fn harness() -> (tempfile::TempDir, Paths, Harness<'static, ChartLinerApp>) {
+pub(crate) fn harness() -> (tempfile::TempDir, Paths, Harness<'static, ChartLinerApp>) {
     let tmp = tempfile::tempdir().unwrap();
     let paths = Paths {
         user_data: tmp.path().join("ChartLiner"),
     };
     let h = Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
+        // 60 fps, so two clicks a few frames apart are a double click
+        // (the default step is 0.25 s).
+        .with_step_dt(1.0 / 60.0)
         .with_context_setup(marina_egui::fonts::install)
         .build_ui_state(
             |ui, app: &mut ChartLinerApp| app.show(ui),
@@ -31,7 +34,12 @@ fn prefs(paths: &Paths) -> Value {
 }
 
 /// A press-move-release with `button`, a frame per event.
-fn drag(h: &mut Harness<'static, ChartLinerApp>, button: PointerButton, from: Pos2, to: Pos2) {
+pub(crate) fn drag(
+    h: &mut Harness<'static, ChartLinerApp>,
+    button: PointerButton,
+    from: Pos2,
+    to: Pos2,
+) {
     let press = |pos, pressed| Event::PointerButton {
         pos,
         button,

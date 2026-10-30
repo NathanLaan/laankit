@@ -4,15 +4,19 @@
 //!
 //! | Module    | Holds                                                              |
 //! |-----------|--------------------------------------------------------------------|
-//! | `model`   | `Diagram`, shapes, connectors and the geometry types               |
+//! | `model`   | `Diagram`, shapes, connectors, the geometry types and edits        |
+//! | `geometry`| Rectangle helpers, resize handles, hit-testing                     |
+//! | `snap`    | Grid snapping                                                      |
 //! | `mermaid` | `read` / `write` between a `Diagram` and `.mmd` text               |
 //! | `ids`     | Mermaid node ids made from labels                                  |
 //! | `layout`  | Positions for shapes the file gives none for                       |
 
+pub mod geometry;
 pub mod ids;
 pub mod layout;
 pub mod mermaid;
 pub mod model;
+pub mod snap;
 
 pub use mermaid::{read, write, ReadError};
 pub use model::{
