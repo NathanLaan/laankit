@@ -20,11 +20,12 @@ pub enum ExportAction {
 }
 
 /// `size`: the output's size with the current options (`None`: nothing to
-/// export).
+/// export). `asking`: the save dialog is open, so Export… waits.
 pub fn show(
     ctx: &egui::Context,
     state: &mut ExportState,
     size: Option<(u32, u32)>,
+    asking: bool,
 ) -> Option<ExportAction> {
     let resp = Dialog::compact("blockliner-export", "Export Diagram").show(ctx, |ui| {
         let o = &mut state.options;
@@ -66,7 +67,14 @@ pub fn show(
         dialog::muted_text(ui, &note);
         let mut out = None;
         dialog::actions(ui, |ui| {
-            if dialog::button(ui, "Export…", ButtonKind::Primary, size.is_some()).clicked() {
+            if dialog::button(
+                ui,
+                "Export…",
+                ButtonKind::Primary,
+                size.is_some() && !asking,
+            )
+            .clicked()
+            {
                 out = Some(ExportAction::Export);
             }
             if dialog::button(ui, "Cancel", ButtonKind::Secondary, true).clicked() {

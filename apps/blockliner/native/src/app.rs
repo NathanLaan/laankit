@@ -28,6 +28,7 @@ use crate::overlays::export::{ExportAction, ExportState};
 use crate::overlays::name::{NameAction, NameState};
 use crate::overlays::settings::{SettingsAction, SettingsState};
 use crate::overlays::{self, Overlay};
+use crate::picker::Picker;
 use crate::views::{self, SaveState, SidebarAction, StatusProps, ToolbarProps};
 
 /// eframe storage keys.
@@ -85,9 +86,21 @@ pub struct BlockLinerApp {
     screenshot: Option<Screenshot>,
     /// `MARINA_OPEN`: a dialog to open on the first frame, for screenshots.
     open_on_start: Option<String>,
+    /// The folder and save dialogs, off the UI thread where they'd freeze it.
+    picker: Picker<Pick>,
     /// Tests: export here instead of asking with the save dialog.
     #[cfg(test)]
     export_to: Option<PathBuf>,
+}
+
+/// What a file dialog's answer is for.
+enum Pick {
+    Folder,
+    /// The Export dialog's choices when Export… was pressed.
+    Export {
+        options: export::Options,
+        selected_only: bool,
+    },
 }
 
 impl BlockLinerApp {
@@ -130,6 +143,7 @@ impl BlockLinerApp {
             toasts: Toasts::default(),
             screenshot: Screenshot::from_env(),
             open_on_start: std::env::var("MARINA_OPEN").ok(),
+            picker: Picker::new(),
             #[cfg(test)]
             export_to: None,
         };
@@ -146,6 +160,7 @@ impl BlockLinerApp {
         }
         self.initialized = true;
         self.backend.attach(ctx);
+        self.picker.attach(ctx);
         fonts::install(ctx);
         self.theme.apply(ctx);
         match self.open_on_start.take().as_deref() {
@@ -357,11 +372,30 @@ impl BlockLinerApp {
     // --- The folder and its diagrams ------------------------------------------
 
     fn pick_folder(&mut self) {
-        if let Some(folder) = rfd::FileDialog::new()
-            .set_title("Open Folder")
-            .pick_folder()
-        {
-            self.open_project(folder, None);
+        self.picker.start(Pick::Folder, || {
+            rfd::FileDialog::new()
+                .set_title("Open Folder")
+                .pick_folder()
+        });
+    }
+
+    /// A file dialog's answer.
+    fn picked(&mut self, ctx: &egui::Context) {
+        let Some((pick, path)) = self.picker.poll() else {
+            return;
+        };
+        match pick {
+            Pick::Folder => self.open_project(path, None),
+            Pick::Export {
+                options,
+                selected_only,
+            } => {
+                if self.export(ctx, &path, options, selected_only)
+                    && matches!(self.overlay, Some(Overlay::Export(_)))
+                {
+                    self.overlay = None;
+                }
+            }
         }
     }
 
@@ -651,38 +685,10 @@ impl BlockLinerApp {
         scope(&self.diagram, objects)
     }
 
-    /// Where to export: the system save dialog, in the project folder.
-    #[cfg(not(test))]
-    fn save_path(
-        &self,
-        folder: &std::path::Path,
-        name: &str,
-        format: export::Format,
-    ) -> Option<PathBuf> {
-        rfd::FileDialog::new()
-            .set_title("Export Diagram")
-            .set_directory(folder)
-            .set_file_name(name)
-            .add_filter(format.label(), &[format.ext()])
-            .save_file()
-    }
-
-    /// Tests never open the save dialog.
-    #[cfg(test)]
-    fn save_path(&self, _: &std::path::Path, _: &str, _: export::Format) -> Option<PathBuf> {
-        self.export_to.clone()
-    }
-
-    /// Asks where, then writes the image. Returns whether it was written
-    /// (the dialog then closes).
-    fn export(
-        &mut self,
-        ctx: &egui::Context,
-        scope: &blockliner_core::export::Scope,
-        state: &ExportState,
-    ) -> bool {
+    /// Asks where to export (the answer comes to [`Self::picked`]).
+    fn ask_export(&mut self, state: &ExportState) {
         let (Some(project), Some(doc)) = (&self.project, &self.doc) else {
-            return false;
+            return;
         };
         let o = state.options;
         let suffix = if state.selected_only {
@@ -691,12 +697,60 @@ impl BlockLinerApp {
             ""
         };
         let name = format!("{}{suffix}.{}", doc.name, o.format.ext());
-        let picked = self.save_path(&project.folder.clone(), &name, o.format);
-        let Some(path) = picked else {
+        let ask = self.save_dialog(project.folder.clone(), name, o.format);
+        let pick = Pick::Export {
+            options: o,
+            selected_only: state.selected_only,
+        };
+        self.picker.start(pick, ask);
+    }
+
+    /// The system save dialog, in the project folder.
+    #[cfg(not(test))]
+    fn save_dialog(
+        &self,
+        folder: PathBuf,
+        name: String,
+        format: export::Format,
+    ) -> impl FnOnce() -> Option<PathBuf> + Send + 'static {
+        move || {
+            rfd::FileDialog::new()
+                .set_title("Export Diagram")
+                .set_directory(folder)
+                .set_file_name(name)
+                .add_filter(format.label(), &[format.ext()])
+                .save_file()
+        }
+    }
+
+    /// Tests never open the save dialog.
+    #[cfg(test)]
+    fn save_dialog(
+        &self,
+        _: PathBuf,
+        _: String,
+        _: export::Format,
+    ) -> impl FnOnce() -> Option<PathBuf> + Send + 'static {
+        let to = self.export_to.clone();
+        move || to
+    }
+
+    /// Writes the image to `path`. Returns whether it was written (the
+    /// Export dialog then closes).
+    fn export(
+        &mut self,
+        ctx: &egui::Context,
+        path: &Path,
+        o: export::Options,
+        selected_only: bool,
+    ) -> bool {
+        let Some(scope) = self.export_scope(selected_only) else {
+            self.toasts
+                .error("Couldn't export: there's nothing to export.");
             return false;
         };
-        let written = export::render(ctx, &self.diagram, scope, &o)
-            .and_then(|bytes| export::write(&path, &bytes));
+        let written = export::render(ctx, &self.diagram, &scope, &o)
+            .and_then(|bytes| export::write(path, &bytes));
         match written {
             Ok(()) => {
                 let file = path.file_name().map(|f| f.to_string_lossy().into_owned());
@@ -781,6 +835,7 @@ impl BlockLinerApp {
         self.init(&ctx);
         self.shift = ctx.input(|i| i.modifiers.shift);
         self.backend_events();
+        self.picked(&ctx);
         self.watch_folder(&ctx);
         self.dispatch_keys(&ctx);
 
@@ -955,13 +1010,9 @@ impl BlockLinerApp {
             Overlay::Export(state) => {
                 let scope = self.export_scope(state.selected_only);
                 let size = scope.as_ref().map(|s| export::size(s, &state.options));
-                match overlays::export::show(ctx, state, size) {
+                match overlays::export::show(ctx, state, size, self.picker.busy()) {
                     Some(ExportAction::Close) => keep = false,
-                    Some(ExportAction::Export) => {
-                        if let Some(scope) = scope {
-                            keep = !self.export(ctx, &scope, state);
-                        }
-                    }
+                    Some(ExportAction::Export) => self.ask_export(state),
                     None => {}
                 }
             }
