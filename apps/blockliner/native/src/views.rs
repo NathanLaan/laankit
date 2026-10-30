@@ -168,6 +168,31 @@ fn paint_tool_icon(ui: &Ui, tool: Tool, c: Pos2, ink: Color32) {
             painter.line_segment([from, to - (to - from).normalized() * 3.0], stroke);
             painter.add(arrowhead(from, to, 8.0, ink));
         }
+        // Across, up, across: a right-angle route.
+        Tool::ElbowLine => {
+            let points = [
+                vec2(-9.0, 6.0),
+                vec2(0.0, 6.0),
+                vec2(0.0, -6.0),
+                vec2(9.0, -6.0),
+            ];
+            painter.add(Shape::line(points.map(|v| c + v).to_vec(), stroke));
+        }
+        Tool::ElbowArrow => {
+            let points = [
+                vec2(-9.0, 6.0),
+                vec2(-1.0, 6.0),
+                vec2(-1.0, -6.0),
+                vec2(6.0, -6.0),
+            ];
+            painter.add(Shape::line(points.map(|v| c + v).to_vec(), stroke));
+            painter.add(arrowhead(
+                c + vec2(-1.0, -6.0),
+                c + vec2(10.0, -6.0),
+                7.0,
+                ink,
+            ));
+        }
         Tool::Select | Tool::Text => {}
     }
 }

@@ -24,6 +24,10 @@ pub enum Act {
     Redo,
     SelectAll,
     Delete,
+    /// The selected connectors become right-angle…
+    RouteElbow,
+    /// …or straight.
+    RouteStraight,
     /// Move the selection by this many grid steps (the arrow keys go
     /// through `App::nudge_keys`, which also reads Shift and Alt).
     Nudge(i8, i8),
@@ -49,6 +53,10 @@ pub struct View {
     /// The open diagram has something to export.
     pub has_content: bool,
     pub has_selection: bool,
+    /// Selected connectors include a straight one…
+    pub straight_selected: bool,
+    /// …or a right-angle one.
+    pub elbow_selected: bool,
     pub can_undo: bool,
     pub can_redo: bool,
 }
@@ -74,6 +82,14 @@ fn selected(v: &View) -> bool {
     ready(v) && v.has_selection
 }
 
+fn has_straight(v: &View) -> bool {
+    ready(v) && v.straight_selected
+}
+
+fn has_elbow(v: &View) -> bool {
+    ready(v) && v.elbow_selected
+}
+
 fn undoable(v: &View) -> bool {
     ready(v) && v.can_undo
 }
@@ -91,21 +107,30 @@ pub fn tool_key(tool: Tool) -> (Key, &'static str) {
         Tool::RoundRect => (Key::O, "O"),
         Tool::Line => (Key::L, "L"),
         Tool::Arrow => (Key::A, "A"),
+        // An elbow looks like a J; E for (right-angle) arrows, the most used.
+        Tool::ElbowLine => (Key::J, "J"),
+        Tool::ElbowArrow => (Key::E, "E"),
         Tool::Text => (Key::T, "T"),
     }
 }
 
-/// A tool's number: its place in the toolbar. Bound to the physical key, so
-/// the number row works on layouts that put the digits behind Shift.
+/// A tool's number: its place in the toolbar ([`Tool::ALL`]). Bound to the
+/// physical key, so the number row works on layouts that put the digits
+/// behind Shift.
 pub fn tool_digit(tool: Tool) -> (Key, &'static str) {
-    match tool {
-        Tool::Select => (Key::Num1, "1"),
-        Tool::Rect => (Key::Num2, "2"),
-        Tool::RoundRect => (Key::Num3, "3"),
-        Tool::Line => (Key::Num4, "4"),
-        Tool::Arrow => (Key::Num5, "5"),
-        Tool::Text => (Key::Num6, "6"),
-    }
+    const DIGITS: [(Key, &str); 9] = [
+        (Key::Num1, "1"),
+        (Key::Num2, "2"),
+        (Key::Num3, "3"),
+        (Key::Num4, "4"),
+        (Key::Num5, "5"),
+        (Key::Num6, "6"),
+        (Key::Num7, "7"),
+        (Key::Num8, "8"),
+        (Key::Num9, "9"),
+    ];
+    let i = Tool::ALL.iter().position(|&t| t == tool).unwrap_or(0);
+    DIGITS[i]
 }
 
 pub fn registry() -> Registry<Act, View> {
@@ -143,7 +168,13 @@ pub fn registry() -> Registry<Act, View> {
     for tool in Tool::ALL {
         let (key, letter) = tool_key(tool);
         let (digit, number) = tool_digit(tool);
-        let id = format!("tool.{}", tool.name().to_lowercase().replace(' ', ""));
+        let id: String = tool
+            .name()
+            .to_lowercase()
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect();
+        let id = format!("tool.{id}");
         r.register(
             add(
                 &id,
@@ -194,6 +225,24 @@ pub fn registry() -> Registry<Act, View> {
                 .when(selected),
         );
     }
+    r.register(
+        add(
+            "edit.routeElbow",
+            "Make Connectors Right-Angle",
+            "Edit",
+            Act::RouteElbow,
+        )
+        .when(has_straight),
+    );
+    r.register(
+        add(
+            "edit.routeStraight",
+            "Make Connectors Straight",
+            "Edit",
+            Act::RouteStraight,
+        )
+        .when(has_elbow),
+    );
     r.register(
         add("edit.delete", "Delete", "Edit", Act::Delete)
             .key(Binding::logical(Modifiers::NONE, Key::Delete))
@@ -293,6 +342,8 @@ mod tests {
             doc_open: true,
             has_content: true,
             has_selection: true,
+            straight_selected: true,
+            elbow_selected: true,
             can_undo: true,
             can_redo: true,
         };
@@ -311,6 +362,8 @@ mod tests {
                 doc_open: true,
                 has_content: true,
                 has_selection: true,
+                straight_selected: true,
+                elbow_selected: true,
                 can_undo: true,
                 can_redo: true,
             })
@@ -324,7 +377,9 @@ mod tests {
         assert_eq!(label("tool.select").as_deref(), Some("V, 1"));
         assert_eq!(label("tool.rectangle").as_deref(), Some("R, 2"));
         assert_eq!(label("tool.roundedrectangle").as_deref(), Some("O, 3"));
-        assert_eq!(label("tool.text").as_deref(), Some("T, 6"));
+        assert_eq!(label("tool.rightangleline").as_deref(), Some("J, 6"));
+        assert_eq!(label("tool.rightanglearrow").as_deref(), Some("E, 7"));
+        assert_eq!(label("tool.text").as_deref(), Some("T, 8"));
     }
 
     #[test]

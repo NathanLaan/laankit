@@ -7,8 +7,8 @@
 use std::path::PathBuf;
 
 use blockliner_core::{
-    read, write, Anchor, Connector, ConnectorKind, Diagram, Direction, End, Point, Rect, Shape,
-    ShapeKind,
+    read, write, Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect,
+    Route, Shape, ShapeKind,
 };
 
 fn fixture(name: &str) -> PathBuf {
@@ -185,6 +185,20 @@ impl Rng {
         (0..self.below(5)).map(|_| *self.pick(PARTS)).collect()
     }
 
+    fn route(&mut self) -> Route {
+        match self.below(4) {
+            0 | 1 => Route::Straight,
+            2 => Route::ELBOW,
+            _ => Route::Elbow {
+                mid: Some(if self.chance(50) {
+                    Mid::X(self.coord())
+                } else {
+                    Mid::Y(self.coord())
+                }),
+            },
+        }
+    }
+
     fn anchor(&mut self) -> Option<Anchor> {
         *self.pick(&[
             None,
@@ -249,6 +263,7 @@ fn generate(rng: &mut Rng) -> Diagram {
             if rng.chance(30) {
                 c.label = Some(rng.text());
             }
+            c.route = rng.route();
             d.connectors.push(c);
         }
     }
@@ -266,8 +281,9 @@ fn generate(rng: &mut Rng) -> Diagram {
         } else {
             (to, from)
         };
+        let route = rng.route();
         d.connectors
-            .push(Connector::new(*rng.pick(&kinds), from, to));
+            .push(Connector::new(*rng.pick(&kinds), from, to).with_route(route));
     }
     if rng.chance(20) {
         d.passthrough.push("  %% kept".into());

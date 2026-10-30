@@ -144,6 +144,8 @@ fn tools_from_the_toolbar_and_the_keyboard() {
         (Key::A, Tool::Arrow),
         (Key::L, Tool::Line),
         (Key::T, Tool::Text),
+        (Key::J, Tool::ElbowLine),
+        (Key::E, Tool::ElbowArrow),
         (Key::V, Tool::Select),
     ] {
         h.key_press(key);
@@ -157,7 +159,9 @@ fn tools_from_the_toolbar_and_the_keyboard() {
         (Key::Num3, Tool::RoundRect),
         (Key::Num4, Tool::Line),
         (Key::Num5, Tool::Arrow),
-        (Key::Num6, Tool::Text),
+        (Key::Num6, Tool::ElbowLine),
+        (Key::Num7, Tool::ElbowArrow),
+        (Key::Num8, Tool::Text),
         (Key::Num1, Tool::Select),
     ] {
         h.key_press(key);

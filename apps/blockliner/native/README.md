@@ -30,7 +30,9 @@ install as `/usr/bin/blockliner`.
 
 | Keys | Does |
 |---|---|
-| V, R, O, L, A, T, or 1–6 | Select, Rectangle, Rounded Rectangle, Line, Arrow, Text tool (Shift: keep the tool after each shape). The numbers follow the toolbar and show in each tool button's corner; they're physical keys, so the number row works on any layout |
+| V, R, O, L, A, J, E, T, or 1–8 | Select, Rectangle, Rounded Rectangle, Line, Arrow, Right-Angle Line, Right-Angle Arrow, Text tool (Shift: keep the tool after each shape). The numbers follow the toolbar and show in each tool button's corner; they're physical keys, so the number row works on any layout |
+| Drag a right-angle line's middle handle | Moves its middle segment across (double-click the handle: automatic again) |
+| Right-click | Selects what's under it, then a menu: Right-Angle / Straight (for lines), Delete, Select All |
 | Drag / click (shape tool) | Draws a shape (click: the default 8 × 3 cells) |
 | Double-click a shape | Edits its label (Enter commits, Shift+Enter adds a line, Esc cancels) |
 | Arrow keys | Nudge one grid step (Shift: 5 steps, Alt: 1 px) |
@@ -53,7 +55,8 @@ install as `/usr/bin/blockliner`.
 | `model`    | `Diagram`, `Shape`, `Connector`, `End` (glued to a shape, or free), `Rect`, `Point`          |
 | `mermaid`  | `read` and `write`: the flowchart, the `%%` layout block, statements kept verbatim, label escapes |
 | `layout`   | `layered`: positions for nodes a file gives no layout for (longest-path ranks, barycenter order) |
-| `geometry`, `snap`, `connect` | Handles and resizing, grid snapping, where connector ends meet shapes, hit-testing |
+| `geometry`, `snap`, `connect` | Handles and resizing, grid snapping, where connector ends meet shapes, connector paths, hit-testing |
+| `route`    | Right-angle routes: candidate paths scored by shapes crossed, bends and length (cached per geometry in `connect`) |
 | `ids`      | Mermaid ids from labels (`"Orders DB"` → `orders_db`)                                       |
 | `history`  | Undo and redo as whole-diagram snapshots                                                    |
 | `export`   | Which objects an export contains, and the page around them                                  |
@@ -62,7 +65,7 @@ The app (`apps/blockliner/native`):
 
 | Module     | What it does                                                                                |
 |------------|---------------------------------------------------------------------------------------------|
-| `main`     | The eframe window (1280 × 800, at least 800 × 500), icon, app id, the command-line path        |
+| `main`     | The eframe window (1280 × 800, at least 800 × 640), icon, app id, the command-line path        |
 | `app`      | Owns everything; routes commands, canvas output, overlay actions and autosave events         |
 | `backend`  | The folder on disk: list, read, create, rename, delete; the debounced atomic autosave; outside changes |
 | `config`   | `ui-preferences.json` in `~/.config/BlockLiner` (the platform equivalent elsewhere)           |

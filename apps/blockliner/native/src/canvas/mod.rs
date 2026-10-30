@@ -13,6 +13,8 @@
 //! | Select: double-click a shape            | Edits its label                          |
 //! | Line / Arrow: drag                      | Draws a connector (ends glue to shapes)  |
 //! | Select: drag a selected line's end      | Re-glues or frees that end               |
+//! | Select: drag a right-angle line's middle| Moves its middle segment (double-click: automatic again) |
+//! | Right-click                             | Selects what's under it; the context menu |
 //! | Alt while dragging                      | No snapping                              |
 
 pub mod grid;
@@ -52,6 +54,17 @@ pub struct Output {
     /// A shape or line tool made its shape or line; the app goes back to
     /// Select unless the tool was picked with Shift.
     pub tool_done: bool,
+    /// Picked in the right-click menu.
+    pub menu: Option<MenuAction>,
+}
+
+/// The canvas's right-click menu. Each is also a command.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuAction {
+    RouteElbow,
+    RouteStraight,
+    Delete,
+    SelectAll,
 }
 
 pub struct Canvas {
@@ -219,22 +232,57 @@ impl Canvas {
                 paint::preview(&painter, r, kind, self.view.zoom, &p);
             }
             // The line being drawn, to where it would end if let go now.
-            Gesture::Connect { kind, from, now } => {
+            Gesture::Connect {
+                kind,
+                route,
+                from,
+                now,
+            } => {
                 let to = self.target.clone().unwrap_or_else(|| {
                     End::Free(if alt { *now } else { snap_point(*now, d.grid) })
                 });
-                let line = Connector::new(*kind, from.clone(), to);
-                if let Some((a, b)) = d.connector_points(&line) {
-                    let a = self.view.to_screen(rect.min, pos(a.x, a.y));
-                    let b = self.view.to_screen(rect.min, pos(b.x, b.y));
-                    paint::line_preview(&painter, a, b, *kind, self.view.zoom, &p);
+                let line = Connector::new(*kind, from.clone(), to).with_route(*route);
+                if let Some(path) = d.connector_path(&line) {
+                    let points: Vec<Pos2> = path
+                        .iter()
+                        .map(|q| self.view.to_screen(rect.min, pos(q.x, q.y)))
+                        .collect();
+                    paint::line_preview(&painter, &points, *kind, self.view.zoom, &p);
                 }
             }
             _ => {}
         }
         self.label_editor(ui, d);
         self.cursor(ui, tool, space, panning);
+        out.menu = self.context_menu(&resp, d);
         out
+    }
+
+    /// The right-click menu, on what the right-click selected.
+    fn context_menu(&self, resp: &egui::Response, d: &Diagram) -> Option<MenuAction> {
+        let (straight, elbow) = self.selected_routes(d);
+        let (lines, any) = (!self.lines.is_empty(), self.has_selection());
+        let mut picked = None;
+        resp.context_menu(|ui| {
+            let mut item = |ui: &mut Ui, text: &str, keys: &str, on: bool, act: MenuAction| {
+                let mut button = egui::Button::new(text);
+                if !keys.is_empty() {
+                    button = button.shortcut_text(keys);
+                }
+                if ui.add_enabled(on, button).clicked() {
+                    picked = Some(act);
+                    ui.close();
+                }
+            };
+            if lines {
+                item(ui, "Right-Angle", "", straight, MenuAction::RouteElbow);
+                item(ui, "Straight", "", elbow, MenuAction::RouteStraight);
+                ui.separator();
+            }
+            item(ui, "Delete", "Delete", any, MenuAction::Delete);
+            item(ui, "Select All", "Ctrl+A", true, MenuAction::SelectAll);
+        });
+        picked
     }
 
     fn cursor(&self, ui: &Ui, tool: Tool, space: bool, panning: bool) {
@@ -247,6 +295,12 @@ impl Canvas {
             resize_cursor(*handle)
         } else if matches!(self.gesture, Gesture::Move { .. }) {
             CursorIcon::Move
+        } else if let Gesture::Middle { path, segment, .. } = &self.gesture {
+            if path[*segment].x == path[*segment + 1].x {
+                CursorIcon::ResizeHorizontal
+            } else {
+                CursorIcon::ResizeVertical
+            }
         } else if matches!(self.gesture, Gesture::Endpoint { .. }) {
             CursorIcon::Crosshair
         } else if !hovered {
@@ -257,6 +311,8 @@ impl Canvas {
             match &self.hover {
                 Some(Hit::Handle(_, h)) => resize_cursor(*h),
                 Some(Hit::Endpoint(..)) => CursorIcon::Crosshair,
+                Some(Hit::Middle(_, true)) => CursorIcon::ResizeHorizontal,
+                Some(Hit::Middle(_, false)) => CursorIcon::ResizeVertical,
                 Some(Hit::Shape(_) | Hit::Line(_)) => CursorIcon::Move,
                 None => return,
             }

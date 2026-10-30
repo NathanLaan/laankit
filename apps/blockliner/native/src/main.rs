@@ -26,6 +26,8 @@ mod ui_tests_lines;
 #[cfg(test)]
 mod ui_tests_project;
 #[cfg(test)]
+mod ui_tests_routes;
+#[cfg(test)]
 mod ui_tests_shapes;
 
 use config::Paths;
@@ -43,7 +45,8 @@ fn main() -> eframe::Result {
         .with_title("BlockLiner")
         .with_app_id(APP_ID)
         .with_inner_size([1280.0, 800.0])
-        .with_min_inner_size([800.0, 500.0])
+        // Tall enough for every toolbar button (the tools and the bottom group).
+        .with_min_inner_size([800.0, 640.0])
         .with_icon(app_icon());
     if paths.prefs().custom_titlebar {
         viewport = marina_egui::window::undecorated(viewport);

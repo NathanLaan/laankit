@@ -195,6 +195,54 @@ impl End {
     }
 }
 
+/// How a connector runs between its ends.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Route {
+    /// One straight segment.
+    #[default]
+    Straight,
+    /// Horizontal and vertical segments, recomputed as things move
+    /// (`crate::route`). `mid` pins the middle segment where the user
+    /// dragged it.
+    Elbow { mid: Option<Mid> },
+}
+
+impl Route {
+    pub const ELBOW: Route = Route::Elbow { mid: None };
+
+    pub fn is_elbow(self) -> bool {
+        matches!(self, Route::Elbow { .. })
+    }
+}
+
+/// A right-angle route's pinned middle segment: a vertical one at this x,
+/// or a horizontal one at this y. Written `x:240` / `y:120`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Mid {
+    X(f32),
+    Y(f32),
+}
+
+impl Mid {
+    pub fn parse(s: &str) -> Option<Self> {
+        let (axis, v) = s.split_once(':')?;
+        let v: f32 = v.parse().ok().filter(|v: &f32| v.is_finite())?;
+        match axis {
+            "x" => Some(Mid::X(v)),
+            "y" => Some(Mid::Y(v)),
+            _ => None,
+        }
+    }
+
+    /// Moved with the rest of a selection.
+    pub fn translated(self, dx: f32, dy: f32) -> Self {
+        match self {
+            Mid::X(x) => Mid::X(x + dx),
+            Mid::Y(y) => Mid::Y(y + dy),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Connector {
     pub kind: ConnectorKind,
@@ -203,6 +251,7 @@ pub struct Connector {
     /// An edge label from the file (`a -->|label| b`). Only Mermaid edges
     /// carry one; free lines have nowhere to store it.
     pub label: Option<String>,
+    pub route: Route,
 }
 
 impl Connector {
@@ -212,7 +261,13 @@ impl Connector {
             from,
             to,
             label: None,
+            route: Route::Straight,
         }
+    }
+
+    pub fn with_route(mut self, route: Route) -> Self {
+        self.route = route;
+        self
     }
 
     /// Both ends glued, so the connector is a Mermaid edge. Otherwise it

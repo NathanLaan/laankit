@@ -5,7 +5,9 @@
 use std::path::Path;
 
 use blockliner_core::export::{scope, Objects};
-use blockliner_core::{Connector, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
+use blockliner_core::{
+    Anchor, Connector, ConnectorKind, Diagram, End, Rect, Route, Shape, ShapeKind,
+};
 use egui::{Key, Modifiers};
 use egui_kittest::kittest::Queryable;
 
@@ -24,8 +26,9 @@ fn context() -> egui::Context {
     ctx
 }
 
-/// An arrow from a box to a round box, a long label that wraps, a text box
-/// and an edge label.
+/// An arrow from a box to a round box, a long label that wraps, a text box,
+/// an edge label, and a right-angle line from the text box up to the round
+/// box.
 fn diagram() -> Diagram {
     let mut d = Diagram::new();
     d.shapes.push(Shape::new(
@@ -53,6 +56,15 @@ fn diagram() -> Diagram {
     );
     arrow.label = Some("SQL".into());
     d.connectors.push(arrow);
+    // A right-angle line, drawn as a polyline.
+    d.connectors.push(
+        Connector::new(
+            ConnectorKind::Line,
+            End::glued("note", Some(Anchor::E)),
+            End::glued("db", Some(Anchor::S)),
+        )
+        .with_route(Route::ELBOW),
+    );
     d
 }
 
@@ -78,6 +90,10 @@ fn the_svg_matches_its_golden_file() {
     assert!(svg.contains(">API Gateway &amp;</tspan>"), "{svg}");
     assert!(svg.contains(">&lt;Auth&gt;</tspan>"), "{svg}");
     assert!(!svg.contains("class=\"grid\""));
+    assert!(
+        svg.contains("<polyline points=\"240,160 360,160 360,100\""),
+        "{svg}"
+    );
     assert!(export::svg(&ctx, &d, &s, true).contains("class=\"grid\""));
     export::png(&svg, 1.0).expect("resvg reads it");
 }

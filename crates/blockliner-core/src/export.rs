@@ -72,9 +72,8 @@ pub fn scope(d: &Diagram, objects: Objects<'_>) -> Option<Scope> {
         grow(r.right(), r.bottom());
     }
     for &i in &connectors {
-        if let Some((a, b)) = d.connector_points(&d.connectors[i]) {
-            grow(a.x, a.y);
-            grow(b.x, b.y);
+        for p in d.connector_path(&d.connectors[i]).unwrap_or_default() {
+            grow(p.x, p.y);
         }
     }
     let (x0, y0, x1, y1) = extent?;

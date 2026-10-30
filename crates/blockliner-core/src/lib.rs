@@ -6,7 +6,8 @@
 //! |-----------|--------------------------------------------------------------------|
 //! | `model`   | `Diagram`, shapes, connectors, the geometry types and edits        |
 //! | `geometry`| Rectangle helpers, resize handles, hit-testing                     |
-//! | `connect` | Where connectors meet shapes, and hit-testing them                 |
+//! | `connect` | Where connectors meet shapes, their paths, and hit-testing them    |
+//! | `route`   | Right-angle routes between two ends                                |
 //! | `snap`    | Grid snapping                                                      |
 //! | `mermaid` | `read` / `write` between a `Diagram` and `.mmd` text               |
 //! | `ids`     | Mermaid node ids made from labels                                  |
@@ -21,9 +22,11 @@ pub mod ids;
 pub mod layout;
 pub mod mermaid;
 pub mod model;
+pub mod route;
 pub mod snap;
 
 pub use mermaid::{read, write, ReadError};
 pub use model::{
-    Anchor, Connector, ConnectorKind, Diagram, Direction, End, Point, Rect, Shape, ShapeKind,
+    Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect, Route, Shape,
+    ShapeKind,
 };

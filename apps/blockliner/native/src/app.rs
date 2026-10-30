@@ -21,7 +21,7 @@ use marina_egui::{fonts, icons, window};
 use serde_json::{json, Value};
 
 use crate::backend::{self, Backend, Change, Event};
-use crate::canvas::{Canvas, Tool};
+use crate::canvas::{Canvas, MenuAction, Tool};
 use crate::commands::{self, Act, View};
 use crate::config::Paths;
 use crate::export;
@@ -271,6 +271,8 @@ impl BlockLinerApp {
             doc_open: self.doc.is_some(),
             has_content: self.has_content(),
             has_selection: self.canvas.has_selection(),
+            straight_selected: self.canvas.selected_routes(&self.diagram).0,
+            elbow_selected: self.canvas.selected_routes(&self.diagram).1,
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
         }
@@ -351,6 +353,12 @@ impl BlockLinerApp {
             }
             Act::Delete => {
                 self.canvas.delete_selection(&mut self.diagram);
+            }
+            Act::RouteElbow => {
+                self.canvas.set_route(&mut self.diagram, true);
+            }
+            Act::RouteStraight => {
+                self.canvas.set_route(&mut self.diagram, false);
             }
             Act::Escape => self.canvas.escape(&mut self.diagram),
             Act::ZoomIn => self.canvas.zoom_step(1),
@@ -984,6 +992,12 @@ impl BlockLinerApp {
                 if out.tool_done && !self.sticky_tool {
                     self.tool = Tool::Select;
                 }
+                acts.extend(out.menu.map(|m| match m {
+                    MenuAction::RouteElbow => Act::RouteElbow,
+                    MenuAction::RouteStraight => Act::RouteStraight,
+                    MenuAction::Delete => Act::Delete,
+                    MenuAction::SelectAll => Act::SelectAll,
+                }));
             });
         for act in acts {
             self.apply(act);

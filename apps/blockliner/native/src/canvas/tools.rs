@@ -1,17 +1,22 @@
 //! The tools and the pointer gestures they start.
 //!
 //! - Shape tools: drag corner to corner, or click for the default size.
-//! - Line / Arrow: drag from where the line starts to where it ends. An end
-//!   dropped on a side's midpoint glues there; on a shape's body it glues
-//!   dynamically (to whichever side faces the other end); elsewhere it stays
-//!   free, on the grid.
+//! - Line / Arrow, and their right-angle versions: drag from where the line
+//!   starts to where it ends. An end dropped on a side's midpoint glues
+//!   there; on a shape's body it glues dynamically (to whichever side faces
+//!   the other end); elsewhere it stays free, on the grid.
+//! - A selected right-angle line's middle handle drags its middle segment
+//!   sideways; a double-click on it puts the route back to automatic.
 //! - Select: click to select (Shift toggles); drag a shape or line to move
 //!   the selection, a shape's handle to resize it, a selected line's end to
 //!   re-glue or free it, and empty canvas to box-select.
 
 use blockliner_core::geometry::{resize, Handle};
+use blockliner_core::route::{drag_middle, middle_segment};
 use blockliner_core::snap::{snap, snap_point};
-use blockliner_core::{Connector, ConnectorKind, Diagram, End, Point, Rect, Shape, ShapeKind};
+use blockliner_core::{
+    Connector, ConnectorKind, Diagram, End, Point, Rect, Route, Shape, ShapeKind,
+};
 use egui::{PointerButton, Response, Ui};
 
 use super::{pt, Canvas, Output};
@@ -25,16 +30,21 @@ pub enum Tool {
     RoundRect,
     Line,
     Arrow,
+    ElbowLine,
+    ElbowArrow,
     Text,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 6] = [
+    /// In toolbar order (which the number keys follow).
+    pub const ALL: [Tool; 8] = [
         Tool::Select,
         Tool::Rect,
         Tool::RoundRect,
         Tool::Line,
         Tool::Arrow,
+        Tool::ElbowLine,
+        Tool::ElbowArrow,
         Tool::Text,
     ];
 
@@ -45,6 +55,8 @@ impl Tool {
             Tool::RoundRect => "Rounded Rectangle",
             Tool::Line => "Line",
             Tool::Arrow => "Arrow",
+            Tool::ElbowLine => "Right-Angle Line",
+            Tool::ElbowArrow => "Right-Angle Arrow",
             Tool::Text => "Text",
         }
     }
@@ -62,9 +74,17 @@ impl Tool {
     /// The connector a line tool makes.
     pub fn connector_kind(self) -> Option<ConnectorKind> {
         match self {
-            Tool::Line => Some(ConnectorKind::Line),
-            Tool::Arrow => Some(ConnectorKind::Arrow),
+            Tool::Line | Tool::ElbowLine => Some(ConnectorKind::Line),
+            Tool::Arrow | Tool::ElbowArrow => Some(ConnectorKind::Arrow),
             _ => None,
+        }
+    }
+
+    /// How a line tool's connectors run.
+    pub fn route(self) -> Route {
+        match self {
+            Tool::ElbowLine | Tool::ElbowArrow => Route::ELBOW,
+            _ => Route::Straight,
         }
     }
 }
@@ -76,6 +96,9 @@ pub enum Hit {
     Handle(String, Handle),
     /// An end of the (single) selected connector: `true` for its `to` end.
     Endpoint(usize, bool),
+    /// The middle-segment handle of the (single) selected right-angle
+    /// connector: `true` when that segment is vertical (it moves in x).
+    Middle(usize, bool),
     Line(usize),
     Shape(String),
 }
@@ -92,6 +115,7 @@ pub enum Gesture {
     },
     Connect {
         kind: ConnectorKind,
+        route: Route,
         from: End,
         now: Point,
     },
@@ -114,6 +138,14 @@ pub enum Gesture {
         to: bool,
         original: Connector,
         now: Point,
+    },
+    /// Dragging a right-angle connector's middle segment.
+    Middle {
+        index: usize,
+        original: Connector,
+        /// Its path and middle segment when the drag began.
+        path: Vec<Point>,
+        segment: usize,
     },
     Marquee {
         start: Point,
@@ -192,8 +224,33 @@ impl Canvas {
         }
         if resp.double_clicked_by(PointerButton::Primary) && tool == Tool::Select {
             let at = resp.interact_pointer_pos().map(to_model);
-            if let Some(s) = at.and_then(|p| d.shape_at(p)).filter(|s| !s.external) {
+            if let Some(Hit::Middle(i, _)) = at.and_then(|p| self.hit(d, p, reach)) {
+                // Back to the automatic route.
+                if let Some(c) = d.connectors.get_mut(i) {
+                    c.route = Route::ELBOW;
+                }
+            } else if let Some(s) = at.and_then(|p| d.shape_at(p)).filter(|s| !s.external) {
                 self.edit_label(s.id.clone(), s.label.clone(), false);
+            }
+        }
+        // A right-click selects what's under it (or clears the selection on
+        // empty canvas), so the context menu acts on that.
+        if resp.secondary_clicked() && tool == Tool::Select {
+            if let Some(at) = resp.interact_pointer_pos().map(to_model) {
+                self.commit_label(d);
+                let item = match d.connector_at(at, reach.line) {
+                    Some(i) => Some(Item::Line(i)),
+                    None => d.shape_at(at).map(|s| Item::Shape(s.id.clone())),
+                };
+                match item {
+                    Some(Item::Line(i)) if self.lines.contains(&i) => {}
+                    Some(Item::Shape(id)) if self.selection.contains(&id) => {}
+                    Some(item) => self.select(item, false),
+                    None => {
+                        self.selection.clear();
+                        self.lines.clear();
+                    }
+                }
             }
         }
 
@@ -212,12 +269,24 @@ impl Canvas {
     fn hit(&self, d: &Diagram, p: Point, reach: Reach) -> Option<Hit> {
         let near = |c: Point, r: f32| (c.x - p.x).abs() <= r && (c.y - p.y).abs() <= r;
         if let ([], [i]) = (self.selection.as_slice(), self.lines.as_slice()) {
-            if let Some((a, b)) = d.connectors.get(*i).and_then(|c| d.connector_points(c)) {
+            let c = d.connectors.get(*i);
+            if let Some(path) = c.and_then(|c| d.connector_path(c)) {
+                let (a, b) = (path[0], path[path.len() - 1]);
                 if near(b, reach.handle) {
                     return Some(Hit::Endpoint(*i, true));
                 }
                 if near(a, reach.handle) {
                     return Some(Hit::Endpoint(*i, false));
+                }
+                let elbow = c.is_some_and(|c| c.route.is_elbow());
+                if let (true, Some(at), Some(seg)) = (
+                    elbow,
+                    super::paint::middle_handle(&path),
+                    middle_segment(&path),
+                ) {
+                    if near(at, reach.handle) {
+                        return Some(Hit::Middle(*i, path[seg].x == path[seg + 1].x));
+                    }
                 }
             }
         }
@@ -274,6 +343,7 @@ impl Canvas {
         if let Some(kind) = tool.connector_kind() {
             return Gesture::Connect {
                 kind,
+                route: tool.route(),
                 from: Self::end_at(d, start, reach, mods.snapping),
                 now: start,
             };
@@ -286,6 +356,19 @@ impl Canvas {
                     original: d.connectors[index].clone(),
                     now: start,
                 };
+            }
+            Some(Hit::Middle(index, _)) => {
+                let original = d.connectors[index].clone();
+                let path = d.connector_path(&original).unwrap_or_default();
+                if let Some(segment) = middle_segment(&path) {
+                    return Gesture::Middle {
+                        index,
+                        original,
+                        path,
+                        segment,
+                    };
+                }
+                (!self.lines.contains(&index)).then_some(Item::Line(index))
             }
             Some(Hit::Handle(id, handle)) => {
                 let original = d.shape(&id).map(|s| s.rect).unwrap_or_default();
@@ -357,6 +440,7 @@ impl Canvas {
                     if let Some(cur) = d.connectors.get_mut(*i) {
                         cur.from = shift(&c.from);
                         cur.to = shift(&c.to);
+                        cur.route = translated(c.route, dx, dy);
                     }
                 }
             }
@@ -389,6 +473,21 @@ impl Canvas {
                     *if *to { &mut c.to } else { &mut c.from } = end;
                 }
             }
+            // The middle segment follows the pointer across, on the grid.
+            Gesture::Middle {
+                index,
+                path,
+                segment,
+                ..
+            } => {
+                let at = if snapping { snap_point(now, grid) } else { now };
+                if let (Some(mid), Some(c)) = (
+                    drag_middle(path, *segment, at),
+                    d.connectors.get_mut(*index),
+                ) {
+                    c.route = Route::Elbow { mid: Some(mid) };
+                }
+            }
         }
     }
 
@@ -410,13 +509,19 @@ impl Canvas {
                 }
                 true
             }
-            Gesture::Connect { kind, from, now } => {
+            Gesture::Connect {
+                kind,
+                route,
+                from,
+                now,
+            } => {
                 let to = Self::end_at(d, now, reach, snapping);
                 let same_shape = from.shape().is_some() && from.shape() == to.shape();
                 if same_shape || from == to {
                     return false;
                 }
-                d.connectors.push(Connector::new(kind, from, to));
+                d.connectors
+                    .push(Connector::new(kind, from, to).with_route(route));
                 self.selection.clear();
                 self.lines = vec![d.connectors.len() - 1];
                 true
@@ -446,7 +551,8 @@ impl Canvas {
             Gesture::Idle
             | Gesture::Move { .. }
             | Gesture::Resize { .. }
-            | Gesture::Endpoint { .. } => false,
+            | Gesture::Endpoint { .. }
+            | Gesture::Middle { .. } => false,
         }
     }
 
@@ -529,6 +635,9 @@ impl Canvas {
             }
             Gesture::Endpoint {
                 index, original, ..
+            }
+            | Gesture::Middle {
+                index, original, ..
             } => {
                 if let Some(c) = d.connectors.get_mut(index) {
                     *c = original;
@@ -561,8 +670,33 @@ impl Canvas {
                         *p = Point::new(p.x + dx, p.y + dy);
                     }
                 }
+                c.route = translated(c.route, dx, dy);
             }
         }
+    }
+
+    /// Makes the selected connectors right-angle (`elbow`) or straight.
+    /// One already right-angle keeps its pinned middle. `false` if none
+    /// changed.
+    pub fn set_route(&mut self, d: &mut Diagram, elbow: bool) -> bool {
+        let mut changed = false;
+        for &i in &self.lines {
+            if let Some(c) = d.connectors.get_mut(i) {
+                if c.route.is_elbow() != elbow {
+                    c.route = if elbow { Route::ELBOW } else { Route::Straight };
+                    changed = true;
+                }
+            }
+        }
+        changed
+    }
+
+    /// The selected connectors' routes: (any straight, any right-angle).
+    pub fn selected_routes(&self, d: &Diagram) -> (bool, bool) {
+        let routes = self.lines.iter().filter_map(|&i| d.connectors.get(i));
+        routes.fold((false, false), |(s, e), c| {
+            (s || !c.route.is_elbow(), e || c.route.is_elbow())
+        })
     }
 
     pub fn select_all(&mut self, d: &Diagram) {
@@ -585,6 +719,16 @@ impl Canvas {
         let shapes = d.remove_shapes(&ids);
         self.selection.retain(|id| d.shape(id).is_some());
         lines + shapes
+    }
+}
+
+/// A route moved with the rest of a selection: a pinned middle moves too.
+fn translated(r: Route, dx: f32, dy: f32) -> Route {
+    match r {
+        Route::Elbow { mid: Some(m) } => Route::Elbow {
+            mid: Some(m.translated(dx, dy)),
+        },
+        r => r,
     }
 }
 

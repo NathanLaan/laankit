@@ -19,11 +19,16 @@
 //! ```
 //!
 //! - `@shape <id> x= y= w= h=`: every shape's rectangle.
-//! - `@edge <from>-><to>[#n] [from=<anchor>] [to=<anchor>]`: the anchors of
-//!   the nth edge between two nodes, when not dynamic. Keyed by endpoints,
-//!   not position, so a hand-inserted edge doesn't shift the others.
-//! - `@line <line|arrow> from=<end> to=<end>`: a connector with a free end,
-//!   which Mermaid can't express. An end is `x,y` or `id[:anchor]`.
+//! - `@edge <from>-><to>[#n] [from=<anchor>] [to=<anchor>] [route=elbow
+//!   [mid=x:<n>|y:<n>]]`: the anchors of the nth edge between two nodes, when
+//!   not dynamic, and its route when right-angle. Keyed by endpoints, not
+//!   position, so a hand-inserted edge doesn't shift the others.
+//! - `@line <line|arrow> from=<end> to=<end> [route=elbow [mid=…]]`: a
+//!   connector with a free end, which Mermaid can't express. An end is `x,y`
+//!   or `id[:anchor]`.
+//!
+//! Right-angle routes live only here: Mermaid draws its own curve for the
+//! edge, as it does for every edge.
 
 mod label;
 mod lex;

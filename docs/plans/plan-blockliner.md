@@ -5,7 +5,9 @@ Phases 0–8 done: app scaffold, `crates/blockliner-core`, shapes, connectors,
 undo and keyboard, folder and autosave, import layout, export, and packaging.
 Hand checks on Windows and macOS remain
 ([`apps/blockliner/native/README.md`](../../apps/blockliner/native/README.md),
-"Still to verify by hand").
+"Still to verify by hand"). **Phase 9 (right-angle connectors) implemented
+(2026-10-30); phases 10–12 proposed** (§10): shape styles, Mermaid
+database/subroutine/hexagon/diamond shapes, copy and paste.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -70,6 +72,9 @@ text boxes is `bl_text`.
 Orthogonal/elbow routing, edge labels, colours/styles, `subgraph` containers
 (boundaries), copy/paste and duplicate, alignment/distribute, a stencil library (database, queue, actor, cloud), multiple pages, and
 Mermaid diagram types other than `flowchart`.
+
+Phases 9–12 (§10) take on right-angle routing, shape colours, the database,
+subroutine, hexagon and diamond shapes, and copy/paste.
 
 ---
 
@@ -173,8 +178,8 @@ rectangle, and is written back unchanged.
 |---|---|
 | `%% blockliner <version> grid=<px>` | Format version (1) and grid size. |
 | `%% @shape <id> x= y= w= h=` | Every shape's rectangle, in model order. |
-| `%% @edge <from>-><to>[#n] [from=<anchor>] [to=<anchor>]` | Fixed anchors of the nth edge between two nodes. Written only when an anchor is fixed; otherwise the glue is dynamic. Keyed by endpoints, not position, so a hand-inserted edge doesn't shift the others. |
-| `%% @line <line\|arrow> from=<end> to=<end>` | A connector with at least one free end. An end is `x,y` or `id[:anchor]`. |
+| `%% @edge <from>-><to>[#n] [from=<anchor>] [to=<anchor>] [route=elbow [mid=x:<n>\|y:<n>]]` | Fixed anchors and the route of the nth edge between two nodes. Written only when an anchor is fixed or the route is right-angle; otherwise the glue is dynamic and the edge straight. Keyed by endpoints, not position, so a hand-inserted edge doesn't shift the others. |
+| `%% @line <line\|arrow> from=<end> to=<end> [route=elbow [mid=…]]` | A connector with at least one free end. An end is `x,y` or `id[:anchor]`. |
 
 Any other `%% @…` line is reserved and dropped. Other `%%` comments are kept.
 
@@ -425,15 +430,28 @@ file stays small; the text stays editable).
 
 **MVP total: about 3–3.5 weeks.**
 
-### After the MVP (in rough value order)
+### After the MVP: planned phases (detail in §10)
 
-1. **Edge labels** (`a -- "HTTPS" --> b`) and **orthogonal routing**.
+| Phase | Deliverable | Effort |
+|---|---|---|
+| **9. Right-angle connectors** ✅ | Right-Angle Line and Right-Angle Arrow tools; routes made of horizontal and vertical segments that avoid shapes where they can; switching selected connectors between straight and right-angle; a draggable middle segment. Saved in the layout block (`route=elbow`); the Mermaid edge is unchanged. | 3–4 days |
+| **10. Shape styles** | Fill and stroke colours for shapes: preset swatches and a custom hex value, from the canvas's right-click menu and the palette. Saved as Mermaid `style` lines, which BlockLiner now owns for its shapes. | 2 days |
+| **11. More Mermaid shapes** | Database `[( )]`, subroutine `[[ ]]`, hexagon `{{ }}` and diamond `{ }` as real, editable shapes with their own outlines, label areas and hit-testing, behind a "More Shapes" toolbar button. | 2 days |
+| **12. Copy and paste** | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` for shapes and connectors, within a diagram, between diagrams and between BlockLiner windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out. | 2 days |
+
+**Phases 9–12: about 2 weeks.** They are independent; this order puts the
+most-wanted first. Copy and paste goes last so it carries routes, colours
+and the new shapes from the start.
+
+### After phase 12 (ideas, in rough value order)
+
+1. **Editable edge labels** (`a -- "HTTPS" --> b`; read-only today).
 2. **Subgraphs as boundary containers** (system/trust boundaries), which
    architecture diagrams use a lot. Maps to Mermaid `subgraph`.
-3. Copy/paste, duplicate, align/distribute, z-order.
-4. Styles (fill/stroke colour → `style`/`classDef`) and more shapes
-   (`[( )]` database, `[[ ]]` subroutine, `{{ }}` hexagon).
-5. "Copy as Mermaid" and opening `.mmd` files from NoteLiner.
+3. Duplicate (`Ctrl+D`), align/distribute, z-order.
+4. Connector colours (`linkStyle`, which addresses edges by index) and the
+   remaining Mermaid shapes (stadium, circle, parallelogram, trapezoid).
+5. Opening `.mmd` files from NoteLiner.
 6. More export options: a dark or transparent background, PDF, and
    "copy image to clipboard".
 
@@ -487,3 +505,357 @@ Adding a fourth app touches these places outside the new crates:
 | 7 | Export colours: follow the app theme, or always light? | **Light, always** (white background, dark ink): exports end up in documents and wikis, and an export shouldn't change with the theme. A dark or transparent background can be an option later (§7). |
 | 8 | Draw exports separately for SVG and PNG, or once? | **Once, as SVG**; PNG rasterises that SVG with `resvg` and the bundled fonts. One drawing path means the two formats can't drift apart. |
 | 9 | Where does the export drawing live? | **In the app** (`export.rs`), not in `blockliner-core`: label wrapping must match the canvas, which uses egui's text layout. The core holds only what is exported and the page bounds (`export::scope`), which is easy to unit-test. |
+| 10 | Right-angle routes in the Mermaid part too? Mermaid 11 can curve a single edge (`e1@{ curve: step }`), and older renderers can set it for the whole diagram (`%%{init: {"flowchart": {"curve": "step"}}}%%`). | **Not at first.** Edge ids and per-edge curves are recent Mermaid syntax; a renderer that doesn't know it rejects the whole diagram, which would break the "renders on GitHub" promise. Routes live in the layout block only, and Mermaid lays out and curves the edge itself, as it does for every edge today. Revisit once GitHub's Mermaid supports per-edge curves. |
+| 11 | Elbow tools: separate toolbar buttons, or a straight/right-angle switch on the Line and Arrow buttons? | **Separate buttons and keys** (as asked: new line and arrow types). A selected connector can still be switched either way. |
+| 12 | Where do colours get picked? | **The canvas's right-click menu** (new in phase 9/10, also holding cut/copy/paste and straight/right-angle) and **palette commands**. A floating style bar or an inspector pane is a bigger UI change, left for when there are more properties than two colours. |
+| 13 | Keys for the new tools (§10.0)? | `D` diamond, `H` hexagon, `C` database (cylinder), `S` subroutine, `J` right-angle line, `E` right-angle arrow. None clashes; the `Ctrl+` versions of C, E and J stay copy, sidebar and status bar. |
+| 14 | Pasting text that isn't a flowchart? | **A new text box** with that text, at the centre of the view, as Excalidraw does. Pasting a flowchart imports its nodes and edges. |
+
+---
+
+## 10. Phases 9–12 in detail
+
+### 10.0 Toolbar and keys after phase 11
+
+Nine tool buttons instead of six. The numbers still follow the toolbar, so
+Line, Arrow and Text move to new numbers. This is fine: the numbers were
+added on 2026-10-30 and haven't shipped yet.
+
+| # | Button | Letter | Notes |
+|---|---|---|---|
+| 1 | Select | `V` | |
+| 2 | Rectangle | `R` | |
+| 3 | Rounded Rectangle | `O` | |
+| 4 | More Shapes | `D` `H` `C` `S` | A flyout (phase 11). The button shows and picks the last one used; a small corner triangle, or a right-click, opens the four. Each letter picks its shape directly. |
+| 5 | Line | `L` | was 4 |
+| 6 | Arrow | `A` | was 5 |
+| 7 | Right-Angle Line | `J` | new (phase 9) |
+| 8 | Right-Angle Arrow | `E` | new (phase 9) |
+| 9 | Text | `T` | was 6 |
+
+- **Shift + key** keeps the tool, as now.
+- **Window size:** nine tools plus the five bottom buttons need about 600 px
+  of height. Raise the window's minimum height from 500 to 640 and check an
+  offscreen render at that size.
+- **Right-click menu:** one canvas context menu serves phases 9, 10 and 12.
+  - **On a selection:** Cut, Copy, Paste; Straight / Right-Angle (for
+    connectors); Fill ▸, Stroke ▸, Reset Style (for shapes); Delete.
+  - **On empty canvas:** Paste and Select All.
+  - Every item is also a palette command.
+
+### 10.1 Phase 9: right-angle connectors
+
+**What the user sees.**
+- **Tools:** two new tools, Right-Angle Line and Right-Angle Arrow, draw
+  connectors made only of horizontal and vertical segments.
+  - **Glue:** they glue exactly like the straight tools: a fixed side, the
+    shape body (dynamic), or a free end.
+  - **Following shapes:** the route is recomputed whenever an end or a shape
+    moves, so it always fits.
+- **Switching:** Straight / Right-Angle in the right-click menu (and the
+  palette) changes the selected connectors either way, as one undo step.
+- **Middle segment:** a selected right-angle connector shows a handle on its
+  middle segment. Dragging it moves that segment sideways, snapped to the
+  grid, and the offset is kept. Double-clicking the handle drops the offset
+  (back to automatic).
+
+**Model.**
+- **The route:** `Connector.route: Route { Straight, Elbow { mid: Option<f32> } }`.
+  `kind` stays `Line`/`Arrow`, because that's what Mermaid's `---`/`-->`
+  says. `mid` is the dragged middle segment's x (or y), in model units.
+- **One path for everything:** `Diagram::connector_path(&Connector) -> Vec<Point>`
+  replaces `connector_points`. A straight connector is a 2-point path.
+  Drawing, hit-testing (each segment, within 5 points), arrowheads (along the
+  last segment), edge labels (at the path's midpoint by length), export and
+  the export scope all read the path, so they can't disagree.
+
+**The router** (`blockliner-core/src/route.rs`, pure and unit-tested):
+1. **Stubs.** Each glued end leaves its side straight out for one grid cell
+   (a fixed anchor's side, or for dynamic glue each of the four sides in
+   turn). A free end has no side: it leaves along the axis that points most
+   towards the other end.
+2. **Candidates** between the two stub tips:
+   - two one-bend routes (horizontal then vertical, and the reverse);
+   - two two-bend routes through the midpoint (vertical middle segment at
+     the mid x, horizontal at the mid y, snapped to the grid);
+   - when a stub points away from the other end, routes that go around the
+     outside of both boxes (one cell past the outermost edge).
+   With `mid` set, only the two-bend routes are tried, through `mid`.
+3. **Score** each candidate:
+   - a large cost per shape the route crosses (the two end shapes included,
+     so a route never cuts back through its own box);
+   - a small cost per bend;
+   - plus its length.
+   Ties go to the first candidate, so routing is deterministic. Dynamic glue
+   tries each side pair (16) and keeps the best. That's at most about 100
+   tiny candidates per connector, cheap enough to run every frame.
+4. **Tidy up:** drop collinear and duplicate points.
+
+5. **Second pass** (added while building it): if the best route still
+   crosses a shape, the routes around that shape's sides (one cell out) are
+   tried too, so a shape between two others is gone round.
+
+This avoids other shapes when one of the candidate routes does, which covers
+typical architecture diagrams. A route that has to cross a box, because all
+candidates do, still crosses it, but never its own end boxes (those cost
+far more). Full maze routing (A* on a sparse grid) is a later refinement if
+real diagrams need it.
+
+**Speed.** Every frame asks for every path several times (drawing, hover
+hit-testing, the marquee), so routes are cached by everything they depend
+on: the ends, the pinned middle, every shape's rectangle and the grid. Only
+frames where something moved route anything. Measured on 100 shapes with 98
+right-angle connectors between random ones: about 9 ms (release) to route
+them all, then 0.6 ms per frame (release) or 5 ms (debug) when nothing
+moved.
+
+**As built** (2026-10-30), beyond the above:
+- **Toolbar now:** Select 1, Rectangle 2, Rounded Rectangle 3, Line 4,
+  Arrow 5, Right-Angle Line 6 (`J`), Right-Angle Arrow 7 (`E`), Text 8. The
+  numbers follow `Tool::ALL`, so phase 11's More Shapes button renumbers
+  them to §10.0's table without further code.
+- **Minimum window height** is already 640: eight tools and the bottom
+  group overlapped at 500 (checked in an offscreen render).
+- **Right-click menu:** Right-Angle and Straight (each greyed out when no
+  selected connector would change), Delete, Select All. A right-click
+  selects what's under it first, or clears the selection on empty canvas.
+  Phases 10 and 12 add their items.
+- **Palette:** "Make Connectors Right-Angle" and "Make Connectors
+  Straight".
+
+**File.**
+- **Glued edges:** `%% @edge a->b route=elbow` (with `mid=240` once the
+  middle segment is dragged), alongside the existing `from=`/`to=` anchors.
+  An `@edge` line is now written when an anchor is fixed **or** the route
+  isn't straight.
+- **Free lines:** `%% @line arrow from=… to=… route=elbow`.
+- **The Mermaid part doesn't change** (§9, question 10): `a --> b` stays
+  `a --> b`.
+- **No version bump:** the reader already ignores unknown fields. An older
+  BlockLiner opens these files with straight connectors and, if the user
+  edits them, writes them back straight. Acceptable for an app with no older
+  installs. The format stays `blockliner 1`.
+
+**Imported diagrams** keep straight connectors. Making long imported edges
+right-angle could become a layout option later.
+
+**Tests.**
+- **Router unit tests:** each side combination; free ends; stubs pointing
+  away; `mid`; collinear clean-up.
+- **Random-diagram property test,** like the layout's 300 graphs:
+  - every route is axis-aligned;
+  - every route starts and ends on its anchors;
+  - no route enters its own end shapes;
+  - whenever any candidate avoided every other shape, the chosen route does
+    too.
+- **Mermaid:** golden files and the round trip with `route=` and `mid=`.
+- **Headless UI:**
+  - drawing with both tools;
+  - switching a connector between straight and right-angle (and undoing it);
+  - dragging the middle segment;
+  - a route following a moved shape.
+- **Export:** the golden SVG gains a `<polyline>` connector.
+
+### 10.2 Phase 10: shape styles
+
+**What the user sees.**
+- **Fill ▸ and Stroke ▸:** two submenus in the right-click menu on selected
+  shapes, each showing:
+  - **Eight presets:** Gray, Blue, Teal, Green, Yellow, Orange, Red, Purple.
+    Each fill is a light tint, paired with a darker stroke of the same hue,
+    so picking a Fill also sets its matching Stroke unless the stroke was
+    set on its own.
+  - **Default:** back to the theme's colours.
+  - **Custom…:** a hex field (`#rgb` or `#rrggbb`) with a preview.
+- **Reset Style** clears both.
+- **Several shapes:** a style applies to every selected shape, as one undo
+  step.
+- **Text boxes** take a fill and stroke too, so a text box can become a
+  coloured note.
+- **Labels on a custom fill** are drawn in near-black or white, whichever
+  contrasts more with the fill, on the canvas and in exports. Without a
+  custom fill, labels keep the theme's text colour.
+
+**Model.**
+- **The style:** `Shape.style: Style { fill, stroke, color: Option<Colour>, extra: Vec<(String, String)> }`.
+- **`Colour`:** keeps the text as written (`#f9f`, `#dbeafe`, `red`) and a
+  parsed RGBA when it can parse it (hex, and the CSS names Mermaid examples
+  use). An unparseable value is kept and written back unchanged, but drawn
+  in the default colour.
+- **`extra`:** the other properties (`stroke-width`, `stroke-dasharray`, …),
+  kept in order and written back unchanged. Not edited in this phase.
+
+**File.**
+- **Taking over `style`:** BlockLiner now owns `style <id> …` lines for its
+  own shapes. They're read into `Shape.style` instead of being kept
+  verbatim. A `style` line for an external shape, or one naming several
+  ids, stays verbatim.
+- **Several lines for one shape** merge; the later one wins.
+- **Written** as one `style <id> fill:#dbeafe,stroke:#3b82f6,color:#111827`
+  per styled shape, after the edges and before the kept statements, in
+  shape order. Nothing is written for an unstyled shape.
+- **`color` is written** with a custom fill, chosen for contrast, because
+  Mermaid's own text colour follows the viewer's theme: a pale fill with
+  white text (GitHub's dark mode) would be unreadable.
+- **`classDef`/`class`** stay verbatim and aren't drawn: BlockLiner doesn't
+  apply class styles to the canvas. `bl_text` keeps its meaning, and a
+  shape's own `style` beats its class in Mermaid, as it does here.
+- **First save:** a hand-written file's `style` lines move to the normalised
+  position, as edges already do (the §4.3 rule: normalised once, then
+  byte-stable).
+
+**Tests.**
+- **Mermaid:** reading and writing `style` (merge, `extra` kept, external
+  and multi-id lines kept verbatim, unknown colours kept); golden files and
+  the round trip with random styles.
+- **Contrast:** the label colour against each preset and against extremes.
+- **Headless UI:**
+  - a preset from the right-click menu on two shapes (one undo step);
+  - a custom hex value, including a rejected bad one;
+  - Reset Style.
+- **Export:** the golden SVG with a styled shape.
+
+### 10.3 Phase 11: more Mermaid shapes
+
+**What the user sees.**
+- **The More Shapes button** (§10.0) offers four shapes:
+
+  | Shape | Mermaid | Default size (cells) | Key |
+  |---|---|---|---|
+  | Diamond (decision) | `id{"label"}` | 8 × 4 | `D` |
+  | Hexagon | `id{{"label"}}` | 8 × 3 | `H` |
+  | Database (cylinder) | `id[("label")]` | 6 × 4 | `C` |
+  | Subroutine | `id[["label"]]` | 8 × 3 | `S` |
+
+- **Full shapes:** they draw, select, resize, glue, style (phase 10) and
+  export like rectangles.
+- **Existing files:** shapes of these kinds that files already contain lose
+  their "not editable" badge and dashed outline. They were kept as
+  `ShapeKind::Other` until now.
+- **Still kept as before:** the remaining Mermaid shapes (stadium, circle,
+  parallelogram, trapezoid, asymmetric).
+
+**Model.**
+- **New kinds:** `ShapeKind::{Diamond, Hexagon, Database, Subroutine}`. The
+  reader maps the four delimiter pairs to them instead of `Other`.
+- **No file change:** the writer emits the same delimiters, so files that
+  already contain these shapes are byte-identical. There's nothing to
+  migrate.
+
+**Geometry** (`blockliner-core/src/geometry.rs`):
+- **Outlines** within the shape's rectangle:
+  - **Diamond:** the four side midpoints joined.
+  - **Hexagon:** flat top and bottom; the left and right points inset by
+    `min(h / 2, w / 4)`.
+  - **Database:** sides plus an elliptical cap, top and bottom, of height
+    `min(h / 5, 12)`.
+  - **Subroutine:** a rectangle with inner vertical lines 8 px in from each
+    side.
+- **Hit-testing:** exact polygons for the diamond and hexagon, so a click in
+  a diamond's empty corner selects what's behind it. The database and
+  subroutine use their rectangle.
+- **Anchors** stay the four side midpoints of the rectangle. Those are the
+  diamond's vertices and the hexagon's points, which is where connectors
+  should meet them anyway.
+- **Label areas,** so text wraps inside the outline:
+  - **Diamond:** the inner rectangle (half the width and height).
+  - **Hexagon:** inside the points.
+  - **Database:** below the top cap.
+  - **Subroutine:** between the inner lines.
+
+**Drawing.**
+- **Canvas** (`canvas/paint.rs`): paths for the outlines.
+- **Toolbar icons:** small drawings like the current tool icons.
+- **Export:** the SVG writer gets matching `<polygon>`/`<path>` elements,
+  and the PNG follows as before.
+
+**Tests.**
+- **Geometry:** outline points, polygon hit-tests (a diamond's corners
+  miss), label areas.
+- **Mermaid:** reading each delimiter into its kind; files with these
+  shapes are byte-identical through read → write; the round-trip generator
+  includes the new kinds.
+- **Headless UI:** each key and the flyout; a diamond's default size;
+  gluing an arrow to a diamond's vertex.
+- **Export:** the golden SVG gains all four shapes.
+
+### 10.4 Phase 12: copy and paste
+
+**What the user sees.**
+- **Copy, cut and paste:** `Ctrl+C`, `Ctrl+X` and `Ctrl+V`, plus the
+  right-click menu and the palette.
+  - **Copy** takes the selected shapes and lines.
+  - **Cut** also deletes them (one undo step).
+  - **Paste** adds them and selects them (one undo step).
+- **What's copied:**
+  - **Shapes** with labels, kinds, styles and sizes.
+  - **Connectors** glued at both ends to copied shapes, plus any selected
+    connector.
+  - **Ends glued to a shape that isn't copied** become free ends at their
+    current point, so a selected line is never lost.
+  - **Routes and edge labels** come along.
+- **Where it lands:**
+  - **The first paste** lands two grid cells down and right of the
+    originals; each further paste of the same copy steps another two cells.
+  - **Off-screen:** if that would put it outside the view (another diagram,
+    or the originals scrolled away), it's centred in the view instead.
+  - Positions stay snapped.
+- **Ids:** pasted shapes get new ids where the copied ones are taken
+  (`orders` → `orders_2`, through `ids::unique`), and their connectors
+  follow.
+- **External shapes** (declared in a kept statement) are copied as ordinary
+  shapes of their kind. The copy has its own declaration, so it's fully
+  editable.
+
+**The clipboard holds Mermaid text:** the selection written as a small
+BlockLiner diagram (`flowchart`, nodes, edges, `style` lines and the layout
+block, through `mermaid::write`). So:
+- **Into a README or a NoteLiner note:** it pastes as valid Mermaid that
+  renders as is.
+- **Between BlockLiner windows and diagrams:** it pastes back exactly,
+  layout included.
+- **A flowchart copied from elsewhere** (a README, Mermaid Live) pastes in,
+  laid out by `layout::layered` as on import, and placed by the same rules.
+- **Text that isn't a flowchart** pastes as a new text box (§9, question 14).
+
+**Mechanics.**
+- **Clipboard events:** egui turns the platform's copy, cut and paste keys
+  into `Event::Copy`, `Event::Cut` and `Event::Paste(text)`. The app handles
+  those (not key bindings) when no text field has focus. While a label is
+  being edited they belong to the text field, as now.
+- **The commands:** the palette and menu commands for copy and cut use
+  `ctx.copy_text`. Paste from the menu sends `ViewportCommand::RequestPaste`
+  (egui 0.37), which delivers the clipboard as the same `Event::Paste`, so
+  every paste goes through one path.
+- **Core:** a new `blockliner-core/src/clipboard.rs`:
+  - `fn copy(d, shapes, lines) -> Diagram` reuses the export scope's
+    selection rule, with the free-end conversion above;
+  - `fn paste(d, clip: Diagram, at: Offset) -> Vec<String>` renames ids,
+    remaps glue and offsets positions, and returns the new ids to select.
+- **Not in this phase:** images on the clipboard, and pasting into a
+  selected shape's label.
+
+**Tests.**
+- **Core:**
+  - copy then paste: the counts, new ids, remapped glue;
+  - free-end conversion;
+  - styles, routes and edge labels survive;
+  - pasting the same copy repeatedly steps;
+  - pasting into a diagram whose ids clash.
+- **Clipboard text:** the copied text parses as Mermaid (a `mermaid::read`
+  round trip), and a plain flowchart pastes laid out.
+- **Headless UI:**
+  - `Ctrl+C`/`Ctrl+V` and `Ctrl+X` through egui's clipboard events (one
+    undo step each);
+  - paste into a second diagram;
+  - plain text becomes a text box;
+  - nothing happens while a label is being edited.
+
+### 10.5 Docs per phase
+
+- **README tables:** the native README's keys and features tables
+  (`apps/blockliner/native/README.md`, `apps/blockliner/README.md`).
+- **This plan:** §4.1/§4.2 (the `route=`/`mid=` fields, `style` ownership,
+  the four shapes in the mapping table) and the status line.
+- **The help text** behind Settings → Keyboard Shortcuts comes from the
+  command registry, so it updates itself.

@@ -6,7 +6,7 @@ use std::fmt::Write;
 
 use super::label::encode;
 use super::{edge_key, FORMAT_VERSION, TEXT_CLASS};
-use crate::model::{Connector, ConnectorKind, Diagram, End, Shape, ShapeKind};
+use crate::model::{Connector, ConnectorKind, Diagram, End, Mid, Route, Shape, ShapeKind};
 
 pub fn write(d: &Diagram) -> String {
     let mut out = String::new();
@@ -67,7 +67,7 @@ pub fn write(d: &Diagram) -> String {
         };
         let n = seen.entry((from, to)).or_default();
         *n += 1;
-        if a.is_none() && b.is_none() {
+        if a.is_none() && b.is_none() && c.route == Route::Straight {
             continue;
         }
         let mut entry = format!("%% @edge {}", edge_key(from, to, *n));
@@ -77,16 +77,18 @@ pub fn write(d: &Diagram) -> String {
         if let Some(b) = b {
             let _ = write!(entry, " to={}", b.as_str());
         }
+        entry.push_str(&route(c.route));
         line(&mut out, format_args!("{entry}"));
     }
     for c in d.connectors.iter().filter(|c| !c.is_edge()) {
         line(
             &mut out,
             format_args!(
-                "%% @line {} from={} to={}",
+                "%% @line {} from={} to={}{}",
                 kind(c.kind),
                 end(&c.from),
-                end(&c.to)
+                end(&c.to),
+                route(c.route)
             ),
         );
     }
@@ -136,6 +138,20 @@ fn kind(k: ConnectorKind) -> &'static str {
     match k {
         ConnectorKind::Line => "line",
         ConnectorKind::Arrow => "arrow",
+    }
+}
+
+/// ` route=elbow[ mid=x:240]`, or nothing for a straight connector.
+fn route(r: Route) -> String {
+    match r {
+        Route::Straight => String::new(),
+        Route::Elbow { mid: None } => " route=elbow".into(),
+        Route::Elbow {
+            mid: Some(Mid::X(x)),
+        } => format!(" route=elbow mid=x:{}", num(x)),
+        Route::Elbow {
+            mid: Some(Mid::Y(y)),
+        } => format!(" route=elbow mid=y:{}", num(y)),
     }
 }
 
@@ -198,11 +214,25 @@ mod tests {
                 End::glued("api", None),
             )
         });
-        d.connectors.push(Connector::new(
-            ConnectorKind::Arrow,
-            End::Free(Point::new(-0.0, 10.0)),
-            End::glued("note", Some(Anchor::N)),
-        ));
+        d.connectors.push(
+            Connector::new(
+                ConnectorKind::Arrow,
+                End::Free(Point::new(-0.0, 10.0)),
+                End::glued("note", Some(Anchor::N)),
+            )
+            .with_route(Route::ELBOW),
+        );
+        // A right-angle edge needs an @edge line even with dynamic ends.
+        d.connectors.push(
+            Connector::new(
+                ConnectorKind::Arrow,
+                End::glued("note", None),
+                End::glued("orders", None),
+            )
+            .with_route(Route::Elbow {
+                mid: Some(Mid::X(260.5)),
+            }),
+        );
         assert_eq!(
             write(&d),
             "flowchart LR\n\
@@ -211,6 +241,7 @@ mod tests {
              \x20 note[\"async\"]:::bl_text\n\
              \x20 api --> orders\n\
              \x20 orders ---|\"reads\"| api\n\
+             \x20 note --> orders\n\
              \x20 classDef bl_text fill:none,stroke:none\n\
              \n\
              %% blockliner 1 grid=20\n\
@@ -218,7 +249,8 @@ mod tests {
              %% @shape orders x=240 y=40 w=160 h=60\n\
              %% @shape note x=40 y=140.5 w=200 h=40\n\
              %% @edge api->orders from=E\n\
-             %% @line arrow from=0,10 to=note:N\n"
+             %% @edge note->orders route=elbow mid=x:260.5\n\
+             %% @line arrow from=0,10 to=note:N route=elbow\n"
         );
     }
 }

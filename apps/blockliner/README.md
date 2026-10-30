@@ -19,11 +19,13 @@ the shared `marina-*` crates — no webview, no JavaScript. The shipped binary i
 
 - **Shapes** — rectangles, rounded rectangles and text boxes; drag to draw or
   click for a default size, move and resize on the grid, edit labels in place.
-- **Connectors** — lines and arrows that glue to a shape's sides (fixed) or to
-  the shape (turning as it moves), plus free lines anywhere.
+- **Connectors** — straight or right-angle lines and arrows that glue to a
+  shape's sides (fixed) or to the shape (turning as it moves), plus free
+  lines anywhere. Right-angle routes go round shapes in the way, and their
+  middle segment can be dragged.
 - **Editing** — box select, nudge with the arrow keys, undo and redo, single-key
-  tools (V, R, O, L, A, T, or 1–6 in toolbar order) and a command palette
-  (Ctrl+K).
+  tools (V, R, O, L, A, J, E, T, or 1–8 in toolbar order), a right-click
+  menu and a command palette (Ctrl+K).
 - **A folder of diagrams** — open any folder; its `.mmd` files are the sidebar's
   diagrams. Changes autosave, and edits made elsewhere (an editor, `git pull`)
   reload as an undoable step. Close Folder saves and goes back to no folder.

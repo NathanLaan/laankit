@@ -12,8 +12,9 @@ use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
 use anyhow::{anyhow, Context as _, Result};
+use blockliner_core::connect::path_midpoint;
 use blockliner_core::export::Scope;
-use blockliner_core::{ConnectorKind, Diagram, Rect, Shape, ShapeKind};
+use blockliner_core::{ConnectorKind, Diagram, Point, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{Align, Color32};
 use resvg::usvg;
@@ -139,13 +140,14 @@ pub fn svg(ctx: &egui::Context, d: &Diagram, scope: &Scope, grid: bool) -> Strin
     }
     for &i in &scope.connectors {
         let c = &d.connectors[i];
-        let Some((a, z)) = d.connector_points(c) else {
+        let Some(path) = d.connector_path(c) else {
             continue;
         };
         out.push_str("<g class=\"connector\">");
-        connector(&mut out, (a.x, a.y), (z.x, z.y), c.kind);
-        if let Some(text) = c.label.as_deref().filter(|t| !t.is_empty()) {
-            edge_label(&mut out, ctx, ((a.x + z.x) / 2.0, (a.y + z.y) / 2.0), text);
+        connector(&mut out, &path, c.kind);
+        let label = c.label.as_deref().filter(|t| !t.is_empty());
+        if let (Some(text), Some(at)) = (label, path_midpoint(&path)) {
+            edge_label(&mut out, ctx, (at.x, at.y), text);
         }
         out.push_str("</g>\n");
     }
@@ -232,42 +234,64 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
 
 /// A straight connector; an arrow's line stops short of the head so the
 /// tip stays sharp (as `paint::connector`).
-fn connector(out: &mut String, a: (f32, f32), b: (f32, f32), kind: ConnectorKind) {
-    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+/// A connector through `path`: a `<line>` when straight, a `<polyline>`
+/// with bends. An arrow's last segment stops at the head's base.
+fn connector(out: &mut String, path: &[Point], kind: ConnectorKind) {
+    let [.., a, b] = path else {
+        return;
+    };
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
     let len = (dx * dx + dy * dy).sqrt();
-    let line = |out: &mut String, to: (f32, f32)| {
+    let mut points: Vec<(f32, f32)> = path.iter().map(|p| (p.x, p.y)).collect();
+    let head = ARROW.clamp(6.0, 24.0).min(len);
+    let (ux, uy) = if len > 0.0 {
+        (dx / len, dy / len)
+    } else {
+        (0.0, 0.0)
+    };
+    let arrow = kind == ConnectorKind::Arrow && len > 0.0;
+    if arrow {
+        if let Some(end) = points.last_mut() {
+            *end = (b.x - ux * head * 0.8, b.y - uy * head * 0.8);
+        }
+    }
+    if let [(x1, y1), (x2, y2)] = points[..] {
         let _ = write!(
             out,
             r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="{INK}" stroke-width="{}"/>"#,
-            num(a.0),
-            num(a.1),
-            num(to.0),
-            num(to.1),
+            num(x1),
+            num(y1),
+            num(x2),
+            num(y2),
             num(STROKE)
         );
-    };
-    match kind {
-        ConnectorKind::Line => line(out, b),
-        ConnectorKind::Arrow if len > 0.0 => {
-            let head = ARROW.clamp(6.0, 24.0).min(len);
-            let (ux, uy) = (dx / len, dy / len);
-            line(out, (b.0 - ux * head * 0.8, b.1 - uy * head * 0.8));
-            // `views::arrowhead`: tip at `b`, base `head` back, 0.45 × head
-            // to each side.
-            let base = (b.0 - ux * head, b.1 - uy * head);
-            let (nx, ny) = (-uy * head * 0.45, ux * head * 0.45);
-            let _ = write!(
-                out,
-                r#"<polygon points="{},{} {},{} {},{}" fill="{INK}"/>"#,
-                num(b.0),
-                num(b.1),
-                num(base.0 + nx),
-                num(base.1 + ny),
-                num(base.0 - nx),
-                num(base.1 - ny)
-            );
-        }
-        ConnectorKind::Arrow => {}
+    } else {
+        let list: Vec<String> = points
+            .iter()
+            .map(|&(x, y)| format!("{},{}", num(x), num(y)))
+            .collect();
+        let _ = write!(
+            out,
+            r#"<polyline points="{}" fill="none" stroke="{INK}" stroke-width="{}"/>"#,
+            list.join(" "),
+            num(STROKE)
+        );
+    }
+    if arrow {
+        // `views::arrowhead`: tip at `b`, base `head` back, 0.45 × head to
+        // each side.
+        let base = (b.x - ux * head, b.y - uy * head);
+        let (nx, ny) = (-uy * head * 0.45, ux * head * 0.45);
+        let _ = write!(
+            out,
+            r#"<polygon points="{},{} {},{} {},{}" fill="{INK}"/>"#,
+            num(b.x),
+            num(b.y),
+            num(base.0 + nx),
+            num(base.1 + ny),
+            num(base.0 - nx),
+            num(base.1 - ny)
+        );
     }
 }
 

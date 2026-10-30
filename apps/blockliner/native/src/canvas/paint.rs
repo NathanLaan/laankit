@@ -1,8 +1,9 @@
 //! Drawing the diagram and the editing overlays (selection, handles, anchor
 //! hints, marquee, the shape or line being created) in theme colours.
 
-use blockliner_core::connect::anchor_point;
+use blockliner_core::connect::{anchor_point, path_midpoint};
 use blockliner_core::geometry::Handle;
+use blockliner_core::route::middle_segment;
 use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{vec2, Align, Color32, CornerRadius, FontId, Painter, Pos2, Stroke, StrokeKind};
@@ -82,21 +83,21 @@ pub fn diagram(
 
     let width = stroke_width(view.zoom);
     for (i, c) in d.connectors.iter().enumerate() {
-        let Some((a, b)) = d.connector_points(c) else {
+        let Some(path) = d.connector_path(c) else {
             continue;
         };
-        let (a, b) = (to_screen(a.x, a.y), to_screen(b.x, b.y));
+        let points: Vec<Pos2> = path.iter().map(|q| to_screen(q.x, q.y)).collect();
         let selected = o.lines.contains(&i);
         if !selected && o.hover == Some(&Hit::Line(i)) {
-            painter.line_segment(
-                [a, b],
+            painter.add(egui::Shape::line(
+                points.clone(),
                 Stroke::new(width + 4.0, p.accent.gamma_multiply(0.3)),
-            );
+            ));
         }
         let ink = if selected { p.accent } else { p.text_secondary };
-        connector(painter, a, b, c.kind, Stroke::new(width, ink), view.zoom);
-        if let Some(text) = &c.label {
-            edge_label(painter, a.lerp(b, 0.5), text, view.zoom, p);
+        connector(painter, &points, c.kind, Stroke::new(width, ink), view.zoom);
+        if let (Some(text), Some(at)) = (&c.label, path_midpoint(&path)) {
+            edge_label(painter, to_screen(at.x, at.y), text, view.zoom, p);
         }
     }
 
@@ -140,7 +141,22 @@ pub fn diagram(
         }
         ([], [i]) => {
             if let Some(c) = d.connectors.get(*i) {
-                if let Some((a, b)) = d.connector_points(c) {
+                let path = d.connector_path(c).unwrap_or_default();
+                // A right-angle route's middle segment can be dragged.
+                if let Some(at) = c.route.is_elbow().then(|| middle_handle(&path)).flatten() {
+                    let r = egui::Rect::from_center_size(
+                        to_screen(at.x, at.y),
+                        vec2(HANDLE_SIZE, HANDLE_SIZE),
+                    );
+                    painter.rect(
+                        r,
+                        1.0,
+                        p.bg_base,
+                        Stroke::new(1.5, p.accent),
+                        StrokeKind::Middle,
+                    );
+                }
+                if let (Some(&a), Some(&b)) = (path.first(), path.last()) {
                     for (end, at) in [(&c.from, a), (&c.to, b)] {
                         let fill = if end.shape().is_some() {
                             p.accent
@@ -253,23 +269,35 @@ fn corner(r: egui::Rect, zoom: f32) -> CornerRadius {
     CornerRadius::same((CORNER * zoom).min(r.height() / 2.0).min(255.0) as u8)
 }
 
-/// A straight connector; an arrow's line stops at the head's base so the
-/// tip stays sharp.
-fn connector(painter: &Painter, a: Pos2, b: Pos2, kind: ConnectorKind, stroke: Stroke, zoom: f32) {
-    match kind {
-        ConnectorKind::Line => {
-            painter.line_segment([a, b], stroke);
-        }
-        ConnectorKind::Arrow => {
-            let len = (b - a).length();
+/// Where a right-angle route's middle-segment handle sits: half-way along
+/// that segment, in model coordinates.
+pub fn middle_handle(path: &[blockliner_core::Point]) -> Option<blockliner_core::Point> {
+    let i = middle_segment(path)?;
+    let (a, b) = (path[i], path[i + 1]);
+    Some(blockliner_core::Point::new(
+        (a.x + b.x) / 2.0,
+        (a.y + b.y) / 2.0,
+    ))
+}
+
+/// A connector through `points`; an arrow's last segment stops at the
+/// head's base so the tip stays sharp.
+fn connector(painter: &Painter, points: &[Pos2], kind: ConnectorKind, stroke: Stroke, zoom: f32) {
+    let [.., a, b] = points else {
+        return;
+    };
+    let mut line = points.to_vec();
+    if kind == ConnectorKind::Arrow {
+        let len = (*b - *a).length();
+        if len > 0.0 {
             let head = (ARROW * zoom).clamp(6.0, 24.0).min(len);
-            if len > 0.0 {
-                let base = b - (b - a) / len * head * 0.8;
-                painter.line_segment([a, base], stroke);
-                painter.add(arrowhead(a, b, head, stroke.color));
+            if let Some(end) = line.last_mut() {
+                *end = *b - (*b - *a) / len * head * 0.8;
             }
+            painter.add(arrowhead(*a, *b, head, stroke.color));
         }
     }
+    painter.add(egui::Shape::line(line, stroke));
 }
 
 /// An edge label from the file, on a patch of background at the midpoint.
@@ -341,16 +369,14 @@ pub fn preview(painter: &Painter, r: egui::Rect, kind: &ShapeKind, zoom: f32, p:
 /// The line a drag will create.
 pub fn line_preview(
     painter: &Painter,
-    a: Pos2,
-    b: Pos2,
+    points: &[Pos2],
     kind: ConnectorKind,
     zoom: f32,
     p: &Palette,
 ) {
     connector(
         painter,
-        a,
-        b,
+        points,
         kind,
         Stroke::new(stroke_width(zoom), p.accent),
         zoom,

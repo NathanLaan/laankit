@@ -9,7 +9,8 @@ use super::lex::{self, LinkKind, NodeRef, Token};
 use super::{edge_key, TEXT_CLASS};
 use crate::layout;
 use crate::model::{
-    Anchor, Connector, ConnectorKind, Diagram, Direction, End, Point, Rect, Shape, ShapeKind,
+    Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect, Route, Shape,
+    ShapeKind,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -328,7 +329,7 @@ impl Body {
         for e in self.edges {
             let n = seen.entry((e.from.clone(), e.to.clone())).or_default();
             *n += 1;
-            let (a, b) = layout
+            let (a, b, route) = layout
                 .edges
                 .get(&edge_key(&e.from, &e.to, *n))
                 .copied()
@@ -338,6 +339,7 @@ impl Body {
                 from: End::glued(e.from, a),
                 to: End::glued(e.to, b),
                 label: e.label,
+                route,
             });
         }
         for line in &layout.lines {
@@ -358,7 +360,8 @@ struct Layout {
     grid: Option<f32>,
     /// Each `@shape`'s rectangle and its position among the `@shape` lines.
     shapes: HashMap<String, (usize, Rect)>,
-    edges: HashMap<String, (Option<Anchor>, Option<Anchor>)>,
+    /// Each `@edge`'s fixed anchors and route.
+    edges: HashMap<String, (Option<Anchor>, Option<Anchor>, Route)>,
     lines: Vec<Connector>,
 }
 
@@ -392,8 +395,10 @@ impl Layout {
             Some("@edge") => {
                 if let Some(key) = positional.first() {
                     let anchor = |k: &str| fields.get(k).and_then(|v| Anchor::parse(v));
-                    self.edges
-                        .insert(key.to_string(), (anchor("from"), anchor("to")));
+                    self.edges.insert(
+                        key.to_string(),
+                        (anchor("from"), anchor("to"), route(&fields)),
+                    );
                 }
             }
             Some("@line") => {
@@ -404,13 +409,24 @@ impl Layout {
                 };
                 let end = |k: &str| fields.get(k).and_then(|v| parse_end(v));
                 if let (Some(kind), Some(from), Some(to)) = (kind, end("from"), end("to")) {
-                    self.lines.push(Connector::new(kind, from, to));
+                    self.lines
+                        .push(Connector::new(kind, from, to).with_route(route(&fields)));
                 }
             }
             Some(w) if w.starts_with('@') => {}
             _ => return false,
         }
         true
+    }
+}
+
+/// `route=elbow [mid=x:240]`; anything else is straight.
+fn route(fields: &HashMap<&str, &str>) -> Route {
+    match fields.get("route") {
+        Some(&"elbow") => Route::Elbow {
+            mid: fields.get("mid").and_then(|v| Mid::parse(v)),
+        },
+        _ => Route::Straight,
     }
 }
 
