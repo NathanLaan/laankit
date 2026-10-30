@@ -10,10 +10,12 @@
 //! | `snap`    | Grid snapping                                                      |
 //! | `mermaid` | `read` / `write` between a `Diagram` and `.mmd` text               |
 //! | `ids`     | Mermaid node ids made from labels                                  |
+//! | `history` | Undo and redo                                                      |
 //! | `layout`  | Positions for shapes the file gives none for                       |
 
 pub mod connect;
 pub mod geometry;
+pub mod history;
 pub mod ids;
 pub mod layout;
 pub mod mermaid;

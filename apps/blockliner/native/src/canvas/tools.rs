@@ -492,13 +492,22 @@ impl Canvas {
         self.edit_label(id, String::new(), true);
     }
 
-    /// Esc: cancel a label edit, else a drag (putting moved, resized or
-    /// re-glued things back), else clear the selection. egui drops text
-    /// focus on Esc before the label editor sees the key, so the edit is
-    /// cancelled here.
+    /// Esc: cancel a label edit or a drag, else clear the selection. egui
+    /// drops text focus on Esc before the label editor sees the key, so the
+    /// edit is cancelled here.
     pub fn escape(&mut self, d: &mut Diagram) {
+        if !self.cancel(d) {
+            self.selection.clear();
+            self.lines.clear();
+        }
+    }
+
+    /// Cancels a label edit (keeping the old label), else a drag (putting
+    /// moved, resized or re-glued things back). `false` if there was
+    /// neither.
+    pub fn cancel(&mut self, d: &mut Diagram) -> bool {
         if self.label.take().is_some() {
-            return;
+            return true;
         }
         match std::mem::take(&mut self.gesture) {
             Gesture::Move { shapes, lines, .. } => {
@@ -525,12 +534,40 @@ impl Canvas {
                     *c = original;
                 }
             }
-            Gesture::Idle => {
-                self.selection.clear();
-                self.lines.clear();
-            }
+            Gesture::Idle => return false,
             Gesture::Create { .. } | Gesture::Connect { .. } | Gesture::Marquee { .. } => {}
         }
+        true
+    }
+
+    /// A drag or label edit is in progress, so the diagram is mid-change
+    /// (the history waits for it to finish).
+    pub fn is_busy(&self) -> bool {
+        self.label.is_some() || !matches!(self.gesture, Gesture::Idle)
+    }
+
+    /// Moves the selected shapes, and the free ends of the selected lines,
+    /// by (`dx`, `dy`).
+    pub fn nudge(&mut self, d: &mut Diagram, dx: f32, dy: f32) {
+        for id in &self.selection {
+            if let Some(s) = d.shape_mut(id) {
+                s.rect = s.rect.translated(dx, dy);
+            }
+        }
+        for &i in &self.lines {
+            if let Some(c) = d.connectors.get_mut(i) {
+                for end in [&mut c.from, &mut c.to] {
+                    if let End::Free(p) = end {
+                        *p = Point::new(p.x + dx, p.y + dy);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn select_all(&mut self, d: &Diagram) {
+        self.selection = d.shapes.iter().map(|s| s.id.clone()).collect();
+        self.lines = (0..d.connectors.len()).collect();
     }
 
     /// Deletes the selected lines and shapes (and the connectors glued to

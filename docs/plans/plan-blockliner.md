@@ -1,8 +1,8 @@
 # BlockLiner — Architecture Diagramming App
 
 Status: **In progress (2026-10-29).** Design decisions settled (§9). Phases 0
-(app scaffold), 1 (`crates/blockliner-core`), 2 (shapes) and 3 (connectors)
-implemented.
+(app scaffold), 1 (`crates/blockliner-core`), 2 (shapes), 3 (connectors) and 4
+(undo and keyboard) implemented.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -92,7 +92,7 @@ crates/marina-egui          theme, toolbar, palette, settings, panes (unchanged)
 | `geometry` ✅ | Rectangle helpers, resize handles and maths, shape hit-testing, marquee containment. |
 | `connect` ✅ | Anchor positions, connector end resolution (fixed and dynamic glue), distance-to-segment, connector and anchor hit-testing, `glue_at`, removing connectors. |
 | `snap` ✅ | `snap(v, grid)`, `snap_point`. |
-| `history` | Undo/redo as a stack of whole `Diagram` snapshots, with coalescing for drags. Diagrams are small, so snapshots are simpler than an operation log and cannot get out of sync. |
+| `history` ✅ | Undo/redo as whole `Diagram` snapshots (200 kept). The app calls `observe` whenever the canvas is idle, so each finished change is one step without per-edit bookkeeping. Diagrams are small, so snapshots are simpler than an operation log and cannot get out of sync. |
 | `ids` ✅ | Readable Mermaid node ids from labels (`"Orders DB"` → `orders_db`, de-duplicated). |
 
 Everything in the core is unit-tested without a window.
@@ -266,11 +266,16 @@ saved on the first edit.
   deleted.
 - **Esc** cancels a label edit, else a drag (moved or resized shapes go
   back), else clears the selection.
-- **Undo:** one history entry per completed gesture (a drag is one entry,
-  not one per frame), plus one per label edit and one per delete.
-- **Keyboard:** arrow keys nudge by one grid step (`Shift`: 5 steps).
-  `Delete`/`Backspace` deletes. `Ctrl+A` selects all. `Esc` clears the
-  selection or cancels the gesture.
+- **Undo:** one history entry per finished change. The history is taken
+  whenever the canvas is idle (no drag, no label being edited), so a whole
+  drag is one entry, and so is creating a shape together with its first
+  label. `Ctrl+Z` undoes, and `Ctrl+Shift+Z` / `Ctrl+Y` redo. A new change
+  after an undo drops the redo trail. Undo during a drag cancels the drag
+  first. While a label is being edited, `Ctrl+Z` belongs to the text field.
+- **Keyboard:** arrow keys nudge the selection by one grid step (`Shift`: 5
+  steps, `Alt`: 1 px), moving the free ends of selected lines too.
+  `Delete`/`Backspace` deletes. `Ctrl+A` selects all shapes and lines. `Esc`
+  cancels a label edit or gesture, else clears the selection.
 
 ---
 
@@ -303,7 +308,7 @@ saved on the first edit.
 | **1. Core model + Mermaid** ✅ | `model`, `mermaid::read/write`, `ids`, layout comments, passthrough, golden + round-trip tests. Can be built in parallel with phase 0. | 2–3 days |
 | **2. Shapes** ✅ | Select, Rect, RoundRect, Text tools; snap; move; resize handles; marquee; delete; inline label editing; painting with theme colours. | 3–4 days |
 | **3. Connectors** ✅ | Line/Arrow tools, anchors, glue/unglue, endpoint handles, arrowheads, hit-testing on segments, free lines. | 2–3 days |
-| **4. History + keyboard** | Snapshot undo/redo with gesture coalescing; nudge; select all; command registry and palette entries. | 1 day |
+| **4. History + keyboard** ✅ | Snapshot undo/redo with gesture coalescing; nudge; select all; command registry and palette entries. | 1 day |
 | **5. Project + persistence** | Backend: open folder, diagram list sidebar, new/rename/delete, debounced atomic autosave, external-change reload; `lastProject`. | 2 days |
 | **6. Import layout** | `layout::layered` for nodes without positions; "not editable" badge for unsupported node shapes. | 1–2 days |
 | **7. Ship** | Packaging and CI (§8), README, `ARCHITECTURE.md`, kittest flows, hand checks on Linux/Windows/macOS. | 1–2 days |

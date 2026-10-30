@@ -1,6 +1,7 @@
 //! The app: owns the open diagram, the canvas, the current tool and the open
 //! dialog; routes commands (keyboard, palette, toolbar) and dialog actions.
 
+use blockliner_core::history::History;
 use blockliner_core::Diagram;
 use egui::{Frame, Ui};
 use marina_egui::about::{AboutAction, AboutIcon, AboutModal};
@@ -35,6 +36,7 @@ pub struct BlockLinerApp {
     status_bar_visible: bool,
     initialized: bool,
     diagram: Diagram,
+    history: History,
     canvas: Canvas,
     tool: Tool,
     /// The tool was picked with Shift, so it stays after each shape.
@@ -72,6 +74,7 @@ impl BlockLinerApp {
             custom_titlebar: prefs.custom_titlebar,
             status_bar_visible: prefs.status_bar_visible,
             initialized: false,
+            history: History::new(&diagram),
             diagram,
             canvas: Canvas::new(prefs.show_grid),
             tool: Tool::default(),
@@ -148,6 +151,8 @@ impl BlockLinerApp {
         View {
             modal_open: self.overlay.is_some() || self.palette.is_some(),
             has_selection: self.canvas.has_selection(),
+            can_undo: self.history.can_undo(),
+            can_redo: self.history.can_redo(),
         }
     }
 
@@ -173,6 +178,25 @@ impl BlockLinerApp {
             Act::Tool(tool) => {
                 self.tool = tool;
                 self.sticky_tool = self.shift;
+            }
+            Act::Undo => {
+                self.canvas.cancel(&mut self.diagram);
+                if self.history.undo(&mut self.diagram) {
+                    // Line indices may now name other lines.
+                    self.canvas.lines.clear();
+                }
+            }
+            Act::Redo => {
+                self.canvas.cancel(&mut self.diagram);
+                if self.history.redo(&mut self.diagram) {
+                    self.canvas.lines.clear();
+                }
+            }
+            Act::SelectAll => self.canvas.select_all(&self.diagram),
+            Act::Nudge(dx, dy) => {
+                let g = self.diagram.grid;
+                self.canvas
+                    .nudge(&mut self.diagram, f32::from(dx) * g, f32::from(dy) * g);
             }
             Act::Delete => {
                 self.canvas.delete_selection(&mut self.diagram);
@@ -219,6 +243,51 @@ impl BlockLinerApp {
         let view = self.view();
         for act in self.registry.dispatch_keys(ctx, &view) {
             self.apply(act);
+        }
+        self.nudge_keys(ctx);
+    }
+
+    /// The arrow keys nudge the selection: one grid step, five with Shift,
+    /// one pixel with Alt. Read from the key events themselves, which carry
+    /// their modifiers.
+    fn nudge_keys(&mut self, ctx: &egui::Context) {
+        if self.view().modal_open || !self.canvas.has_selection() {
+            return;
+        }
+        let grid = self.diagram.grid;
+        let moves: Vec<(f32, f32)> = ctx.input_mut(|i| {
+            let mut moves = Vec::new();
+            i.events.retain(|e| {
+                let egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } = e
+                else {
+                    return true;
+                };
+                let (dx, dy) = match key {
+                    egui::Key::ArrowLeft => (-1.0, 0.0),
+                    egui::Key::ArrowRight => (1.0, 0.0),
+                    egui::Key::ArrowUp => (0.0, -1.0),
+                    egui::Key::ArrowDown => (0.0, 1.0),
+                    _ => return true,
+                };
+                let step = if modifiers.alt {
+                    1.0
+                } else if modifiers.shift {
+                    5.0 * grid
+                } else {
+                    grid
+                };
+                moves.push((dx * step, dy * step));
+                false
+            });
+            moves
+        });
+        for (dx, dy) in moves {
+            self.canvas.nudge(&mut self.diagram, dx, dy);
         }
     }
 
@@ -306,6 +375,10 @@ impl BlockLinerApp {
             });
         for act in acts {
             self.apply(act);
+        }
+        // One undo step per finished change (see `History`).
+        if !self.canvas.is_busy() {
+            self.history.observe(&self.diagram);
         }
     }
 

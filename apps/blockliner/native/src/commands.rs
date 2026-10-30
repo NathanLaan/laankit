@@ -14,7 +14,13 @@ use crate::canvas::Tool;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Act {
     Tool(Tool),
+    Undo,
+    Redo,
+    SelectAll,
     Delete,
+    /// Move the selection by this many grid steps (the arrow keys go
+    /// through `App::nudge_keys`, which also reads Shift and Alt).
+    Nudge(i8, i8),
     /// Cancel the drag in progress, else clear the selection.
     Escape,
     ZoomIn,
@@ -31,6 +37,8 @@ pub enum Act {
 pub struct View {
     pub modal_open: bool,
     pub has_selection: bool,
+    pub can_undo: bool,
+    pub can_redo: bool,
 }
 
 /// No shortcut opens a second dialog over the first.
@@ -40,6 +48,14 @@ fn ready(v: &View) -> bool {
 
 fn selected(v: &View) -> bool {
     ready(v) && v.has_selection
+}
+
+fn undoable(v: &View) -> bool {
+    ready(v) && v.can_undo
+}
+
+fn redoable(v: &View) -> bool {
+    ready(v) && v.can_redo
 }
 
 /// A tool's single-key shortcut (Visio-style; never fires while a text field
@@ -76,6 +92,40 @@ pub fn registry() -> Registry<Act, View> {
             .key(Binding::logical(Modifiers::SHIFT, key))
             .shortcut(text)
             .when(ready),
+        );
+    }
+    r.register(
+        add("edit.undo", "Undo", "Edit", Act::Undo)
+            .key(Binding::logical(cmd, Key::Z))
+            .shortcut("Ctrl+Z")
+            .when(undoable),
+    );
+    r.register(
+        add("edit.redo", "Redo", "Edit", Act::Redo)
+            .key(Binding::logical(shift, Key::Z))
+            .key(Binding::logical(cmd, Key::Y))
+            .shortcut("Ctrl+Shift+Z")
+            .when(redoable),
+    );
+    r.register(
+        add("edit.selectAll", "Select All", "Edit", Act::SelectAll)
+            .key(Binding::logical(cmd, Key::A))
+            .shortcut("Ctrl+A")
+            .when(ready),
+    );
+    // No key bindings: the arrow keys are read in `App::nudge_keys`, which
+    // also handles Shift (5 steps) and Alt (1 px). These entries put them in
+    // the palette and the shortcuts list.
+    for (id, label, keys, (dx, dy)) in [
+        ("edit.nudgeLeft", "Nudge Left", "←", (-1, 0)),
+        ("edit.nudgeRight", "Nudge Right", "→", (1, 0)),
+        ("edit.nudgeUp", "Nudge Up", "↑", (0, -1)),
+        ("edit.nudgeDown", "Nudge Down", "↓", (0, 1)),
+    ] {
+        r.register(
+            add(id, label, "Edit", Act::Nudge(dx, dy))
+                .shortcut(keys)
+                .when(selected),
         );
     }
     r.register(
@@ -163,6 +213,8 @@ mod tests {
         let view = View {
             modal_open: false,
             has_selection: true,
+            can_undo: true,
+            can_redo: true,
         };
         for tool in Tool::ALL {
             assert!(
@@ -176,6 +228,8 @@ mod tests {
             .applicable_commands(&View {
                 modal_open: true,
                 has_selection: true,
+                can_undo: true,
+                can_redo: true,
             })
             .is_empty());
     }
