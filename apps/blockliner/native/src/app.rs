@@ -2,7 +2,7 @@
 //! and the open dialog; routes commands (keyboard, palette, toolbar,
 //! sidebar) and dialog actions, autosaves, and picks up outside changes.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use blockliner_core::history::History;
@@ -383,6 +383,30 @@ impl BlockLinerApp {
         self.project = Some(Project { folder, names });
         if let Some(name) = pick {
             self.open_diagram(&name);
+        }
+    }
+
+    /// Opens what the command line names: a folder of diagrams, or one
+    /// `.mmd` file (its folder, with it open).
+    pub fn open_path(&mut self, path: &Path) {
+        let path = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
+        if path.is_dir() {
+            self.open_project(path, None);
+        } else if !path.is_file() {
+            self.toasts
+                .error(format!("Couldn't open {}: no such file", path.display()));
+        } else if let (Some(folder), Some(name), true) = (
+            path.parent(),
+            path.file_stem().and_then(|s| s.to_str()),
+            path.extension().is_some_and(|e| e == backend::EXT),
+        ) {
+            self.open_project(folder.to_owned(), Some(name.to_owned()));
+        } else {
+            self.toasts.error(format!(
+                "Couldn't open {}: BlockLiner opens .{} diagrams",
+                path.display(),
+                backend::EXT
+            ));
         }
     }
 

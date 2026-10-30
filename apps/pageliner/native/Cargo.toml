@@ -1,6 +1,6 @@
 [package]
 name = "pageliner-native"
-version = "2.2.5"
+version = "2.3.1"
 description = "PageLiner in pure Rust: an egui UI over pageliner-core, with a hayro PDF reader (plan Option C, docs/plans/plan-native-rust-egui.md)."
 edition.workspace = true
 license.workspace = true

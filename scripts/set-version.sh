@@ -27,7 +27,7 @@ fi
 export VERSION
 
 cd "$(dirname "$0")/.."
-APPS=(threadliner pageliner noteliner)
+APPS=(threadliner pageliner noteliner blockliner)
 TODAY="$(date +%Y-%m-%d)"
 export TODAY
 

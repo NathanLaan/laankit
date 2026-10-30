@@ -1,6 +1,6 @@
 [package]
 name = "noteliner-native"
-version = "2.2.5"
+version = "2.3.1"
 description = "NoteLiner in pure Rust: an egui UI over noteliner-core (plan Option C, docs/plans/plan-native-rust-egui.md)."
 edition.workspace = true
 license.workspace = true

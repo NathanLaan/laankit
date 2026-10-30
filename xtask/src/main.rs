@@ -20,10 +20,11 @@ use image::imageops::FilterType;
 use image::{DynamicImage, ExtendedColorType, ImageReader};
 
 /// The native apps: (folder under `apps/`, app id).
-const APPS: [(&str, &str); 3] = [
+const APPS: [(&str, &str); 4] = [
     ("threadliner", "com.threadline.app"),
     ("pageliner", "com.pageliner.app"),
     ("noteliner", "com.nathanlaan.noteliner"),
+    ("blockliner", "com.blockliner.app"),
 ];
 /// hicolor sizes for Linux (and the PNGs cargo-packager turns into an .icns).
 const PNG_SIZES: [u32; 8] = [16, 24, 32, 48, 64, 128, 256, 512];

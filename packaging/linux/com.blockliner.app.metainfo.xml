@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.blockliner.app</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>BlockLiner</name>
+  <summary>Software architecture diagrams, saved as Mermaid</summary>
+  <developer id="com.nathanlaan">
+    <name>Nathan Laan</name>
+  </developer>
+  <description>
+    <p>
+      BlockLiner draws software component and architecture diagrams: boxes,
+      rounded boxes, lines, arrows and labels that snap to a grid. Each
+      diagram is a Mermaid flowchart in a folder you choose, readable and
+      diffable as text, with the layout kept in Mermaid comments.
+    </p>
+    <ul>
+      <li>Shapes, connectors that stay glued to their shapes, and free lines</li>
+      <li>Undo and redo, keyboard nudging and a command palette</li>
+      <li>Autosave, and plain Mermaid files laid out automatically on opening</li>
+      <li>Export to PNG or SVG, all objects or only the selected ones</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.blockliner.app.desktop</launchable>
+  <provides>
+    <binary>blockliner</binary>
+    <mediatype>text/vnd.mermaid</mediatype>
+  </provides>
+  <url type="homepage">https://github.com/NathanLaan/marina</url>
+  <url type="bugtracker">https://github.com/NathanLaan/marina/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+  <release version="2.3.1" date="2026-10-30"/>
+  </releases>
+</component>

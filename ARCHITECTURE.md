@@ -1,10 +1,11 @@
 # Architecture
 
-Marina is a Cargo workspace of three local-first desktop apps — **NoteLiner**,
-**ThreadLiner** and **PageLiner** — built on a shared Rust foundation. Every app
-is a pure-Rust [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe)
-program: there is no webview and no JavaScript, and each app's data is files in
-a git repository the user controls.
+Marina is a Cargo workspace of four local-first desktop apps — **NoteLiner**,
+**ThreadLiner**, **PageLiner** and **BlockLiner** — built on a shared Rust
+foundation. Every app is a pure-Rust [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe)
+program: there is no webview and no JavaScript, and each app's data is plain
+files the user controls (a git repository for the first three, any folder of
+Mermaid files for BlockLiner).
 
 This document explains how the pieces fit together. For packaging and release
 mechanics see [`docs/packaging.md`](docs/packaging.md); for the security model
@@ -33,7 +34,8 @@ in isolation and the egui shell is reusable across apps.
 
 ### `marina-core`
 
-Framework-independent backend shared by all three apps:
+Framework-independent backend shared by the apps (BlockLiner uses `paths`,
+`json` and `debounce`, not `git`):
 
 - **`paths`** — the per-platform config and data directories (mirroring where
   the apps have always stored data: `~/.config/<App>` and
@@ -47,13 +49,21 @@ Framework-independent backend shared by all three apps:
   period".
 - **`updates`** — the launch-time update check.
 
-### App cores (`noteliner-core`, `threadliner-core`, `pageliner-core`)
+### App cores (`noteliner-core`, `threadliner-core`, `pageliner-core`, `blockliner-core`)
 
 Each app's own backend, independent of any UI. A core owns the on-disk model
 (the index, notes/feeds/books, attachments) and the operations on it, and knows
 nothing about egui. Supporting crates sit alongside: `noteliner-export`
 (in-process PDF/Typst), `noteliner-slides` (presentations) and `pageliner-epub`
 (EPUB parsing and reading state).
+
+`blockliner-core` is the diagram model and its file format: a Mermaid
+flowchart that says what exists, with the layout in `%%` comments Mermaid
+ignores, so a diagram renders anywhere Mermaid does. It also lays out plain
+Mermaid that has no positions, and keeps the statements it doesn't model
+verbatim. BlockLiner has no index file and no sync: the open folder's `.mmd`
+files are the diagrams, saved through `marina_core`'s atomic writes and
+debouncer.
 
 ## The UI layer
 
@@ -129,5 +139,6 @@ Unit and integration tests live with each crate. UI tests use
 the real app through AccessKit and assert on widgets and on-disk state, never
 opening a window or comparing pixels. Each app's `ui_tests*` modules cover the
 core flows (create → edit → autosave → rename → move → delete, plus the panes,
-editor and, for NoteLiner, slides and PDF export). Run the whole suite with
+editor and, for NoteLiner, slides and PDF export; for BlockLiner, drawing,
+undo, import and export, with a golden SVG). Run the whole suite with
 `cargo test --workspace`.

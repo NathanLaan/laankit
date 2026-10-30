@@ -1,9 +1,11 @@
 # BlockLiner — Architecture Diagramming App
 
-Status: **In progress (2026-10-30).** Design decisions settled (§9). Phases 0
-(app scaffold), 1 (`crates/blockliner-core`), 2 (shapes), 3 (connectors), 4
-(undo and keyboard), 5 (folder and autosave), 6 (import layout) and 7
-(export) implemented.
+Status: **MVP implemented (2026-10-30).** Design decisions settled (§9).
+Phases 0–8 done: app scaffold, `crates/blockliner-core`, shapes, connectors,
+undo and keyboard, folder and autosave, import layout, export, and packaging.
+Hand checks on Windows and macOS remain
+([`apps/blockliner/native/README.md`](../../apps/blockliner/native/README.md),
+"Still to verify by hand").
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -107,7 +109,7 @@ Same file layout as `apps/pageliner/native`:
 
 | File | Contents |
 |---|---|
-| `main.rs` | Viewport (title, `APP_ID`, icon, custom title bar), `persistence_path`. Copy of PageLiner's. |
+| `main.rs` ✅ | Viewport (title, `APP_ID`, icon, custom title bar), `persistence_path`. Copy of PageLiner's. A command-line path (a `.mmd` file or a folder) opens instead of the last diagram (phase 8, for the desktop entry's `%f`). |
 | `config.rs` ✅ | `Paths` / `Prefs` in `~/.config/BlockLiner/ui-preferences.json`: `customTitlebar`, `sidebarVisible`, `statusBarVisible`, `gridSize`, `showGrid`, `lastProject`, `lastDiagram`. |
 | `commands.rs` ✅ | `Act` enum + `Registry`: tool selection (`V` select, `R` rect, `O` round rect, `L` line, `A` arrow, `T` text), undo/redo, delete, nudge, zoom, toggle grid/sidebar/status bar, new/rename/delete diagram, open folder, export (phase 7, `Ctrl+Shift+E`), settings, palette. |
 | `backend.rs` ✅ | The project folder. List, read, create, rename and delete are small local files, so they run synchronously and return their result. The autosave runs on a small tokio runtime: debounced (0.8 s) through `marina_core::debounce`, atomic (temp file + rename), with `flush` before switching diagrams, renaming and quitting. `check` reports outside changes to the open file (not our own writes). |
@@ -417,7 +419,7 @@ file stays small; the text stays editable).
 | **5. Project + persistence** ✅ | Backend: open folder, diagram list sidebar, new/rename/delete, debounced atomic autosave, external-change reload; `lastProject`. | 2 days |
 | **6. Import layout** ✅ | `layout::layered` for nodes without positions; "not editable" badge for unsupported node shapes. | 1–2 days |
 | **7. Export** ✅ | Export dialog (§5.1): PNG and SVG, show/hide grid, All Objects or Selected Objects Only, PNG scale; `blockliner_core::export::scope`; app `export.rs` (SVG writer, `resvg` PNG); toolbar button, `Ctrl+Shift+E`, palette entry; remembered options. | 2–3 days |
-| **8. Ship** | Packaging and CI (§8), README, `ARCHITECTURE.md`, kittest flows, hand checks on Linux/Windows/macOS. | 1–2 days |
+| **8. Ship** ✅ | Packaging (§8): deb/rpm/AppImage/NSIS/dmg metadata, desktop entry, AppStream, a `text/vnd.mermaid` MIME type for `*.mmd`, Flatpak manifest; opening a path from the command line; READMEs, `ARCHITECTURE.md`, `docs/packaging.md`. CI already covered the crates from phase 0. Linux packages built and inspected; Windows/macOS hand checks listed in the native README. | 1–2 days |
 
 **MVP total: about 3–3.5 weeks.**
 
@@ -452,7 +454,11 @@ Adding a fourth app touches these places outside the new crates:
   BlockLiner never runs.
 - `packaging/linux/com.blockliner.app.{desktop,metainfo.xml,appimage.desktop.hbs}`,
   `packaging/flatpak/com.blockliner.app.yml`. The desktop file registers
-  `text/vnd.mermaid` / `*.mmd` as a MIME type it can open.
+  `text/vnd.mermaid` / `*.mmd` as a MIME type it can open. shared-mime-info
+  doesn't define that type, so the packages also install
+  `packaging/linux/com.blockliner.app.mime.xml` (`*.mmd`, `*.mermaid`) into
+  `/usr/share/mime/packages/`, and the app opens a path given on the command
+  line (`Exec=blockliner %f`). The Flatpak has no network, SSH or git module.
 - `xtask/src/main.rs`: add `("blockliner", "com.blockliner.app")` to the
   icon list.
 - `scripts/package-native.sh` (`ALL_APPS`) and `scripts/set-version.sh`

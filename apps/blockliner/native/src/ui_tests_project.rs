@@ -242,3 +242,33 @@ fn without_a_folder_and_reopening() {
     assert_eq!(h.state().doc_name(), Some("b"));
     assert_eq!(h.state().diagram_names(), ["a", "b"]);
 }
+
+#[test]
+fn the_command_line_opens_a_diagram_or_a_folder() {
+    let (_tmp, paths, mut h) = harness();
+    h.run_steps(2);
+    let other = tempfile::tempdir().unwrap();
+    for name in ["a", "b"] {
+        fs::write(other.path().join(format!("{name}.mmd")), "flowchart TD\n").unwrap();
+    }
+    fs::write(other.path().join("notes.txt"), "").unwrap();
+
+    // A file: its folder, with it open.
+    h.state_mut().open_path(&other.path().join("b.mmd"));
+    h.run_steps(2);
+    assert_eq!(project(&paths), other.path());
+    assert_eq!(h.state().doc_name(), Some("b"));
+
+    // Not a diagram, or missing: an error, and the diagram stays open.
+    for bad in ["notes.txt", "missing.mmd"] {
+        h.state_mut().open_path(&other.path().join(bad));
+        h.run_steps(2);
+        assert_eq!(h.state().doc_name(), Some("b"));
+    }
+    h.get_by_label_contains("no such file");
+
+    // A folder: its first diagram.
+    h.state_mut().open_path(other.path());
+    h.run_steps(2);
+    assert_eq!(h.state().doc_name(), Some("a"));
+}

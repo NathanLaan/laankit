@@ -11,7 +11,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-ALL_APPS=(threadliner pageliner noteliner)
+ALL_APPS=(threadliner pageliner noteliner blockliner)
 APPS=("${@:-${ALL_APPS[@]}}")
 
 case "$(uname -s)" in

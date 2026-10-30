@@ -1,6 +1,6 @@
 # Packaging the native apps
 
-How ThreadLiner, PageLiner and NoteLiner (the pure-Rust egui apps in
+How ThreadLiner, PageLiner, NoteLiner and BlockLiner (the pure-Rust egui apps in
 `apps/*/native`) are packaged for Linux, Windows and macOS, and how releases are
 built in CI.
 
@@ -12,8 +12,8 @@ Per app, the packaged artifacts are named as follows:
 |---|---|
 | Cargo package | `<app>-native` (so `cargo run -p <app>-native` works) |
 | Installed binary | `<app>` (`[[bin]]` in `apps/<app>/native/Cargo.toml`), installed as `/usr/bin/<app>` |
-| App id (Wayland app id / X11 WM class, bundle id) | `com.threadline.app`, `com.pageliner.app`, `com.nathanlaan.noteliner` |
-| Linux package | `threadliner`, `pageliner`, `noteliner` |
+| App id (Wayland app id / X11 WM class, bundle id) | `com.threadline.app`, `com.pageliner.app`, `com.nathanlaan.noteliner`, `com.blockliner.app` |
+| Linux package | `threadliner`, `pageliner`, `noteliner`, `blockliner` |
 | Desktop entry | `<app id>.desktop`, named "ThreadLiner" etc., `StartupWMClass=<app id>` |
 
 For users upgrading from older Marina builds, each native package **conflicts
@@ -21,7 +21,8 @@ with, replaces and provides** the former Tauri packages `thread-liner`,
 `page-liner` and `note-liner` (Debian: `Conflicts`/`Replaces`/`Provides`; RPM:
 `Conflicts`/`Obsoletes`/`Provides`), so installing one removes the older build.
 The former Electron packages were already named `threadliner` etc., so the
-native package upgrades them in place.
+native package upgrades them in place. BlockLiner had no earlier builds, so its
+packages declare none of these.
 
 - **Settings and data** live in the platform config/data folders
   (`marina_core::paths`) shared by every build Marina has shipped, so projects
@@ -56,6 +57,7 @@ non-Linux tool to learn. Its own `.deb` isn't used.
 | ThreadLiner | 27 MB | 7.9 MB | 8.5 MB | 12 MB |
 | PageLiner | 32 MB | 9.5 MB | 11 MB | 14 MB |
 | NoteLiner | 60 MB | 18 MB | 19 MB | 24 MB |
+| BlockLiner (0.1.0, 2026-10-30) | 22 MB | 6.6 MB | 7.1 MB | 9.8 MB |
 
 NoteLiner is the largest because of in-process Typst for PDF export
 (`noteliner-export`, about 34 MB of the binary).
@@ -99,6 +101,7 @@ for the AppImage step: linuxdeploy is itself an AppImage.
 | `packaging/linux/<app id>.desktop` | Desktop entries for .deb/.rpm/Flatpak (validated with `desktop-file-validate`) |
 | `packaging/linux/<app id>.appimage.desktop.hbs` | The AppImage's desktop entry (a cargo-packager template, for `StartupWMClass`) |
 | `packaging/linux/<app id>.metainfo.xml` | AppStream metadata (validated with `appstreamcli validate`) |
+| `packaging/linux/com.blockliner.app.mime.xml` | BlockLiner's `text/vnd.mermaid` type (`*.mmd`, `*.mermaid`), installed as `/usr/share/mime/packages/com.blockliner.app.xml`; its desktop entry opens these (`Exec=blockliner %f`) |
 | `packaging/flatpak/<app id>.yml` | Flatpak manifests |
 | `xtask/` | `cargo run -p xtask -- icons` |
 | `apps/<app>/native/build.rs` | Embeds the icon in the Windows `.exe` (Windows hosts only) |
@@ -108,7 +111,8 @@ for the AppImage step: linuxdeploy is itself an AppImage.
 The binaries link only against glibc; winit, glutin and fontconfig `dlopen`
 the rest, so the packages declare them explicitly:
 
-- `git` (sync, history; all three apps shell out to it)
+- `git` (sync, history; NoteLiner, ThreadLiner and PageLiner shell out to it;
+  BlockLiner's packages don't depend on it)
 - EGL/GL (`libegl1`, `libgl1`), `libxkbcommon0`, `libfontconfig1`
 - Wayland: `libwayland-client0`, `libwayland-egl1`
 - X11: `libx11-6`, `libx11-xcb1`, `libxcursor1`, `libxi6`, `libxrender1`,
@@ -140,7 +144,9 @@ flatpak-builder --user --install-deps-from=flathub --force-clean \
   and `--filesystem=home`. Home access is deliberate: projects and data
   folders are git repositories that are reopened by path from the recent
   lists and handed to `git`, which portal document paths
-  (`/run/user/…/doc/…`) would break.
+  (`/run/user/…/doc/…`) would break. BlockLiner's manifest has no network,
+  SSH socket or git module (it uses none of them), but keeps home access:
+  its diagram folder is reopened by path and watched for outside changes.
 - **Config is separate** inside the sandbox (`~/.var/app/<id>/config`), so a
   Flatpak install doesn't share settings with a .deb/.rpm install. NoteLiner's
   MCP clients must run `flatpak run com.nathanlaan.noteliner --mcp-bridge`.

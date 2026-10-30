@@ -57,8 +57,24 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "BlockLiner",
         options,
-        Box::new(move |cc| Ok(Box::new(app::BlockLinerApp::new(cc.storage, paths)))),
+        Box::new(move |cc| {
+            let mut app = app::BlockLinerApp::new(cc.storage, paths);
+            if let Some(path) = launch_path() {
+                app.open_path(&path);
+            }
+            Ok(Box::new(app))
+        }),
     )
+}
+
+/// `blockliner <file.mmd | folder>`: what to open instead of the last
+/// diagram (the desktop entry passes the file it was asked to open).
+/// Options (`-…`) are skipped.
+fn launch_path() -> Option<std::path::PathBuf> {
+    std::env::args_os()
+        .skip(1)
+        .find(|a| !a.to_string_lossy().starts_with('-'))
+        .map(Into::into)
 }
 
 /// The window and taskbar icon (`apps/blockliner/assets/icon.png`).

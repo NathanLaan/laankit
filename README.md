@@ -3,7 +3,8 @@
 Marina is a workspace of local-first desktop apps that share one UI and backend
 foundation. Every app is **pure Rust**, built on [egui](https://github.com/emilk/egui)/
 [eframe](https://github.com/emilk/egui/tree/master/crates/eframe) — no webview,
-no JavaScript — and stores its data as files in a git repository you control.
+no JavaScript — and stores its data as plain files you control: a git
+repository for the notes, feed and library apps, any folder for BlockLiner.
 
 ## Apps
 
@@ -12,6 +13,7 @@ no JavaScript — and stores its data as files in a git repository you control.
 | **NoteLiner**   | `noteliner`   | Outliner-style Markdown notes: a tree of notes with editor, preview, tags, wikilinks, backlinks, slides, PDF export and an optional MCP server for AI clients. |
 | **ThreadLiner** | `threadliner` | RSS reader (RSS 2.0, Atom, JSON Feed) with git-synced JSON. |
 | **PageLiner**   | `pageliner`   | EPUB/PDF e-reader and document library with bookmarks, highlights and reading-position persistence. |
+| **BlockLiner**  | `blockliner`  | Visio-style diagram editor for software components and architecture, saved as Mermaid flowcharts, with PNG/SVG export. |
 
 Each lives in `apps/<app>/native/` and is a Cargo package named `<app>-native`.
 See the per-app README (`apps/<app>/README.md`) and its detailed
@@ -20,7 +22,7 @@ See the per-app README (`apps/<app>/README.md`) and its detailed
 ## Layout
 
 ```
-apps/<app>/native/   the three apps (egui UIs over the crates below)
+apps/<app>/native/   the four apps (egui UIs over the crates below)
 crates/
   marina-core        shared backend: git sync, JSON stores, XDG paths, debouncing
   marina-egui        shared egui shell: themes, fonts, window chrome, command palette, settings, panes
@@ -29,6 +31,7 @@ crates/
   <app>-core         each app's UI-independent backend
   noteliner-export   in-process PDF export (Typst); noteliner-slides   presentations
   pageliner-epub     EPUB parsing/state
+  blockliner-core    the diagram model, Mermaid read/write, layout
 packaging/           Linux desktop/metainfo files and Flatpak manifests
 scripts/, xtask/     packaging helpers and the icon pipeline
 docs/                packaging guide and historical plans
@@ -41,8 +44,8 @@ vulnerability.
 ## Prerequisites
 
 - **Rust 1.92+** (install with [`rustup`](https://rustup.rs)).
-- **`git`** on the `PATH` at runtime — all three apps shell out to it for sync
-  and history.
+- **`git`** on the `PATH` at runtime — NoteLiner, ThreadLiner and PageLiner
+  shell out to it for sync and history. BlockLiner doesn't use git.
 - **Linux build libraries:**
 
   ```bash
@@ -57,7 +60,7 @@ vulnerability.
 ## Run a development build
 
 ```bash
-cargo run -p noteliner-native       # or pageliner-native / threadliner-native
+cargo run -p noteliner-native       # or pageliner-native / threadliner-native / blockliner-native
 ```
 
 For an optimized run without the slow full-LTO release build (good for
@@ -118,7 +121,8 @@ Pre-built packages for Linux, Windows and macOS are attached to each
   are unsigned, so the first launch is blocked: right-click → **Open → Open**,
   or `xattr -d com.apple.quarantine /Applications/<App>.app`.
 
-`git` must be installed on the target machine for sync and history to work.
+`git` must be installed on the target machine for sync and history to work
+(not needed for BlockLiner).
 
 ## Test and lint
 
