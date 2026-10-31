@@ -31,11 +31,12 @@ install as `/usr/bin/blockliner`.
 | Keys | Does |
 |---|---|
 | V, R, O, L, A, J, E, T, or 1–9 | Select, Rectangle, Rounded Rectangle, Line, Arrow, Right-Angle Line, Right-Angle Arrow, Text tool (Shift: keep the tool after each shape). The numbers follow the toolbar and show in each tool button's corner; they're physical keys, so the number row works on any layout |
-| D, H, C, S, or 4 | Diamond, Hexagon, Database (cylinder), Subroutine. They share the More Shapes button: 4 (or a click) picks the one it shows, the last used; its corner triangle or a right-click lists all four |
+| D, H, C, S, or 4 | Diamond, Hexagon, Database (cylinder), Subroutine. They share the More Shapes button with Stadium, Circle, Parallelogram and Trapezoid (no letters; the list or the palette): 4 (or a click) picks the one it shows, the last used; its corner triangle or a right-click lists all eight |
 | Drag a right-angle line's middle handle | Moves its middle segment across (double-click the handle: automatic again) |
-| Right-click | Selects what's under it, then a menu: Cut, Copy, Paste, Fill ▸ and Stroke ▸ (eight presets, Default, Custom…) and Reset Style for shapes, Right-Angle / Straight for lines, Delete, Select All |
+| Right-click | Selects what's under it, then a menu: Edit Label, Cut, Copy, Paste, Fill ▸ (shapes) and Stroke ▸ (shapes and lines; eight presets, Default, Custom…) and Reset Style, Right-Angle / Straight for lines, Delete, Select All |
 | Drag / click (shape tool) | Draws a shape (click: the default size, 8 × 3 cells; 8 × 4 for a diamond, 6 × 4 for a database) |
 | Double-click a shape | Edits its label (Enter commits, Shift+Enter adds a line, Esc cancels) |
+| Double-click a connector or its label, or Enter | Edits the edge label (`a -->\|"HTTPS"\| b`); empty removes it. Enter edits the single selected shape's or connector's label. A free line has no Mermaid edge to keep a label on |
 | Arrow keys | Nudge one grid step (Shift: 5 steps, Alt: 1 px) |
 | Alt while dragging | No snapping |
 | Delete / Backspace, Esc | Delete the selection; cancel the gesture or clear the selection |
@@ -45,7 +46,7 @@ install as `/usr/bin/blockliner`.
 | Ctrl+Shift+E | Export (PNG or SVG) |
 | Wheel, middle drag, Space + drag | Pan |
 | Ctrl + wheel, pinch, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom (Ctrl+0, or a click on the status bar's "Zoom" readout: back to 100 %) |
-| Ctrl+', Ctrl+E, Ctrl+I, Ctrl+J | Toggle the grid, the sidebar, the Properties pane (fill and stroke of the selection), the status bar |
+| Ctrl+', Ctrl+E, Ctrl+I, Ctrl+J | Toggle the grid, the sidebar, the Properties pane (fill and stroke of the selection; a line's stroke is its colour), the status bar |
 | Ctrl+K, Ctrl+,, Ctrl+Shift+I | Command palette, Settings, About |
 
 ## Architecture
@@ -57,12 +58,12 @@ install as `/usr/bin/blockliner`.
 | `model`    | `Diagram`, `Shape`, `Connector`, `End` (glued to a shape, or free), `Rect`, `Point`          |
 | `mermaid`  | `read` and `write`: the flowchart, the `%%` layout block, statements kept verbatim, label escapes |
 | `layout`   | `layered`: positions for nodes a file gives no layout for (longest-path ranks, barycenter order) |
-| `geometry`, `snap`, `connect` | Handles and resizing, the diamond/hexagon/database/subroutine outlines and label areas, grid snapping, where connector ends meet shapes, connector paths, hit-testing |
+| `geometry`, `snap`, `connect` | Handles and resizing, the outlines, label areas and anchors of the shapes that aren't boxes, grid snapping, where connector ends meet shapes, connector paths, hit-testing |
 | `route`    | Right-angle routes: candidate paths scored by shapes crossed, bends and length (cached per geometry in `connect`) |
 | `ids`      | Mermaid ids from labels (`"Orders DB"` → `orders_db`)                                       |
 | `history`  | Undo and redo as whole-diagram snapshots                                                    |
 | `export`   | Which objects an export contains, and the page around them                                  |
-| `style`    | Shape colours: `Colour`, `Style` (a shape's `style` line), the presets, label contrast        |
+| `style`    | Colours: `Colour`, `Style` (a shape's `style` line or an edge's `linkStyle`), the presets, label contrast |
 | `clipboard`| Copy and paste: the selection as a diagram (ends on shapes left behind freed), new ids and placement on paste, plain text as a text box |
 
 The app (`apps/blockliner/native`):

@@ -11,6 +11,7 @@
 //! | Select: click, Shift+click              | Selects, toggles                         |
 //! | Select: drag a shape / handle / empty   | Moves / resizes / box-selects            |
 //! | Select: double-click a shape            | Edits its label                          |
+//! | Select: double-click a line or its label| Edits its edge label (Mermaid edges only) |
 //! | Line / Arrow: drag                      | Draws a connector (ends glue to shapes)  |
 //! | Select: drag a selected line's end      | Re-glues or frees that end               |
 //! | Select: drag a right-angle line's middle| Moves its middle segment (double-click: automatic again) |
@@ -63,6 +64,7 @@ pub struct Output {
 /// The canvas's right-click menu. Each is also a command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuAction {
+    EditLabel,
     Cut,
     Copy,
     Paste,
@@ -82,7 +84,7 @@ pub struct SelectionStyle {
     pub stroke: Common,
     /// Selected shapes that can take colours…
     pub shapes: usize,
-    /// …selected lines (which can't yet)…
+    /// …selected lines (a stroke only)…
     pub lines: usize,
     /// …and selected shapes declared in kept statements (which can't).
     pub external: Vec<String>,
@@ -113,6 +115,8 @@ pub struct Canvas {
     /// Where a line end being drawn or dragged would glue (anchor hints).
     target: Option<End>,
     label: Option<label::LabelEdit>,
+    /// Each edge label's patch, as of this frame (see `edge_labels`).
+    labels: Vec<(usize, ModelRect)>,
     /// Last frame's rectangle, for zooming about the centre from the keyboard.
     rect: Rect,
 }
@@ -129,38 +133,59 @@ impl Canvas {
             hover: None,
             target: None,
             label: None,
+            labels: Vec::new(),
             rect: Rect::ZERO,
         }
     }
 
-    /// Whether a selected shape can take a style: one BlockLiner declares
+    /// Whether a selected shape can take a fill: one BlockLiner declares
     /// (an external shape's `style` line isn't its to write).
-    pub fn stylable(&self, d: &Diagram) -> bool {
+    pub fn fillable(&self, d: &Diagram) -> bool {
         self.selection
             .iter()
             .any(|id| d.shape(id).is_some_and(|s| !s.external))
     }
 
-    /// What the selected shapes' fills and strokes have in common, and how
-    /// many shapes, lines and kept-statement shapes are selected.
+    /// Whether anything selected can take a stroke: such a shape, or a
+    /// line.
+    pub fn stylable(&self, d: &Diagram) -> bool {
+        self.fillable(d) || !self.lines.is_empty()
+    }
+
+    /// What the selection's fills (shapes) and strokes (shapes and lines)
+    /// have in common, and how many shapes, lines and kept-statement shapes
+    /// are selected.
     pub fn selected_style(&self, d: &Diagram) -> SelectionStyle {
         let shapes: Vec<&blockliner_core::Shape> =
             self.selection.iter().filter_map(|id| d.shape(id)).collect();
         let (own, external): (Vec<_>, Vec<_>) = shapes.into_iter().partition(|s| !s.external);
+        let lines = self.lines.iter().filter_map(|&i| d.connectors.get(i));
         SelectionStyle {
             fill: common(own.iter().map(|s| s.style.fill.as_ref())),
-            stroke: common(own.iter().map(|s| s.style.stroke.as_ref())),
+            stroke: common(
+                own.iter()
+                    .map(|s| s.style.stroke.as_ref())
+                    .chain(lines.map(|c| c.style.stroke.as_ref())),
+            ),
             shapes: own.len(),
             lines: self.lines.len(),
             external: external.iter().map(|s| s.id.clone()).collect(),
         }
     }
 
-    /// Changes the style of each selected shape BlockLiner declares.
-    pub fn style_selection(&self, d: &mut Diagram, f: impl Fn(&mut Style)) {
+    /// Changes the style of each selected shape BlockLiner declares, and
+    /// with `lines` each selected line's too.
+    pub fn style_selection(&self, d: &mut Diagram, lines: bool, f: impl Fn(&mut Style)) {
         for id in &self.selection {
             if let Some(s) = d.shape_mut(id).filter(|s| !s.external) {
                 f(&mut s.style);
+            }
+        }
+        if lines {
+            for &i in &self.lines {
+                if let Some(c) = d.connectors.get_mut(i) {
+                    f(&mut c.style);
+                }
             }
         }
     }
@@ -290,7 +315,8 @@ impl Canvas {
             lines: &self.lines,
             hover: self.hover.as_ref(),
             target: self.target.as_ref(),
-            editing: self.label.as_ref().map(|l| l.id.as_str()),
+            editing: self.editing_shape(),
+            editing_line: self.editing_line(),
         };
         paint::diagram(&painter, self.view, rect.min, d, &p, &overlays);
         match &self.gesture {
@@ -339,8 +365,9 @@ impl Canvas {
     fn context_menu(&self, resp: &egui::Response, d: &Diagram) -> Option<MenuAction> {
         let (straight, elbow) = self.selected_routes(d);
         let (lines, any) = (!self.lines.is_empty(), self.has_selection());
-        let stylable = self.stylable(d);
+        let (stylable, fillable) = (self.stylable(d), self.fillable(d));
         let style = self.selected_style(d);
+        let labelled = self.can_edit_label(d);
         let mut picked = None;
         resp.context_menu(|ui| {
             let mut item = |ui: &mut Ui, text: &str, keys: &str, on: bool, act: MenuAction| {
@@ -349,6 +376,11 @@ impl Canvas {
                     ui.close();
                 }
             };
+            // A single shape or line; off for a free line.
+            if self.selection.len() + self.lines.len() == 1 {
+                item(ui, "Edit Label", "Enter", labelled, MenuAction::EditLabel);
+                ui.separator();
+            }
             if any {
                 item(ui, "Cut", "Ctrl+X", true, MenuAction::Cut);
                 item(ui, "Copy", "Ctrl+C", true, MenuAction::Copy);
@@ -357,6 +389,10 @@ impl Canvas {
             ui.separator();
             if stylable {
                 for (title, stroke) in [("Fill", false), ("Stroke", true)] {
+                    // Lines take only a stroke.
+                    if !stroke && !fillable {
+                        continue;
+                    }
                     ui.menu_button(title, |ui| {
                         let current = if stroke { &style.stroke } else { &style.fill };
                         if let Some(s) = swatches(ui, stroke, current) {

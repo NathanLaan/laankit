@@ -31,6 +31,15 @@ pub fn write(d: &Diagram) -> String {
             format_args!("  style {} {}", s.id, s.style.props()),
         );
     }
+    // Numbered as Mermaid does: the edges above come first in the file.
+    for (n, c) in d.connectors.iter().filter(|c| c.is_edge()).enumerate() {
+        if !c.style.is_empty() {
+            line(
+                &mut out,
+                format_args!("  linkStyle {n} {}", c.style.props()),
+            );
+        }
+    }
     for p in &d.passthrough {
         line(&mut out, format_args!("{p}"));
     }
@@ -94,11 +103,12 @@ pub fn write(d: &Diagram) -> String {
         line(
             &mut out,
             format_args!(
-                "%% @line {} from={} to={}{}",
+                "%% @line {} from={} to={}{}{}",
                 kind(c.kind),
                 end(&c.from),
                 end(&c.to),
-                route(c.route)
+                route(c.route),
+                line_stroke(c)
             ),
         );
     }
@@ -143,6 +153,17 @@ fn edge(c: &Connector) -> String {
         c.from.shape().unwrap_or_default(),
         c.to.shape().unwrap_or_default()
     )
+}
+
+/// ` stroke=#3b82f6`: a free line's colour (only a colour without spaces
+/// fits a layout field).
+fn line_stroke(c: &Connector) -> String {
+    c.style
+        .stroke
+        .as_ref()
+        .filter(|s| !s.text.is_empty() && !s.text.contains(char::is_whitespace))
+        .map(|s| format!(" stroke={}", s.text))
+        .unwrap_or_default()
 }
 
 fn kind(k: ConnectorKind) -> &'static str {

@@ -90,18 +90,31 @@ pub enum ShapeKind {
     Database,
     /// `id[["label"]]`
     Subroutine,
-    /// Any other Mermaid node shape (`([ ])`, `(( ))`, …), kept with its
-    /// delimiters so it is written back unchanged. Drawn as a rectangle.
+    /// A pill: `id(["label"])`.
+    Stadium,
+    /// `id(("label"))`, an ellipse when its box isn't square.
+    Circle,
+    /// Leaning right: `id[/"label"/]`.
+    Parallelogram,
+    /// Wider at the bottom: `id[/"label"\]`.
+    Trapezoid,
+    /// Any other Mermaid node shape (`((( )))`, `>]`, the mirrored
+    /// parallelogram and trapezoid, …), kept with its delimiters so it is
+    /// written back unchanged. Drawn as a rectangle.
     Other { open: String, close: String },
 }
 
 impl ShapeKind {
-    /// The four shapes behind the toolbar's More Shapes button.
-    pub const MORE: [ShapeKind; 4] = [
+    /// The shapes behind the toolbar's More Shapes button.
+    pub const MORE: [ShapeKind; 8] = [
         ShapeKind::Diamond,
         ShapeKind::Hexagon,
         ShapeKind::Database,
         ShapeKind::Subroutine,
+        ShapeKind::Stadium,
+        ShapeKind::Circle,
+        ShapeKind::Parallelogram,
+        ShapeKind::Trapezoid,
     ];
 
     /// The Mermaid brackets around the label.
@@ -113,19 +126,27 @@ impl ShapeKind {
             ShapeKind::Hexagon => ("{{", "}}"),
             ShapeKind::Database => ("[(", ")]"),
             ShapeKind::Subroutine => ("[[", "]]"),
+            ShapeKind::Stadium => ("([", "])"),
+            ShapeKind::Circle => ("((", "))"),
+            ShapeKind::Parallelogram => ("[/", "/]"),
+            ShapeKind::Trapezoid => ("[/", "\\]"),
             ShapeKind::Other { open, close } => (open, close),
         }
     }
 
     /// The kind a pair of Mermaid brackets makes.
     pub fn from_delimiters(open: &str, close: &str) -> Self {
-        match open {
-            "[" => ShapeKind::Rect,
-            "(" => ShapeKind::RoundRect,
-            "{" => ShapeKind::Diamond,
-            "{{" => ShapeKind::Hexagon,
-            "[(" => ShapeKind::Database,
-            "[[" => ShapeKind::Subroutine,
+        match (open, close) {
+            ("[", _) => ShapeKind::Rect,
+            ("(", _) => ShapeKind::RoundRect,
+            ("{", _) => ShapeKind::Diamond,
+            ("{{", _) => ShapeKind::Hexagon,
+            ("[(", _) => ShapeKind::Database,
+            ("[[", _) => ShapeKind::Subroutine,
+            ("([", _) => ShapeKind::Stadium,
+            ("((", _) => ShapeKind::Circle,
+            ("[/", "/]") => ShapeKind::Parallelogram,
+            ("[/", "\\]") => ShapeKind::Trapezoid,
             _ => ShapeKind::Other {
                 open: open.into(),
                 close: close.into(),
@@ -171,13 +192,14 @@ impl Shape {
     }
 
     /// A new shape's size, in grid cells: 8 × 3 for boxes, 10 × 2 for text,
-    /// 8 × 4 for a diamond (its label sits in the middle half) and 6 × 4
-    /// for a database.
+    /// 8 × 4 for a diamond (its label sits in the middle half), 6 × 4
+    /// for a database and 4 × 4 for a circle.
     pub fn default_size(kind: &ShapeKind, grid: f32) -> (f32, f32) {
         let (w, h) = match kind {
             ShapeKind::Text => (10.0, 2.0),
             ShapeKind::Diamond => (8.0, 4.0),
             ShapeKind::Database => (6.0, 4.0),
+            ShapeKind::Circle => (4.0, 4.0),
             _ => (8.0, 3.0),
         };
         (w * grid, h * grid)
@@ -308,6 +330,9 @@ pub struct Connector {
     /// carry one; free lines have nowhere to store it.
     pub label: Option<String>,
     pub route: Route,
+    /// Its colour (`stroke`) and other properties: a Mermaid edge's
+    /// `linkStyle` line, or a free line's `stroke=` field.
+    pub style: Style,
 }
 
 impl Connector {
@@ -318,6 +343,7 @@ impl Connector {
             to,
             label: None,
             route: Route::Straight,
+            style: Style::default(),
         }
     }
 

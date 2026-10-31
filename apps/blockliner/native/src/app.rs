@@ -314,6 +314,8 @@ impl BlockLinerApp {
             straight_selected: self.canvas.selected_routes(&self.diagram).0,
             elbow_selected: self.canvas.selected_routes(&self.diagram).1,
             stylable: self.canvas.stylable(&self.diagram),
+            fillable: self.canvas.fillable(&self.diagram),
+            labellable: self.canvas.can_edit_label(&self.diagram),
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
         }
@@ -423,6 +425,10 @@ impl BlockLinerApp {
             Act::Delete => {
                 self.canvas.delete_selection(&mut self.diagram);
             }
+            Act::EditLabel => {
+                self.tool = Tool::Select;
+                self.canvas.edit_selected_label(&self.diagram);
+            }
             Act::RouteElbow => {
                 self.canvas.set_route(&mut self.diagram, true);
             }
@@ -431,7 +437,9 @@ impl BlockLinerApp {
             }
             Act::Fill(swatch) => self.style(swatch, false),
             Act::Stroke(swatch) => self.style(swatch, true),
-            Act::ResetStyle => self.canvas.style_selection(&mut self.diagram, Style::reset),
+            Act::ResetStyle => self
+                .canvas
+                .style_selection(&mut self.diagram, true, Style::reset),
             Act::Escape => self.canvas.escape(&mut self.diagram),
             Act::ZoomIn => self.canvas.zoom_step(1),
             Act::ZoomOut => self.canvas.zoom_step(-1),
@@ -501,16 +509,26 @@ impl BlockLinerApp {
                 }))
             }
             Swatch::Custom => {
-                let first = self
+                // The first selected shape's (or, for a stroke, line's).
+                let d = &self.diagram;
+                let shapes = self
                     .canvas
                     .selection
                     .iter()
-                    .find_map(|id| self.diagram.shape(id).filter(|s| !s.external));
-                let current = first.and_then(|s| {
+                    .filter_map(|id| d.shape(id).filter(|s| !s.external))
+                    .map(|s| &s.style);
+                let lines = self
+                    .canvas
+                    .lines
+                    .iter()
+                    .filter_map(|&i| d.connectors.get(i))
+                    .filter(|_| stroke)
+                    .map(|c| &c.style);
+                let current = shapes.chain(lines).next().and_then(|s| {
                     if stroke {
-                        s.style.stroke.as_ref()
+                        s.stroke.as_ref()
                     } else {
-                        s.style.fill.as_ref()
+                        s.fill.as_ref()
                     }
                 });
                 self.overlay = Some(Overlay::Colour(ColourState::new(stroke, current)));
@@ -521,7 +539,7 @@ impl BlockLinerApp {
     }
 
     fn apply_colour(&mut self, colour: Option<Colour>, stroke: bool) {
-        self.canvas.style_selection(&mut self.diagram, |s| {
+        self.canvas.style_selection(&mut self.diagram, stroke, |s| {
             if stroke {
                 s.set_stroke(colour.clone());
             } else {
@@ -1226,6 +1244,7 @@ impl BlockLinerApp {
                     self.tool = Tool::Select;
                 }
                 acts.extend(out.menu.map(|m| match m {
+                    MenuAction::EditLabel => Act::EditLabel,
                     MenuAction::Cut => Act::Cut,
                     MenuAction::Copy => Act::Copy,
                     MenuAction::Paste => Act::Paste,

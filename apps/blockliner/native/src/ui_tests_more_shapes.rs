@@ -172,3 +172,59 @@ fn an_arrow_glues_to_a_diamonds_vertex() {
     assert!(text.contains("\n  a{\"Valid?\"}\n"), "{text}");
     assert!(text.contains("\n  a --> b\n"), "{text}");
 }
+
+#[test]
+fn the_later_four_come_from_the_list() {
+    let (_tmp, _paths, mut h) = harness();
+    h.run_steps(2);
+    for (name, x) in [
+        ("Stadium", 200.0),
+        ("Circle", 400.0),
+        ("Parallelogram", 600.0),
+        ("Trapezoid", 800.0),
+    ] {
+        h.get_by_label("Show More Shapes").click();
+        h.run_steps(3);
+        h.get_by_label(name).click();
+        h.run_steps(3);
+        assert_eq!(h.state().tool().name(), name);
+        // The button now shows it; 4 picks it, with no letter of its own.
+        h.get_by_label(&format!("More Shapes: {name}"));
+        click(&mut h, at(x, 300.0));
+        h.run_steps(2);
+        h.key_press(Key::Escape);
+        h.run_steps(2);
+    }
+    // 8 × 3 cells, and a circle 4 × 4, centred on the click and snapped.
+    assert_eq!(
+        kind(&h, 0),
+        (ShapeKind::Stadium, Rect::new(120.0, 280.0, 160.0, 60.0))
+    );
+    assert_eq!(
+        kind(&h, 1),
+        (ShapeKind::Circle, Rect::new(360.0, 260.0, 80.0, 80.0))
+    );
+    assert_eq!(kind(&h, 2).0, ShapeKind::Parallelogram);
+    assert_eq!(kind(&h, 3).0, ShapeKind::Trapezoid);
+    let text = write(h.state().diagram());
+    let ids: Vec<String> = h
+        .state()
+        .diagram()
+        .shapes
+        .iter()
+        .map(|s| s.id.clone())
+        .collect();
+    for (id, open, close) in [
+        (&ids[0], "([", "])"),
+        (&ids[1], "((", "))"),
+        (&ids[2], "[/", "/]"),
+        (&ids[3], "[/", "\\]"),
+    ] {
+        let line = format!("  {id}{open}\"\"{close}\n");
+        assert!(text.contains(&line), "{line:?} in\n{text}");
+    }
+    // A click in a circle's empty corner misses it.
+    click(&mut h, at(364.0, 264.0));
+    h.run_steps(2);
+    assert!(h.state().selection().is_empty());
+}

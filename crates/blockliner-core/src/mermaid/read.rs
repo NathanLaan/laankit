@@ -12,7 +12,7 @@ use crate::model::{
     Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect, Route, Shape,
     ShapeKind,
 };
-use crate::style::Style;
+use crate::style::{Colour, Style};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReadError {
@@ -182,6 +182,16 @@ struct Body {
     /// `style <id> …` lines, kept in `passthrough` until the build knows
     /// whether `id` is a shape BlockLiner models (then the style is its).
     styles: Vec<(usize, String, Style)>,
+    /// Every edge in file order, as Mermaid numbers them for `linkStyle`:
+    /// a modelled edge's index in `edges`, or `None` for a kept one…
+    order: Vec<Option<usize>>,
+    /// …until a kept statement whose edges can't be counted; `linkStyle`
+    /// indexes past that point aren't absorbed.
+    uncounted: bool,
+    /// `linkStyle <n>[,<n>…] …` lines (their place in `passthrough`, the
+    /// indexes and the style), absorbed at the build when every index names
+    /// a modelled edge.
+    link_styles: Vec<(usize, Vec<usize>, Style)>,
 }
 
 impl Body {
@@ -191,6 +201,9 @@ impl Body {
             return; // The writer adds it back when a text box needs it.
         }
         if KEYWORDS.contains(&word) {
+            if word == "linkStyle" {
+                self.link_style(stmt);
+            }
             if word == "style" {
                 let rest = stmt["style".len()..].trim_start();
                 let (id, props) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
@@ -205,6 +218,7 @@ impl Body {
         }
         let Some(tokens) = lex::tokenize(stmt) else {
             self.passthrough.push(format!("  {stmt}"));
+            self.uncountable(stmt);
             return;
         };
         let modelled = tokens.iter().all(|t| match t {
@@ -229,6 +243,9 @@ impl Body {
                             LinkKind::Line => ConnectorKind::Line,
                             _ => ConnectorKind::Arrow,
                         };
+                        if !self.uncounted {
+                            self.order.push(Some(self.edges.len()));
+                        }
                         self.edges.push(Edge {
                             from,
                             to: id.clone(),
@@ -248,9 +265,30 @@ impl Body {
     fn external(&mut self, stmt: &str) {
         let word = stmt.split_whitespace().next().unwrap_or("");
         if !KEYWORDS.contains(&word) {
-            if let Some(tokens) = lex::tokenize(stmt) {
-                self.declare_all(tokens, true);
+            match lex::tokenize(stmt) {
+                Some(tokens) => self.declare_all(tokens, true),
+                None => self.uncountable(stmt),
             }
+        }
+    }
+
+    /// A statement the lexer can't read: if it may hold edges, the edges
+    /// after it can't be numbered.
+    fn uncountable(&mut self, stmt: &str) {
+        if ["--", "==", "-.", "~~~"].iter().any(|l| stmt.contains(l)) {
+            self.uncounted = true;
+        }
+    }
+
+    /// `linkStyle 0,2 stroke:#f00`: noted for the build. `default` and
+    /// anything unreadable stay as written.
+    fn link_style(&mut self, stmt: &str) {
+        let rest = stmt["linkStyle".len()..].trim_start();
+        let (ids, props) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+        let indexes: Option<Vec<usize>> = ids.split(',').map(|i| i.trim().parse().ok()).collect();
+        if let (Some(indexes), Some(style)) = (indexes, Style::parse(props)) {
+            self.link_styles
+                .push((self.passthrough.len(), indexes, style));
         }
     }
 
@@ -274,10 +312,14 @@ impl Body {
         self.hint(&prev, &group);
     }
 
+    /// Each pair is an edge Mermaid counts.
     fn hint(&mut self, from: &[String], to: &[String]) {
         for a in from {
             for b in to {
                 self.hints.push((a.clone(), b.clone()));
+                if !self.uncounted {
+                    self.order.push(None);
+                }
             }
         }
     }
@@ -348,12 +390,6 @@ impl Body {
                 absorbed.push(at);
             }
         }
-        let mut i = 0;
-        self.passthrough.retain(|_| {
-            let keep = !absorbed.contains(&i);
-            i += 1;
-            keep
-        });
 
         let mut seen: HashMap<(String, String), usize> = HashMap::new();
         for e in self.edges {
@@ -370,8 +406,29 @@ impl Body {
                 to: End::glued(e.to, b),
                 label: e.label,
                 route,
+                style: Style::default(),
             });
         }
+        // A `linkStyle` naming only modelled edges is theirs (the edges are
+        // the first connectors, in order); others stay as written.
+        for (at, indexes, style) in self.link_styles {
+            let edges: Option<Vec<usize>> = indexes
+                .iter()
+                .map(|&n| self.order.get(n).copied().flatten())
+                .collect();
+            if let Some(edges) = edges {
+                for e in edges {
+                    d.connectors[e].style.merge(style.clone());
+                }
+                absorbed.push(at);
+            }
+        }
+        let mut i = 0;
+        self.passthrough.retain(|_| {
+            let keep = !absorbed.contains(&i);
+            i += 1;
+            keep
+        });
         for line in &layout.lines {
             let exists = |end: &End| end.shape().is_none_or(|id| d.shape(id).is_some());
             if exists(&line.from) && exists(&line.to) {
@@ -439,8 +496,9 @@ impl Layout {
                 };
                 let end = |k: &str| fields.get(k).and_then(|v| parse_end(v));
                 if let (Some(kind), Some(from), Some(to)) = (kind, end("from"), end("to")) {
-                    self.lines
-                        .push(Connector::new(kind, from, to).with_route(route(&fields)));
+                    let mut line = Connector::new(kind, from, to).with_route(route(&fields));
+                    line.style.stroke = fields.get("stroke").map(|c| Colour::parse(c));
+                    self.lines.push(line);
                 }
             }
             Some(w) if w.starts_with('@') => {}
@@ -516,6 +574,53 @@ mod tests {
     fn empty_is_a_new_diagram() {
         assert_eq!(read(""), Ok(Diagram::new()));
         assert_eq!(read("\n\n%% blockliner 1 grid=10\n").unwrap().grid, 10.0);
+    }
+
+    #[test]
+    fn link_styles_on_modelled_edges_are_theirs() {
+        // Edges in file order: 0 a-->b (modelled), 1 a-->c and 2 b-->c
+        // (kept: `&`), 3 b-->c (modelled).
+        let text = "flowchart LR\n  a --> b\n  a & b --> c\n  b --> c\n  \
+                    linkStyle 0 stroke:#f00,stroke-width:2px\n  \
+                    linkStyle 3 stroke:#0f0\n  linkStyle 1,4 stroke:#00f\n  \
+                    linkStyle 2 stroke:#999\n  linkStyle default stroke:#333\n";
+        let d = read(text).unwrap();
+        let props = |i: usize| d.connectors[i].style.props();
+        assert_eq!(props(0), "stroke:#f00,stroke-width:2px");
+        assert_eq!(props(1), "stroke:#0f0");
+        assert_eq!(
+            d.passthrough,
+            [
+                "  a & b --> c",
+                "  linkStyle 1,4 stroke:#00f",
+                "  linkStyle 2 stroke:#999",
+                "  linkStyle default stroke:#333",
+            ]
+        );
+        // Written back numbered as the edges now are: the modelled ones
+        // first.
+        let out = crate::write(&d);
+        assert!(
+            out.contains("  linkStyle 0 stroke:#f00,stroke-width:2px\n  linkStyle 1 stroke:#0f0\n"),
+            "{out}"
+        );
+
+        // After a statement whose edges can't be counted, indexes stay.
+        let d = read(
+            "flowchart LR\n  a --> b\n  x@{ shape: rect } --> b\n  c --> d\n  \
+             linkStyle 0 stroke:#f00\n  linkStyle 2 stroke:#0f0\n",
+        )
+        .unwrap();
+        assert_eq!(d.connectors[0].style.props(), "stroke:#f00");
+        assert!(d.connectors[1].style.is_empty());
+        assert!(d
+            .passthrough
+            .contains(&"  linkStyle 2 stroke:#0f0".to_string()));
+
+        // A free line's colour is in its `@line`.
+        let d = read("flowchart LR\n%% @line line from=5,5 to=9,9 stroke=#3b82f6\n").unwrap();
+        assert_eq!(d.connectors[0].style.props(), "stroke:#3b82f6");
+        assert!(crate::write(&d).contains("%% @line line from=5,5 to=9,9 stroke=#3b82f6\n"));
     }
 
     #[test]

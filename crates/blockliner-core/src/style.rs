@@ -1,6 +1,6 @@
-//! Shape colours: a shape's Mermaid `style` line (`style api
-//! fill:#dbeafe,stroke:#3b82f6,color:#111827`), the preset swatches, and the
-//! label colour that reads on a fill.
+//! Shape and connector colours: a shape's Mermaid `style` line (`style api
+//! fill:#dbeafe,stroke:#3b82f6,color:#111827`) or an edge's `linkStyle`
+//! line, the preset swatches, and the label colour that reads on a fill.
 //!
 //! A colour keeps its text exactly as written, so a hand-written value
 //! BlockLiner can't draw (`rgb(…)`, an unusual name) is still written back
@@ -159,7 +159,8 @@ pub fn contrast(fill: [u8; 4]) -> Colour {
     })
 }
 
-/// A shape's own style. Empty for most shapes; nothing is written then.
+/// A shape's or connector's own style. Empty for most; nothing is written
+/// then.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Style {
     pub fill: Option<Colour>,

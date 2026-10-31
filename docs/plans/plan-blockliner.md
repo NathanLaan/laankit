@@ -8,8 +8,10 @@ Hand checks on Windows and macOS remain
 "Still to verify by hand"). **Phases 9 (right-angle connectors), 10 (shape
 styles), 11 (Mermaid diamond/hexagon/database/subroutine shapes), 12 (copy
 and paste), 13 (clickable zoom) and 14 (Object Properties panel)
-implemented (2026-10-30).** All planned phases are done; §7 lists ideas
-for later.
+implemented (2026-10-30).** **Phases 15 (editable edge labels) and 16
+(connector colours; stadium, circle, parallelogram and trapezoid shapes)
+implemented (2026-10-30)** (§10.8, §10.9). All planned phases are done; §7
+lists further ideas.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -97,7 +99,7 @@ crates/marina-egui          theme, toolbar, palette, settings, panes (unchanged)
 
 | Module | Responsibility |
 |---|---|
-| `model` ✅ | `Diagram { direction, grid, shapes: Vec<Shape>, connectors: Vec<Connector>, preamble, passthrough }`. `Shape { id, kind: Rect \| RoundRect \| Text \| Diamond \| Hexagon \| Database \| Subroutine \| Other{open, close}, label, rect, class, external }` (the four before `Other` from phase 11). `Connector { kind: Line \| Arrow, from: End, to: End, label }`. `End` is `Glued { shape, anchor: Option<N\|E\|S\|W> }` (`None` = dynamic glue, the nearest side) or `Free(Point)`. Its own `Point`/`Rect` types (f32), so it needs no egui. |
+| `model` ✅ | `Diagram { direction, grid, shapes: Vec<Shape>, connectors: Vec<Connector>, preamble, passthrough }`. `Shape { id, kind: Rect \| RoundRect \| Text \| Diamond \| Hexagon \| Database \| Subroutine \| Stadium \| Circle \| Parallelogram \| Trapezoid \| Other{open, close}, label, rect, class, external, style }` (Diamond to Subroutine from phase 11, Stadium to Trapezoid from phase 16). `Connector { kind: Line \| Arrow, from: End, to: End, label, route, style }`. `End` is `Glued { shape, anchor: Option<N\|E\|S\|W> }` (`None` = dynamic glue, the nearest side) or `Free(Point)`. Its own `Point`/`Rect` types (f32), so it needs no egui. |
 | `mermaid::write` ✅ | `Diagram` → `.mmd` text. Deterministic order (stable diffs). |
 | `mermaid::read` ✅ | `.mmd` text → `Diagram`. A small hand-written lexer and reader for the `flowchart` subset in §4. Unknown statements are kept verbatim and written back. |
 | `layout` ✅ | `layered`: positions for nodes without `@shape`, a basic layered layout (§4.4), below anything already placed. |
@@ -183,7 +185,7 @@ a rectangle, and was written back unchanged. Since phase 11 it is a
 | `%% blockliner <version> grid=<px>` | Format version (1) and grid size. |
 | `%% @shape <id> x= y= w= h=` | Every shape's rectangle, in model order. |
 | `%% @edge <from>-><to>[#n] [from=<anchor>] [to=<anchor>] [route=elbow [mid=x:<n>\|y:<n>]]` | Fixed anchors and the route of the nth edge between two nodes. Written only when an anchor is fixed or the route is right-angle; otherwise the glue is dynamic and the edge straight. Keyed by endpoints, not position, so a hand-inserted edge doesn't shift the others. |
-| `%% @line <line\|arrow> from=<end> to=<end> [route=elbow [mid=…]]` | A connector with at least one free end. An end is `x,y` or `id[:anchor]`. |
+| `%% @line <line\|arrow> from=<end> to=<end> [route=elbow [mid=…]] [stroke=<colour>]` | A connector with at least one free end. An end is `x,y` or `id[:anchor]`. `stroke=` is its colour (phase 16). |
 
 Any other `%% @…` line is reserved and dropped. Other `%%` comments are kept.
 
@@ -195,13 +197,15 @@ Any other `%% @…` line is reserved and dropped. Other `%%` comments are kept.
 | Round rectangle | `id("label")` | |
 | Text box | `id["label"]:::bl_text` + `classDef bl_text fill:none,stroke:none` | Renders as bare text in Mermaid. |
 | Diamond, hexagon, database, subroutine (phase 11) | `id{"label"}`, `id{{"label"}}`, `id[("label")]`, `id[["label"]]` | Written with the delimiters files already used, so those files don't change. |
+| Stadium, circle, parallelogram, trapezoid (phase 16) | `id(["label"])`, `id(("label"))`, `id[/"label"/]`, `id[/"label"\]` | The mirrored `[\ \]` and `[\ /]` stay kept shapes. |
 | Any other node shape | Its own delimiters, kept | Drawn as a dashed box with a badge naming the brackets. |
 | Glued line | `a --- b` | |
 | Glued arrow | `a --> b` | |
 | Free line/arrow (either end not glued) | `%% @line …` only | Mermaid cannot draw a line that is not attached to nodes. The line appears in BlockLiner but not in other Mermaid renderers. The status bar shows a hint when the diagram has such lines. |
 | Multi-line label | `<br>` inside the quoted label | `"` is escaped as `#quot;`. `#` and `<br` are escaped (`#35;`, `#lt;`) only where they would otherwise be decoded, so `C#` stays `C#`. |
-| Edge label (read and kept; editing comes after the MVP) | `a -->\|"label"\| b` | Also reads `a -- label --> b`. |
+| Edge label (editable from phase 15) | `a -->\|"label"\| b` | Also reads `a -- label --> b`. |
 | Shape colours (phase 10) | `style id fill:#dbeafe,stroke:#3b82f6,color:#111827` | One line per styled shape, after the edges. Other properties (`stroke-width`, …) are kept. |
+| Edge colours (phase 16) | `linkStyle 2 stroke:#3b82f6` | One line per styled edge, after the `style` lines, numbered among the edges BlockLiner writes (which come first). Other properties are kept. |
 
 New diagrams default to `LR`. A file's own direction is kept. `graph` is
 written back as `flowchart`.
@@ -214,7 +218,8 @@ written back as `flowchart`.
   gets an automatic position.
 - **Statements BlockLiner doesn't model are kept** verbatim and in order:
   `classDef`, `class`, `style` (except a shape's own, since phase 10),
-  `click`, `linkStyle`, other `%%` comments,
+  `click`, `linkStyle` (except one naming only modelled edges, since
+  phase 16), other `%%` comments,
   whole `subgraph … end` blocks, and edges with other link styles (`-.->`,
   `==>`, `a & b --> c`, …). They are written after the nodes and edges. Nodes
   that are declared only inside them are marked `external`. Those nodes are
@@ -225,8 +230,9 @@ written back as `flowchart`.
   so a hand-written file is normalised by its first save and is
   byte-identical from then on (`tests/fixtures/handwritten*.mmd`).
 - **Known limitation:** the first save moves modelled edges ahead of kept
-  ones. A hand-written `linkStyle <index>` that mixes the two may then point
-  at a different edge.
+  ones. A hand-written `linkStyle <index>` that names a kept edge (or mixes
+  kept and modelled ones) may then point at a different edge. One naming
+  only modelled edges is read as theirs and renumbered (phase 16).
 - Tested by golden files for both directions and a round trip over 2,000
   generated diagrams (`read(write(d)) == d`, and `write` is idempotent).
 
@@ -282,8 +288,8 @@ and the Mermaid brackets, such as `([ ])`, on a shape drawn as a box.
   when both ends are inside, and deleted with Delete. Dragging a line moves
   its free ends only; glued ends stay with their shapes. A single selected
   line shows its two ends as handles (filled when glued), and dragging one
-  re-glues or frees it. Edge labels read from a file are drawn at the
-  midpoint, read-only.
+  re-glues or frees it. Edge labels are drawn at the midpoint and edited
+  in place (phase 15, §10.8).
 - **Moving:** a drag moves the selection by whole grid steps. The delta is
   snapped, not each item's position, so items that are not on the grid
   (after `Alt` placement) keep their offset. Glued connectors follow.
@@ -448,6 +454,8 @@ file stays small; the text stays editable).
 | **12. Copy and paste** ✅ | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` for shapes and connectors, within a diagram, between diagrams and between BlockLiner windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out. | 2 days |
 | **13. Clickable zoom** ✅ | The status bar's "Zoom 120%" becomes a button: a click goes back to 100 % (as `Ctrl+0` does), with a hover highlight, a tooltip and an accessible label. | ½ day |
 | **14. Object Properties panel** ✅ | A Properties pane in the left sidebar, below the diagram list, shown or hidden with a toolbar button and `Ctrl+I`. It shows the selection's Fill and Stroke (swatches, Default, a hex field) and changes them; a selection whose values differ shows **Mixed** until one is picked. | 2 days |
+| **15. Editable edge labels** ✅ | Double-click a connector (or its label), or press `Enter` (Edit Label), to type its label in place; Enter commits, Esc cancels, an empty label removes it. Clicking a label selects its connector. Saved as `a -->|"HTTPS"| b`. | 1–2 days |
+| **16. Connector colours and more shapes** ✅ | Selected connectors take a Stroke colour (the same swatches, hex field and Reset Style as shapes), saved as Mermaid `linkStyle` lines (free lines: in their `@line`). Stadium `([ ])`, circle `(( ))`, parallelogram `[/ /]` and trapezoid `[/ \]` become real shapes in the More Shapes list. | 2–3 days |
 
 **Phases 9–14: about 2½ weeks.** They are independent; this order puts the
 most-wanted first. Copy and paste comes after the shape phases so it carries
@@ -456,16 +464,13 @@ could go anywhere. Phase 14 builds on phase 10's styles and is the natural
 home for phase 11's shapes' properties later; it can follow phase 10 at
 any point.
 
-### After phase 12 (ideas, in rough value order)
+### After phase 16 (ideas, in rough value order)
 
-1. **Editable edge labels** (`a -- "HTTPS" --> b`; read-only today).
-2. **Subgraphs as boundary containers** (system/trust boundaries), which
+1. **Subgraphs as boundary containers** (system/trust boundaries), which
    architecture diagrams use a lot. Maps to Mermaid `subgraph`.
-3. Duplicate (`Ctrl+D`), align/distribute, z-order.
-4. Connector colours (`linkStyle`, which addresses edges by index) and the
-   remaining Mermaid shapes (stadium, circle, parallelogram, trapezoid).
-5. Opening `.mmd` files from NoteLiner.
-6. More export options: a dark or transparent background, PDF, and
+2. Duplicate (`Ctrl+D`), align/distribute, z-order.
+3. Opening `.mmd` files from NoteLiner.
+4. More export options: a dark or transparent background, PDF, and
    "copy image to clipboard".
 
 ---
@@ -1138,3 +1143,153 @@ indeterminate state:
   the four shapes in the mapping table) and the status line.
 - **The help text** behind Settings → Keyboard Shortcuts comes from the
   command registry, so it updates itself.
+
+### 10.8 Phase 15: editable edge labels
+
+**What the user sees.**
+- **Editing:** with the Select tool, double-clicking a connector (or its
+  label) opens a text field at the label's place, the path's midpoint, on
+  the same patch of background the label is drawn on. As for shapes: Enter
+  commits, Shift+Enter adds a line, Esc cancels and a click elsewhere
+  commits. An empty label removes it. The connector is selected while its
+  label is edited.
+- **Also from:** the right-click menu's **Edit Label** on a single
+  connector, and a command **Edit Label** (`Enter`, in the palette) for a
+  single selected shape or connector. (`F2` already renames the diagram.)
+- **Clicking a label** selects its connector, and hovering it highlights
+  the connector, as the line itself does. A label is easier to hit than a
+  1.5-point line.
+- **Only Mermaid edges** (both ends glued) carry a label: a free line has
+  no edge to write it on. Edit Label is off for one, and a double-click on
+  it does nothing. A connector that is unglued keeps its label in memory
+  while the diagram is open, so gluing it back brings the label back.
+- **One undo step** per label edit, as for shapes.
+
+**Saved as** `a -->|"HTTPS"| b`, as the writer already does; multi-line
+labels use `<br>`. Copy and paste, export and the round trip already carry
+labels.
+
+**Code.**
+- **`canvas/label.rs`:** the label edit targets a shape or a connector
+  (`Target::Shape(id)` / `Target::Line(index)`). A connector's field is
+  centred on the path midpoint, as wide as the text (at least 6 cells),
+  in the edge-label font.
+- **Hit-testing:** `Canvas::label_at` lays out each labelled connector's
+  text (the canvas knows the fonts) and tests its patch first, so clicks,
+  hovers, double-clicks and right-clicks on a label find its connector.
+- **Painting:** the label being edited isn't drawn under its text field.
+- **Commands:** `Act::EditLabel` (`edit.label`, `Enter`, when a single shape
+  BlockLiner declares or a single Mermaid edge is selected) and
+  `MenuAction::EditLabel`.
+
+**Tests.**
+- Double-click a connector, type, Enter: the label is set, written as
+  `a -->|"HTTPS"| b`, and one undo step removes it.
+- Double-click its label: the field opens with the text; clearing it
+  removes the label. Esc keeps the old one.
+- A click on the label selects the connector.
+- `Enter` and the menu's Edit Label; a free line can't be labelled.
+- An offscreen render of a label being edited.
+
+**As built** (2026-10-30), as above. Clicks, hovers and right-clicks test
+each label's patch before the line itself (`Canvas::line_at`, with the
+patches laid out once a frame), and a double-click on a single selected
+connector's end handle also edits its label. The field is centred on the
+midpoint, at least 6 cells wide, on the label's patch outlined in the
+accent colour. Multi-line edge labels are now centred line by line on the
+canvas, as the editor and the export already did. `ui_tests_labels.rs`
+(3 tests).
+
+### 10.9 Phase 16: connector colours and more shapes
+
+**Connector colours: what the user sees.**
+- **Stroke for lines:** the Stroke swatches, Custom… hex value, Default and
+  Reset Style (right-click menu, palette and Properties pane) now apply to
+  selected connectors too. The line and its arrowhead are drawn in the
+  colour; the label keeps the theme's colour.
+- **Fill stays for shapes.** With only connectors selected, the Fill row is
+  off and the pane says "Lines take a stroke colour only." A mixed
+  selection's Stroke row covers shapes and lines together (and shows
+  **Mixed** when they differ).
+- **Export** draws the colours too.
+
+**Saved as.**
+- **Mermaid edges:** a `linkStyle <n> stroke:#3b82f6` line per coloured
+  edge, after the `style` lines, where `n` is the edge's index among the
+  edges BlockLiner writes (which come first in the file, so the index is
+  the one Mermaid uses). Other properties in a `linkStyle` (`stroke-width`,
+  `color`, …) are kept.
+- **Free lines:** a `stroke=#3b82f6` field in their `@line` comment.
+- **Reading:** a `linkStyle` whose indexes all name modelled edges becomes
+  their style, wherever it is in the file. Edges are counted in file order,
+  kept statements included (`a & b --> c` is two). `linkStyle default …`,
+  one naming a kept statement's edge, and any after a statement whose edges
+  can't be counted stay as written (§4.3's limitation still applies to
+  those).
+- **Mermaid's own arrowheads** may stay the default colour in some
+  renderers; the line is coloured everywhere.
+
+**More shapes: what the user sees.**
+- **Stadium** `id(["label"])`, **circle** `id(("label"))`,
+  **parallelogram** `id[/"label"/]` and **trapezoid** `id[/"label"\]`
+  become real shapes: drawn, hit-tested and labelled within their outline,
+  and exported. The mirrored variants (`[\ \]`, `[\ /]`) and the rest stay
+  kept shapes, drawn as rectangles.
+- **The More Shapes list** grows to eight: the four from phase 11, then
+  these four. They have no letter keys (the palette has them as tools).
+- **Default sizes:** stadium, parallelogram and trapezoid 8 × 3 cells,
+  circle 4 × 4. A circle resized to a non-square box is drawn as an
+  ellipse.
+- **Anchors** sit on the outline: a parallelogram's and trapezoid's east
+  and west anchors are on their slanted sides.
+
+**Code.**
+- **Core:** `Connector.style: Style` (only `stroke` is set by the UI);
+  `mermaid::read` counts edges and absorbs `linkStyle`; `mermaid::write`
+  writes them; `@line … stroke=`. `ShapeKind::{Stadium, Circle,
+  Parallelogram, Trapezoid}` with their delimiters, default sizes,
+  `polygon` (parallelogram, trapezoid), `contains`, `label_rect` and
+  `Shape::anchor`.
+- **App:** `Canvas::selected_style` and `style_selection` include the
+  selected lines' strokes; paint and export use them; the Properties pane's
+  reasons; `Tool` and the More Shapes list; outlines in `paint` and
+  `export`.
+
+**Tests.**
+- Core: `linkStyle` read (indexes, lists, kept edges, `default`, counting
+  past `&`), written and round-tripped; `@line stroke=`; the new shapes'
+  delimiters, outlines, hits, label areas and anchors; the generated
+  round trip includes them.
+- App: a Stroke swatch on a selected connector writes a `linkStyle`; Reset
+  Style removes it; Properties with only lines; the More Shapes list picks
+  a stadium; an export golden with the new shapes and a coloured line.
+- Offscreen renders of the new shapes and coloured connectors.
+
+**As built** (2026-10-30), as above, with these details:
+- **Slant and radius:** the parallelogram's and trapezoid's slant is a
+  third of the height (at most a quarter of the width); their label area is
+  inset by it. A stadium's ends are half circles of half its height; its
+  label is inset by half that. A circle's label sits in the rectangle
+  inside the ellipse.
+- **Anchors:** `Shape::anchor` puts a slanted side's anchor half the slant
+  in; gluing, routing and the anchor hints all use it.
+- **A selected coloured line** keeps its colour with an accent halo under
+  it (the plain accent would hide the colour just picked); an uncoloured one
+  is still drawn in the accent.
+- **Commands:** the Fill entries need a selected shape (`fillable`); the
+  Stroke entries and Reset Style take shapes or lines. The right-click menu
+  shows Fill only when a shape is selected.
+- **Properties:** with only lines selected, the Fill row is off and the
+  pane says "Lines take a stroke colour only."; with nothing selected it
+  says "Select shapes or lines to change their colours."
+- **Reading:** edges are counted in file order through modelled and kept
+  statements, subgraph contents included; a statement the lexer can't read
+  that contains `--`, `==`, `-.` or `~~~` stops the count.
+- **Tests:** core `stadiums_circles_parallelograms_and_trapezoids`,
+  `link_styles_on_modelled_edges_are_theirs`, the lexer's new delimiters,
+  `written.mmd` (the four shapes, a `linkStyle`, a coloured `@line`) and
+  the generated round trip (edge styles, free-line strokes, the new
+  kinds). App `the_later_four_come_from_the_list`,
+  `lines_alone_take_a_stroke`, and the export golden (the four shapes, a
+  red right-angle line; the page is now 800 × 460). The import test's
+  limitation example is now `((( )))`, since `([ ])` is a real shape.

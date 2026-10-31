@@ -329,11 +329,24 @@ mod tests {
         );
         assert_eq!(
             tokenize("st([Start])"),
-            Some(vec![node("st", Some((other("([", "])"), "Start")))])
+            Some(vec![node("st", Some((ShapeKind::Stadium, "Start")))])
+        );
+        assert_eq!(
+            tokenize("o((Hub))"),
+            Some(vec![node("o", Some((ShapeKind::Circle, "Hub")))])
+        );
+        assert_eq!(
+            tokenize("p[/In/]"),
+            Some(vec![node("p", Some((ShapeKind::Parallelogram, "In")))])
         );
         assert_eq!(
             tokenize("t[/Trap\\]"),
-            Some(vec![node("t", Some((other("[/", "\\]"), "Trap")))])
+            Some(vec![node("t", Some((ShapeKind::Trapezoid, "Trap")))])
+        );
+        // The mirrored ones stay as written.
+        assert_eq!(
+            tokenize("m[\\Out\\]"),
+            Some(vec![node("m", Some((other("[\\", "\\]"), "Out")))])
         );
         assert_eq!(
             tokenize("c(((Stop)))"),

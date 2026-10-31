@@ -35,6 +35,8 @@ pub enum Act {
     /// event.
     Paste,
     Delete,
+    /// Edit the single selected shape's or connector's label.
+    EditLabel,
     /// The selected connectors become right-angle…
     RouteElbow,
     /// …or straight.
@@ -75,8 +77,12 @@ pub struct View {
     pub straight_selected: bool,
     /// …or a right-angle one.
     pub elbow_selected: bool,
-    /// Selected shapes can take colours.
+    /// Selected shapes or lines can take a stroke…
     pub stylable: bool,
+    /// …and selected shapes a fill.
+    pub fillable: bool,
+    /// The selection is one shape or Mermaid edge whose label can be edited.
+    pub labellable: bool,
     pub can_undo: bool,
     pub can_redo: bool,
 }
@@ -114,6 +120,14 @@ fn stylable(v: &View) -> bool {
     ready(v) && v.stylable
 }
 
+fn fillable(v: &View) -> bool {
+    ready(v) && v.fillable
+}
+
+fn labellable(v: &View) -> bool {
+    ready(v) && v.labellable
+}
+
 fn undoable(v: &View) -> bool {
     ready(v) && v.can_undo
 }
@@ -123,9 +137,10 @@ fn redoable(v: &View) -> bool {
 }
 
 /// A tool's letter (Excalidraw's; never fires while a text field has the
-/// keyboard).
-pub fn tool_key(tool: Tool) -> (Key, &'static str) {
-    match tool {
+/// keyboard). The later more shapes have none: they're in the More Shapes
+/// list and the palette.
+pub fn tool_key(tool: Tool) -> Option<(Key, &'static str)> {
+    Some(match tool {
         Tool::Select => (Key::V, "V"),
         Tool::Rect => (Key::R, "R"),
         Tool::RoundRect => (Key::O, "O"),
@@ -140,7 +155,8 @@ pub fn tool_key(tool: Tool) -> (Key, &'static str) {
         Tool::ElbowLine => (Key::J, "J"),
         Tool::ElbowArrow => (Key::E, "E"),
         Tool::Text => (Key::T, "T"),
-    }
+        Tool::Stadium | Tool::Circle | Tool::Parallelogram | Tool::Trapezoid => return None,
+    })
 }
 
 /// A tool's number: its toolbar button ([`Tool::slot`]), so the four more
@@ -195,7 +211,7 @@ pub fn registry() -> Registry<Act, View> {
     );
     r.register(add("file.closeFolder", "Close Folder", "File", Act::CloseFolder).when(in_project));
     for tool in Tool::ALL {
-        let (key, letter) = tool_key(tool);
+        let letter = tool_key(tool);
         let (digit, number) = tool_digit(tool);
         let id: String = tool
             .name()
@@ -204,24 +220,30 @@ pub fn registry() -> Registry<Act, View> {
             .filter(char::is_ascii_alphanumeric)
             .collect();
         let id = format!("tool.{id}");
-        let command = add(
+        let mut command = add(
             &id,
             &format!("{} Tool", tool.name()),
             "Tools",
             Act::Tool(tool),
         )
-        .key(Binding::logical(Modifiers::NONE, key))
-        // With Shift the tool stays picked after each shape.
-        .key(Binding::logical(Modifiers::SHIFT, key))
         .when(ready);
+        if let Some((key, _)) = letter {
+            command = command
+                .key(Binding::logical(Modifiers::NONE, key))
+                // With Shift the tool stays picked after each shape.
+                .key(Binding::logical(Modifiers::SHIFT, key));
+        }
         // The more shapes' number is More Shapes'.
-        r.register(if tool.is_more() {
-            command.shortcut(letter)
-        } else {
-            command
+        r.register(match (tool.is_more(), letter) {
+            (true, Some((_, letter))) => command.shortcut(letter),
+            (true, None) => command,
+            (false, letter) => command
                 .key(Binding::physical(Modifiers::NONE, digit))
                 .key(Binding::physical(Modifiers::SHIFT, digit))
-                .shortcut(format!("{letter}, {number}"))
+                .shortcut(match letter {
+                    Some((_, letter)) => format!("{letter}, {number}"),
+                    None => number.to_owned(),
+                }),
         });
     }
     let (digit, number) = tool_digit(Tool::MORE[0]);
@@ -305,13 +327,14 @@ pub fn registry() -> Registry<Act, View> {
         .when(has_elbow),
     );
     // Colours: palette-only (and the right-click menu).
-    for (part, make) in [
-        ("Fill", Act::Fill as fn(Swatch) -> Act),
-        ("Stroke", Act::Stroke),
+    type When = fn(&View) -> bool;
+    for (part, make, when) in [
+        ("Fill", Act::Fill as fn(Swatch) -> Act, fillable as When),
+        ("Stroke", Act::Stroke, stylable),
     ] {
         let mut swatch = |id: String, name: &str, s: Swatch| {
             let label = format!("{part}: {name}");
-            r.register(add(&id, &label, "Style", make(s)).when(stylable));
+            r.register(add(&id, &label, "Style", make(s)).when(when));
         };
         let key = part.to_lowercase();
         swatch(format!("style.{key}.default"), "Default", Swatch::Default);
@@ -322,6 +345,12 @@ pub fn registry() -> Registry<Act, View> {
         swatch(format!("style.{key}.custom"), "Custom…", Swatch::Custom);
     }
     r.register(add("style.reset", "Reset Style", "Style", Act::ResetStyle).when(stylable));
+    r.register(
+        add("edit.label", "Edit Label", "Edit", Act::EditLabel)
+            .key(Binding::logical(Modifiers::NONE, Key::Enter))
+            .shortcut("Enter")
+            .when(labellable),
+    );
     r.register(
         add("edit.delete", "Delete", "Edit", Act::Delete)
             .key(Binding::logical(Modifiers::NONE, Key::Delete))
@@ -435,6 +464,8 @@ mod tests {
             straight_selected: true,
             elbow_selected: true,
             stylable: true,
+            fillable: true,
+            labellable: true,
             can_undo: true,
             can_redo: true,
         };
@@ -456,6 +487,8 @@ mod tests {
                 straight_selected: true,
                 elbow_selected: true,
                 stylable: true,
+                fillable: true,
+                labellable: true,
                 can_undo: true,
                 can_redo: true,
             })

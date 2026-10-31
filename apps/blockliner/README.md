@@ -18,15 +18,18 @@ the shared `marina-*` crates — no webview, no JavaScript. The shipped binary i
 ## Features
 
 - **Shapes** — rectangles, rounded rectangles, text boxes, and (under the
-  More Shapes button) diamonds, hexagons, databases and subroutines; drag to
+  More Shapes button) diamonds, hexagons, databases, subroutines, stadiums,
+  circles, parallelograms and trapezoids; drag to
   draw or click for a default size, move and resize on the grid, edit labels
   in place.
 - **Connectors** — straight or right-angle lines and arrows that glue to a
   shape's sides (fixed) or to the shape (turning as it moves), plus free
   lines anywhere. Right-angle routes go round shapes in the way, and their
-  middle segment can be dragged.
+  middle segment can be dragged. Edge labels ("HTTPS", "reads") are edited
+  in place: double-click the connector or its label.
 - **Colours** — fill and stroke from eight preset swatches or any hex value,
-  saved as Mermaid `style` lines, with labels kept readable on the fill. Set
+  saved as Mermaid `style` lines, with labels kept readable on the fill.
+  Connectors take a colour too, saved as `linkStyle` lines. Set
   them from the right-click menu, the palette, or the Properties pane
   (Ctrl+I), which shows "Mixed" when the selected shapes differ.
 - **Copy and paste** — Ctrl+C, Ctrl+X and Ctrl+V, within a diagram, between

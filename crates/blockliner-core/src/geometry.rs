@@ -1,7 +1,8 @@
 //! Rectangle geometry, the resize handles, the outlines of the shapes that
 //! aren't boxes, their label areas and hit-testing.
 
-use crate::model::{Diagram, Point, Rect, Shape, ShapeKind};
+use crate::connect::anchor_point;
+use crate::model::{Anchor, Diagram, Point, Rect, Shape, ShapeKind};
 use crate::snap::snap;
 
 impl Rect {
@@ -132,11 +133,40 @@ pub fn hexagon_inset(r: &Rect) -> f32 {
     (r.h / 2.0).min(r.w / 4.0)
 }
 
-/// The outline of a shape drawn as a polygon (diamond, hexagon), clockwise
-/// from the top; `None` for the others.
+/// How far a parallelogram's or trapezoid's slanted sides lean across.
+pub fn slant(r: &Rect) -> f32 {
+    (r.h / 3.0).min(r.w / 4.0)
+}
+
+/// A stadium's corner radius: half its height (or width, if narrower).
+pub fn stadium_radius(r: &Rect) -> f32 {
+    r.h.min(r.w) / 2.0
+}
+
+/// The outline of a shape drawn as a polygon (diamond, hexagon,
+/// parallelogram, trapezoid), clockwise from the top left; `None` for the
+/// others.
 pub fn polygon(kind: &ShapeKind, r: &Rect) -> Option<Vec<Point>> {
     let c = r.center();
     match kind {
+        ShapeKind::Parallelogram => {
+            let k = slant(r);
+            Some(vec![
+                Point::new(r.x + k, r.y),
+                Point::new(r.right(), r.y),
+                Point::new(r.right() - k, r.bottom()),
+                Point::new(r.x, r.bottom()),
+            ])
+        }
+        ShapeKind::Trapezoid => {
+            let k = slant(r);
+            Some(vec![
+                Point::new(r.x + k, r.y),
+                Point::new(r.right() - k, r.y),
+                Point::new(r.right(), r.bottom()),
+                Point::new(r.x, r.bottom()),
+            ])
+        }
         ShapeKind::Diamond => Some(vec![
             Point::new(c.x, r.y),
             Point::new(r.right(), c.y),
@@ -185,8 +215,9 @@ pub fn cylinder(r: &Rect, cap: f32, steps: usize) -> (Vec<Point>, Vec<Point>) {
 }
 
 impl Shape {
-    /// `p` is inside the shape's outline (edges included). A diamond or a
-    /// hexagon misses in its empty corners; the others are their rectangle.
+    /// `p` is inside the shape's outline (edges included). A diamond, a
+    /// hexagon, a parallelogram, a trapezoid, a circle or a stadium misses
+    /// in its empty corners; the others are their rectangle.
     pub fn contains(&self, p: Point) -> bool {
         let r = &self.rect;
         if !r.contains(p) {
@@ -214,7 +245,56 @@ impl Shape {
                 let k = hexagon_inset(r) * off_middle(r.h / 2.0);
                 p.x >= r.x + k - 1e-4 && p.x <= r.right() - k + 1e-4
             }
+            ShapeKind::Parallelogram | ShapeKind::Trapezoid => {
+                // 0 at the top, 1 at the bottom.
+                let down = if r.h > 0.0 { (p.y - r.y) / r.h } else { 0.0 };
+                let k = slant(r);
+                let (left, right) = if self.kind == ShapeKind::Parallelogram {
+                    (r.x + k * (1.0 - down), r.right() - k * down)
+                } else {
+                    (r.x + k * (1.0 - down), r.right() - k * (1.0 - down))
+                };
+                p.x >= left - 1e-4 && p.x <= right + 1e-4
+            }
+            ShapeKind::Circle => {
+                let (rx, ry) = (r.w / 2.0, r.h / 2.0);
+                if rx <= 0.0 || ry <= 0.0 {
+                    return true;
+                }
+                let (dx, dy) = ((p.x - c.x) / rx, (p.y - c.y) / ry);
+                dx * dx + dy * dy <= 1.0 + 1e-4
+            }
+            ShapeKind::Stadium => {
+                // Outside the straight middle, within the radius of an end's
+                // centre.
+                let k = stadium_radius(r);
+                let ends = [
+                    Point::new(r.x + k, r.y + k),
+                    Point::new(r.right() - k, r.bottom() - k),
+                ];
+                let nearest = Point::new(
+                    p.x.clamp(ends[0].x, ends[1].x),
+                    p.y.clamp(ends[0].y, ends[1].y),
+                );
+                (p.x - nearest.x).hypot(p.y - nearest.y) <= k + 1e-4
+            }
             _ => true,
+        }
+    }
+
+    /// Where a connector glued to `a` meets the shape: the side's midpoint,
+    /// except on a parallelogram's or trapezoid's slanted sides, whose
+    /// midpoints are half the slant in.
+    pub fn anchor(&self, a: Anchor) -> Point {
+        let p = anchor_point(&self.rect, a);
+        match (&self.kind, a) {
+            (ShapeKind::Parallelogram | ShapeKind::Trapezoid, Anchor::E) => {
+                Point::new(p.x - slant(&self.rect) / 2.0, p.y)
+            }
+            (ShapeKind::Parallelogram | ShapeKind::Trapezoid, Anchor::W) => {
+                Point::new(p.x + slant(&self.rect) / 2.0, p.y)
+            }
+            _ => p,
         }
     }
 
@@ -236,6 +316,22 @@ impl Shape {
             ShapeKind::Subroutine => {
                 let k = SUBROUTINE_INSET.min(r.w / 4.0);
                 Rect::new(r.x + k, r.y, r.w - 2.0 * k, r.h)
+            }
+            ShapeKind::Parallelogram | ShapeKind::Trapezoid => {
+                let k = slant(&r);
+                Rect::new(r.x + k, r.y, r.w - 2.0 * k, r.h)
+            }
+            ShapeKind::Stadium => {
+                let k = stadium_radius(&r) / 2.0;
+                Rect::new(r.x + k, r.y, r.w - 2.0 * k, r.h)
+            }
+            // The rectangle inside the ellipse.
+            ShapeKind::Circle => {
+                let (w, h) = (
+                    r.w / std::f32::consts::SQRT_2,
+                    r.h / std::f32::consts::SQRT_2,
+                );
+                Rect::new(r.x + (r.w - w) / 2.0, r.y + (r.h - h) / 2.0, w, h)
             }
             _ => r,
         }
@@ -404,5 +500,54 @@ mod tests {
             area(ShapeKind::Subroutine),
             Rect::new(8.0, 0.0, 144.0, 80.0)
         );
+    }
+
+    #[test]
+    fn stadiums_circles_parallelograms_and_trapezoids() {
+        let p = Point::new;
+        let r = Rect::new(0.0, 0.0, 160.0, 60.0);
+        let s = |kind| Shape::new("s", kind, "", r);
+        // A slant of 20 (a third of the height).
+        assert_eq!(
+            polygon(&ShapeKind::Parallelogram, &r).unwrap(),
+            [p(20.0, 0.0), p(160.0, 0.0), p(140.0, 60.0), p(0.0, 60.0)]
+        );
+        assert_eq!(
+            polygon(&ShapeKind::Trapezoid, &r).unwrap(),
+            [p(20.0, 0.0), p(140.0, 0.0), p(160.0, 60.0), p(0.0, 60.0)]
+        );
+
+        // Their empty corners miss.
+        let para = s(ShapeKind::Parallelogram);
+        assert!(!para.contains(p(2.0, 2.0)));
+        assert!(para.contains(p(158.0, 2.0)));
+        assert!(!para.contains(p(158.0, 58.0)));
+        assert!(para.contains(p(2.0, 58.0)));
+        let trap = s(ShapeKind::Trapezoid);
+        assert!(!trap.contains(p(2.0, 2.0)));
+        assert!(!trap.contains(p(158.0, 2.0)));
+        assert!(trap.contains(p(2.0, 58.0)));
+        let stadium = s(ShapeKind::Stadium);
+        assert!(!stadium.contains(p(3.0, 3.0)));
+        assert!(stadium.contains(p(30.0, 1.0)));
+        assert!(stadium.contains(p(1.0, 30.0)));
+        let circle = Shape::new("c", ShapeKind::Circle, "", Rect::new(0.0, 0.0, 80.0, 80.0));
+        assert!(!circle.contains(p(6.0, 6.0)));
+        assert!(circle.contains(p(40.0, 1.0)));
+        assert!(circle.contains(p(40.0, 40.0)));
+
+        // Label areas inside the outlines.
+        assert_eq!(para.label_rect(), Rect::new(20.0, 0.0, 120.0, 60.0));
+        assert_eq!(trap.label_rect(), Rect::new(20.0, 0.0, 120.0, 60.0));
+        assert_eq!(stadium.label_rect(), Rect::new(15.0, 0.0, 130.0, 60.0));
+        let inner = circle.label_rect();
+        assert!((inner.w - 56.57).abs() < 0.01 && (inner.x - 11.72).abs() < 0.01);
+
+        // A slanted side's anchor is on it.
+        assert_eq!(para.anchor(Anchor::E), p(150.0, 30.0));
+        assert_eq!(para.anchor(Anchor::W), p(10.0, 30.0));
+        assert_eq!(trap.anchor(Anchor::E), p(150.0, 30.0));
+        assert_eq!(para.anchor(Anchor::N), p(80.0, 0.0));
+        assert_eq!(stadium.anchor(Anchor::E), p(160.0, 30.0));
     }
 }

@@ -13,7 +13,7 @@ flowchart TD
   web[Web App] --> api(API Gateway)
   api --> orders
   api --> bus[(Event Bus)]
-  bus --> cache([Cache])
+  bus --> cache(((Cache)))
   subgraph payments [Payments]
     pay[Payment Service] --> psp
   end
@@ -63,7 +63,11 @@ fn a_hand_written_file_is_laid_out_in_ranks() {
     let bus = center("bus");
     h.hover_at(cache);
     h.run_steps(2);
-    assert!(note(&h).unwrap().contains("([ ]) shape"), "{:?}", note(&h));
+    assert!(
+        note(&h).unwrap().contains("((( ))) shape"),
+        "{:?}",
+        note(&h)
+    );
     h.hover_at(bus);
     h.run_steps(2);
     assert_eq!(note(&h), None);

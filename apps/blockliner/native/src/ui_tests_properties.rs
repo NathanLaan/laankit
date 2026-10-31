@@ -48,7 +48,7 @@ fn show_and_hide_with_the_button_and_ctrl_i() {
     show_pane(&mut h);
     h.get_by_label("Nothing selected");
     // Nothing selected: the rows are off and say why.
-    h.get_by_label("Select shapes to change their fill and stroke.");
+    h.get_by_label("Select shapes or lines to change their colours.");
     h.get_by_label("Fill: Blue").click();
     h.run_steps(2);
     assert!(h.state().diagram().shapes.is_empty());
@@ -127,7 +127,7 @@ fn hex_values_are_applied_or_refused() {
 }
 
 #[test]
-fn lines_alone_take_no_colours() {
+fn lines_alone_take_a_stroke() {
     let (_tmp, _paths, mut h) = harness();
     h.run_steps(2);
     two_shapes(&mut h);
@@ -144,5 +144,19 @@ fn lines_alone_take_no_colours() {
     assert_eq!(h.state().selected_lines(), [0]);
     show_pane(&mut h);
     h.get_by_label("1 line");
-    h.get_by_label("Lines take no colours yet.");
+    h.get_by_label("Lines take a stroke colour only.");
+    // Fill is off; Stroke colours the line.
+    h.get_by_label("Fill: Blue").click();
+    h.run_steps(2);
+    assert!(h.state().diagram().shapes[0].style.is_empty());
+    h.get_by_label("Stroke: Red").click();
+    h.run_steps(2);
+    let line = &h.state().diagram().connectors[0];
+    assert_eq!(line.style.props(), "stroke:#ef4444");
+    assert!(
+        blockliner_core::write(h.state().diagram()).contains("\n  linkStyle 0 stroke:#ef4444\n")
+    );
+    h.get_by_label("Reset Style").click();
+    h.run_steps(2);
+    assert!(h.state().diagram().connectors[0].style.is_empty());
 }

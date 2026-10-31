@@ -86,8 +86,8 @@ impl Diagram {
         match end {
             End::Free(p) => Some(*p),
             End::Glued { shape, anchor } => {
-                let r = self.shape(shape)?.rect;
-                Some(anchor.map_or(r.center(), |a| anchor_point(&r, a)))
+                let s = self.shape(shape)?;
+                Some(anchor.map_or(s.rect.center(), |a| s.anchor(a)))
             }
         }
     }
@@ -97,11 +97,8 @@ impl Diagram {
         match end {
             End::Free(p) => Some(*p),
             End::Glued { shape, anchor } => {
-                let r = self.shape(shape)?.rect;
-                Some(anchor_point(
-                    &r,
-                    anchor.unwrap_or_else(|| nearest_anchor(&r, toward)),
-                ))
+                let s = self.shape(shape)?;
+                Some(s.anchor(anchor.unwrap_or_else(|| nearest_anchor(&s.rect, toward))))
             }
         }
     }
@@ -193,9 +190,10 @@ impl Diagram {
         Some(match end {
             End::Free(p) => vec![Port::free(*p)],
             End::Glued { shape, anchor } => {
-                let r = self.shape(shape)?.rect;
+                let s = self.shape(shape)?;
+                let r = s.rect;
                 let port = |a: Anchor| Port {
-                    at: anchor_point(&r, a),
+                    at: s.anchor(a),
                     side: Some(a),
                     shape: Some(r),
                 };
@@ -247,7 +245,7 @@ impl Diagram {
         self.shapes.iter().rev().find_map(|s| {
             Anchor::ALL
                 .into_iter()
-                .find(|&a| distance(anchor_point(&s.rect, a), p) <= tolerance)
+                .find(|&a| distance(s.anchor(a), p) <= tolerance)
                 .map(|a| (s.id.clone(), a))
         })
     }

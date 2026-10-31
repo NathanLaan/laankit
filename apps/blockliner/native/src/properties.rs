@@ -67,34 +67,36 @@ impl PropertiesProps {
 
     /// Why the rows are off, if they are.
     fn reason(&self) -> Option<String> {
-        if self.style.shapes > 0 {
+        if self.style.shapes > 0 || self.style.lines > 0 {
             return None;
         }
-        Some(match (self.style.external.as_slice(), self.style.lines) {
-            ([], 0) => "Select shapes to change their fill and stroke.".into(),
-            ([], _) => "Lines take no colours yet.".into(),
-            ([id], _) => format!("“{id}” is declared in a kept Mermaid statement."),
-            (_, _) => "These shapes are declared in kept Mermaid statements.".into(),
+        Some(match self.style.external.as_slice() {
+            [] => "Select shapes or lines to change their colours.".into(),
+            [id] => format!("“{id}” is declared in a kept Mermaid statement."),
+            _ => "These shapes are declared in kept Mermaid statements.".into(),
         })
     }
 
-    /// What a change won't touch, beside the shapes it will.
+    /// Whether the Fill row is on: lines have no fill.
+    fn fills(&self) -> bool {
+        self.style.shapes > 0
+    }
+
+    /// What a change won't touch, beside what it will.
     fn note(&self) -> Option<String> {
-        if self.style.shapes == 0 {
+        if self.reason().is_some() {
             return None;
         }
-        let mut parts = Vec::new();
-        match self.style.lines {
-            0 => {}
-            1 => parts.push("1 line".to_owned()),
-            n => parts.push(format!("{n} lines")),
+        let kept = match self.style.external.len() {
+            0 => None,
+            1 => Some("1 kept-statement shape not affected.".to_owned()),
+            n => Some(format!("{n} kept-statement shapes not affected.")),
+        };
+        let lines = (!self.fills()).then(|| "Lines take a stroke colour only.".to_owned());
+        match (lines, kept) {
+            (Some(a), Some(b)) => Some(format!("{a} {b}")),
+            (a, b) => a.or(b),
         }
-        match self.style.external.len() {
-            0 => {}
-            1 => parts.push("1 kept-statement shape".to_owned()),
-            n => parts.push(format!("{n} kept-statement shapes")),
-        }
-        (!parts.is_empty()).then(|| format!("{} not affected.", parts.join(" and ")))
     }
 }
 
@@ -117,6 +119,10 @@ pub fn summary(d: &Diagram, selection: &[String], lines: usize) -> String {
                     ShapeKind::Hexagon => "Hexagon",
                     ShapeKind::Database => "Database",
                     ShapeKind::Subroutine => "Subroutine",
+                    ShapeKind::Stadium => "Stadium",
+                    ShapeKind::Circle => "Circle",
+                    ShapeKind::Parallelogram => "Parallelogram",
+                    ShapeKind::Trapezoid => "Trapezoid",
                     ShapeKind::Other { .. } => "Shape",
                 };
                 let label = s.label.lines().next().unwrap_or("").trim();
@@ -200,7 +206,11 @@ fn contents(
                     } else {
                         &props.style.fill
                     };
-                    if let Some(a) = row(ui, field, current, stroke) {
+                    let on = stroke || props.fills();
+                    let picked = ui
+                        .add_enabled_ui(on, |ui| row(ui, field, current, stroke))
+                        .inner;
+                    if let Some(a) = picked {
                         out = Some(a);
                     }
                     ui.add_space(10.0);
@@ -403,11 +413,12 @@ mod tests {
         };
         assert_eq!(
             props(0, 0, &[]).reason().unwrap(),
-            "Select shapes to change their fill and stroke."
+            "Select shapes or lines to change their colours."
         );
+        assert_eq!(props(0, 2, &[]).reason(), None);
         assert_eq!(
-            props(0, 2, &[]).reason().unwrap(),
-            "Lines take no colours yet."
+            props(0, 2, &[]).note().unwrap(),
+            "Lines take a stroke colour only."
         );
         assert_eq!(
             props(0, 0, &["c"]).reason().unwrap(),
@@ -415,10 +426,14 @@ mod tests {
         );
         assert_eq!(props(2, 0, &[]).reason(), None);
         assert_eq!(props(2, 0, &[]).note(), None);
-        assert_eq!(props(1, 1, &[]).note().unwrap(), "1 line not affected.");
+        assert_eq!(props(1, 1, &[]).note(), None);
         assert_eq!(
             props(1, 2, &["c"]).note().unwrap(),
-            "2 lines and 1 kept-statement shape not affected."
+            "1 kept-statement shape not affected."
+        );
+        assert_eq!(
+            props(0, 1, &["c", "d"]).note().unwrap(),
+            "Lines take a stroke colour only. 2 kept-statement shapes not affected."
         );
     }
 }

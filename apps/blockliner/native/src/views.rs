@@ -134,7 +134,10 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
 /// line tools draw what they make, since no icon says "rounded rectangle".
 fn tool_button(ui: &mut Ui, tool: Tool, active: bool) -> bool {
     let number = tool_digit(tool).1;
-    let title = format!("{} — {} or {number}", tool.name(), tool_key(tool).1);
+    let title = match tool_key(tool) {
+        Some((_, letter)) => format!("{} — {letter} or {number}", tool.name()),
+        None => format!("{} — {number}", tool.name()),
+    };
     let glyph = match tool {
         Tool::Select => icons::ARROW_POINTER,
         Tool::Text => icons::FONT,
@@ -183,13 +186,16 @@ fn tool_number(ui: &Ui, resp: &egui::Response, number: &str) {
 }
 
 /// The More Shapes button: shows and picks the last of [`Tool::MORE`] used
-/// (`shown`). Its corner triangle, or a right-click, opens all four.
+/// (`shown`). Its corner triangle, or a right-click, opens them all.
 fn more_shapes_button(ui: &mut Ui, shown: Tool, tool: Tool) -> Option<Tool> {
     let number = tool_digit(shown).1;
+    let keys = match tool_key(shown) {
+        Some((_, letter)) => format!("{letter} or {number}"),
+        None => number.to_owned(),
+    };
     let title = format!(
-        "{} — {} or {number}. More shapes: right-click, or the corner",
-        shown.name(),
-        tool_key(shown).1
+        "{} — {keys}. More shapes: right-click, or the corner",
+        shown.name()
     );
     let label = format!("More Shapes: {}", shown.name());
     let resp = toolbar::button(
@@ -243,7 +249,8 @@ fn more_shapes_button(ui: &mut Ui, shown: Tool, tool: Tool) -> Option<Tool> {
     picked
 }
 
-/// A row of the More Shapes list: the shape's icon, name and letter.
+/// A row of the More Shapes list: the shape's icon, name and letter (if it
+/// has one).
 fn more_shapes_row(ui: &mut Ui, tool: Tool, active: bool) -> bool {
     let p = theme::palette(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(vec2(190.0, 30.0), Sense::click());
@@ -264,13 +271,15 @@ fn more_shapes_row(ui: &mut Ui, tool: Tool, active: bool) -> bool {
         font.clone(),
         ink,
     );
-    ui.painter().text(
-        pos2(rect.right() - 10.0, rect.center().y),
-        Align2::RIGHT_CENTER,
-        tool_key(tool).1,
-        font,
-        p.text_muted,
-    );
+    if let Some((_, letter)) = tool_key(tool) {
+        ui.painter().text(
+            pos2(rect.right() - 10.0, rect.center().y),
+            Align2::RIGHT_CENTER,
+            letter,
+            font,
+            p.text_muted,
+        );
+    }
     resp.clicked()
 }
 
@@ -318,10 +327,18 @@ fn paint_tool_icon(painter: &egui::Painter, tool: Tool, c: Pos2, ink: Color32) {
             ));
         }
         // The canvas's own outlines, small.
-        Tool::Diamond | Tool::Hexagon | Tool::Database | Tool::Subroutine => {
+        Tool::Diamond
+        | Tool::Hexagon
+        | Tool::Database
+        | Tool::Subroutine
+        | Tool::Stadium
+        | Tool::Circle
+        | Tool::Parallelogram
+        | Tool::Trapezoid => {
             let size = match tool {
                 Tool::Diamond => vec2(20.0, 14.0),
                 Tool::Database => vec2(14.0, 16.0),
+                Tool::Circle => vec2(15.0, 15.0),
                 _ => vec2(18.0, 12.0),
             };
             if let Some(kind) = tool.shape_kind() {

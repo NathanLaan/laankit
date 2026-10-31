@@ -25,6 +25,8 @@ mod ui_tests_history;
 #[cfg(test)]
 mod ui_tests_import;
 #[cfg(test)]
+mod ui_tests_labels;
+#[cfg(test)]
 mod ui_tests_lines;
 #[cfg(test)]
 mod ui_tests_more_shapes;

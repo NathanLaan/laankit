@@ -40,23 +40,33 @@ fn blockliner_files_are_unchanged_by_a_save() {
     let d = read(&input).unwrap();
     assert_eq!(write(&d), input);
 
-    assert_eq!(d.shapes.len(), 8);
+    assert_eq!(d.shapes.len(), 12);
     assert_eq!(d.shape("orders").unwrap().label, "Orders \"v2\"\nService");
     assert_eq!(d.shape("caption").unwrap().kind, ShapeKind::Text);
-    // The four shapes BlockLiner draws as themselves, delimiters unchanged.
+    // The shapes BlockLiner draws as themselves, delimiters unchanged.
     let kind = |id| d.shape(id).unwrap().kind.clone();
     assert_eq!(kind("db"), ShapeKind::Database);
     assert_eq!(kind("valid"), ShapeKind::Diamond);
     assert_eq!(kind("prepare"), ShapeKind::Hexagon);
     assert_eq!(kind("auth"), ShapeKind::Subroutine);
+    assert_eq!(kind("start"), ShapeKind::Stadium);
+    assert_eq!(kind("hub"), ShapeKind::Circle);
+    assert_eq!(kind("input"), ShapeKind::Parallelogram);
+    assert_eq!(kind("queue"), ShapeKind::Trapezoid);
     // The second gateway → orders edge has its own anchors.
     assert_eq!(d.connectors[1].from, End::glued("gateway", None));
     assert_eq!(d.connectors[3].from, End::glued("gateway", Some(Anchor::S)));
     assert_eq!(d.connectors[2].label.as_deref(), Some("SQL"));
     assert!(d.has_free_lines());
     assert_eq!(d.connectors[5].to, End::Free(Point::new(700.0, 300.0)));
-    // `style db …` is db's own now.
+    // `style db …` is db's own now, as is the second edge's `linkStyle`
+    // and the free line's colour.
     assert_eq!(d.shape("db").unwrap().style.props(), "fill:#eef");
+    assert_eq!(
+        d.connectors[1].style.props(),
+        "stroke:#3b82f6,stroke-width:2px"
+    );
+    assert_eq!(d.connectors[5].style.props(), "stroke:#ef4444");
     assert!(d.passthrough.is_empty());
 }
 
@@ -252,13 +262,17 @@ fn generate(rng: &mut Rng) -> Diagram {
                 ShapeKind::Hexagon,
                 ShapeKind::Database,
                 ShapeKind::Subroutine,
+                ShapeKind::Stadium,
+                ShapeKind::Circle,
+                ShapeKind::Parallelogram,
+                ShapeKind::Trapezoid,
                 ShapeKind::Other {
-                    open: "([".into(),
-                    close: "])".into(),
+                    open: "(((".into(),
+                    close: ")))".into(),
                 },
                 ShapeKind::Other {
-                    open: "((".into(),
-                    close: "))".into(),
+                    open: "[\\".into(),
+                    close: "/]".into(),
                 },
             ])
             .clone();
@@ -291,6 +305,9 @@ fn generate(rng: &mut Rng) -> Diagram {
                 c.label = Some(rng.text());
             }
             c.route = rng.route();
+            if rng.chance(30) {
+                c.style = rng.style();
+            }
             d.connectors.push(c);
         }
     }
@@ -309,8 +326,12 @@ fn generate(rng: &mut Rng) -> Diagram {
             (to, from)
         };
         let route = rng.route();
-        d.connectors
-            .push(Connector::new(*rng.pick(&kinds), from, to).with_route(route));
+        let mut line = Connector::new(*rng.pick(&kinds), from, to).with_route(route);
+        // A free line keeps only its colour.
+        if rng.chance(30) {
+            line.style.stroke = rng.style().stroke;
+        }
+        d.connectors.push(line);
     }
     if rng.chance(20) {
         d.passthrough.push("  %% kept".into());

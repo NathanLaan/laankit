@@ -1,7 +1,7 @@
 //! Drawing the diagram and the editing overlays (selection, handles, anchor
 //! hints, marquee, the shape or line being created) in theme colours.
 
-use blockliner_core::connect::{anchor_point, path_midpoint};
+use blockliner_core::connect::path_midpoint;
 use blockliner_core::geometry::{self, Handle, SUBROUTINE_INSET};
 use blockliner_core::route::middle_segment;
 use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
@@ -20,6 +20,8 @@ pub const LABEL_SIZE: f32 = 14.0;
 pub const LABEL_PAD: f32 = 6.0;
 /// Edge label text size at 100 %.
 pub const EDGE_LABEL_SIZE: f32 = 12.0;
+/// Space between an edge label's text and the edge of its patch, at 100 %.
+pub const EDGE_LABEL_PAD: f32 = 3.0;
 /// The round rectangle's corner radius at 100 %.
 pub const CORNER: f32 = 12.0;
 /// Arrowhead length at 100 %.
@@ -33,6 +35,10 @@ const BADGE_SIZE: f32 = 10.0;
 
 pub fn label_font(zoom: f32) -> FontId {
     FontId::proportional(LABEL_SIZE * zoom)
+}
+
+pub fn edge_label_font(zoom: f32) -> FontId {
+    FontId::proportional(EDGE_LABEL_SIZE * zoom)
 }
 
 pub fn screen_rect(view: View, origin: Pos2, r: &Rect) -> egui::Rect {
@@ -53,8 +59,10 @@ pub struct Overlays<'a> {
     pub hover: Option<&'a Hit>,
     /// Where a line end being drawn or dragged would glue.
     pub target: Option<&'a End>,
-    /// The shape whose label is being edited (its text field draws the label).
+    /// The shape whose label is being edited (its text field draws the label)…
     pub editing: Option<&'a str>,
+    /// …or the connector.
+    pub editing_line: Option<usize>,
 }
 
 /// Shapes, then connectors on top, then the overlays.
@@ -89,15 +97,29 @@ pub fn diagram(
         };
         let points: Vec<Pos2> = path.iter().map(|q| to_screen(q.x, q.y)).collect();
         let selected = o.lines.contains(&i);
-        if !selected && o.hover == Some(&Hit::Line(i)) {
+        let own = colour(c.style.stroke.as_ref());
+        // A halo when hovered, or when selected and drawn in its own colour
+        // (which the accent would hide).
+        let halo = match (selected, own) {
+            (true, Some(_)) => Some(0.45),
+            (false, _) if o.hover == Some(&Hit::Line(i)) => Some(0.3),
+            _ => None,
+        };
+        if let Some(alpha) = halo {
             painter.add(egui::Shape::line(
                 points.clone(),
-                Stroke::new(width + 4.0, p.accent.gamma_multiply(0.3)),
+                Stroke::new(width + 4.0, p.accent.gamma_multiply(alpha)),
             ));
         }
-        let ink = if selected { p.accent } else { p.text_secondary };
+        let ink = match (selected, own) {
+            (_, Some(c)) => c,
+            (true, None) => p.accent,
+            (false, None) => p.text_secondary,
+        };
         connector(painter, &points, c.kind, Stroke::new(width, ink), view.zoom);
-        if let (Some(text), Some(at)) = (&c.label, path_midpoint(&path)) {
+        if let (Some(text), Some(at), false) =
+            (&c.label, path_midpoint(&path), o.editing_line == Some(i))
+        {
             edge_label(painter, to_screen(at.x, at.y), text, view.zoom, p);
         }
     }
@@ -187,7 +209,7 @@ pub fn diagram(
                 painter.rect_stroke(r, 0.0, Stroke::new(1.5, p.accent), StrokeKind::Middle);
             }
             for a in Anchor::ALL {
-                let at = anchor_point(&s.rect, a);
+                let at = s.anchor(a);
                 let fill = if *anchor == Some(a) {
                     p.accent
                 } else {
@@ -391,9 +413,21 @@ pub fn outline(
         points.into_iter().map(|q| Pos2::new(q.x, q.y)).collect()
     };
     match kind {
-        ShapeKind::Diamond | ShapeKind::Hexagon => {
+        ShapeKind::Diamond
+        | ShapeKind::Hexagon
+        | ShapeKind::Parallelogram
+        | ShapeKind::Trapezoid => {
             let points = screen(geometry::polygon(kind, &m).unwrap_or_default());
             painter.add(egui::Shape::convex_polygon(points, fill, stroke));
+        }
+        ShapeKind::Stadium => {
+            let radius = (r.height().min(r.width()) / 2.0).min(255.0) as u8;
+            painter.rect(r, radius, fill, stroke, StrokeKind::Inside);
+        }
+        ShapeKind::Circle => {
+            let radius = inner.size() / 2.0;
+            painter.add(egui::Shape::ellipse_filled(inner.center(), radius, fill));
+            painter.add(egui::Shape::ellipse_stroke(inner.center(), radius, stroke));
         }
         ShapeKind::Database => {
             // The cap scales with the zoom, as the model's does.
@@ -452,20 +486,24 @@ fn connector(painter: &Painter, points: &[Pos2], kind: ConnectorKind, stroke: St
     painter.add(egui::Shape::line(line, stroke));
 }
 
-/// An edge label from the file, on a patch of background at the midpoint.
+/// An edge label, on a patch of background at the midpoint.
 fn edge_label(painter: &Painter, at: Pos2, text: &str, zoom: f32, p: &Palette) {
-    let size = EDGE_LABEL_SIZE * zoom;
-    if text.is_empty() || size < 4.0 {
+    if text.is_empty() || EDGE_LABEL_SIZE * zoom < 4.0 {
         return;
     }
-    let galley = painter.layout_no_wrap(
+    // Each line centred, as in the editor and the export.
+    let mut job = LayoutJob::simple(
         text.to_owned(),
-        FontId::proportional(size),
+        edge_label_font(zoom),
         p.text_secondary,
+        f32::INFINITY,
     );
-    let r = egui::Rect::from_center_size(at, galley.size()).expand(3.0 * zoom);
+    job.halign = Align::Center;
+    let galley = painter.layout_job(job);
+    let size = galley.size();
+    let r = egui::Rect::from_center_size(at, size).expand(EDGE_LABEL_PAD * zoom);
     painter.rect_filled(r, 2.0, p.bg_base);
-    painter.galley(r.center() - galley.size() / 2.0, galley, p.text_secondary);
+    painter.galley(at - vec2(0.0, size.y / 2.0), galley, p.text_secondary);
 }
 
 /// The label, centred line by line in its `area`, wrapped to it and

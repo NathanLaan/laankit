@@ -32,6 +32,10 @@ pub enum Tool {
     Hexagon,
     Database,
     Subroutine,
+    Stadium,
+    Circle,
+    Parallelogram,
+    Trapezoid,
     Line,
     Arrow,
     ElbowLine,
@@ -40,8 +44,8 @@ pub enum Tool {
 }
 
 impl Tool {
-    /// In toolbar order. The four [`Tool::MORE`] shapes share one button.
-    pub const ALL: [Tool; 12] = [
+    /// In toolbar order. The [`Tool::MORE`] shapes share one button.
+    pub const ALL: [Tool; 16] = [
         Tool::Select,
         Tool::Rect,
         Tool::RoundRect,
@@ -49,6 +53,10 @@ impl Tool {
         Tool::Hexagon,
         Tool::Database,
         Tool::Subroutine,
+        Tool::Stadium,
+        Tool::Circle,
+        Tool::Parallelogram,
+        Tool::Trapezoid,
         Tool::Line,
         Tool::Arrow,
         Tool::ElbowLine,
@@ -57,11 +65,15 @@ impl Tool {
     ];
 
     /// Behind the toolbar's More Shapes button.
-    pub const MORE: [Tool; 4] = [
+    pub const MORE: [Tool; 8] = [
         Tool::Diamond,
         Tool::Hexagon,
         Tool::Database,
         Tool::Subroutine,
+        Tool::Stadium,
+        Tool::Circle,
+        Tool::Parallelogram,
+        Tool::Trapezoid,
     ];
 
     /// One of the [`Tool::MORE`] shapes.
@@ -72,11 +84,12 @@ impl Tool {
     /// Its place in the toolbar, from 0 (which the number keys follow).
     pub fn slot(self) -> usize {
         let i = Tool::ALL.iter().position(|&t| t == self).unwrap_or(0);
-        // The four more shapes (3 to 6) are one button.
+        // The more shapes (3 to 10) are one button.
+        let more = Tool::MORE.len();
         match i {
             0..=3 => i,
-            4..=6 => 3,
-            _ => i - 3,
+            _ if i < 3 + more => 3,
+            _ => i - (more - 1),
         }
     }
 
@@ -89,6 +102,10 @@ impl Tool {
             Tool::Hexagon => "Hexagon",
             Tool::Database => "Database",
             Tool::Subroutine => "Subroutine",
+            Tool::Stadium => "Stadium",
+            Tool::Circle => "Circle",
+            Tool::Parallelogram => "Parallelogram",
+            Tool::Trapezoid => "Trapezoid",
             Tool::Line => "Line",
             Tool::Arrow => "Arrow",
             Tool::ElbowLine => "Right-Angle Line",
@@ -106,6 +123,10 @@ impl Tool {
             Tool::Hexagon => Some(ShapeKind::Hexagon),
             Tool::Database => Some(ShapeKind::Database),
             Tool::Subroutine => Some(ShapeKind::Subroutine),
+            Tool::Stadium => Some(ShapeKind::Stadium),
+            Tool::Circle => Some(ShapeKind::Circle),
+            Tool::Parallelogram => Some(ShapeKind::Parallelogram),
+            Tool::Trapezoid => Some(ShapeKind::Trapezoid),
             Tool::Text => Some(ShapeKind::Text),
             _ => None,
         }
@@ -237,6 +258,7 @@ impl Canvas {
         };
         let hover = resp.hover_pos().map(to_model);
         let mut out = Output::default();
+        self.labels = Self::edge_labels(ui, d);
 
         self.hover = match (tool, hover) {
             (Tool::Select, Some(p)) => self.hit(d, p, reach),
@@ -264,13 +286,22 @@ impl Canvas {
         }
         if resp.double_clicked_by(PointerButton::Primary) && tool == Tool::Select {
             let at = resp.interact_pointer_pos().map(to_model);
-            if let Some(Hit::Middle(i, _)) = at.and_then(|p| self.hit(d, p, reach)) {
-                // Back to the automatic route.
-                if let Some(c) = d.connectors.get_mut(i) {
-                    c.route = Route::ELBOW;
+            match at.and_then(|p| self.hit(d, p, reach)) {
+                Some(Hit::Middle(i, _)) => {
+                    // Back to the automatic route.
+                    if let Some(c) = d.connectors.get_mut(i) {
+                        c.route = Route::ELBOW;
+                    }
                 }
-            } else if let Some(s) = at.and_then(|p| d.shape_at(p)).filter(|s| !s.external) {
-                self.edit_label(s.id.clone(), s.label.clone(), false);
+                // A connector (or its label): its edge label.
+                Some(Hit::Line(i) | Hit::Endpoint(i, _)) => {
+                    self.edit_line_label(d, i);
+                }
+                _ => {
+                    if let Some(s) = at.and_then(|p| d.shape_at(p)).filter(|s| !s.external) {
+                        self.edit_label(s.id.clone(), s.label.clone(), false);
+                    }
+                }
             }
         }
         // A right-click selects what's under it (or clears the selection on
@@ -278,7 +309,7 @@ impl Canvas {
         if resp.secondary_clicked() && tool == Tool::Select {
             if let Some(at) = resp.interact_pointer_pos().map(to_model) {
                 self.commit_label(d);
-                let item = match d.connector_at(at, reach.line) {
+                let item = match self.line_at(d, at, reach) {
                     Some(i) => Some(Item::Line(i)),
                     None => d.shape_at(at).map(|s| Item::Shape(s.id.clone())),
                 };
@@ -340,10 +371,20 @@ impl Canvas {
                 }
             }
         }
-        if let Some(i) = d.connector_at(p, reach.line) {
+        if let Some(i) = self.line_at(d, p, reach) {
             return Some(Hit::Line(i));
         }
         d.shape_at(p).map(|s| Hit::Shape(s.id.clone()))
+    }
+
+    /// The connector at `p`: one whose label is there, else one passing
+    /// within reach.
+    fn line_at(&self, d: &Diagram, p: Point, reach: Reach) -> Option<usize> {
+        self.labels
+            .iter()
+            .find(|(_, r)| r.contains(p))
+            .map(|&(i, _)| i)
+            .or_else(|| d.connector_at(p, reach.line))
     }
 
     /// Selects `item`: Shift toggles it; otherwise it replaces the selection.
@@ -605,7 +646,7 @@ impl Canvas {
         if tool != Tool::Select {
             return false;
         }
-        let item = match d.connector_at(at, reach.line) {
+        let item = match self.line_at(d, at, reach) {
             Some(i) => Some(Item::Line(i)),
             None => d.shape_at(at).map(|s| Item::Shape(s.id.clone())),
         };

@@ -145,7 +145,8 @@ pub fn svg(ctx: &egui::Context, d: &Diagram, scope: &Scope, grid: bool) -> Strin
             continue;
         };
         out.push_str("<g class=\"connector\">");
-        connector(&mut out, &path, c.kind);
+        let ink = paint(c.style.stroke.as_ref()).unwrap_or_else(|| format!("\"{INK}\""));
+        connector(&mut out, &path, c.kind, &ink);
         let label = c.label.as_deref().filter(|t| !t.is_empty());
         if let (Some(text), Some(at)) = (label, path_midpoint(&path)) {
             edge_label(&mut out, ctx, (at.x, at.y), text);
@@ -226,7 +227,10 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
     let stroke = |ink: &str| format!(r#"stroke={ink} stroke-width="{}""#, num(STROKE));
     match s.kind {
         ShapeKind::Rect | ShapeKind::Other { .. } => body(out, 0.0, &or_fill, &or_ink),
-        ShapeKind::Diamond | ShapeKind::Hexagon => {
+        ShapeKind::Diamond
+        | ShapeKind::Hexagon
+        | ShapeKind::Parallelogram
+        | ShapeKind::Trapezoid => {
             let points: Vec<String> = geometry::polygon(&s.kind, &inner)
                 .unwrap_or_default()
                 .iter()
@@ -269,6 +273,18 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
                     x = num(x)
                 );
             }
+        }
+        ShapeKind::Stadium => body(out, geometry::stadium_radius(&r) - inset, &or_fill, &or_ink),
+        ShapeKind::Circle => {
+            let _ = write!(
+                out,
+                r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill={or_fill} {}/>"#,
+                num(inner.x + inner.w / 2.0),
+                num(inner.y + inner.h / 2.0),
+                num(inner.w / 2.0),
+                num(inner.h / 2.0),
+                stroke(&or_ink)
+            );
         }
         ShapeKind::RoundRect => body(
             out,
@@ -313,7 +329,8 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
 /// tip stays sharp (as `paint::connector`).
 /// A connector through `path`: a `<line>` when straight, a `<polyline>`
 /// with bends. An arrow's last segment stops at the head's base.
-fn connector(out: &mut String, path: &[Point], kind: ConnectorKind) {
+/// `ink`: the stroke colour, quoted.
+fn connector(out: &mut String, path: &[Point], kind: ConnectorKind, ink: &str) {
     let [.., a, b] = path else {
         return;
     };
@@ -335,7 +352,7 @@ fn connector(out: &mut String, path: &[Point], kind: ConnectorKind) {
     if let [(x1, y1), (x2, y2)] = points[..] {
         let _ = write!(
             out,
-            r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="{INK}" stroke-width="{}"/>"#,
+            r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke={ink} stroke-width="{}"/>"#,
             num(x1),
             num(y1),
             num(x2),
@@ -349,7 +366,7 @@ fn connector(out: &mut String, path: &[Point], kind: ConnectorKind) {
             .collect();
         let _ = write!(
             out,
-            r#"<polyline points="{}" fill="none" stroke="{INK}" stroke-width="{}"/>"#,
+            r#"<polyline points="{}" fill="none" stroke={ink} stroke-width="{}"/>"#,
             list.join(" "),
             num(STROKE)
         );
@@ -361,7 +378,7 @@ fn connector(out: &mut String, path: &[Point], kind: ConnectorKind) {
         let (nx, ny) = (-uy * head * 0.45, ux * head * 0.45);
         let _ = write!(
             out,
-            r#"<polygon points="{},{} {},{} {},{}" fill="{INK}"/>"#,
+            r#"<polygon points="{},{} {},{} {},{}" fill={ink}/>"#,
             num(b.x),
             num(b.y),
             num(base.0 + nx),
