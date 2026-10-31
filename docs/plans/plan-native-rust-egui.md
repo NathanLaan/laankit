@@ -298,7 +298,7 @@ and the article view.
 `apps/threadliner/native` (`threadliner-native`, about 4,600 lines):
 `cargo run -p threadliner-native --release`, or `npm run
 native:threadliner`. Its README has the architecture table, a parity table
-against every IPC channel and Svelte feature, and a `demo_data` example
+against every IPC channel and Svelte feature, and a `threadliner_demo_data` example
 that fills a temporary config and data folder from real feeds.
 
 - **Parity:** feeds, entries, tags, settings (theme and scale mirrored to
@@ -347,7 +347,7 @@ that fills a temporary config and data folder from real feeds.
 `apps/pageliner/native` (`pageliner-native`, about 4,800 lines) plus the
 `crates/pageliner-epub` reader crate. Run it with
 `cargo run -p pageliner-native --release` or `npm run native:pageliner`.
-Its README has the architecture and parity tables and a `demo_data`
+Its README has the architecture and parity tables and a `pageliner_demo_data`
 example.
 
 - **Library:**

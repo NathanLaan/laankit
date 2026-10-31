@@ -5,7 +5,7 @@
 //!
 //! ```bash
 //! export XDG_CONFIG_HOME=$(mktemp -d)
-//! cargo run -p pageliner-native --example demo_data -- ~/Documents/books/*.pdf ~/Documents/books/*.epub
+//! cargo run -p pageliner-native --example pageliner_demo_data -- ~/Documents/books/*.pdf ~/Documents/books/*.epub
 //! cargo run -p pageliner-native
 //! ```
 

@@ -31,12 +31,12 @@ install as `/usr/bin/threadliner` (the native build replaced the Tauri and Elect
 
 ```bash
 export XDG_CONFIG_HOME=$(mktemp -d)
-cargo run -p threadliner-native --example demo_data -- /tmp/tl-data \
+cargo run -p threadliner-native --example threadliner_demo_data -- /tmp/tl-data \
   https://blog.rust-lang.org/feed.xml https://jvns.ca/atom.xml
 cargo run -p threadliner-native --release
 ```
 
-`demo_data` creates a git-backed data folder with those feeds and two tags, and a `config.json`
+`threadliner_demo_data` creates a git-backed data folder with those feeds and two tags, and a `config.json`
 under the temp `XDG_CONFIG_HOME` (Linux). On Windows the config folder is `%APPDATA%\ThreadLiner`
 (set `APPDATA` to redirect it) and on macOS `~/Library/Application Support/ThreadLiner`, as
 `marina_core::paths` mirrors Electron's `userData`.

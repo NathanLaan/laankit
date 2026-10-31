@@ -30,11 +30,11 @@ as `/usr/bin/pageliner` (the native build replaced the Tauri and Electron ones; 
 
 ```bash
 export XDG_CONFIG_HOME=$(mktemp -d)
-cargo run -p pageliner-native --example demo_data -- ~/Books/*.pdf ~/Books/*.epub
+cargo run -p pageliner-native --example pageliner_demo_data -- ~/Books/*.pdf ~/Books/*.epub
 cargo run -p pageliner-native --release
 ```
 
-`demo_data` imports the files into `$XDG_CONFIG_HOME/PageLiner/library` (Linux). On Windows the
+`pageliner_demo_data` imports the files into `$XDG_CONFIG_HOME/PageLiner/library` (Linux). On Windows the
 config folder is `%APPDATA%\PageLiner` and on macOS `~/Library/Application Support/PageLiner`, as
 `marina_core::paths` mirrors Electron's `userData`.
 

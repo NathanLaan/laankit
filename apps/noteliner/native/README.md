@@ -43,11 +43,11 @@ builds.
 
 ```bash
 export XDG_CONFIG_HOME=$(mktemp -d)
-cargo run -p noteliner-native --example demo_data -- /tmp/nl-demo
+cargo run -p noteliner-native --example noteliner_demo_data -- /tmp/nl-demo
 cargo run -p noteliner-native --release          # the demo is in Recent Projects
 ```
 
-`demo_data` creates a git project with nested notes, tags, wikilinks, a template and an image
+`noteliner_demo_data` creates a git project with nested notes, tags, wikilinks, a template and an image
 attachment, and lists it in `$XDG_CONFIG_HOME/NoteLiner/recent-projects.json` (Linux). On Windows
 the config folder is `%APPDATA%\NoteLiner` and on macOS `~/Library/Application Support/NoteLiner`,
 as `marina_core::paths` mirrors Electron's `userData`.

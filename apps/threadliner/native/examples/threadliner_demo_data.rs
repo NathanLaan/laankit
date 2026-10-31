@@ -5,7 +5,7 @@
 //!
 //! ```bash
 //! export XDG_CONFIG_HOME=$(mktemp -d)
-//! cargo run -p threadliner-native --example demo_data -- /tmp/tl-data \
+//! cargo run -p threadliner-native --example threadliner_demo_data -- /tmp/tl-data \
 //!   https://blog.rust-lang.org/feed.xml https://jvns.ca/atom.xml
 //! cargo run -p threadliner-native
 //! ```
@@ -21,7 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let dir = PathBuf::from(
         args.next()
-            .expect("usage: demo_data <data dir> <feed url>..."),
+            .expect("usage: threadliner_demo_data <data dir> <feed url>..."),
     );
     if std::env::var_os("XDG_CONFIG_HOME").is_none() {
         anyhow::bail!("set XDG_CONFIG_HOME to a temp folder first");
