@@ -2,7 +2,9 @@
 //! `lib/slideEdits.js`) on the same generated notes and edits, and requires
 //! identical output: decks as JSON, and rewritten Markdown plus caret line.
 //!
-//! Skipped when `node` isn't on the PATH.
+//! Skipped when `node` isn't on the PATH, or when the JS originals aren't
+//! in the checkout (they were removed with the Electron app; check out a
+//! commit before d72bf98 to run it).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -138,12 +140,19 @@ fn note(rng: &mut Rng) -> String {
     }
 }
 
+fn js_lib_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/noteliner/src/renderer/lib")
+}
+
 fn js_lib(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../apps/noteliner/src/renderer/lib")
-        .join(name)
-        .canonicalize()
-        .expect("JS original")
+    js_lib_dir().join(name).canonicalize().expect("JS original")
+}
+
+/// Both JS originals are in the checkout.
+fn js_available() -> bool {
+    ["slides.js", "slideEdits.js"]
+        .iter()
+        .all(|f| js_lib_dir().join(f).is_file())
 }
 
 fn node_available() -> bool {
@@ -370,6 +379,10 @@ fn same(a: &Value, b: &Value) -> bool {
 fn matches_the_js_originals() {
     if !node_available() {
         eprintln!("skipping: node not available");
+        return;
+    }
+    if !js_available() {
+        eprintln!("skipping: the JS originals aren't in this checkout");
         return;
     }
     // `SLIDES_DIFF_CASES=50000 SLIDES_DIFF_SEED=7` for a longer one-off run.

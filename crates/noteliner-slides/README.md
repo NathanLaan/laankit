@@ -31,7 +31,8 @@ screenshots. The sample deck and its image are synthetic.
 runs both on generated notes and edits (6,000 per test run, 120,000 checked
 once with other seeds via `SLIDES_DIFF_CASES` / `SLIDES_DIFF_SEED`) and
 requires identical JSON and Markdown. It skips itself when `node` isn't on
-the PATH.
+the PATH, or when the JS originals aren't in the checkout: they were removed
+with the Electron app (commit `d72bf98`), so run it from an earlier commit.
 
 ## Integration contract (for `apps/noteliner/native`)
 
