@@ -573,8 +573,9 @@ pub struct StatusProps<'a> {
 }
 
 /// Tool on the left; pointer position (in grid cells), grid, canvas zoom and
-/// UI scale on the right.
-pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) {
+/// UI scale on the right. The zoom is a button back to 100 %:
+/// `Some(Act::ZoomReset)` when clicked.
+pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
     let p = theme::palette(ui.ctx());
     let rect = ui.max_rect();
     let painter = ui.painter();
@@ -637,17 +638,39 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) {
         parts.push(format!("{}, {}", cell(at.x), cell(at.y)));
     }
     parts.push(format!("Grid {} px", props.grid));
-    parts.push(format!("Zoom {:.0}%", props.zoom * 100.0));
+    let zoom = format!("Zoom {:.0}%", props.zoom * 100.0);
+    parts.push(zoom.clone());
     parts.push(format!("UI {}%", props.scale));
     let mut right = rect.right() - 10.0;
+    let mut out = None;
     for text in parts.iter().rev() {
-        let r = painter.text(
-            pos2(right, y),
-            Align2::RIGHT_CENTER,
-            text,
-            font.clone(),
-            p.text_muted,
+        let galley = painter.layout_no_wrap(text.clone(), font.clone(), p.text_muted);
+        let at = Rect::from_min_size(
+            pos2(right - galley.size().x, y - galley.size().y / 2.0),
+            galley.size(),
         );
-        right = r.left() - 16.0;
+        let mut ink = p.text_muted;
+        if *text == zoom {
+            // A button: a highlight on hover, back to 100 % on a click.
+            let resp = ui.interact(
+                at.expand2(vec2(6.0, 2.0)),
+                ui.scope_id().with("zoom-reset"),
+                Sense::click(),
+            );
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &zoom));
+            if resp.hovered() {
+                painter.rect_filled(resp.rect, 4.0, p.bg_item_hover);
+                ink = p.text_primary;
+            }
+            let resp = resp
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .on_hover_text("Reset zoom to 100% (Ctrl+0)");
+            if resp.clicked() {
+                out = Some(Act::ZoomReset);
+            }
+        }
+        painter.galley(at.min, galley, ink);
+        right = at.left() - 16.0;
     }
+    out
 }

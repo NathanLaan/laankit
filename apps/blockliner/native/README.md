@@ -44,7 +44,7 @@ install as `/usr/bin/blockliner`.
 | Ctrl+N, F2, Ctrl+O | New diagram, rename it, open a folder |
 | Ctrl+Shift+E | Export (PNG or SVG) |
 | Wheel, middle drag, Space + drag | Pan |
-| Ctrl + wheel, pinch, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom |
+| Ctrl + wheel, pinch, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom (Ctrl+0, or a click on the status bar's "Zoom" readout: back to 100 %) |
 | Ctrl+', Ctrl+E, Ctrl+I, Ctrl+J | Toggle the grid, the sidebar, the Properties pane (fill and stroke of the selection), the status bar |
 | Ctrl+K, Ctrl+,, Ctrl+Shift+I | Command palette, Settings, About |
 

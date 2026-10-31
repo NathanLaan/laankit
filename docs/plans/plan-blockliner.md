@@ -7,8 +7,9 @@ Hand checks on Windows and macOS remain
 ([`apps/blockliner/native/README.md`](../../apps/blockliner/native/README.md),
 "Still to verify by hand"). **Phases 9 (right-angle connectors), 10 (shape
 styles), 11 (Mermaid diamond/hexagon/database/subroutine shapes), 12 (copy
-and paste) and 14 (Object Properties panel) implemented (2026-10-30); phase
-13 proposed** (§10): a clickable zoom in the status bar.
+and paste), 13 (clickable zoom) and 14 (Object Properties panel)
+implemented (2026-10-30).** All planned phases are done; §7 lists ideas
+for later.
 
 A fourth marina app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
@@ -445,7 +446,7 @@ file stays small; the text stays editable).
 | **10. Shape styles** ✅ | Fill and stroke colours for shapes: preset swatches and a custom hex value, from the canvas's right-click menu and the palette. Saved as Mermaid `style` lines, which BlockLiner now owns for its shapes. | 2 days |
 | **11. More Mermaid shapes** ✅ | Database `[( )]`, subroutine `[[ ]]`, hexagon `{{ }}` and diamond `{ }` as real, editable shapes with their own outlines, label areas and hit-testing, behind a "More Shapes" toolbar button. | 2 days |
 | **12. Copy and paste** ✅ | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` for shapes and connectors, within a diagram, between diagrams and between BlockLiner windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out. | 2 days |
-| **13. Clickable zoom** | The status bar's "Zoom 120%" becomes a button: a click goes back to 100 % (as `Ctrl+0` does), with a hover highlight, a tooltip and an accessible label. | ½ day |
+| **13. Clickable zoom** ✅ | The status bar's "Zoom 120%" becomes a button: a click goes back to 100 % (as `Ctrl+0` does), with a hover highlight, a tooltip and an accessible label. | ½ day |
 | **14. Object Properties panel** ✅ | A Properties pane in the left sidebar, below the diagram list, shown or hidden with a toolbar button and `Ctrl+I`. It shows the selection's Fill and Stroke (swatches, Default, a hex field) and changes them; a selection whose values differ shows **Mixed** until one is picked. | 2 days |
 
 **Phases 9–14: about 2½ weeks.** They are independent; this order puts the
@@ -990,6 +991,11 @@ block, through `mermaid::write`). So:
 **Later, if wanted:** a right-click menu on the readout with presets (50 %,
 100 %, 200 %) and "Zoom to Fit", which would need a fit-to-diagram
 command first.
+
+**As built** (2026-10-30), as above. The readout's text also brightens on
+hover, and the clickable area is the text plus 6 × 2 points. The test
+checks the history (`can_undo`) and the file on disk; renders in dark and
+light show the hover highlight and tooltip.
 
 ### 10.6 Phase 14: Object Properties panel
 

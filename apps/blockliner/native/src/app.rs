@@ -244,6 +244,11 @@ impl BlockLinerApp {
         &mut self.diagram
     }
 
+    #[cfg(test)]
+    pub fn can_undo(&self) -> bool {
+        self.history.can_undo()
+    }
+
     /// The last copy's clipboard text.
     #[cfg(test)]
     pub fn clipboard_text(&self) -> Option<&str> {
@@ -1122,7 +1127,7 @@ impl BlockLinerApp {
             settings_open: matches!(self.overlay, Some(Overlay::Settings(_))),
             about_open: matches!(self.overlay, Some(Overlay::About)),
         };
-        let acts = views::toolbar(ui, &props);
+        let mut acts = views::toolbar(ui, &props);
         if self.status_bar_visible {
             let save = match &self.doc {
                 None => SaveState::None,
@@ -1140,14 +1145,14 @@ impl BlockLinerApp {
                 zoom: self.canvas.view.zoom,
                 scale: &self.theme.scale,
             };
-            egui::Panel::bottom("blockliner-status")
+            let clicked = egui::Panel::bottom("blockliner-status")
                 .exact_size(views::STATUS_BAR_HEIGHT)
                 .resizable(false)
                 .show_separator_line(false)
                 .frame(Frame::NONE)
                 .show(ui, |ui| views::status_bar(ui, &status));
+            acts.extend(clicked.inner);
         }
-        let mut acts = acts;
         let mut side = Vec::new();
         let mut pane = None;
         let props = PropertiesProps::new(

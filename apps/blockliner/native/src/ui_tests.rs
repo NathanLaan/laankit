@@ -275,3 +275,42 @@ fn grid_settings_are_saved() {
     assert!(h.state().canvas().show_grid);
     assert_eq!(prefs(&paths)["showGrid"], true);
 }
+
+#[test]
+fn the_zoom_readout_resets_to_100() {
+    let (_tmp, paths, mut h) = harness();
+    h.run_steps(2);
+    let zoom = |h: &H| h.state().canvas().view.zoom;
+    let file = paths.prefs().last_project.unwrap().join("Diagram.mmd");
+    let saved = std::fs::read_to_string(&file).unwrap();
+
+    for _ in 0..2 {
+        h.key_press_modifiers(Modifiers::COMMAND, Key::Equals);
+        h.run_steps(2);
+    }
+    assert_eq!(zoom(&h), 1.5);
+    h.get_by_label("Zoom 150%").click();
+    h.run_steps(2);
+    assert_eq!(zoom(&h), 1.0);
+    h.get_by_label("Zoom 100%");
+
+    // A view change, not an edit: nothing to undo, nothing saved.
+    assert!(!h.state().can_undo());
+    assert!(!h.state().is_saving());
+    h.state().flush();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), saved);
+
+    // At 100 % a click does nothing visible.
+    h.get_by_label("Zoom 100%").click();
+    h.run_steps(2);
+    assert_eq!(zoom(&h), 1.0);
+
+    // With the status bar hidden there's no readout; Ctrl+0 still works.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Equals);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::J);
+    h.run_steps(2);
+    assert!(h.query_by_label("Zoom 125%").is_none());
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Num0);
+    h.run_steps(2);
+    assert_eq!(zoom(&h), 1.0);
+}
