@@ -1,6 +1,6 @@
 //! Spell checking for the editor. The webview builds used the system
 //! checker for the system language (`spellCheckEnabled`, F7); the native
-//! build loads a Hunspell dictionary into `marina-editor`'s checker.
+//! build loads a Hunspell dictionary into `laankit-editor`'s checker.
 //!
 //! Dictionaries are looked up for the system language (`LANG`, e.g.
 //! `en_CA.UTF-8` → `en_CA`, then `en_US`) in:
@@ -25,7 +25,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
-use marina_editor::{Hunspell, SpellChecker};
+use laankit_editor::{Hunspell, SpellChecker};
 
 const WORDS_FILE: &str = "dictionary.txt";
 
@@ -181,7 +181,7 @@ pub fn find_dictionary(user_data: &Path, lang: &str) -> Option<(PathBuf, PathBuf
 fn search_dirs(user_data: &Path) -> Vec<PathBuf> {
     let mut dirs = vec![user_data.join("dictionaries")];
     if cfg!(target_os = "macos") {
-        dirs.push(marina_core::paths::home_dir().join("Library/Spelling"));
+        dirs.push(laankit_core::paths::home_dir().join("Library/Spelling"));
         dirs.push(PathBuf::from("/Library/Spelling"));
     } else if cfg!(unix) {
         for d in [
@@ -212,12 +212,12 @@ mod tests {
         let spell = load(dir.path(), "xx_YY").expect("found in <userData>/dictionaries");
         assert!(spell.check("hello"));
         assert!(!spell.check("helo"));
-        spell.add_word("Marina");
-        assert!(spell.check("Marina"));
+        spell.add_word("LaanKit");
+        assert!(spell.check("LaanKit"));
         let saved = std::fs::read_to_string(dir.path().join(WORDS_FILE)).unwrap();
-        assert_eq!(saved, "Marina\n");
+        assert_eq!(saved, "LaanKit\n");
         // Reloading keeps the user's words.
-        assert!(load(dir.path(), "xx_YY").unwrap().check("Marina"));
+        assert!(load(dir.path(), "xx_YY").unwrap().check("LaanKit"));
     }
 
     #[test]

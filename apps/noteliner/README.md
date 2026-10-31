@@ -6,7 +6,7 @@ backlinks, slides and PDF export, where every change is committed to git and
 pushed to an optional remote for cross-device sync.
 
 It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) over
-the shared `marina-*` crates — no webview, no JavaScript. The shipped binary is
+the shared `laankit-*` crates — no webview, no JavaScript. The shipped binary is
 `noteliner`.
 
 > **BETA software.** Written for personal use; it meets specific needs and may
@@ -49,7 +49,7 @@ A **Project** is a folder on disk containing:
 Changes are committed locally whenever a note is added, removed or modified, and
 pushed to the remote on a debounce timer. Settings and data live in the
 platform config/data folders (`~/.config/NoteLiner` on Linux), shared across
-every build Marina has ever shipped, so projects open unchanged.
+every build LaanKit has ever shipped, so projects open unchanged.
 
 ## Templates
 

@@ -28,9 +28,9 @@ timings as upper bounds.
   - highlights round-trip through `pageliner-core`'s
     `Library::set_state`/`get_state`
   - highlights written by the Svelte reader parse
-- **Diagnostics.** `MARINA_SCREENSHOT` (from `spike-common`) plus
-  `MARINA_PDF_SELECT=<page>:<x0>,<y0>,<x1>,<y1>`, which selects and
-  highlights a range as if dragged, and `MARINA_PDF_PAGE`.
+- **Diagnostics.** `LAANKIT_SCREENSHOT` (from `spike-common`) plus
+  `LAANKIT_PDF_SELECT=<page>:<x0>,<y0>,<x1>,<y1>`, which selects and
+  highlights a range as if dragged, and `LAANKIT_PDF_PAGE`.
 
 ## PageLiner's format (unchanged)
 
@@ -123,7 +123,7 @@ box, which is what the reader wants.
 - **Cross-platform.** hayro is pure Rust, `#![forbid(unsafe_code)]` and
   MIT/Apache-2.0, with no system libraries. It was only run on Linux here;
   the Windows and macOS CI matrix should build this crate.
-- **Unrelated to PDF: screenshots on Wayland.** `MARINA_SCREENSHOT` runs
+- **Unrelated to PDF: screenshots on Wayland.** `LAANKIT_SCREENSHOT` runs
   hung with no frames on this Wayland session, but worked under X11
   (`env -u WAYLAND_DISPLAY`). Worth checking in `spike-common` or with
   eframe.

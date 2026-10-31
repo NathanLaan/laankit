@@ -2,7 +2,7 @@
 //! delete. Purely presentational: the reader owns the data and acts on the returned action.
 
 use egui::{vec2, Align2, Color32, CursorIcon, FontId, Rect, RichText, Sense, Stroke, Ui};
-use marina_egui::{fonts, icons, theme};
+use laankit_egui::{fonts, icons, theme};
 
 use crate::state::{Bookmark, Highlight};
 

@@ -1,8 +1,8 @@
 //! `SettingsModal.svelte`: the UI and Keyboard Shortcuts tabs.
 
-use marina_egui::dialog;
-use marina_egui::settings::{self, SettingsShell, Tab};
-use marina_egui::theme::ThemeState;
+use laankit_egui::dialog;
+use laankit_egui::settings::{self, SettingsShell, Tab};
+use laankit_egui::theme::ThemeState;
 
 const TABS: [Tab<'static>; 2] = [
     Tab {

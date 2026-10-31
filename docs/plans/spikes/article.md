@@ -55,7 +55,7 @@
 SPIKE_ARTICLE_DIR=<scratch> cargo run --profile fast-release -p spike-article -- fetch
 SPIKE_ARTICLE_DIR=<scratch> cargo run --profile fast-release -p spike-article -- report
 # A screenshot of entry 46, scrolled to its first table:
-MARINA_ARTICLE=46 MARINA_FIND=table MARINA_SCREENSHOT=shot.png MARINA_SCREENSHOT_EXIT=1 \
+LAANKIT_ARTICLE=46 LAANKIT_FIND=table LAANKIT_SCREENSHOT=shot.png LAANKIT_SCREENSHOT_EXIT=1 \
   cargo run --profile fast-release -p spike-article
 ```
 
@@ -104,7 +104,7 @@ context, tessellation included.
 - **Fonts.** No glyph fallback beyond egui's emoji font; `★` was missing
   in the entry list. Phase 1 needs a fallback chain (Noto, or system fonts
   via `system_fonts`).
-- **Screenshots on Wayland.** `MARINA_SCREENSHOT` never fires on GNOME
+- **Screenshots on Wayland.** `LAANKIT_SCREENSHOT` never fires on GNOME
   Wayland, because the unfocused window gets no frames. Run with
   `env -u WAYLAND_DISPLAY` (XWayland) for screenshots. CI on X11/Xvfb is
   unaffected.

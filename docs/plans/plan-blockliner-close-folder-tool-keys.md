@@ -61,7 +61,7 @@ keys, which drawing tools commonly offer.
 
 | Entry point | Detail |
 |---|---|
-| **Toolbar button** | Bottom group, right after Open Folder: Open Folder, **Close Folder**, Export, Settings, About. Icon: Font Awesome `folder-minus` (`f65d`), added to `marina_egui::icons` as `FOLDER_MINUS`. Tooltip "Close Folder"; label "Close Folder". Disabled (not hidden) when no folder is open, like Export, so the toolbar doesn't shift. |
+| **Toolbar button** | Bottom group, right after Open Folder: Open Folder, **Close Folder**, Export, Settings, About. Icon: Font Awesome `folder-minus` (`f65d`), added to `laankit_egui::icons` as `FOLDER_MINUS`. Tooltip "Close Folder"; label "Close Folder". Disabled (not hidden) when no folder is open, like Export, so the toolbar doesn't shift. |
 | **Command palette** | "Close Folder", in the File group. Available when a folder is open and no dialog is. |
 | **Sidebar header** | Not added. The sidebar can be hidden (`Ctrl+E`), so it can't be the only place. One `+` in the header is enough there. |
 | **Shortcut** | None by default (see §4, question 1). |
@@ -112,7 +112,7 @@ keys, which drawing tools commonly offer.
 | `app.rs` | `fn close_folder(&mut self)`: commit the label edit, save, flush and check, `close_doc`, `project = None`, `set_prefs({"lastProject": "", "lastDiagram": ""})`. |
 | `backend.rs` | `flush` returns whether the last write succeeded. |
 | `canvas/label.rs` / `canvas/mod.rs` | A `commit_label(&mut self, d: &mut Diagram)` the app can call, if it doesn't exist already. |
-| `marina-egui/src/icons.rs` | `FOLDER_MINUS`. First check the bundled Font Awesome subset has the glyph, as for `FILE_EXPORT`. |
+| `laankit-egui/src/icons.rs` | `FOLDER_MINUS`. First check the bundled Font Awesome subset has the glyph, as for `FILE_EXPORT`. |
 | `config.rs` | Doc comment: `lastProject` may be empty (no folder). |
 
 ---

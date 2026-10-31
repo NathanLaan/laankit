@@ -16,7 +16,7 @@ Per app, the packaged artifacts are named as follows:
 | Linux package | `threadliner`, `pageliner`, `noteliner`, `blockliner` |
 | Desktop entry | `<app id>.desktop`, named "ThreadLiner" etc., `StartupWMClass=<app id>` |
 
-For users upgrading from older Marina builds, each native package **conflicts
+For users upgrading from older LaanKit builds, each native package **conflicts
 with, replaces and provides** the former Tauri packages `thread-liner`,
 `page-liner` and `note-liner` (Debian: `Conflicts`/`Replaces`/`Provides`; RPM:
 `Conflicts`/`Obsoletes`/`Provides`), so installing one removes the older build.
@@ -25,7 +25,7 @@ native package upgrades them in place. BlockLiner had no earlier builds, so its
 packages declare none of these.
 
 - **Settings and data** live in the platform config/data folders
-  (`marina_core::paths`) shared by every build Marina has shipped, so projects
+  (`laankit_core::paths`) shared by every build LaanKit has shipped, so projects
   open unchanged.
 - **eframe's own state** (theme, window, panes: `app.ron`) lives under
   `~/.local/share/<app>/`; each `main.rs` points `persistence_path` there via
@@ -197,6 +197,6 @@ right-click → Open (or `xattr -d com.apple.quarantine`).
   `Conflicts`/`Replaces`/`Provides` and `Obsoletes` as above.
 - `desktop-file-validate` and `appstreamcli validate --no-net` pass for every
   desktop entry and metainfo file (including the AppImage's).
-- Each AppImage launches (with `MARINA_SCREENSHOT`, a temporary
+- Each AppImage launches (with `LAANKIT_SCREENSHOT`, a temporary
   `XDG_CONFIG_HOME`/`XDG_DATA_HOME`).
 - Not installed: nothing was installed system-wide.

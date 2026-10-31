@@ -16,8 +16,8 @@ pub mod help;
 pub mod settings;
 pub mod sync;
 
-use marina_egui::dialog::{self, ButtonKind, Confirm, Dialog};
-use marina_egui::{icons, theme};
+use laankit_egui::dialog::{self, ButtonKind, Confirm, Dialog};
+use laankit_egui::{icons, theme};
 
 use crate::model::Tag;
 
@@ -185,9 +185,9 @@ pub fn tags(ctx: &egui::Context, state: &mut TagsState, tags: &[Tag]) -> Option<
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
                 let action = |ui: &mut egui::Ui, glyph: &str, label: &str, enabled: bool| {
-                    marina_egui::toolbar::button(
+                    laankit_egui::toolbar::button(
                         ui,
-                        marina_egui::toolbar::ToolbarButton::new(glyph, label).disabled(!enabled),
+                        laankit_egui::toolbar::ToolbarButton::new(glyph, label).disabled(!enabled),
                     )
                     .clicked()
                 };

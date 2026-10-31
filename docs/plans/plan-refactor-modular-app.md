@@ -1,7 +1,7 @@
 # Plan: One Modular App — Installable NoteLiner and ThreadLiner Modules
 
 Status: Draft for review
-Working name: **Marina** (single Electron app, two installable modules)
+Working name: **LaanKit** (single Electron app, two installable modules)
 
 ## Goal
 
@@ -166,7 +166,7 @@ export default function registerModule({ shell }) {
 ## Shell architecture
 
 ```
-apps/marina/
+apps/laankit/
 ├── src/main/
 │   ├── shell.js                    bootstraps Electron + module host
 │   ├── module-host.js              install/enable/disable lifecycle, IPC namespacing
@@ -191,7 +191,7 @@ apps/marina/
 
 ### Cold boot, no modules
 
-- Title bar: "Marina"
+- Title bar: "LaanKit"
 - Toolbar: only the utility group (settings, about, help)
 - Sidebar: empty placeholder
 - Body: "No workspace active. Open Settings → Modules to add one."
@@ -233,7 +233,7 @@ and (optionally) from disk.
 ## Data model
 
 ```
-~/.config/marina/
+~/.config/laankit/
 ├── settings.json             theme, scale, customTitlebar, lastWorkspace
 ├── modules-installed.json    [{ id, version, enabled, dataDir }]
 ├── module-data/
@@ -261,18 +261,18 @@ model simple ("everything we ship is trusted") while still exercising
 the full module API for our own code.
 
 For v2 (out of scope): consider out-of-tree modules loaded from a
-`~/.marina/modules/` directory. That introduces a code-signing
+`~/.laankit/modules/` directory. That introduces a code-signing
 requirement and a permission model — both substantial.
 
 ## Migration from existing apps
 
 ### Step-by-step
 
-1. **Foundation first.** Land `@marina/desktop-ui` per the
+1. **Foundation first.** Land `@laankit/desktop-ui` per the
    [shared-foundation plan](./plan-refactor-common-foundation.md). The
    shell is built on top of that library.
-2. **Create the shell skeleton.** `apps/marina/` with the chrome
-   from `@marina/desktop-ui` and the module host stubbed.
+2. **Create the shell skeleton.** `apps/laankit/` with the chrome
+   from `@laankit/desktop-ui` and the module host stubbed.
 3. **Define the contribution registries.** Toolbar groups, sidebar
    panes, workspaces, settings tabs, commands, sync engines, IPC
    namespacing.
@@ -301,7 +301,7 @@ requirement and a permission model — both substantial.
 ### Backwards-compatibility for existing users
 
 - Existing NoteLiner users have `~/.config/Electron/...` data. On first
-  Marina boot with the NoteLiner module enabled, prompt to import
+  LaanKit boot with the NoteLiner module enabled, prompt to import
   recent projects (we already store these as JSON pointers — no data
   copying needed).
 - Existing ThreadLiner users have a `dataDir` config. Same prompt to

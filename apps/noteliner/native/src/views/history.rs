@@ -4,10 +4,10 @@
 //! read-only, as in the Svelte build.
 
 use egui::{pos2, vec2, Align2, FontId, Frame, Margin, RichText, Sense, Ui};
-use marina_core::git::LogEntry;
-use marina_egui::theme::{self, Palette};
-use marina_egui::{fonts, icons};
-use marina_richtext::{Action, Document, RichStyle, RichView};
+use laankit_core::git::LogEntry;
+use laankit_egui::theme::{self, Palette};
+use laankit_egui::{fonts, icons};
+use laankit_richtext::{Action, Document, RichStyle, RichView};
 
 use crate::views::preview::{self, AttachmentResolver};
 

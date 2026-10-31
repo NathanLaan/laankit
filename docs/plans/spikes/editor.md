@@ -128,7 +128,7 @@ All of these are O(document size), and they're the floor for any
    `every_strategy_paints_text` guards against a regression.
 3. **Fonts.** egui's bundled fonts have no CJK glyphs (the IME tests had to
    allow missing glyphs), and none for emoji or most non-Latin scripts.
-   Phase 1 (`marina-egui`) needs a fallback chain: load system fonts (for
+   Phase 1 (`laankit-egui`) needs a fallback chain: load system fonts (for
    example with `fontdb`) or bundle Noto subsets. This affects every app,
    not just the editor.
 4. **Accessibility cost.** With AccessKit on, egui rebuilds the text field's
@@ -204,5 +204,5 @@ cargo test -p spike-editor
 cargo run --profile fast-release -p spike-editor --bin editor-bench                  # incremental
 cargo run --profile fast-release -p spike-editor --bin editor-bench -- --whole-job   # or --line-galleys, --accesskit, --plain, --sizes 5000
 cargo run --profile fast-release -p spike-editor -- --lines 20000                    # GUI (also --whole-job, --line-galleys, or a .md path)
-MARINA_SCREENSHOT=/tmp/editor.png MARINA_SCREENSHOT_EXIT=1 cargo run --profile fast-release -p spike-editor
+LAANKIT_SCREENSHOT=/tmp/editor.png LAANKIT_SCREENSHOT_EXIT=1 cargo run --profile fast-release -p spike-editor
 ```

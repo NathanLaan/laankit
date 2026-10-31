@@ -1,4 +1,4 @@
-Marina
+LaanKit
 Copyright (c) 2026 Nathan
 Licensed under the MIT License (LICENSE).
 
@@ -6,30 +6,30 @@ Third-party material
 
 This repository bundles third-party material under its own licenses, listed below.
 
-Inter 4.1 (crates/marina-egui/assets/fonts/Inter-*.ttf) — SIL Open Font License 1.1.
+Inter 4.1 (crates/laankit-egui/assets/fonts/Inter-*.ttf) — SIL Open Font License 1.1.
   Copyright (c) 2016 The Inter Project Authors. https://github.com/rsms/inter
-  License: crates/marina-egui/assets/fonts/Inter-LICENSE.txt
+  License: crates/laankit-egui/assets/fonts/Inter-LICENSE.txt
   Modified: the `calt` feature is retagged `ss20` (no contextual arrows);
   outlines and other features are unchanged.
-JetBrains Mono NL 2.304 (crates/marina-egui/assets/fonts/JetBrainsMonoNL-*.ttf) — SIL Open
+JetBrains Mono NL 2.304 (crates/laankit-egui/assets/fonts/JetBrainsMonoNL-*.ttf) — SIL Open
   Font License 1.1. Copyright 2020 The JetBrains Mono Project Authors.
   https://github.com/JetBrains/JetBrainsMono
-  License: crates/marina-egui/assets/fonts/JetBrainsMono-OFL.txt
-Source Serif 4.005 (crates/marina-egui/assets/fonts/SourceSerif4-*.ttf) — SIL Open Font License
+  License: crates/laankit-egui/assets/fonts/JetBrainsMono-OFL.txt
+Source Serif 4.005 (crates/laankit-egui/assets/fonts/SourceSerif4-*.ttf) — SIL Open Font License
   1.1. Copyright 2014 - 2023 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
   https://github.com/adobe-fonts/source-serif
-  License: crates/marina-egui/assets/fonts/SourceSerif4-LICENSE.md
+  License: crates/laankit-egui/assets/fonts/SourceSerif4-LICENSE.md
 New Computer Modern Math (crates/noteliner-export/assets/fonts/NewCMMath-Regular.otf), unmodified,
   from typst-assets 0.15.1 — GUST Font License 1.0 (LaTeX Project Public License 1.3c or later).
   Copyright the NewComputerModern authors (Antonis Tsolomitis). https://ctan.org/pkg/newcomputermodern
   License: crates/noteliner-export/assets/fonts/NewCMMath-LICENSE.txt
-Font Awesome Free 6.7.2 (crates/marina-egui/assets/fonts/fa-solid-900.ttf, and the codepoints in
-  crates/marina-egui/src/icons.rs) — font under the SIL Open Font License 1.1, icons under
+Font Awesome Free 6.7.2 (crates/laankit-egui/assets/fonts/fa-solid-900.ttf, and the codepoints in
+  crates/laankit-egui/src/icons.rs) — font under the SIL Open Font License 1.1, icons under
   CC BY 4.0. Copyright Fonticons, Inc. https://fontawesome.com/license/free
-  License: crates/marina-egui/assets/fonts/FontAwesome-LICENSE.txt
-ArtCraft (portions of crates/marina-egui/src/window.rs, toast.rs and diagnostics.rs, adapted
+  License: crates/laankit-egui/assets/fonts/FontAwesome-LICENSE.txt
+ArtCraft (portions of crates/laankit-egui/src/window.rs, toast.rs and diagnostics.rs, adapted
   from artcraft-native/src/ui/window.rs, ui/toast.rs and app.rs) — MIT License or Apache License
   2.0, at your option; used here under the MIT License. Copyright (c) 2026 ArtCraft Team and the
   ArtCraft contributors. https://github.com/storytold/artcraft
   The MIT License text is the same as this repository's LICENSE, with the ArtCraft copyright
-  line above in place of Marina's.
+  line above in place of LaanKit's.

@@ -13,7 +13,7 @@ implemented (2026-10-30).** **Phases 15 (editable edge labels) and 16
 implemented (2026-10-30)** (§10.8, §10.9). All planned phases are done; §7
 lists further ideas.
 
-A fourth marina app: a Visio-style canvas for software component and
+A fourth laankit app: a Visio-style canvas for software component and
 architecture diagrams, where every diagram is saved as a **Mermaid** file.
 You draw boxes and connectors by hand on a snapping grid. The file stays plain
 Mermaid, so it renders on GitHub/GitLab, diffs in git, and can be pasted into
@@ -91,8 +91,8 @@ apps/blockliner/native      eframe app: canvas widget, tools, sidebar, overlays,
                             tokio backend (file IO, autosave)
 crates/blockliner-core      document model, Mermaid read/write, geometry,
                             snapping, hit-testing, undo history: no egui
-crates/marina-core          paths, json, debounce (unchanged; git unused)
-crates/marina-egui          theme, toolbar, palette, settings, panes (unchanged)
+crates/laankit-core          paths, json, debounce (unchanged; git unused)
+crates/laankit-egui          theme, toolbar, palette, settings, panes (unchanged)
 ```
 
 ### 3.1 `crates/blockliner-core` (new, no egui dependency)
@@ -121,16 +121,16 @@ Same file layout as `apps/pageliner/native`:
 | `main.rs` ✅ | Viewport (title, `APP_ID`, icon, custom title bar), `persistence_path`. Copy of PageLiner's. A command-line path (a `.mmd` file or a folder) opens instead of the last diagram (phase 8, for the desktop entry's `%f`). |
 | `config.rs` ✅ | `Paths` / `Prefs` in `~/.config/BlockLiner/ui-preferences.json`: `customTitlebar`, `sidebarVisible`, `statusBarVisible`, `gridSize`, `showGrid`, `lastProject`, `lastDiagram`. |
 | `commands.rs` ✅ | `Act` enum + `Registry`: tool selection (`V` select, `R` rect, `O` round rect, `L` line, `A` arrow, `T` text), undo/redo, delete, nudge, zoom, toggle grid/sidebar/status bar, new/rename/delete diagram, open folder, export (phase 7, `Ctrl+Shift+E`), settings, palette. |
-| `backend.rs` ✅ | The project folder. List, read, create, rename and delete are small local files, so they run synchronously and return their result. The autosave runs on a small tokio runtime: debounced (0.8 s) through `marina_core::debounce`, atomic (temp file + rename), with `flush` before switching diagrams, renaming and quitting. `check` reports outside changes to the open file (not our own writes). |
+| `backend.rs` ✅ | The project folder. List, read, create, rename and delete are small local files, so they run synchronously and return their result. The autosave runs on a small tokio runtime: debounced (0.8 s) through `laankit_core::debounce`, atomic (temp file + rename), with `flush` before switching diagrams, renaming and quitting. `check` reports outside changes to the open file (not our own writes). |
 | `app.rs` ✅ | `BlockLinerApp`: owns the backend, the open folder and diagram, the canvas, overlays, palette, toasts. Routes commands, sidebar and dialog actions; autosaves when the canvas is idle; looks at the folder once a second. |
 | `canvas/view.rs`, `canvas/grid.rs` ✅ | Pan/zoom transform (zoom steps 10–600 %, zoom about a point) and the grid (minor lines, a major line every 5 cells, only majors when cells get small). |
 | `canvas/mod.rs` ✅ | The canvas widget: `ui.allocate_painter`, view transform (pan + zoom), grid drawing, item painting, input dispatch to the active tool. Returns `CanvasAction`s (`Changed`, `SelectionChanged`, `EditLabel(id)`). |
 | `canvas/tools.rs` ✅ | A small state machine per tool: `Idle → Dragging{start} → commit`. Rect tools snap the start and end corners. Line tools show anchor hints on hover and glue when released over one. |
-| `canvas/paint.rs` ✅ | Draws shapes, connectors, arrowheads, selection handles and anchor hints with theme colours from `marina_egui::theme`. |
+| `canvas/paint.rs` ✅ | Draws shapes, connectors, arrowheads, selection handles and anchor hints with theme colours from `laankit_egui::theme`. |
 | `canvas/label.rs` ✅ | Inline label editing: an `egui::TextEdit` placed over the shape (multi-line, `Enter` commits, `Shift+Enter` adds a line, `Esc` cancels). |
-| `views.rs` ✅ | Sidebar (the folder's diagrams, New button, right-click Rename/Delete), toolbar (`marina_egui::toolbar` with tool buttons; Open Folder, Settings, About), the empty states (no folder, no diagram), status bar (tool, save state, selection, cursor position in grid units, grid size, zoom, UI scale). |
+| `views.rs` ✅ | Sidebar (the folder's diagrams, New button, right-click Rename/Delete), toolbar (`laankit_egui::toolbar` with tool buttons; Open Folder, Settings, About), the empty states (no folder, no diagram), status bar (tool, save state, selection, cursor position in grid units, grid size, zoom, UI scale). |
 | `overlays/` ✅ | Settings (grid size, show grid, title bar), the New/Rename name dialog, the delete confirmation, About, and `overlays/export.rs`, the Export dialog (§5.1). |
-| `export.rs` ✅ | Draws a `Scope` as SVG text (shapes, connectors, arrowheads, labels, optional grid) in the export colours; labels wrap exactly as on the canvas, using egui's text layout for the line breaks. PNG output rasterises that SVG with `resvg`, loading the bundled fonts (`marina_egui::fonts::bundled_faces`) so text matches. Writes are atomic (`marina_core::json::write_string` / temp file + rename). |
+| `export.rs` ✅ | Draws a `Scope` as SVG text (shapes, connectors, arrowheads, labels, optional grid) in the export colours; labels wrap exactly as on the canvas, using egui's text layout for the line breaks. PNG output rasterises that SVG with `resvg`, loading the bundled fonts (`laankit_egui::fonts::bundled_faces`) so text matches. Writes are atomic (`laankit_core::json::write_string` / temp file + rename). |
 | `ui_tests*.rs` ✅ | `egui_kittest` headless flows (§6), against a temp config folder and project folder. |
 
 **Zoom keys.** Unlike the other apps, Ctrl+= / Ctrl+- / Ctrl+0 and
@@ -339,11 +339,11 @@ and the Mermaid brackets, such as `([ ])`, on a shape drawn as a box.
 ### 5.1 Export
 
 **Opening it.** An **Export** button in the toolbar's bottom group (above
-Settings; Font Awesome `file-export`, added to `marina_egui::icons`),
+Settings; Font Awesome `file-export`, added to `laankit_egui::icons`),
 `Ctrl+Shift+E`, and "Export…" in the command palette. It's available while a
 diagram is open and has something in it.
 
-**The dialog** (a compact `marina_egui::dialog::Dialog`, titled "Export
+**The dialog** (a compact `laankit_egui::dialog::Dialog`, titled "Export
 Diagram"):
 
 | Option | Choices | Default |
@@ -424,7 +424,7 @@ file stays small; the text stays editable).
   `apps/blockliner/native/tests/fixtures/export.svg`
   (`BLOCKLINER_BLESS=1` rewrites it).
 - **Screenshots** for visual checks are rendered offscreen with
-  `egui_kittest` + wgpu (`MARINA_SCREENSHOT`-style), never in a real window.
+  `egui_kittest` + wgpu (`LAANKIT_SCREENSHOT`-style), never in a real window.
 
 ---
 
@@ -485,7 +485,7 @@ Adding a fourth app touches these places outside the new crates:
 - `apps/blockliner/native/Cargo.toml`: copy PageLiner's packaging metadata
   (`deb`, `generate-rpm`, `packager`) with the new names, binary
   `blockliner`, `rfd = "0.15"` for the folder picker and the export save
-  dialog, and `resvg` (the workspace's 0.45, as `marina-richtext` uses, with
+  dialog, and `resvg` (the workspace's 0.45, as `laankit-richtext` uses, with
   only the `text` feature) for PNG export.
 - `apps/blockliner/native/build.rs`: Windows icon, copied.
 - Package `depends`/`requires`: as PageLiner's **minus `git`**, which
@@ -518,8 +518,8 @@ Adding a fourth app touches these places outside the new crates:
 | 2 | Free lines not attached to shapes: keep them (BlockLiner-only) or disallow them? | **Decided: allowed**, with the status-bar hint. |
 | 3 | Project = folder of `.mmd` files (NoteLiner-like), or open/save single files? | **Decided: a plain folder, no git syncing.** Single-file "Open…" can be added cheaply later. |
 | 4 | Render Mermaid's own layout in-app as a "preview" tab? | No. There is no pure-Rust Mermaid renderer, and this app has no webview. The canvas is the view. |
-| 5 | Reuse `noteliner-slides`' colour/theme helpers? | Only `marina_egui::theme` for MVP. Shape styles come later. |
-| 6 | Should canvas primitives move to a shared crate (`marina-canvas`)? | Not yet. Extract them only if NoteLiner slides or a second app needs them, the same approach as the SlideLiner plan. |
+| 5 | Reuse `noteliner-slides`' colour/theme helpers? | Only `laankit_egui::theme` for MVP. Shape styles come later. |
+| 6 | Should canvas primitives move to a shared crate (`laankit-canvas`)? | Not yet. Extract them only if NoteLiner slides or a second app needs them, the same approach as the SlideLiner plan. |
 | 7 | Export colours: follow the app theme, or always light? | **Light, always** (white background, dark ink): exports end up in documents and wikis, and an export shouldn't change with the theme. A dark or transparent background can be an option later (§7). |
 | 8 | Draw exports separately for SVG and PNG, or once? | **Once, as SVG**; PNG rasterises that SVG with `resvg` and the bundled fonts. One drawing path means the two formats can't drift apart. |
 | 9 | Where does the export drawing live? | **In the app** (`export.rs`), not in `blockliner-core`: label wrapping must match the canvas, which uses egui's text layout. The core holds only what is exported and the page bounds (`export::scope`), which is easy to unit-test. |
@@ -1014,7 +1014,7 @@ light show the hover highlight and tooltip.
     Properties height, remembered with the sidebar width.
 - **Showing and hiding:**
   - **The controls:** a toolbar button (Font Awesome `sliders`, already in
-    `marina_egui::icons`) in the bottom group after Close Folder, the
+    `laankit_egui::icons`) in the bottom group after Close Folder, the
     shortcut `Ctrl+I` (free in BlockLiner; "Inspector"/"Get Info" on
     macOS), and "Toggle Properties" in the palette. The button shows as
     active while the pane is visible.

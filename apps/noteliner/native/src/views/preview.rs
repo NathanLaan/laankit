@@ -1,6 +1,6 @@
 //! The Preview pane (`Preview.svelte`): the note's Markdown rendered with
 //! `noteliner_core::export`'s comrak path (the same GFM options as the HTML
-//! export) and shown natively by `marina-richtext`.
+//! export) and shown natively by `laankit-richtext`.
 //!
 //! - `[[wikilinks]]` become `wikilink:` links; clicking one opens the note,
 //!   or offers to create it when there's no such note (`onCreateFromWikilink`).
@@ -18,8 +18,8 @@ use std::sync::LazyLock;
 use std::collections::HashMap;
 
 use egui::{Frame, Margin, RichText, Ui};
-use marina_egui::{icons, theme};
-use marina_richtext::{
+use laankit_egui::{icons, theme};
+use laankit_richtext::{
     from_note_html, Action, Document, LinkAction, Options, Resolver, RichStyle, RichView,
 };
 use noteliner_slides::{Deck, DeckPreview, ImageSource};
@@ -276,7 +276,7 @@ pub fn attachment_name(src: &str) -> Option<String> {
 impl Resolver for AttachmentResolver {
     fn image(&mut self, ctx: &egui::Context, src: &str) -> Option<String> {
         if src.starts_with("data:") {
-            return marina_richtext::resolve::data_uri(ctx, src);
+            return laankit_richtext::resolve::data_uri(ctx, src);
         }
         if src.starts_with("http://") || src.starts_with("https://") {
             return Some(src.to_string());

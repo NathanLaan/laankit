@@ -15,7 +15,7 @@
 //! ```
 //!
 //! `faces` are the font files the app bundles
-//! (`marina_egui::fonts::bundled_faces()`), so PDFs use the same Inter and
+//! (`laankit_egui::fonts::bundled_faces()`), so PDFs use the same Inter and
 //! JetBrains Mono as the app. Characters they lack (CJK, emoji, …) fall back
 //! to the system's fonts, which are indexed only when a note needs them.
 //!
@@ -163,7 +163,7 @@ pub struct Exporter {
 
 impl Exporter {
     /// An exporter with these font files (e.g.
-    /// `marina_egui::fonts::bundled_faces()`), falling back to system fonts.
+    /// `laankit_egui::fonts::bundled_faces()`), falling back to system fonts.
     pub fn new(faces: impl IntoIterator<Item = &'static [u8]>) -> Self {
         #[cfg_attr(not(feature = "pdf"), allow(unused_mut))]
         let mut faces: Vec<_> = faces.into_iter().collect();

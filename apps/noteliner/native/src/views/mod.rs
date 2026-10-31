@@ -9,9 +9,9 @@ pub mod sidebar;
 pub mod tree;
 
 use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui};
-use marina_core::git::SyncStatus;
-use marina_egui::theme::{self, Palette};
-use marina_egui::{fonts, icons};
+use laankit_core::git::SyncStatus;
+use laankit_egui::theme::{self, Palette};
+use laankit_egui::{fonts, icons};
 
 use crate::config::Recent;
 use crate::editor::SaveStatus;
@@ -179,7 +179,7 @@ fn recent_row(ui: &mut Ui, p: &Palette, r: &Recent) -> Option<OpenAction> {
 
 /// `formatPath`: the home folder as `~`.
 pub fn tilde_path(path: &str) -> String {
-    let home = marina_core::paths::home_dir().display().to_string();
+    let home = laankit_core::paths::home_dir().display().to_string();
     match path.strip_prefix(&home) {
         Some(rest) if !home.is_empty() && home != "/" => format!("~{rest}"),
         _ => path.to_string(),
@@ -214,7 +214,7 @@ fn sync_dot(s: Option<&SyncStatus>) -> Color32 {
         Some(SyncStatus::Synced) => GREEN,
         Some(SyncStatus::Ahead { .. }) => BLUE,
         Some(SyncStatus::Behind { .. }) => ORANGE,
-        Some(SyncStatus::Diverged { .. } | SyncStatus::Error { .. }) => marina_egui::toast::DANGER,
+        Some(SyncStatus::Diverged { .. } | SyncStatus::Error { .. }) => laankit_egui::toast::DANGER,
         _ => GREY,
     }
 }

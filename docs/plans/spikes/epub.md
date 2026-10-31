@@ -52,7 +52,7 @@ half of Phase 3 (PageLiner).**
 
 ```bash
 cargo run --profile fast-release -p spike-epub -- report ~/Documents/books/*.epub
-SPIKE_EPUB_DIR=<scratch> MARINA_CHAPTER=27 MARINA_SCREENSHOT=shot.png MARINA_SCREENSHOT_EXIT=1 \
+SPIKE_EPUB_DIR=<scratch> LAANKIT_CHAPTER=27 LAANKIT_SCREENSHOT=shot.png LAANKIT_SCREENSHOT_EXIT=1 \
   cargo run --profile fast-release -p spike-epub -- book.epub
 ```
 
@@ -109,4 +109,4 @@ Screenshots were checked by eye:
 **Go.** A native EPUB reader over the shared rich-text blocks is fast and
 faithful enough, and dropping CFI compatibility removes the only reason
 for a webview. Phase 3 should share `spike-richtext`'s converter and
-renderer with ThreadLiner, as a `marina-richtext` crate.
+renderer with ThreadLiner, as a `laankit-richtext` crate.

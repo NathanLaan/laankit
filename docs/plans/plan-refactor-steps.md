@@ -1,4 +1,4 @@
-# Plan: Marina foundation — remaining execution steps
+# Plan: LaanKit foundation — remaining execution steps
 
 Status: Active. Tracks the work needed to finish executing
 [`plan-refactor-common-foundation.md`](./plan-refactor-common-foundation.md)
@@ -8,7 +8,7 @@ inside this monorepo.
 
 Bootstrap and history import are complete:
 
-- `marina/` monorepo initialized with workspaces (`packages/*`, `apps/*`)
+- `laankit/` monorepo initialized with workspaces (`packages/*`, `apps/*`)
 - `apps/noteliner/` imported with full git history under `apps/noteliner/`
 - `apps/threadliner/` imported (renamed from `threadline`) with full git
   history under `apps/threadliner/`
@@ -18,7 +18,7 @@ Bootstrap and history import are complete:
 Confirm with:
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 git log --oneline | head -5
 ls apps/                          # noteliner + threadliner
 node -p "require('./apps/threadliner/package.json').name"  # → "threadliner"
@@ -50,7 +50,7 @@ yet** — ThreadLiner and NoteLiner are on different versions until Step 5.
 ### 4.1 Verify both apps still build
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 npm run build:noteliner
 npm run build:threadliner
 ```
@@ -181,7 +181,7 @@ Both are mostly drop-in:
 ### 5.5 Validate
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 npm install
 npm run build:threadliner
 npm run dev:threadliner
@@ -362,7 +362,7 @@ Branch: `step-7/desktop-ui-library`.
 ### 7.1 Skeleton
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 mkdir -p packages/desktop-ui/src/{theme,components,stores,electron-host,preload,styles}
 mkdir -p packages/desktop-ui/examples/playground
 ```
@@ -371,7 +371,7 @@ mkdir -p packages/desktop-ui/examples/playground
 
 ```jsonc
 {
-  "name": "@marina/desktop-ui",
+  "name": "@laankit/desktop-ui",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -435,23 +435,23 @@ Move to `packages/desktop-ui/src/preload/index.js` as
 ### 7.4 Build the playground
 
 `packages/desktop-ui/examples/playground/` is a standalone Electron +
-Vite app that imports `@marina/desktop-ui` and renders each component
+Vite app that imports `@laankit/desktop-ui` and renders each component
 under each theme × scale. It exists to exercise the library without
 needing either consumer app.
 
 Minimum viable playground:
 
 - `package.json` declaring `electron` + `vite` + workspace dep on
-  `@marina/desktop-ui`
+  `@laankit/desktop-ui`
 - A single window that renders TitleBar, Toolbar, AboutModal,
   SettingsShell with the built-in tabs, and a theme switcher
 
 ### 7.5 Validate
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 npm install                                       # links the new workspace
-npm run dev -w @marina/desktop-ui/examples/playground
+npm run dev -w @laankit/desktop-ui/examples/playground
 ```
 
 Cycle every theme and scale; confirm every exported component renders.
@@ -474,7 +474,7 @@ Branch: `step-8/noteliner-on-desktop-ui`.
 
 ```jsonc
 "dependencies": {
-  "@marina/desktop-ui": "*",
+  "@laankit/desktop-ui": "*",
   // ... rest unchanged
 }
 ```
@@ -492,9 +492,9 @@ import { themeState } from './stores/theme.svelte.js';
 import './styles/global.css';
 
 // After
-import { TitleBar } from '@marina/desktop-ui/components';
-import { themeState } from '@marina/desktop-ui/theme';
-import '@marina/desktop-ui/styles';
+import { TitleBar } from '@laankit/desktop-ui/components';
+import { themeState } from '@laankit/desktop-ui/theme';
+import '@laankit/desktop-ui/styles';
 ```
 
 Delete the now-duplicated local files. Domain components (FileTree,
@@ -506,7 +506,7 @@ In `apps/noteliner/src/main/main.js`:
 
 ```js
 import { registerWindowHandlers, registerUIPrefsHandlers, registerRelaunchHandler, applyFrameFromPrefs }
-  from '@marina/desktop-ui/electron-host';
+  from '@laankit/desktop-ui/electron-host';
 
 // Replace ~120 lines of inline handlers with:
 registerWindowHandlers({ getWindow: () => mainWindow });
@@ -541,7 +541,7 @@ Visual-diff against pre-step-8 screenshots — any drift gets fixed in the
 **Done when:** NoteLiner runs identically to before, with library
 imports replacing every local copy.
 
-**Commit (or merge):** `refactor(noteliner): consume @marina/desktop-ui
+**Commit (or merge):** `refactor(noteliner): consume @laankit/desktop-ui
 for chrome and theming`
 
 ---
@@ -558,7 +558,7 @@ Feed Defaults) register as `SettingsShell` contributions.
 ```jsonc
 // apps/threadliner/package.json
 "dependencies": {
-  "@marina/desktop-ui": "*",
+  "@laankit/desktop-ui": "*",
   // ...
 }
 ```
@@ -578,7 +578,7 @@ Exercise every feature; pixel-compare against the post-refresh-UI build.
 **Done when:** ThreadLiner runs identically to its post-Step-6 state,
 with library imports replacing every local copy.
 
-**Commit (or merge):** `refactor(threadliner): consume @marina/desktop-ui
+**Commit (or merge):** `refactor(threadliner): consume @laankit/desktop-ui
 for chrome and theming`
 
 ---
@@ -611,8 +611,8 @@ Lock the public surface area. Anything not in `src/index.js` or the
 ### 10.4 Tag v1.0
 
 ```bash
-cd ~/dev/hub/laan/marina
-git tag -a desktop-ui-v1.0.0 -m "@marina/desktop-ui 1.0.0"
+cd ~/dev/hub/laan/laankit
+git tag -a desktop-ui-v1.0.0 -m "@laankit/desktop-ui 1.0.0"
 git push origin desktop-ui-v1.0.0   # if pushing to GitHub
 ```
 

@@ -4,9 +4,9 @@
 //! Every click is saved at once, as in the Svelte build; OK just closes.
 
 use egui::{vec2, Align2, FontId, RichText, Sense, Stroke, Ui};
-use marina_egui::dialog::{self, ButtonKind, Dialog};
-use marina_egui::theme;
-use marina_egui::{fonts, icons};
+use laankit_egui::dialog::{self, ButtonKind, Dialog};
+use laankit_egui::theme;
+use laankit_egui::{fonts, icons};
 use serde_json::Value;
 
 use crate::model;

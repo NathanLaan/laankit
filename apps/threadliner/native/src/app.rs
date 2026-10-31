@@ -4,17 +4,17 @@
 //! `App.svelte` plus the `stores/app.js` and `stores/sync.js` actions.
 
 use egui::{Frame, Ui};
-use marina_egui::about::{AboutAction, AboutIcon, AboutModal, UpdateStatus};
-use marina_egui::commands::{Recents, Registry};
-use marina_egui::diagnostics::{self, Screenshot};
-use marina_egui::dialog::Confirm;
-use marina_egui::file_dialog::FileDialogs;
-use marina_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
-use marina_egui::theme::{self, ThemeId, ThemeState};
-use marina_egui::titlebar::{self, TitleBar, TitleBarAction};
-use marina_egui::toast::Toasts;
-use marina_egui::toolbar::{self, ToolbarButton};
-use marina_egui::{fonts, icons, window};
+use laankit_egui::about::{AboutAction, AboutIcon, AboutModal, UpdateStatus};
+use laankit_egui::commands::{Recents, Registry};
+use laankit_egui::diagnostics::{self, Screenshot};
+use laankit_egui::dialog::Confirm;
+use laankit_egui::file_dialog::FileDialogs;
+use laankit_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
+use laankit_egui::theme::{self, ThemeId, ThemeState};
+use laankit_egui::titlebar::{self, TitleBar, TitleBarAction};
+use laankit_egui::toast::Toasts;
+use laankit_egui::toolbar::{self, ToolbarButton};
+use laankit_egui::{fonts, icons, window};
 use serde_json::{json, Value};
 use threadliner_core::sync::LogEntry;
 
@@ -38,7 +38,7 @@ const LOG_CAP: usize = 200;
 /// Ctrl+wheel zoom steps at most once per 200 ms (`ZOOM_COOLDOWN_MS`).
 const ZOOM_COOLDOWN_SECS: f64 = 0.2;
 const DESCRIPTION: &str = "A desktop RSS reader built with Rust, egui, and Git-synced JSON.";
-const REPO_URL: &str = "https://github.com/NathanLaan/marina/";
+const REPO_URL: &str = "https://github.com/NathanLaan/laankit/";
 
 /// `stores/sync.js`: the auto-sync engine's state, polled every 2 s.
 #[derive(Default)]
@@ -50,7 +50,7 @@ struct SyncInfo {
     next_poll: f64,
 }
 
-/// `MARINA_OPEN` / `MARINA_FEED` / `MARINA_ENTRY`: what to open once the
+/// `LAANKIT_OPEN` / `LAANKIT_FEED` / `LAANKIT_ENTRY`: what to open once the
 /// data is in, for screenshots.
 #[derive(Default)]
 struct Diagnostics {
@@ -66,7 +66,7 @@ pub struct ThreadLinerApp {
     /// supply it (`hydrateFromSettings`).
     theme_saved: bool,
     hydrated: bool,
-    /// Whether the window was built undecorated, with Marina's title bar.
+    /// Whether the window was built undecorated, with LaanKit's title bar.
     custom_titlebar: bool,
     toolbar_visible: bool,
     initialized: bool,
@@ -137,9 +137,9 @@ impl ThreadLinerApp {
             last_wheel_zoom: f64::NEG_INFINITY,
             screenshot: Screenshot::from_env(),
             diagnostics: Diagnostics {
-                open: env("MARINA_OPEN"),
-                feed: env("MARINA_FEED").and_then(|v| v.parse().ok()),
-                entry: env("MARINA_ENTRY").and_then(|v| v.parse().ok()),
+                open: env("LAANKIT_OPEN"),
+                feed: env("LAANKIT_FEED").and_then(|v| v.parse().ok()),
+                entry: env("LAANKIT_ENTRY").and_then(|v| v.parse().ok()),
             },
         }
     }
@@ -1110,7 +1110,7 @@ impl ThreadLinerApp {
             Overlay::About => {
                 let modal = AboutModal::new("ThreadLiner", env!("CARGO_PKG_VERSION"))
                     .description(DESCRIPTION)
-                    .repo(REPO_URL, Some("github.com/NathanLaan/marina"))
+                    .repo(REPO_URL, Some("github.com/NathanLaan/laankit"))
                     .icon(AboutIcon::Glyph(icons::RSS))
                     .update(&self.update);
                 match modal.show(ctx) {
@@ -1159,7 +1159,7 @@ impl ThreadLinerApp {
             feeds
                 .iter()
                 .filter_map(|f| {
-                    let score = marina_egui::commands::fuzzy_score(&f.title, q);
+                    let score = laankit_egui::commands::fuzzy_score(&f.title, q);
                     (score > 0).then(|| PaletteItem {
                         kind: ItemKind::Other,
                         id: format!("feed:{}", f.id),

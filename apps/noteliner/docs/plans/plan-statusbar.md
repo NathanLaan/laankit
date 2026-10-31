@@ -116,7 +116,7 @@ Full-width bar at the very bottom, spanning under the left toolbar strip:
 - **Git:** `git:getBranch` (local, cheap) and `git:getSyncStatus` (does a
   network fetch — expensive). Sync dot semantics live in `SyncModal.svelte`
   (`dot-blue` = ahead, `dot-orange` = behind, etc.).
-- **No existing status bar** in the app or in the shared `@marina/desktop-ui`
+- **No existing status bar** in the app or in the shared `@laankit/desktop-ui`
   package — this is net-new. (Consider whether it should live in the shared
   package so ThreadLiner can adopt it later; see Open questions.)
 
@@ -168,7 +168,7 @@ Full-width bar at the very bottom, spanning under the left toolbar strip:
 
 ## Open questions (for reviewer)
 
-1. **Shared vs. app-local?** Should `StatusBar` live in `@marina/desktop-ui` so
+1. **Shared vs. app-local?** Should `StatusBar` live in `@laankit/desktop-ui` so
    ThreadLiner can adopt it later (consistent with the "sibling apps" direction
    in `docs/plans/plan-refactor-refresh-ui.md`), or stay NoteLiner-local for
    now and be promoted later?

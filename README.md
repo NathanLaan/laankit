@@ -1,6 +1,6 @@
-# Marina
+# LaanKit
 
-Marina is a workspace of local-first desktop apps that share one UI and backend
+LaanKit is a workspace of local-first desktop apps that share one UI and backend
 foundation. Every app is **pure Rust**, built on [egui](https://github.com/emilk/egui)/
 [eframe](https://github.com/emilk/egui/tree/master/crates/eframe) — no webview,
 no JavaScript — and stores its data as plain files you control: a git
@@ -24,10 +24,10 @@ See the per-app README (`apps/<app>/README.md`) and its detailed
 ```
 apps/<app>/native/   the four apps (egui UIs over the crates below)
 crates/
-  marina-core        shared backend: git sync, JSON stores, XDG paths, debouncing
-  marina-egui        shared egui shell: themes, fonts, window chrome, command palette, settings, panes
-  marina-editor      the Markdown editor widget (own text engine, highlighting, spell check)
-  marina-richtext    HTML/XHTML rendering (ThreadLiner articles, PageLiner EPUB)
+  laankit-core        shared backend: git sync, JSON stores, XDG paths, debouncing
+  laankit-egui        shared egui shell: themes, fonts, window chrome, command palette, settings, panes
+  laankit-editor      the Markdown editor widget (own text engine, highlighting, spell check)
+  laankit-richtext    HTML/XHTML rendering (ThreadLiner articles, PageLiner EPUB)
   <app>-core         each app's UI-independent backend
   noteliner-export   in-process PDF export (Typst); noteliner-slides   presentations
   pageliner-epub     EPUB parsing/state
@@ -108,7 +108,7 @@ runtime dependencies, Flatpak and code-signing status are in
 ## Install a release
 
 Pre-built packages for Linux, Windows and macOS are attached to each
-[GitHub release](https://github.com/NathanLaan/marina/releases).
+[GitHub release](https://github.com/NathanLaan/laankit/releases).
 
 - **Linux**
   - `.deb`: `sudo apt install ./noteliner_<ver>-1_amd64.deb`

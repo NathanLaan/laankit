@@ -26,16 +26,24 @@ fn s(v: &Value) -> &str {
 }
 
 fn name_index(p: &Project) -> HashMap<String, String> {
-    p.files().iter().map(|f| (s(&f["name"]).to_lowercase(), s(&f["id"]).to_string())).collect()
+    p.files()
+        .iter()
+        .map(|f| (s(&f["name"]).to_lowercase(), s(&f["id"]).to_string()))
+        .collect()
 }
 
 fn body_of(p: &Project, filename: &str) -> Option<String> {
     let path = p.file_path(filename).ok()?;
-    fs::read_to_string(path).ok().map(|raw| frontmatter::strip_body(&raw))
+    fs::read_to_string(path)
+        .ok()
+        .map(|raw| frontmatter::strip_body(&raw))
 }
 
 pub fn parse_links(content: &str) -> Vec<String> {
-    WIKILINK_RE.captures_iter(content).map(|c| c[1].trim().to_string()).collect()
+    WIKILINK_RE
+        .captures_iter(content)
+        .map(|c| c[1].trim().to_string())
+        .collect()
 }
 
 impl LinkGraph {
@@ -80,7 +88,10 @@ impl LinkGraph {
             }
         }
         for target in &out {
-            self.incoming.entry(target.clone()).or_default().insert(file_id.to_string());
+            self.incoming
+                .entry(target.clone())
+                .or_default()
+                .insert(file_id.to_string());
         }
         self.outgoing.insert(file_id.to_string(), out);
         self.dangling.insert(file_id.to_string(), dangling);
@@ -109,24 +120,41 @@ impl LinkGraph {
 
     /// `[{ sourceId, sourceName, matches: [{ line, text }] }]`, by source name.
     pub fn backlink_snippets(&self, p: &Project, file_id: &str) -> Vec<Value> {
-        let Some(target) = p.find(file_id) else { return Vec::new() };
+        let Some(target) = p.find(file_id) else {
+            return Vec::new();
+        };
         let target_name = s(&target["name"]).to_lowercase();
         let mut results: Vec<(String, Value)> = Vec::new();
         for source_id in self.incoming.get(file_id).into_iter().flatten() {
-            let Some(src) = p.find(source_id) else { continue };
-            let Some(body) = body_of(p, s(&src["filename"])) else { continue };
+            let Some(src) = p.find(source_id) else {
+                continue;
+            };
+            let Some(body) = body_of(p, s(&src["filename"])) else {
+                continue;
+            };
             let matches: Vec<Value> = body
                 .split('\n')
                 .enumerate()
-                .filter(|(_, line)| WIKILINK_RE.captures_iter(line).any(|c| c[1].trim().to_lowercase() == target_name))
+                .filter(|(_, line)| {
+                    WIKILINK_RE
+                        .captures_iter(line)
+                        .any(|c| c[1].trim().to_lowercase() == target_name)
+                })
                 .map(|(i, line)| json!({ "line": i + 1, "text": line.trim() }))
                 .collect();
             if !matches.is_empty() {
                 let name = s(&src["name"]).to_string();
-                results.push((name.clone(), json!({ "sourceId": src["id"], "sourceName": name, "matches": matches })));
+                results.push((
+                    name.clone(),
+                    json!({ "sourceId": src["id"], "sourceName": name, "matches": matches }),
+                ));
             }
         }
-        results.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()).then(a.0.cmp(&b.0)));
+        results.sort_by(|a, b| {
+            a.0.to_lowercase()
+                .cmp(&b.0.to_lowercase())
+                .then(a.0.cmp(&b.0))
+        });
         results.into_iter().map(|(_, v)| v).collect()
     }
 

@@ -101,7 +101,7 @@ The Typst output is better in every content respect:
 
 | Gap | Fix for Phase 4 |
 |---|---|
-| The body font is serif (Libertinus); the old export uses the system sans | Pass the sans that `marina-egui` bundles to `Fonts::new` and use `Exporter::with_family`. Checked with DejaVu Sans: works, 205 ms cold |
+| The body font is serif (Libertinus); the old export uses the system sans | Pass the sans that `laankit-egui` bundles to `Fonts::new` and use `Exporter::with_family`. Checked with DejaVu Sans: works, 205 ms cold |
 | No CJK glyphs, and no emoji unless an emoji font is added (the old export gets both from system fonts) | Add system fonts as a *fallback* (typst-kit `scan-fonts` / fontdb, cross-platform); bundling Noto CJK costs about 16 MB or more |
 | Raw inline HTML: tags are dropped and their text kept (`<b>` loses bold); HTML blocks keep only their text | Acceptable; map a few tags (`b`, `i`, `u`, `sub`, `sup`, `kbd`) if notes use them |
 | `<label>`-looking text is parsed as an HTML tag and dropped | Same as the browser path |

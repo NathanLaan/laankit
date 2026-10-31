@@ -33,10 +33,10 @@ NoteLiner are the default builds (version 2.2.5).
 |---|---|---|---|
 | Single-instance: a second launch focuses the running app | All three | The most noticeable gap. A local socket or named pipe per app id, passing on file or project arguments. | High |
 | MCP server on Windows | NoteLiner | The server uses a Unix socket and reports "not available" on Windows. Needs a named-pipe transport behind the same runtime file and `--mcp-bridge` protocol. | High |
-| List editing with several cursors | NoteLiner (`marina-editor`) | List continuation, Tab and the list buttons act on the primary cursor only. | Medium |
-| Enter inside a list at 50k lines (8.8 ms p95) | NoteLiner (`marina-editor`) | List continuation still scans the whole note; scope it to the list. | Low |
-| Remove the TextEdit fallback engine | NoteLiner (`marina-editor`) | One release after the IME and screen-reader checks (section 4) pass. Removes `MARINA_EDITOR_ENGINE=textedit`. | Medium |
-| Shift+arrow selection in rich text | All three (`marina-richtext`) | Needs a keyboard caret in `RichView`. | Medium |
+| List editing with several cursors | NoteLiner (`laankit-editor`) | List continuation, Tab and the list buttons act on the primary cursor only. | Medium |
+| Enter inside a list at 50k lines (8.8 ms p95) | NoteLiner (`laankit-editor`) | List continuation still scans the whole note; scope it to the list. | Low |
+| Remove the TextEdit fallback engine | NoteLiner (`laankit-editor`) | One release after the IME and screen-reader checks (section 4) pass. Removes `LAANKIT_EDITOR_ENGINE=textedit`. | Medium |
+| Shift+arrow selection in rich text | All three (`laankit-richtext`) | Needs a keyboard caret in `RichView`. | Medium |
 | More code-fence languages (TypeScript, TOML, Svelte, PowerShell) | NoteLiner | Not in syntect's bundled set; a larger set (e.g. `two-face`) was deferred by decision. | Low |
 | Editor font choice | NoteLiner | Planned in [plan-editor-font.md](plan-editor-font.md) (draft for review). | Medium |
 | Help in its own window | ThreadLiner | Currently a dialog. | Low |
@@ -91,11 +91,11 @@ here.
 ## 5. Decisions
 
 - **When to delete the old builds.** After the cutover, the Tauri builds
-  (`apps/*/src-tauri`, `crates/marina-tauri`) are only a rollback path (see
+  (`apps/*/src-tauri`, `crates/laankit-tauri`) are only a rollback path (see
   `docs/packaging.md`). The Svelte renderers and Electron builds go with
   them: the npm workspaces, `packages/desktop-ui`, and the Playwright
   tests. Suggested order: Tauri first, then Svelte/Electron.
 - **Tidy-up on the development machine.** `~/.local/share/` has leftover
-  `marina-editor`, `marina-gallery` and `marina-shell` folders from test
-  runs, and `/tmp` has spike caches (`marina-spike-article`,
-  `marina-spike-epub`).
+  `laankit-editor`, `laankit-gallery` and `laankit-shell` folders from test
+  runs, and `/tmp` has spike caches (`laankit-spike-article`,
+  `laankit-spike-epub`).

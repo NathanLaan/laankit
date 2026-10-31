@@ -48,7 +48,7 @@ pub struct Prefs {
 impl Paths {
     pub fn default_location() -> Self {
         Self {
-            user_data: marina_core::paths::user_data_dir(PRODUCT_NAME),
+            user_data: laankit_core::paths::user_data_dir(PRODUCT_NAME),
         }
     }
 
@@ -60,7 +60,7 @@ impl Paths {
     /// the file has.
     pub fn read_prefs_map(&self) -> Map<String, Value> {
         let mut merged = defaults();
-        for (k, v) in marina_core::json::read_object(&self.ui_prefs()) {
+        for (k, v) in laankit_core::json::read_object(&self.ui_prefs()) {
             merged.insert(k, v);
         }
         merged
@@ -109,8 +109,8 @@ impl Paths {
     /// defaults end up in the file too.
     pub fn set_prefs(&self, patch: &Value) -> anyhow::Result<()> {
         let mut prefs = self.read_prefs_map();
-        marina_core::json::merge(&mut prefs, patch);
-        marina_core::json::write(&self.ui_prefs(), &prefs)
+        laankit_core::json::merge(&mut prefs, patch);
+        laankit_core::json::write(&self.ui_prefs(), &prefs)
     }
 }
 
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn set_prefs_merges_and_keeps_unknown_keys() {
         let (_tmp, paths) = paths();
-        marina_core::json::write(
+        laankit_core::json::write(
             &paths.ui_prefs(),
             &json!({ "future": 1, "showGrid": false }),
         )

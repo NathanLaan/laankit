@@ -101,7 +101,7 @@ pub struct SlideImages {
 impl ImageSource for SlideImages {
     fn uri(&self, src: &str) -> Option<String> {
         if src.starts_with("data:") {
-            return marina_richtext::resolve::data_uri(&self.ctx, src);
+            return laankit_richtext::resolve::data_uri(&self.ctx, src);
         }
         if src.starts_with("http://") || src.starts_with("https://") {
             return Some(src.to_string());

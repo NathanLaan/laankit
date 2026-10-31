@@ -1,12 +1,12 @@
 # Security Policy
 
-Marina is a set of local-first desktop apps (NoteLiner, ThreadLiner, PageLiner).
+LaanKit is a set of local-first desktop apps (NoteLiner, ThreadLiner, PageLiner).
 This document describes what is supported, how to report a vulnerability, and the
 security model you can reason about.
 
 ## Supported versions
 
-Marina ships from a single shared version across all three apps. Security fixes
+LaanKit ships from a single shared version across all three apps. Security fixes
 are made against the **latest released version**; there are no long-term support
 branches. Please reproduce any issue on the current release (or `main`) before
 reporting.
@@ -18,7 +18,7 @@ reporting.
 Report privately through GitHub's private vulnerability reporting:
 
 1. Go to the repository's **Security** tab →
-   **[Report a vulnerability](https://github.com/NathanLaan/marina/security/advisories/new)**.
+   **[Report a vulnerability](https://github.com/NathanLaan/laankit/security/advisories/new)**.
 2. Describe the issue, the affected app(s) and version, and the steps to
    reproduce. A minimal proof of concept helps.
 
@@ -32,15 +32,15 @@ When reporting, please describe the **class** of problem and how to reproduce it
 
 ## Security model
 
-Understanding how Marina handles data and the network makes it clearer what is
+Understanding how LaanKit handles data and the network makes it clearer what is
 and isn't in scope.
 
 ### Local-first by design
 
 - Your data lives on your own machine, inside a git repository you control. If
   you configure a remote, syncing pushes to **your** remote with **your**
-  credentials — Marina operates no servers and has no accounts.
-- Marina shells out to the system `git` CLI, so it uses your existing SSH keys
+  credentials — LaanKit operates no servers and has no accounts.
+- LaanKit shells out to the system `git` CLI, so it uses your existing SSH keys
   and git configuration. It does not store or manage credentials itself.
 
 ### Network use
@@ -57,7 +57,7 @@ No app opens a listening network port for inbound connections.
 ### Rendering untrusted content
 
 ThreadLiner renders feed article HTML and PageLiner renders EPUB content. This
-content is **untrusted**. It is rendered natively (`marina-richtext`) rather than
+content is **untrusted**. It is rendered natively (`laankit-richtext`) rather than
 in a webview, and is treated as data, not as a place to execute scripts.
 Rendering bugs that could be triggered by a malicious feed or EPUB are in scope.
 
@@ -84,7 +84,7 @@ The MCP server is not available on Windows yet (it requires a Unix socket).
   (right-click → Open, or clear the quarantine attribute). Code signing is a
   tracked TODO; see [`docs/packaging.md`](docs/packaging.md).
 - Verify downloads come from the official
-  [GitHub releases](https://github.com/NathanLaan/marina/releases).
+  [GitHub releases](https://github.com/NathanLaan/laankit/releases).
 - Bundled third-party material (fonts, icons) is listed in [`NOTICE`](NOTICE).
 
 ## Out of scope

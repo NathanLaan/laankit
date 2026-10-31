@@ -1,4 +1,4 @@
-//! The note editor: `marina-editor`'s widget (`Editor.svelte`) wrapped with
+//! The note editor: `laankit-editor`'s widget (`Editor.svelte`) wrapped with
 //! the app's autosave and status contract.
 //!
 //! - **Loading.** The app calls [`NoteEditor::load`] when a note's
@@ -26,15 +26,15 @@
 //!   Ctrl+click on links, the context menu's exports, "Add to dictionary")
 //!   comes back as [`EditorAction`]s for the app.
 //!
-//! marina-editor needs the egui context for most calls (its caret lives in
+//! laankit-editor needs the egui context for most calls (its caret lives in
 //! egui's memory), so the app [`NoteEditor::attach`]es it once at startup.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use egui::{ColorImage, Ui};
-use marina_editor::toolbar::{self, ToolbarAction, ToolbarProps};
-use marina_editor::{
+use laankit_editor::toolbar::{self, ToolbarAction, ToolbarProps};
+use laankit_editor::{
     Command, CursorStatus, Editor, EditorEvent, EditorPrefs, EditorState, SaveFormat, SpellChecker,
 };
 
@@ -424,7 +424,7 @@ impl NoteEditor {
             }
             None => {
                 self.text_rect = None;
-                let p = marina_egui::theme::palette(ui.ctx());
+                let p = laankit_egui::theme::palette(ui.ctx());
                 ui.add_space(16.0);
                 ui.vertical_centered(|ui| {
                     ui.label(egui::RichText::new("No file selected").color(p.text_muted));

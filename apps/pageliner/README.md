@@ -6,7 +6,7 @@ bookmarks, highlights, reading-position persistence and optional git sync of the
 library index and reading state.
 
 It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) over
-the shared `marina-*` crates — no webview, no JavaScript. The shipped binary is
+the shared `laankit-*` crates — no webview, no JavaScript. The shipped binary is
 `pageliner`.
 
 - **Run, build, install:** see the [root README](../../README.md).

@@ -43,7 +43,7 @@ fn harness(start: usize) -> Harness<'static, State> {
     let vars = HashMap::new();
     Harness::builder()
         .with_size(egui::vec2(1400.0, 900.0))
-        .with_context_setup(marina_egui::fonts::install)
+        .with_context_setup(laankit_egui::fonts::install)
         .build_ui_state(
             move |ui, s: &mut State| {
                 if s.exited {
@@ -163,7 +163,7 @@ fn without_a_speaker_view_nothing_extra_opens() {
     let vars = HashMap::new();
     let mut h = Harness::builder()
         .with_size(egui::vec2(800.0, 450.0))
-        .with_context_setup(marina_egui::fonts::install)
+        .with_context_setup(laankit_egui::fonts::install)
         .build_ui_state(
             move |ui, s: &mut State| {
                 let a = s.presenter.show(ui.ctx(), &s.deck, &vars, &PassThrough);

@@ -1,7 +1,7 @@
 //! PageLiner's native EPUB reader (plan Option C, Phase 3): no webview, no epub.js.
 //!
 //! - [`book`]: [`Book`], an EPUB opened from a path or bytes: metadata, spine, table of
-//!   contents, and the whole book as one `marina_richtext::Document`.
+//!   contents, and the whole book as one `laankit_richtext::Document`.
 //! - [`view`]: [`EpubView`], the reading screen; it returns [`EpubEvent`]s for the host to
 //!   persist and act on.
 //! - [`state`]: what's saved: [`NativeState`] per book (under `"native"` in `state/<id>.json`)

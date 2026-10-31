@@ -13,8 +13,8 @@ name = "pageliner"
 path = "src/main.rs"
 
 [dependencies]
-marina-core.workspace = true
-marina-egui.workspace = true
+laankit-core.workspace = true
+laankit-egui.workspace = true
 pageliner-core = { path = "../../../crates/pageliner-core" }
 pageliner-epub.workspace = true
 egui_extras.workspace = true
@@ -83,7 +83,7 @@ assets = [
 name = "pageliner"
 license = "MIT"
 summary = "EPUB and PDF reader and document library"
-url = "https://github.com/NathanLaan/marina"
+url = "https://github.com/NathanLaan/laankit"
 assets = [
     { source = "target/release/pageliner", dest = "/usr/bin/pageliner", mode = "755" },
     { source = "../../../packaging/linux/com.pageliner.app.desktop", dest = "/usr/share/applications/com.pageliner.app.desktop", mode = "644" },
@@ -124,7 +124,7 @@ page-liner = "*"
 product-name = "PageLiner"
 identifier = "com.pageliner.app"
 description = "EPUB and PDF reader and document library"
-homepage = "https://github.com/NathanLaan/marina"
+homepage = "https://github.com/NathanLaan/laankit"
 authors = ["Nathan Laan"]
 publisher = "Nathan Laan"
 copyright = "Copyright (c) 2026 Nathan Laan"

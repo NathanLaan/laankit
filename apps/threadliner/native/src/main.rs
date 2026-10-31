@@ -36,7 +36,7 @@ fn main() -> eframe::Result {
         .with_min_inner_size([800.0, 500.0])
         .with_icon(app_icon());
     if paths.custom_titlebar() {
-        viewport = marina_egui::window::undecorated(viewport);
+        viewport = laankit_egui::window::undecorated(viewport);
     }
     let options = eframe::NativeOptions {
         viewport,

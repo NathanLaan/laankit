@@ -14,7 +14,7 @@ a phased migration that works for whichever option is picked.
 ## Current state
 
 npm-workspaces monorepo, Electron 41 + Svelte 5 + Vite, all three apps on
-top of `@marina/desktop-ui`.
+top of `@laankit/desktop-ui`.
 
 | Unit | Size (JS/Svelte/CSS) | Scope | Hard parts to port |
 |---|---|---|---|
@@ -89,7 +89,7 @@ A truly native GNOME app.
   - Real native look and feel: HeaderBar, adaptive layouts, system dark
     mode, accessibility, portals.
   - Fast enough for the large-vault performance work.
-  - Shared code moves into a `marina-core` crate plus a `marina-ui` widget
+  - Shared code moves into a `laankit-core` crate plus a `laankit-ui` widget
     crate.
 - **Cons**
   - A full UI rewrite: about 4–7 months for one developer.
@@ -180,14 +180,14 @@ in [plan-native-rust-egui.md](plan-native-rust-egui.md).
 
 ### Phase 1 — Shared foundation (~2–3 weeks)
 
-- **`marina-core` crate:**
+- **`laankit-core` crate:**
   - Git sync: commit, then rebase-pull, then push, with debounce. The logic
     is currently duplicated across `noteliner/src/main/git-service.js`,
     `threadliner/src/main/git-sync.js` and `pageliner/src/main/git-sync.js`.
   - Settings, window state, recent-projects list.
   - XDG paths. Keep `~/.config/NoteLiner` etc., so existing settings and the
     MCP bridge keep working.
-- **`marina-ui`:**
+- **`laankit-ui`:**
   - Command palette, with fuzzy search ported from
     `packages/desktop-ui/src/lib/fuzzy.js`.
   - Settings window, theme and scale handling, sidebar/PaneHost, about
@@ -197,7 +197,7 @@ in [plan-native-rust-egui.md](plan-native-rust-egui.md).
 
 - Mid-sized, and exercises the full shared stack: lists, sidebar, sync,
   settings, sanitized HTML view.
-- Shakes out `marina-core` and `marina-ui` before the hardest app.
+- Shakes out `laankit-core` and `laankit-ui` before the hardest app.
 
 ### Phase 3 — PageLiner (~3–4 weeks)
 
@@ -257,14 +257,14 @@ Playwright e2e specs, plus the import/slides/lists/MCP integration tests).
 ### Architecture
 
 - **The renderer and preload don't fork.** Each app's `preload.js` is bundled
-  against `@marina/desktop-ui/tauri-shim` (an `electron` stand-in) and
+  against `@laankit/desktop-ui/tauri-shim` (an `electron` stand-in) and
   injected as a webview init script. `ipcRenderer.invoke(channel, …)` lands
   in one Rust `ipc` command that routes by the same channel name, so the
   Electron IPC surface *is* the contract and nothing in the Svelte code
   knows which shell it runs in.
 - **Backends are UI-independent crates**, ready for Option B:
-  `marina-core` (git, JSON, paths, debounce), `noteliner-core`,
-  `threadliner-core`, `pageliner-core`. Only `marina-tauri` and the
+  `laankit-core` (git, JSON, paths, debounce), `noteliner-core`,
+  `threadliner-core`, `pageliner-core`. Only `laankit-tauri` and the
   `apps/*/src-tauri` crates depend on Tauri.
 - **Data compatibility** with the Electron builds is exact: same
   `~/.config/<App>` folders, `JSON.stringify(…, null, 2)` output, and key
@@ -316,6 +316,6 @@ Playwright e2e specs, plus the import/slides/lists/MCP integration tests).
   CI job.
 - **A native test runner for the UI.** The Rust crates are unit-tested
   (39 tests). UI flows were checked with the debug-only
-  `MARINA_SMOKE_SCRIPT` hook, which runs a script in the main window and
+  `LAANKIT_SMOKE_SCRIPT` hook, which runs a script in the main window and
   reports through the `debug:log` channel.
 

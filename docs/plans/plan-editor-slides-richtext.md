@@ -7,9 +7,9 @@ the TextEdit fallback engine after one release. See
 left after the Option C port ([plan-native-rust-egui.md](plan-native-rust-egui.md))
 in three shared crates:
 
-- `crates/marina-editor`: NoteLiner's Markdown editor.
+- `crates/laankit-editor`: NoteLiner's Markdown editor.
 - `crates/noteliner-slides`: slides, deck preview and presenter.
-- `crates/marina-richtext`: NoteLiner's preview, ThreadLiner's articles,
+- `crates/laankit-richtext`: NoteLiner's preview, ThreadLiner's articles,
   PageLiner's EPUB reader, and the slide bodies.
 
 The baseline is what users had in the Svelte build: CodeMirror 6
@@ -18,7 +18,7 @@ and `marked` HTML in a browser for the preview and slides.
 
 ## Summary
 
-- **Most editor gaps share one cause.** `marina-editor` wraps egui's
+- **Most editor gaps share one cause.** `laankit-editor` wraps egui's
   `TextEdit`. That gives the native editor one selection, whole-text
   layout and whole-text accessibility updates, so it can't do multiple
   cursors, rectangular selection or folding, and it slows past about 20,000
@@ -33,7 +33,7 @@ and `marked` HTML in a browser for the preview and slides.
     ignored; every cell is left-aligned.
   - **`<mark>`:** rendered as plain text with no highlight.
 
-  Slides inherit all three because they render through `marina-richtext`.
+  Slides inherit all three because they render through `laankit-richtext`.
 - **Selection in rich text is drag-only.** Users can't double-click a word,
   triple-click a paragraph, or extend with Shift+arrows. That matters for
   copying from the preview, articles and EPUBs, which a browser handled.
@@ -61,7 +61,7 @@ Severity:
 - **P3:** polish, rare content, or something the Svelte build didn't do
   either.
 
-### Editor (`marina-editor`)
+### Editor (`laankit-editor`)
 
 | Gap                                                       | In Svelte? | Severity | Constraint                                                                 | Effort |
 |-----------------------------------------------------------|------------|----------|----------------------------------------------------------------------------|--------|
@@ -80,7 +80,7 @@ Severity:
 S ≈ 1–3 days, M ≈ 1 week, L ≈ several weeks. "(core)" items come with
 the custom editor core in Phase 3.
 
-### Rich text (`marina-richtext`), used by the preview, articles, EPUB and slides
+### Rich text (`laankit-richtext`), used by the preview, articles, EPUB and slides
 
 | Gap                                                    | In Svelte/browser? | Severity | Notes                                                              | Effort |
 |--------------------------------------------------------|--------------------|----------|--------------------------------------------------------------------|--------|
@@ -102,7 +102,7 @@ the custom editor core in Phase 3.
 
 | Gap                                  | In Svelte? | Severity | Notes                                                                                   | Effort |
 |--------------------------------------|------------|----------|-----------------------------------------------------------------------------------------|--------|
-| `<mark>`, table alignment, task boxes | Yes       | P1       | **Done (2026-10-18):** the slide renderer reads `marina-richtext`'s `mark`, `cell_align`, `checkbox` and `kbd` styles and draws them in the slide theme's colours | — |
+| `<mark>`, table alignment, task boxes | Yes       | P1       | **Done (2026-10-18):** the slide renderer reads `laankit-richtext`'s `mark`, `cell_align`, `checkbox` and `kbd` styles and draws them in the slide theme's colours | — |
 | Rounded image corners                | Yes        | P3       | Done (Phase 4): 8 px, not on full-bleed | S      |
 | `class=` directive                   | Effectively no | P3   | Done (Phase 4): `theme-*` and `layout-*` honoured | S |
 | Local video plays inline             | Yes        | —        | Out of scope (decision 4): stays a link card                                             | —      |
@@ -116,7 +116,7 @@ get those first.
 
 ### Phase 1: Rich-text correctness (~1 week)
 
-Fix what renders wrongly. All in `marina-richtext`, so the preview,
+Fix what renders wrongly. All in `laankit-richtext`, so the preview,
 articles, EPUBs and slides improve together.
 
 1. Task-list items: keep the checkbox state in the model and draw a
@@ -134,7 +134,7 @@ triple-click and Ctrl+A copy; a NoteLiner preview test for a note with
 tasks, an aligned table and `==mark==`/`<mark>`. Check each against the
 Svelte preview.
 
-**Done (2026-10-18).** See `crates/marina-richtext/README.md` ("Markdown
+**Done (2026-10-18).** See `crates/laankit-richtext/README.md` ("Markdown
 preview content", "Selection and highlights").
 
 - **Compatibility:** the model only gained `Style` fields (`checkbox`,
@@ -183,10 +183,10 @@ match, matches, Go to line and renumbering; a benchmark gate that typing
 p95 at 5k lines stays under 4 ms.
 
 **Done (2026-10-18).** Details, numbers and the parity table are in
-`crates/marina-editor/README.md`.
+`crates/laankit-editor/README.md`.
 
 - **Engine-independent modules**, so the Phase 3 swap keeps them:
-  `marina_editor::code` (syntect, the bundled syntaxes, token classes),
+  `laankit_editor::code` (syntect, the bundled syntaxes, token classes),
   `matching` (bracket pairs, selection matches, Go to line parsing) and
   `list_edits::renumber_after_edit`. Only the painting is `TextEdit` glue.
 - **Code fences:**
@@ -220,9 +220,9 @@ p95 at 5k lines stays under 4 ms.
 
 **Done (2026-10-18), except the manual IME and screen-reader checks.**
 
-- **Where:** `crates/marina-editor/src/editor_core/` (`Engine::Core`, the
+- **Where:** `crates/laankit-editor/src/editor_core/` (`Engine::Core`, the
   default). `TextEdit` stays as `Engine::TextEdit` for one release:
-  `MARINA_EDITOR_ENGINE=textedit` or `EditorPrefs::engine`.
+  `LAANKIT_EDITOR_ENGINE=textedit` or `EditorPrefs::engine`.
 - **Public API unchanged.** NoteLiner needed no code changes; its 53 tests
   pass on the core engine.
 - **Model:**
@@ -255,7 +255,7 @@ p95 at 5k lines stays under 4 ms.
   | Typing p95 under 8 ms at 50k lines | Met: 1.8–5.2 ms (`TextEdit`: 31–39 ms), 3.3 ms in a code fence; load average ≈4 |
   | Idle frame cost independent of length, screen reader on | Met: 2.6 ms at 5k lines, 3.0 ms at 50k (`TextEdit`: 8.4 and 89 ms) |
   | All existing editor tests pass | Met: all 19 run on both engines, plus 11 core tests and 12 core unit tests |
-  | IME checked by hand | Not yet; see the `marina-editor` README for the list |
+  | IME checked by hand | Not yet; see the `laankit-editor` README for the list |
 
 - **Not done:**
   - List continuation, Tab and the list toolbar act on the primary cursor
@@ -264,7 +264,7 @@ p95 at 5k lines stays under 4 ms.
     note).
   - Moving selected text by drag (neither engine has it).
 
-Replace `TextEdit` inside `marina-editor` with our own widget. This unlocks
+Replace `TextEdit` inside `laankit-editor` with our own widget. This unlocks
 every "(core)" item in the editor table.
 
 - **Model:**
@@ -276,7 +276,7 @@ every "(core)" item in the editor table.
   - Per-line galleys from the existing highlighter cache.
   - Only visible lines are laid out and painted.
   - Folded ranges are skipped; wrapped lines are measured lazily, as in
-    `marina-richtext`'s progressive layout.
+    `laankit-richtext`'s progressive layout.
 - **Input:**
   - Keyboard, mouse and touch.
   - IME through egui's `Ime` events and `IMEOutput` (preedit drawn inline).
@@ -291,7 +291,7 @@ every "(core)" item in the editor table.
 - **Migration:**
   - Keep the public API (`EditorState`, `Editor::show`, `EditorEvent`,
     `Command`), so NoteLiner changes very little.
-  - Run every existing `marina-editor` test against both engines during
+  - Run every existing `laankit-editor` test against both engines during
     the switch.
   - Ship behind a setting with `TextEdit` as the fallback for one release,
     then remove the fallback.
@@ -315,8 +315,8 @@ both are checked by hand.
 - **Hanging indents and EPUB vertical margins:** a paragraph's own margins, not inherited and
   not collapsing.
 - **Slides:** rounded image corners, and `class=theme-*/layout-*`.
-- **Not done:** Shift+arrow keyboard selection, left in marina-richtext's "Not yet" list.
-- Details are in the marina-richtext and noteliner-slides READMEs.
+- **Not done:** Shift+arrow keyboard selection, left in laankit-richtext's "Not yet" list.
+- Details are in the laankit-richtext and noteliner-slides READMEs.
 
 1. Inline SVG rendered with `resvg` (articles, EPUBs, slides).
 2. True justification: our own row layout that distributes extra space
@@ -378,7 +378,7 @@ No video work (decision 4).
     subset, and `Exporter::math_svg` renders one formula as white-on-clear
     SVG.
   - New Computer Modern Math is bundled (GUST Font License, in `NOTICE`).
-  - `marina_richtext::math`: a pluggable `MathRenderer`, a cached loader
+  - `laankit_richtext::math`: a pluggable `MathRenderer`, a cached loader
     with one worker thread, inline formulas laid out over placeholder
     spaces, display formulas as blocks, and the source shown as code as a
     fallback.
@@ -430,7 +430,7 @@ Also tracked, with the project-wide items, in
   - **Math:** how sharp formulas look on HiDPI, and how long the first
     formula takes after launch.
 - **Fallback engine:** remove the TextEdit engine
-  (`MARINA_EDITOR_ENGINE=textedit`) one release after the IME and screen
+  (`LAANKIT_EDITOR_ENGINE=textedit`) one release after the IME and screen
   reader checks pass.
 - **Known limits:**
   - List continuation, Tab and the list toolbar act on the primary cursor

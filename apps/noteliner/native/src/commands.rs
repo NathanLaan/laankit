@@ -1,12 +1,12 @@
 //! NoteLiner's commands and keyboard shortcuts (`registerCommands` in
-//! `App.svelte`), registered with marina-egui's command registry so the same
+//! `App.svelte`), registered with laankit-egui's command registry so the same
 //! list drives the shortcuts, the command palette and Settings → Keyboard
 //! Shortcuts. Registration order matters, as in the Svelte build: the first
 //! applicable match wins (so Ctrl+Shift++ adds a tag before it zooms).
 
 use egui::{Key, Modifiers};
-use marina_egui::commands::{Binding, Command, Registry, ShortcutEntry};
-use marina_egui::theme::ThemeId;
+use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
+use laankit_egui::theme::ThemeId;
 
 /// Everything a shortcut, button or palette entry can ask for.
 #[derive(Clone, Debug, PartialEq)]

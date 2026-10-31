@@ -12,8 +12,8 @@
 use std::collections::HashSet;
 
 use egui::{pos2, vec2, Align2, CornerRadius, FontId, Key, Rect, Sense, Stroke, TextEdit, Ui};
-use marina_egui::icons;
-use marina_egui::theme::{self, Palette};
+use laankit_egui::icons;
+use laankit_egui::theme::{self, Palette};
 
 use crate::backend::ExportKind;
 use crate::model::{self, DropPos, Entry, SortMode};

@@ -7,7 +7,7 @@ arrows and text labels that snap to a grid. Each diagram is saved as a
 Mermaid does, and diffs cleanly as text.
 
 It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) over
-the shared `marina-*` crates — no webview, no JavaScript. The shipped binary is
+the shared `laankit-*` crates — no webview, no JavaScript. The shipped binary is
 `blockliner`.
 
 - **Run, build, install:** see the [root README](../../README.md).

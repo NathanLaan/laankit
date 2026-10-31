@@ -7,7 +7,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-marina-core.workspace = true
+laankit-core.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 serde.workspace = true

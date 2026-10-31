@@ -5,8 +5,8 @@
 //! [`PresentationSettings::error`] and keeps it open.
 
 use egui::{Key, Modifiers};
-use marina_egui::dialog::{self, ButtonKind, Dialog};
-use marina_egui::settings;
+use laankit_egui::dialog::{self, ButtonKind, Dialog};
+use laankit_egui::settings;
 
 use crate::deck::{Presentation, ASPECTS};
 

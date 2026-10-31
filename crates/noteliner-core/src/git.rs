@@ -1,5 +1,5 @@
 //! NoteLiner's git semantics (`apps/noteliner/src/main/git-service.js`) on top of
-//! `marina_core::git`: every change commits immediately, pushes are
+//! `laankit_core::git`: every change commits immediately, pushes are
 //! debounced, and failures are logged rather than thrown where the
 //! Electron build swallowed them.
 
@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use marina_core::debounce::Debouncer;
-use marina_core::git::{Git, GitError, LogEntry, LogEvent, SyncStatus};
+use laankit_core::debounce::Debouncer;
+use laankit_core::git::{Git, GitError, LogEntry, LogEvent, SyncStatus};
 
 pub type Log = Arc<dyn Fn(String) + Send + Sync>;
 
@@ -48,7 +48,12 @@ impl NoteGit {
                     sink(stderr);
                 }
             }
-            LogEvent::CmdError { command, stdout, stderr, .. } => {
+            LogEvent::CmdError {
+                command,
+                stdout,
+                stderr,
+                ..
+            } => {
                 if !stdout.is_empty() {
                     sink(stdout);
                 }
@@ -58,7 +63,12 @@ impl NoteGit {
                 sink(format!("Error: Command failed: {command}\n{stderr}"));
             }
         }));
-        Self { git, log, push_timer: Arc::new(Debouncer::new()), push_dir: Arc::new(Mutex::new(None)) }
+        Self {
+            git,
+            log,
+            push_timer: Arc::new(Debouncer::new()),
+            push_dir: Arc::new(Mutex::new(None)),
+        }
     }
 
     pub fn log(&self, msg: impl Into<String>) {
@@ -135,7 +145,10 @@ impl NoteGit {
     }
 
     pub async fn check_config(&self, dir: &Path) -> (Option<String>, Option<String>) {
-        (self.git.get_config(dir, "user.name").await, self.git.get_config(dir, "user.email").await)
+        (
+            self.git.get_config(dir, "user.name").await,
+            self.git.get_config(dir, "user.email").await,
+        )
     }
 
     pub async fn sync_status(&self, dir: &Path) -> SyncStatus {

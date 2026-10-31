@@ -18,7 +18,7 @@ use serde_json::{json, Map, Value};
 pub const STATE_KEY: &str = "native";
 
 /// A place in a book: the spine document, the top-level block inside it, and a character offset
-/// in that block (see `marina_richtext::Position`).
+/// in that block (see `laankit_richtext::Position`).
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
@@ -129,7 +129,7 @@ pub struct ReaderPrefs {
     /// Percent of the default size: 60–220, in steps of 10 (`setFontSize`).
     pub font_size: u32,
     pub theme: ReadingTheme,
-    pub face: marina_richtext::Face,
+    pub face: laankit_richtext::Face,
 }
 
 impl Default for ReaderPrefs {
@@ -137,7 +137,7 @@ impl Default for ReaderPrefs {
         Self {
             font_size: 100,
             theme: ReadingTheme::Light,
-            face: marina_richtext::Face::Serif,
+            face: laankit_richtext::Face::Serif,
         }
     }
 }
@@ -160,8 +160,8 @@ impl ReaderPrefs {
             p.theme = t;
         }
         match prefs.get("epubFace").and_then(Value::as_str) {
-            Some("sans") => p.face = marina_richtext::Face::Sans,
-            Some("serif") => p.face = marina_richtext::Face::Serif,
+            Some("sans") => p.face = laankit_richtext::Face::Sans,
+            Some("serif") => p.face = laankit_richtext::Face::Serif,
             _ => {}
         }
         p
@@ -173,8 +173,8 @@ impl ReaderPrefs {
             "epubFontSize": self.font_size,
             "epubTheme": self.theme.id(),
             "epubFace": match self.face {
-                marina_richtext::Face::Sans => "sans",
-                marina_richtext::Face::Serif => "serif",
+                laankit_richtext::Face::Sans => "sans",
+                laankit_richtext::Face::Serif => "serif",
             },
         })
     }
@@ -226,7 +226,7 @@ mod tests {
         let p = ReaderPrefs::from_ui_prefs(&prefs);
         assert_eq!(p.font_size, 130);
         assert_eq!(p.theme, ReadingTheme::Sepia);
-        assert_eq!(p.face, marina_richtext::Face::Serif);
+        assert_eq!(p.face, laankit_richtext::Face::Serif);
         let patch = p.patch();
         assert_eq!(patch["epubTheme"], "sepia");
         assert_eq!(patch["epubFace"], "serif");

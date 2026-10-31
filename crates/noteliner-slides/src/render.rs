@@ -3,7 +3,7 @@
 //! presenter all draw through [`SlideView`], so a slide looks the same at
 //! every size.
 //!
-//! Block Markdown goes through comrak → HTML → `marina_richtext`'s block
+//! Block Markdown goes through comrak → HTML → `laankit_richtext`'s block
 //! model (the same inline Markdown the note preview supports), cached per
 //! block text with egui's [`FrameCache`]. Sizes are the Svelte stage's CSS
 //! pixels times the scale; the slide themes are independent of the app
@@ -20,9 +20,9 @@ use egui::{
     pos2, vec2, Align, Color32, CornerRadius, FontId, Galley, Painter, Pos2, Rect, Response, Sense,
     Stroke, StrokeKind, TextureId, Ui, Vec2,
 };
-use marina_egui::{fonts, icons};
-use marina_richtext::math::{self, MathMode};
-use marina_richtext::{Block as RichBlock, Span, TextKind};
+use laankit_egui::{fonts, icons};
+use laankit_richtext::math::{self, MathMode};
+use laankit_richtext::{Block as RichBlock, Span, TextKind};
 
 use crate::color;
 use crate::deck::{substitute, Block, BlockKind, DirValue, Layout, Presentation, Slide};
@@ -710,7 +710,7 @@ impl Laid {
         self.items.push(Item::Image {
             radius,
             rect,
-            // Inline `<svg>` comes as an SVG `data:` URI, which marina-richtext rasterizes.
+            // Inline `<svg>` comes as an SVG `data:` URI, which laankit-richtext rasterizes.
             uri: src.and_then(|s| image_uri(cx, s)),
             alt: alt.unwrap_or_default().to_string(),
             fit,
@@ -832,9 +832,9 @@ fn paint_image(
 }
 
 /// The egui URI for an image `src`: inline `<svg>` (an SVG `data:` URI) is rasterized by
-/// marina-richtext, everything else comes from the host's [`ImageSource`].
+/// laankit-richtext, everything else comes from the host's [`ImageSource`].
 fn image_uri(cx: &Cx, src: &str) -> Option<String> {
-    marina_richtext::svg::image_uri(cx.ui.ctx(), src).or_else(|| cx.images.uri(src))
+    laankit_richtext::svg::image_uri(cx.ui.ctx(), src).or_else(|| cx.images.uri(src))
 }
 
 fn texture(ui: &Ui, uri: &str) -> Option<(TextureId, Vec2)> {
@@ -924,7 +924,7 @@ fn plain_span(text: &str) -> Span {
 /// Key-cap frames (to draw behind `galley`) and task checkboxes (to draw over
 /// it), relative to the galley's origin. `spans` are the ones it was laid out
 /// from, in order; `size` is the text size. A span that wraps over two rows
-/// is left plain, as `marina-richtext` does.
+/// is left plain, as `laankit-richtext` does.
 fn decorations(cx: &Cx, galley: &Galley, spans: &[Span], size: f32) -> (Vec<Item>, Vec<Item>) {
     let (mut under, mut over) = (Vec::new(), Vec::new());
     let mut start = 0;
@@ -1058,10 +1058,10 @@ fn aligned_x(x: f32, width: f32, align: Align) -> f32 {
 }
 
 /// A richtext alignment as an egui one.
-fn egui_align(align: marina_richtext::Align) -> Align {
+fn egui_align(align: laankit_richtext::Align) -> Align {
     match align {
-        marina_richtext::Align::Center => Align::Center,
-        marina_richtext::Align::Right => Align::RIGHT,
+        laankit_richtext::Align::Center => Align::Center,
+        laankit_richtext::Align::Right => Align::RIGHT,
         _ => Align::LEFT,
     }
 }
@@ -1306,7 +1306,7 @@ impl ComputerMut<&str, Arc<Vec<RichBlock>>> for MarkdownToBlocks {
 
 /// Markdown → HTML (comrak, with GFM tables, strikethrough, autolinks and
 /// task lists, as `marked` renders them, plus `$…$` / `$$…$$` math) →
-/// `marina_richtext` blocks.
+/// `laankit_richtext` blocks.
 pub fn markdown_blocks(markdown: &str) -> Vec<RichBlock> {
     let mut options = comrak::Options::default();
     options.extension.table = true;
@@ -1317,7 +1317,7 @@ pub fn markdown_blocks(markdown: &str) -> Vec<RichBlock> {
     options.extension.math_code = true;
     options.render.unsafe_ = true;
     let html = comrak::markdown_to_html(markdown, &options);
-    marina_richtext::from_note_html(&html, &marina_richtext::Options::default()).blocks
+    laankit_richtext::from_note_html(&html, &laankit_richtext::Options::default()).blocks
 }
 
 #[cfg(test)]
@@ -1371,7 +1371,7 @@ mod tests {
                           | L | C | R |\n|:--|:-:|--:|\n| a | b | c |\n\n\
                           some <mark>hi</mark> and <kbd>K</kbd>\n";
         let ctx = egui::Context::default();
-        marina_egui::fonts::install(&ctx);
+        laankit_egui::fonts::install(&ctx);
         // Fonts are loaded at the start of a pass.
         ctx.run_ui(Default::default(), |_| {})
             .drop_without_applying_deltas();
@@ -1490,7 +1490,7 @@ mod tests {
     fn slide_items(md: &str, n: usize) -> Vec<Item> {
         let deck = crate::deck::parse_deck(md, None);
         let ctx = egui::Context::default();
-        marina_egui::fonts::install(&ctx);
+        laankit_egui::fonts::install(&ctx);
         ctx.run_ui(Default::default(), |_| {})
             .drop_without_applying_deltas();
         let mut out = None;

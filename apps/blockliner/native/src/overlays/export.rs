@@ -2,8 +2,8 @@
 //! selected ones), the grid, and a PNG's scale.
 
 use egui::{vec2, Align2, FontId, Sense, Stroke, StrokeKind, Ui};
-use marina_egui::dialog::{self, ButtonKind, Dialog};
-use marina_egui::{settings, theme};
+use laankit_egui::dialog::{self, ButtonKind, Dialog};
+use laankit_egui::{settings, theme};
 
 use crate::export::{Format, Options, SCALES};
 

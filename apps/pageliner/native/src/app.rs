@@ -6,17 +6,17 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use egui::{Frame, Ui};
-use marina_egui::about::{AboutAction, AboutIcon, AboutModal, UpdateStatus};
-use marina_egui::commands::{Recents, Registry};
-use marina_egui::diagnostics::{self, Screenshot};
-use marina_egui::dialog::Confirm;
-use marina_egui::file_dialog::FileDialogs;
-use marina_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
-use marina_egui::panes::PaneLayout;
-use marina_egui::theme::{self, ThemeState};
-use marina_egui::titlebar::{self, TitleBar, TitleBarAction};
-use marina_egui::toast::Toasts;
-use marina_egui::{fonts, icons, window};
+use laankit_egui::about::{AboutAction, AboutIcon, AboutModal, UpdateStatus};
+use laankit_egui::commands::{Recents, Registry};
+use laankit_egui::diagnostics::{self, Screenshot};
+use laankit_egui::dialog::Confirm;
+use laankit_egui::file_dialog::FileDialogs;
+use laankit_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
+use laankit_egui::panes::PaneLayout;
+use laankit_egui::theme::{self, ThemeState};
+use laankit_egui::titlebar::{self, TitleBar, TitleBarAction};
+use laankit_egui::toast::Toasts;
+use laankit_egui::{fonts, icons, window};
 use serde_json::json;
 
 use crate::backend::{Backend, Event, GitOp, OpenedBook};
@@ -39,10 +39,10 @@ const RECENTS_KEY: &str = "pageliner-recents";
 const PANES_KEY: &str = "pageliner-reader-panes";
 /// Ctrl+wheel zoom steps at most once per 200 ms (`ZOOM_COOLDOWN_MS`).
 const ZOOM_COOLDOWN_SECS: f64 = 0.2;
-const DESCRIPTION: &str = "A desktop e-reader and document library built on the marina framework.";
-const REPO_URL: &str = "https://github.com/NathanLaan/marina";
+const DESCRIPTION: &str = "A desktop e-reader and document library built on the laankit framework.";
+const REPO_URL: &str = "https://github.com/NathanLaan/laankit";
 
-/// `MARINA_OPEN` / `MARINA_BOOK`: what to open once the library is in, for
+/// `LAANKIT_OPEN` / `LAANKIT_BOOK`: what to open once the library is in, for
 /// screenshots.
 #[derive(Default)]
 struct Diagnostics {
@@ -54,7 +54,7 @@ struct Diagnostics {
 pub struct PageLinerApp {
     backend: Backend,
     theme: ThemeState,
-    /// Whether the window was built undecorated, with Marina's title bar.
+    /// Whether the window was built undecorated, with LaanKit's title bar.
     custom_titlebar: bool,
     sidebar_visible: bool,
     status_bar_visible: bool,
@@ -126,8 +126,8 @@ impl PageLinerApp {
             last_wheel_zoom: f64::NEG_INFINITY,
             screenshot: Screenshot::from_env(),
             diagnostics: Diagnostics {
-                open: env("MARINA_OPEN"),
-                book: env("MARINA_BOOK"),
+                open: env("LAANKIT_OPEN"),
+                book: env("LAANKIT_BOOK"),
             },
         }
     }
@@ -690,7 +690,7 @@ impl PageLinerApp {
             Overlay::About => {
                 let modal = AboutModal::new("PageLiner", env!("CARGO_PKG_VERSION"))
                     .description(DESCRIPTION)
-                    .repo(REPO_URL, Some("github.com/NathanLaan/marina"))
+                    .repo(REPO_URL, Some("github.com/NathanLaan/laankit"))
                     .icon(AboutIcon::Glyph(icons::BOOK))
                     .update(&self.update);
                 match modal.show(ctx) {
@@ -726,7 +726,7 @@ impl PageLinerApp {
             books
                 .iter()
                 .filter_map(|b| {
-                    let score = marina_egui::commands::fuzzy_score(&b.title, q);
+                    let score = laankit_egui::commands::fuzzy_score(&b.title, q);
                     (score > 0).then(|| PaletteItem {
                         kind: ItemKind::Other,
                         id: format!("book:{}", b.id),

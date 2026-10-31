@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
     }
     std::fs::create_dir_all(&dir)?;
     let git =
-        marina_core::git::Git::new().with_default_identity("ThreadLiner", "threadliner@localhost");
+        laankit_core::git::Git::new().with_default_identity("ThreadLiner", "threadliner@localhost");
     if !git.is_repo(&dir).await {
         git.init_repo(&dir, None).await?;
     }
@@ -67,8 +67,8 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     git.commit_all(&dir, "Demo data").await?;
-    let config = marina_core::paths::user_data_dir("ThreadLiner").join("config.json");
-    marina_core::json::write(&config, &json!({ "dataDir": dir, "remoteUrl": null }))?;
+    let config = laankit_core::paths::user_data_dir("ThreadLiner").join("config.json");
+    laankit_core::json::write(&config, &json!({ "dataDir": dir, "remoteUrl": null }))?;
     println!("wrote {}", config.display());
     Ok(())
 }

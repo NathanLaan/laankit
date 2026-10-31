@@ -47,7 +47,7 @@ pub(crate) fn app_harness(
         // 60 fps, so two clicks a few frames apart are a double click
         // (the default step is 0.25 s).
         .with_step_dt(1.0 / 60.0)
-        .with_context_setup(marina_egui::fonts::install)
+        .with_context_setup(laankit_egui::fonts::install)
         .build_ui_state(
             |ui, app: &mut BlockLinerApp| app.show(ui),
             BlockLinerApp::new(None, paths.clone()),
@@ -91,7 +91,7 @@ const KITTEST_MARGIN: f32 = 8.0;
 /// just right of the 48 px toolbar, so `at(x, y)` is model (x, y).
 pub(crate) fn at(x: f32, y: f32) -> Pos2 {
     pos2(
-        KITTEST_MARGIN + marina_egui::toolbar::WIDTH + x,
+        KITTEST_MARGIN + laankit_egui::toolbar::WIDTH + x,
         KITTEST_MARGIN + y,
     )
 }

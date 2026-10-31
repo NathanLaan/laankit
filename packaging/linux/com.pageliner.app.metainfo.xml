@@ -25,8 +25,8 @@
   <provides>
     <binary>pageliner</binary>
   </provides>
-  <url type="homepage">https://github.com/NathanLaan/marina</url>
-  <url type="bugtracker">https://github.com/NathanLaan/marina/issues</url>
+  <url type="homepage">https://github.com/NathanLaan/laankit</url>
+  <url type="bugtracker">https://github.com/NathanLaan/laankit/issues</url>
   <content_rating type="oars-1.1"/>
   <releases>
     <release version="2.3.1" date="2026-10-30"/>

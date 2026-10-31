@@ -10,7 +10,7 @@ and recommends a path forward.
 | Plan | What it does | Scope |
 |---|---|---|
 | [`plan-refactor-refresh-ui.md`](./plan-refactor-refresh-ui.md) | Copy NoteLiner's UI patterns into ThreadLiner. Two apps, two codebases, same visual language. | Tactical |
-| [`plan-refactor-common-foundation.md`](./plan-refactor-common-foundation.md) | Extract a shared `@marina/desktop-ui` library. Two apps, one chrome library. | Structural |
+| [`plan-refactor-common-foundation.md`](./plan-refactor-common-foundation.md) | Extract a shared `@laankit/desktop-ui` library. Two apps, one chrome library. | Structural |
 | [`plan-refactor-modular-app.md`](./plan-refactor-modular-app.md) | Collapse both apps into one host with installable `noteliner` / `threadliner` modules. | Strategic |
 
 Each plan is strictly larger than the previous one and depends on the

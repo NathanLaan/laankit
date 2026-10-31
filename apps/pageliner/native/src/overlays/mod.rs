@@ -4,7 +4,7 @@
 pub mod settings;
 pub mod sync;
 
-use marina_egui::dialog::{self, Confirm};
+use laankit_egui::dialog::{self, Confirm};
 
 /// The open dialog.
 pub enum Overlay {

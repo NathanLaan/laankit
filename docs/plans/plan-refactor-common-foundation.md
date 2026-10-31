@@ -1,7 +1,7 @@
-# Plan: Marina — Shared UI Foundation for NoteLiner and ThreadLiner
+# Plan: LaanKit — Shared UI Foundation for NoteLiner and ThreadLiner
 
 Status: Active — execution tracked in [`plan-refactor-steps.md`](./plan-refactor-steps.md)
-Monorepo: `~/dev/hub/laan/marina/` (apps under `apps/`, shared packages under `packages/`)
+Monorepo: `~/dev/hub/laan/laankit/` (apps under `apps/`, shared packages under `packages/`)
 
 ## Goal
 
@@ -16,18 +16,18 @@ natural home for it if both apps are ever cloned together.
 
 ## Naming
 
-The platform is **Marina** — the dock where our "liner"-suffixed desktop
-apps live. This library, **`@marina/desktop-ui`**, is the shared UI kit
-that powers Marina's apps: **NoteLiner** and **ThreadLiner** (renamed
+The platform is **LaanKit** — the dock where our "liner"-suffixed desktop
+apps live. This library, **`@laankit/desktop-ui`**, is the shared UI kit
+that powers LaanKit's apps: **NoteLiner** and **ThreadLiner** (renamed
 from "Threadline" to match the `-liner` suffix). The package only ever
 ships internally; it is not published to npm.
 
 Brand-style guide for this plan:
 
-- **Marina** — the platform / monorepo / umbrella product
-- **`@marina/...`** — the npm scope for shared packages
+- **LaanKit** — the platform / monorepo / umbrella product
+- **`@laankit/...`** — the npm scope for shared packages
 - **NoteLiner**, **ThreadLiner** — the two apps (the "liners" that dock
-  at Marina)
+  at LaanKit)
 
 ## Scope: what goes in the foundation
 
@@ -54,7 +54,7 @@ Brand-style guide for this plan:
 - Auto-updater (NoteLiner only, for now).
 - MCP server (NoteLiner only).
 - Command palette is included as a *separate optional sub-export*
-  (`@marina/desktop-ui/command-palette`) because it pulls in a fuzzy-match
+  (`@laankit/desktop-ui/command-palette`) because it pulls in a fuzzy-match
   dependency ThreadLiner doesn't otherwise need.
 
 ## Repository layout
@@ -64,7 +64,7 @@ Two viable structures.
 ### Option A: separate repo + npm install via git URL
 
 ```
-@marina/desktop-ui (own repo, at github.com/NathanLaan/marina-ui)
+@laankit/desktop-ui (own repo, at github.com/NathanLaan/laankit-ui)
 ├── package.json     "type": "module", exports map below
 ├── src/
 │   ├── theme/
@@ -78,7 +78,7 @@ Two viable structures.
 noteliner/
 threadlinerr/
   package.json:
-    "dependencies": { "@marina/desktop-ui": "github:NathanLaan/marina-ui#v0.1.0" }
+    "dependencies": { "@laankit/desktop-ui": "github:NathanLaan/laankit-ui#v0.1.0" }
 ```
 
 Pros: each app installs a versioned tag; no monorepo wiring; no impact on
@@ -87,7 +87,7 @@ build pipelines. Cons: every change requires a tag-bump cycle.
 ### Option B: monorepo with npm workspaces
 
 ```
-marina/                       (new umbrella repo, github.com/NathanLaan/marina)
+laankit/                       (new umbrella repo, github.com/NathanLaan/laankit)
 ├── package.json              (workspaces: ["packages/*", "apps/*"])
 ├── packages/
 │   └── desktop-ui/
@@ -112,7 +112,7 @@ shared-code changes atomic. Migration steps are in §6.
 ```jsonc
 // packages/desktop-ui/package.json
 {
-  "name": "@marina/desktop-ui",
+  "name": "@laankit/desktop-ui",
   "version": "0.1.0",
   "type": "module",
   "svelte": "./src/index.js",
@@ -136,18 +136,18 @@ shared-code changes atomic. Migration steps are in §6.
 
 ```js
 // renderer (Svelte 5)
-import { themeState, uiPrefsState }           from '@marina/desktop-ui/theme';
-import { TitleBar, Toolbar, Modal, AboutModal, SettingsShell, ThemeTab, KeyboardShortcutsTab } from '@marina/desktop-ui/components';
-import { CommandPalette, commandRegistry }    from '@marina/desktop-ui/command-palette';
-import '@marina/desktop-ui/styles';
+import { themeState, uiPrefsState }           from '@laankit/desktop-ui/theme';
+import { TitleBar, Toolbar, Modal, AboutModal, SettingsShell, ThemeTab, KeyboardShortcutsTab } from '@laankit/desktop-ui/components';
+import { CommandPalette, commandRegistry }    from '@laankit/desktop-ui/command-palette';
+import '@laankit/desktop-ui/styles';
 
 // main process
-import { registerWindowHandlers, registerUIPrefsHandlers } from '@marina/desktop-ui/electron-host';
+import { registerWindowHandlers, registerUIPrefsHandlers } from '@laankit/desktop-ui/electron-host';
 registerWindowHandlers({ getWindow: () => mainWindow });
 registerUIPrefsHandlers({ prefsPath: path.join(app.getPath('userData'), 'ui-preferences.json'), defaults: {...} });
 
 // preload
-import { exposeWindowApi, exposeUIPrefsApi } from '@marina/desktop-ui/preload';
+import { exposeWindowApi, exposeUIPrefsApi } from '@laankit/desktop-ui/preload';
 contextBridge.exposeInMainWorld('api', {
   ...exposeWindowApi(),
   ...exposeUIPrefsApi(),
@@ -237,7 +237,7 @@ Two-layer system:
    `global.css` only defines reset + scrollbar + the modal/pane primitives
    that need to be globally addressable.
 
-Apps must `import '@marina/desktop-ui/styles'` once in `main.js` before
+Apps must `import '@laankit/desktop-ui/styles'` once in `main.js` before
 mounting.
 
 ## Electron-host helpers
@@ -286,7 +286,7 @@ window-state persistence keyed to the app's notion of "open project".
 
 Each app keeps its own:
 
-- `package.json` (depends on `@marina/desktop-ui`)
+- `package.json` (depends on `@laankit/desktop-ui`)
 - `vite.config.mjs`
 - `electron-builder.yml`
 - `assets/` (icons, splash, etc.)
@@ -332,7 +332,7 @@ ThreadLiner ready to consume it.
 
 ### Phase 2 — Convert NoteLiner to the library
 
-6. Replace NoteLiner's local copies with imports from `@marina/desktop-ui`.
+6. Replace NoteLiner's local copies with imports from `@laankit/desktop-ui`.
 7. The MCP tab, GitService, ProjectService stay local; everything else is
    library-provided.
 8. Diff the chrome before/after: any visual drift gets fixed in the
@@ -352,7 +352,7 @@ ThreadLiner ready to consume it.
 12. Snapshot tests via the playground app for each component × each theme
     × each scale.
 13. Document supported Svelte / Electron versions.
-14. Lock the public API; cut `@marina/desktop-ui v1.0.0`.
+14. Lock the public API; cut `@laankit/desktop-ui v1.0.0`.
 
 ## Risks / costs
 

@@ -1,11 +1,11 @@
-//! Math in the preview and slides: `marina-richtext` asks this renderer for
+//! Math in the preview and slides: `laankit-richtext` asks this renderer for
 //! each formula, and it typesets them with Typst through the same warm
 //! exporter the PDF export uses (`noteliner_export::Exporter::math_svg`).
 //! Installed once by `Backend::attach`.
 
 use std::sync::Arc;
 
-use marina_richtext::math::MathRenderer;
+use laankit_richtext::math::MathRenderer;
 use noteliner_export::LazyExporter;
 
 pub struct TypstMath(pub Arc<LazyExporter>);

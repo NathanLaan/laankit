@@ -38,16 +38,16 @@ crates, and reads the same data and credential files, so either app can be
 used at any time. Features it hasn't ported yet show a "coming soon" page
 instead of blocking the release.
 
-Marina is already set up for this. Option A left the backends in
-UI-independent crates (`marina-core`, `noteliner-core`, `threadliner-core`,
-`pageliner-core`). Only `marina-tauri` and `apps/*/src-tauri` depend on
+LaanKit is already set up for this. Option A left the backends in
+UI-independent crates (`laankit-core`, `noteliner-core`, `threadliner-core`,
+`pageliner-core`). Only `laankit-tauri` and `apps/*/src-tauri` depend on
 Tauri. This plan adds an egui front end on top of those crates for each app.
 
 One earlier decision has to be reversed. `plan-native-linux.md` lists egui
 under "Not recommended" because its text editing, rich text and HTML
 support were too weak. ArtCraft shows that a polished, themed egui app is
 practical, but it never had to render HTML or a PDF, or edit long
-documents. Those are Marina's hard parts, so **Phase 0 is a set of
+documents. Those are LaanKit's hard parts, so **Phase 0 is a set of
 go/no-go spikes**, and nothing else starts until they pass.
 
 ## What ArtCraft did
@@ -55,22 +55,22 @@ go/no-go spikes**, and nothing else starts until they pass.
 ArtCraft repo: `artcraft-native/`, about 14k lines of Rust across 4 PRs
 (#2067, #2068, #2079, #2115).
 
-| Practice | How ArtCraft does it | Marina equivalent |
+| Practice | How ArtCraft does it | LaanKit equivalent |
 |---|---|---|
 | Separate native crate, side by side | `artcraft-native/` workspace member; the Tauri app keeps shipping | `apps/<app>/native/` crates; the Tauri and Electron builds keep shipping until parity |
-| Reuse Tauri-free backend crates | `artcraft_client`, `artcraft_router`, `tokens`, `enums` | `marina-core`, `<app>-core` (already done in Option A) |
+| Reuse Tauri-free backend crates | `artcraft_client`, `artcraft_router`, `tokens`, `enums` | `laankit-core`, `<app>-core` (already done in Option A) |
 | Shared on-disk state | Reads the Tauri app's cookie jar, `~/Artcraft/credentials`, `env_configs.json` | Same `~/.config/<App>` folders and byte-identical JSON, already guaranteed by the core crates |
 | Backend thread + event queue | `backend::Backend` owns a tokio runtime; calls return `Event`s through an `mpsc` channel that the UI drains once per frame, then `ctx.request_repaint()` | Same pattern; git sync, feed polling, indexing and file I/O never block a frame |
 | One app struct routes everything | `app.rs`: `handle_event` for backend results, `AppRequest`s from pages, overlays as `Option<…>` fields | Same, per app |
-| Design tokens in one file | `theme.rs`: colour, radius, font and size constants copied from the web app's Tailwind tokens, with comments naming the source token | `marina-egui::theme`: the 6 desktop-ui themes as token sets read from `packages/desktop-ui/src/theme`, plus UI scale through `ctx.set_zoom_factor` |
-| Own window chrome | Undecorated window; `ui/window.rs` handles drag, double-click maximize, edge resize and caption buttons; macOS keeps its traffic lights | Port of desktop-ui's custom titlebar into `marina-egui::window` |
+| Design tokens in one file | `theme.rs`: colour, radius, font and size constants copied from the web app's Tailwind tokens, with comments naming the source token | `laankit-egui::theme`: the 6 desktop-ui themes as token sets read from `packages/desktop-ui/src/theme`, plus UI scale through `ctx.set_zoom_factor` |
+| Own window chrome | Undecorated window; `ui/window.rs` handles drag, double-click maximize, edge resize and caption buttons; macOS keeps its traffic lights | Port of desktop-ui's custom titlebar into `laankit-egui::window` |
 | Bundled fonts and icons | Inter/Archivo/Geist Mono under the OFL, icons drawn as Lucide-style paths, `NOTICE` lists them | The same fonts desktop-ui uses, plus an icon module |
 | Webview only where unavoidable | `wry` child webview only for the Midjourney sign-in, because its cookies can only be captured in a browser | Possibly article HTML and EPUB (see Phase 0); everything else native |
 | Optional external tools, with a fallback | In-app video needs `ffmpeg` on the PATH, otherwise the video opens in the system player | `git` is required (already true); `pandoc`/`typst` could be optional for export |
 | Lenient decoding | `backend::wire` structs tolerate unknown enum values | Already covered by the core crates' serde models |
 | Unported features stay visible | `pages/other.rs` "coming soon" page with a link to the web tool | A "Not in the native build yet" panel that names the Tauri build |
 | Headless UI tests | `egui_kittest` drives the prompt box by AccessKit role and label | Same for the file tree, editor helpers, feed list, palette and settings |
-| Screenshot diagnostics | `ARTCRAFT_SCREENSHOT`, `ARTCRAFT_PAGE`, `ARTCRAFT_OPEN`, `ARTCRAFT_SCREENSHOT_EXIT` | `MARINA_SCREENSHOT`, `MARINA_VIEW`, `MARINA_OPEN`, `MARINA_SCREENSHOT_EXIT`; replaces the `MARINA_SMOKE_SCRIPT` hook for native builds |
+| Screenshot diagnostics | `ARTCRAFT_SCREENSHOT`, `ARTCRAFT_PAGE`, `ARTCRAFT_OPEN`, `ARTCRAFT_SCREENSHOT_EXIT` | `LAANKIT_SCREENSHOT`, `LAANKIT_VIEW`, `LAANKIT_OPEN`, `LAANKIT_SCREENSHOT_EXIT`; replaces the `LAANKIT_SMOKE_SCRIPT` hook for native builds |
 | Parity tables in the README | Each feature is listed as Done / Done with caveat | One parity table per app, covering the IPC channel list from Phase 0 of the Linux plan |
 | Renderer choice | eframe `glow`, because `wgpu-hal` clashed with the `windows` crate versions pinned for Tauri | Start with `glow` for the same reason, since Tauri crates share the workspace; revisit `wgpu` once Tauri is retired |
 
@@ -97,9 +97,9 @@ images), `open`, `directories`, `rodio`, and `egui_kittest` for tests.
 
 | Today (Tauri/Svelte) | egui replacement | Confidence |
 |---|---|---|
-| desktop-ui titlebar, themes, scale | `marina-egui::{window, theme}` (port of ArtCraft `ui/window.rs`, `theme.rs`) | High |
-| Command palette, `lib/fuzzy.js` | `marina-egui::palette` with a Rust port of `fuzzy.js` (or `nucleo-matcher`) | High |
-| Settings shell, PaneHost, about | `marina-egui::{settings, panes}` with `egui::SidePanel`/`CentralPanel`, or `egui_tiles` | High |
+| desktop-ui titlebar, themes, scale | `laankit-egui::{window, theme}` (port of ArtCraft `ui/window.rs`, `theme.rs`) | High |
+| Command palette, `lib/fuzzy.js` | `laankit-egui::palette` with a Rust port of `fuzzy.js` (or `nucleo-matcher`) | High |
+| Settings shell, PaneHost, about | `laankit-egui::{settings, panes}` with `egui::SidePanel`/`CentralPanel`, or `egui_tiles` | High |
 | Toasts | Port of ArtCraft `ui/toast.rs` | High |
 | Window state, secondary windows | eframe `persist_window` plus `ctx.show_viewport_deferred` | Medium |
 | File tree with drag and drop | Custom tree widget using egui's dnd (`dnd_drag_source` / `dnd_drop_zone`) | Medium |
@@ -112,16 +112,16 @@ images), `open`, `directories`, `rodio`, and `egui_kittest` for tests.
 | PageLiner PDF (pdf.js + text layer) | `hayro` (pure Rust, so it builds on all three platforms) for page bitmaps and text positions; `pdfium-render` with a bundled libpdfium per platform as the fallback | **Spike** |
 | PageLiner EPUB (epub.js) | Native reader: `rbook`/`epub` for the container, XHTML converted into the same rich-text blocks as articles, positions stored as spine index + block + character offset | **Spike** |
 | NoteLiner MCP server, `--mcp-bridge` | `noteliner-core::mcp`, unchanged; the native binary hosts the socket and the bridge flag | High |
-| Update check | Move the logic from `marina-tauri::updates` into `marina-core` | High |
+| Update check | Move the logic from `laankit-tauri::updates` into `laankit-core` | High |
 | Images in notes, covers, favicons | `egui_extras` image loaders plus a media cache (ArtCraft `backend/media_cache.rs` pattern) | High |
 
 ## Workspace layout
 
 ```
 crates/
-  marina-core/          # unchanged: git, JSON, paths, debounce (+ update check moved here)
-  marina-tauri/         # unchanged until the Tauri builds retire
-  marina-egui/          # NEW: theme, window chrome, palette, settings shell, panes, toasts, icons, fonts
+  laankit-core/          # unchanged: git, JSON, paths, debounce (+ update check moved here)
+  laankit-tauri/         # unchanged until the Tauri builds retire
+  laankit-egui/          # NEW: theme, window chrome, palette, settings shell, panes, toasts, icons, fonts
   noteliner-core/ threadliner-core/ pageliner-core/   # unchanged, shared by both shells
 apps/
   <app>/src-tauri/      # unchanged
@@ -146,7 +146,7 @@ apps/
 
 Each spike was a throwaway crate in `apps/spikes/<name>` with a
 `RESULTS.md`; the phases below depend on them. Shared helpers (the eframe
-launcher, `MARINA_SCREENSHOT`, timing stats) were in `apps/spikes/common`.
+launcher, `LAANKIT_SCREENSHOT`, timing stats) were in `apps/spikes/common`.
 Measurements used a release profile without the slow LTO build (now
 `--profile fast-release`). The spike crates were removed on 2026-10-18 once
 promoted; their results are kept in `docs/plans/spikes/`.
@@ -192,11 +192,11 @@ All five spikes passed. Details, numbers and how to reproduce them are in
 Changes to the later phases:
 
 - **Fonts (Phase 1).** egui's default fonts have no bold, italic, CJK or
-  emoji, and most non-Latin scripts are missing. `marina-egui` bundles a
+  emoji, and most non-Latin scripts are missing. `laankit-egui` bundles a
   font family with real bold and italic faces plus a system-font
   fallback for missing glyphs. Typst export uses the same fonts.
 - **Shared rich text (Phase 1).** `spike-richtext` becomes a
-  `marina-richtext` crate for ThreadLiner articles, PageLiner EPUB and the
+  `laankit-richtext` crate for ThreadLiner articles, PageLiner EPUB and the
   NoteLiner preview. Open items: lay out long documents over several
   frames (15–40 ms today), selection across paragraphs (needed for EPUB
   highlights), row spans, and a wider EPUB CSS subset.
@@ -208,7 +208,7 @@ Changes to the later phases:
 - **Rust 1.92.** `hayro` and `typst` need it; the workspace minimum is now
   1.92.
 - **Screenshots.** On Wayland, GNOME sends no frame callbacks while the
-  session is locked or the window is hidden, so `MARINA_SCREENSHOT` never
+  session is locked or the window is hidden, so `LAANKIT_SCREENSHOT` never
   fires. Use `WAYLAND_DISPLAY=` (XWayland) or an unlocked session locally,
   and `egui_kittest` snapshots (wgpu, headless) in CI instead of a
   windowed screenshot job.
@@ -225,37 +225,37 @@ Unrelated bugs found along the way:
 - **YouTube feeds have no content field**, so their entries show no body
   in any build.
 
-### Phase 1 — `marina-egui` foundation (~2–3 weeks)
+### Phase 1 — `laankit-egui` foundation (~2–3 weeks)
 
 - Port ArtCraft's `ui/window.rs` (drag, resize, caption buttons, macOS
   inset), `ui/toast.rs`, the icon approach and the font loading.
 - `theme`: the 6 desktop-ui themes as token sets, light/dark, and UI scale.
 - Fonts: a bundled family with bold and italic faces, plus a system-font
   fallback for CJK, emoji and other scripts.
-- `marina-richtext`: promoted from `spike-richtext`, with progressive
+- `laankit-richtext`: promoted from `spike-richtext`, with progressive
   layout for long documents.
 - Command palette with fuzzy search; settings window shell; pane host;
   about dialog; "not in the native build yet" panel.
-- Diagnostics: `MARINA_SCREENSHOT` and related variables.
-- An example binary, `marina-egui/examples/gallery.rs`, that shows every
+- Diagnostics: `LAANKIT_SCREENSHOT` and related variables.
+- An example binary, `laankit-egui/examples/gallery.rs`, that shows every
   widget in every theme. This replaces the desktop-ui Playwright visual
   tests.
-- Move the update check out of `marina-tauri` into `marina-core`.
+- Move the update check out of `laankit-tauri` into `laankit-core`.
 
 #### Phase 1 record (2026-10-17)
 
-Everything above is built. Run `cargo run -p marina-egui --example gallery`
+Everything above is built. Run `cargo run -p laankit-egui --example gallery`
 to see it: the full app shell (title bar, toolbar, pane sidebar, command
 palette, settings, About) and every widget, in any of the six themes.
 
-- **`marina-egui`** (`crates/marina-egui`, see its README): `theme`
+- **`laankit-egui`** (`crates/laankit-egui`, see its README): `theme`
   (palettes generated from `theme/index.svelte.js`, same theme and scale
   ids), `fonts`, `icons` (Font Awesome codepoints generated from the npm
   package), `window` and `toast` (ported from ArtCraft, MIT OR Apache-2.0,
   credited in `NOTICE`), `titlebar`, `toolbar`, `commands` (registry and a
   `fuzzy_score` checked against `fuzzy.js` on about 1,000 pairs), `palette`,
   `settings`, `panes`, `about`, `not_ported` and `diagnostics`
-  (`MARINA_SCREENSHOT`, `MARINA_THEME`, `MARINA_SCALE`). 41 tests, most of
+  (`LAANKIT_SCREENSHOT`, `LAANKIT_THEME`, `LAANKIT_SCALE`). 41 tests, most of
   them kittest.
 - **Commands return action values** of the app's own type instead of
   running closures, so the app applies them in its update loop with
@@ -266,19 +266,19 @@ palette, settings, About) and every widget, in any of the six themes.
   slowly with it, which pushed opening a long article past 16 ms. Missing
   scripts and emoji fall back to system fonts through eframe's
   `system_fonts` feature.
-- **`marina-richtext`** (`crates/marina-richtext`): the article and EPUB
+- **`laankit-richtext`** (`crates/laankit-richtext`): the article and EPUB
   renderer, with progressive layout. The first frame is 11–16 ms whatever
   the document length (2,000 blocks: 12 ms, against 295 ms laying out
   everything). Pluggable `Resolver`s handle web and EPUB images and links.
   Its README lists what's still to do (cross-paragraph selection, row
   spans, more EPUB CSS).
-- **`marina-core::updates`**: the GitHub release check, now shared; the
+- **`laankit-core::updates`**: the GitHub release check, now shared; the
   Tauri updater uses it.
-- **CI:** the `native` job lints and tests `marina-core`, `marina-egui`,
-  `marina-richtext` and the spikes on Linux, Windows and macOS.
+- **CI:** the `native` job lints and tests `laankit-core`, `laankit-egui`,
+  `laankit-richtext` and the spikes on Linux, Windows and macOS.
 - **egui 0.37 deprecations** to follow in app code: `Id::new` → `Id::unique`
   or `IdSalt`, `ui.id()` → `ui.scope_id()`, `WidgetType` → `Role`. kittest
-  harnesses need `.with_context_setup(marina_egui::fonts::install)`.
+  harnesses need `.with_context_setup(laankit_egui::fonts::install)`.
 
 ### Phase 2 — ThreadLiner pilot (~3–4 weeks)
 
@@ -313,11 +313,11 @@ that fills a temporary config and data folder from real feeds.
     window-state file.
 - **Not yet:** single-instance.
 - **Shared data:** the same `ThreadLiner` config folder and data folder,
-  byte-compatible JSON (tested). `marina_core::paths` now matches
+  byte-compatible JSON (tested). `laankit_core::paths` now matches
   Electron's `userData` on Windows (`%APPDATA%`) and macOS
   (`~/Library/Application Support`), not only Linux.
 - **Shared crates gained:**
-  - `marina_egui::dialog`: modal shells, inputs, buttons and `confirm`.
+  - `laankit_egui::dialog`: modal shells, inputs, buttons and `confirm`.
   - `settings::select` and `theme_list_among`.
   - `ToolbarButton::attention`.
 - **`rfd` pinned to 0.15:** `tauri-plugin-dialog` turns on rfd 0.16's
@@ -364,13 +364,13 @@ example.
     Svelte format and PDF units. Existing highlights carry over.
 - **EPUB reader** (`pageliner-epub`, no webview):
   - Continuous scroll with paging, TOC, text size, reading themes, and a
-    serif/sans toggle (Source Serif 4 is now bundled in `marina-egui`; fonts
+    serif/sans toggle (Source Serif 4 is now bundled in `laankit-egui`; fonts
     total about 4.2 MB).
   - Bookmarks; highlights with selection across paragraphs.
   - Positions reset as decided. Everything is stored under a `native` key,
     so the Tauri build's `cfi`/`bookmarks`/`highlights` are never touched
     (tested against `pageliner-core`'s merge).
-- **marina-richtext gained:**
+- **laankit-richtext gained:**
   - Selection across blocks with copy; highlight marks with click detection.
   - Table row spans.
   - More EPUB CSS: indent, margins, justify (drawn ragged-right, because
@@ -417,7 +417,7 @@ Spell check can follow as 4b.
 `apps/noteliner/native` plus three new crates, built in two waves of
 parallel agents:
 
-- **`marina-editor`:** the Markdown editor widget, promoted from spike 1.
+- **`laankit-editor`:** the Markdown editor widget, promoted from spike 1.
   - Per-line galley cache and highlighting in the theme colours.
   - All of `Editor.svelte`'s shortcuts, matched on physical keys.
   - List editing (`listEdits.js`), bracket closing, `[[` completion, and
@@ -448,7 +448,7 @@ parallel agents:
   - Help, About, and a command palette with every shortcut.
   - 52 tests, including kittest flows checked against files on disk.
 - **Shared-crate changes:**
-  - `marina_egui::fonts::bundled_faces()`.
+  - `laankit_egui::fonts::bundled_faces()`.
   - JetBrains Mono NL (no ligatures).
   - Inter's `calt` retagged `ss20`, so `->` and `-->` aren't drawn as arrows
     (egui can't switch OpenType features off; tested).
@@ -482,9 +482,9 @@ parallel agents:
   `.desktop` files and AppStream metainfo.
 - CI: add `cargo test -p <app>-native` (kittest runs headless) and
   kittest snapshot images uploaded as artifacts. A windowed
-  `MARINA_SCREENSHOT` job won't work on headless runners.
+  `LAANKIT_SCREENSHOT` job won't work on headless runners.
 - Cutover per app: rename the binary to `<app>`, mark the Tauri package as
-  replaced, and later remove `apps/<app>/src-tauri`, then `marina-tauri`
+  replaced, and later remove `apps/<app>/src-tauri`, then `laankit-tauri`
   and finally the Svelte renderer once all three apps have moved.
 - Windows (MSI or NSIS via `cargo-packager`) and macOS (`.app`/`.dmg`,
   signed and notarised) builds from the same crates, in a CI matrix.
@@ -545,7 +545,7 @@ formats, so this mainly checks UI flows.
   label, which also catches missing accessible labels. One quirk from that
   file: fonts installed during the harness's first frame only take effect
   on the next frame.
-- **Visual.** `MARINA_SCREENSHOT` for each view and theme in CI, compared
+- **Visual.** `LAANKIT_SCREENSHOT` for each view and theme in CI, compared
   by eye in PR review (as ArtCraft does), and later with a pixel-diff
   threshold.
 

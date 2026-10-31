@@ -23,7 +23,7 @@ as `/usr/bin/pageliner` (the native build replaced the Tauri and Electron ones; 
 
 - **Import** with Ctrl+O or the Import button (EPUB and PDF), or **drop files** on the window.
 - **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and
-  Marina's title bar (shared with the Tauri build's `ui-preferences.json`; takes a restart).
+  LaanKit's title bar (shared with the Tauri build's `ui-preferences.json`; takes a restart).
 - **Command palette.** Ctrl+K: every command, plus the books by title.
 
 ### Trying it without touching your library
@@ -36,7 +36,7 @@ cargo run -p pageliner-native --release
 
 `pageliner_demo_data` imports the files into `$XDG_CONFIG_HOME/PageLiner/library` (Linux). On Windows the
 config folder is `%APPDATA%\PageLiner` and on macOS `~/Library/Application Support/PageLiner`, as
-`marina_core::paths` mirrors Electron's `userData`.
+`laankit_core::paths` mirrors Electron's `userData`.
 
 ## Architecture
 
@@ -47,7 +47,7 @@ config folder is `%APPDATA%\PageLiner` and on macOS `~/Library/Application Suppo
 | `backend`        | A tokio runtime around `pageliner-core` and git: the Tauri host's channels; results come back as `Event`s |
 | `config`         | `ui-preferences.json`, with the Tauri host's defaults and write shape                            |
 | `model`          | Sort modes, the format filter and counts                                                         |
-| `commands`       | `registerCommands` and the zoom keys, as marina-egui commands (shortcuts, palette, Settings list)  |
+| `commands`       | `registerCommands` and the zoom keys, as laankit-egui commands (shortcuts, palette, Settings list)  |
 | `views`          | Library sidebar, grid of book cards (covers decoded off-thread, virtualized rows), status bar, drop overlay |
 | `overlays`       | Settings, Git Sync, About, remove-book confirmation                                              |
 | `reader`         | Routing by format, the reader bar, `tool_button`, the Annotations pane                            |
@@ -113,7 +113,7 @@ which draws its own toolbar, Contents/Annotations sidebar and text.
 | Keyboard shortcuts                                     | Done            | Ctrl+O, Ctrl+E, Ctrl+J, Ctrl+Shift+S, Ctrl+,, Ctrl+Shift+I, Ctrl+K     |
 | Command palette                                        | Done            | Commands plus books by title                                           |
 | Status bar                                             | Done            | Book or count, "Page n / N", format, scale                             |
-| About and update check                                 | Done            | `marina_core::updates`; PageLiner publishes no release repo, so it reports "latest", as the Tauri build does |
+| About and update check                                 | Done            | `laankit_core::updates`; PageLiner publishes no release repo, so it reports "latest", as the Tauri build does |
 | Window size and position                               | Partial         | Remembered by eframe in its own storage, not the Tauri window-state file |
 | Single instance                                        | Not yet         | A second launch opens a second window                                  |
 | Sync Now error with status                             | Partial         | The error is shown; the Svelte dialog also showed the status alongside it |
@@ -122,12 +122,12 @@ which draws its own toolbar, Contents/Annotations sidebar and text.
 
 | Variable                                   | Effect                                                            |
 |--------------------------------------------|-------------------------------------------------------------------|
-| `MARINA_SCREENSHOT=<png>`                  | Saves a screenshot once the window has settled (`MARINA_SCREENSHOT_EXIT=1` closes afterwards) |
-| `MARINA_THEME`, `MARINA_SCALE`             | Override the theme and scale                                      |
-| `MARINA_BOOK=<n or id>`                    | Opens the nth book in the grid's order, or the book with that id  |
-| `MARINA_OPEN=<dialog>`                     | `settings[:ui\|shortcuts]`, `sync`, `about`, `palette` or `remove` |
-| `MARINA_PDF_PAGE=<n>`                      | Opens the PDF at page n                                           |
-| `MARINA_PDF_SELECT=<page>:<x0>,<y0>,<x1>,<y1>` | Selects and highlights that range (page units) once its text is in |
+| `LAANKIT_SCREENSHOT=<png>`                  | Saves a screenshot once the window has settled (`LAANKIT_SCREENSHOT_EXIT=1` closes afterwards) |
+| `LAANKIT_THEME`, `LAANKIT_SCALE`             | Override the theme and scale                                      |
+| `LAANKIT_BOOK=<n or id>`                    | Opens the nth book in the grid's order, or the book with that id  |
+| `LAANKIT_OPEN=<dialog>`                     | `settings[:ui\|shortcuts]`, `sync`, `about`, `palette` or `remove` |
+| `LAANKIT_PDF_PAGE=<n>`                      | Opens the PDF at page n                                           |
+| `LAANKIT_PDF_SELECT=<page>:<x0>,<y0>,<x1>,<y1>` | Selects and highlights that range (page units) once its text is in |
 
 On GNOME Wayland the screenshot never fires while the session is locked; run with
 `WAYLAND_DISPLAY=` (XWayland) instead.

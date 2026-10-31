@@ -1,4 +1,4 @@
-# Plan: Marina foundation — deferred and follow-up items
+# Plan: LaanKit foundation — deferred and follow-up items
 
 Status: Active. Tracks the work that wasn't part of the
 [`plan-refactor-steps.md`](./plan-refactor-steps.md) execution path but
@@ -11,14 +11,14 @@ Steps 4–10 from `plan-refactor-steps.md` are complete:
 
 - Monorepo with `apps/noteliner`, `apps/threadliner`, `packages/desktop-ui`,
   and `packages/desktop-ui/examples/playground`.
-- Both apps consume `@marina/desktop-ui` for chrome and theming.
+- Both apps consume `@laankit/desktop-ui` for chrome and theming.
 - Library has a Playwright snapshot harness scaffolded.
 - Library API documented; `package.json` `exports` map is the SoT.
 
 Confirm with:
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 npm run build         # all workspaces green
 ls packages/desktop-ui/tests/visual.spec.js  # snapshot harness exists
 ```
@@ -43,12 +43,12 @@ The Playwright harness is wired up but no baseline images exist yet.
 Run once from a workstation that can actually launch Electron:
 
 ```bash
-npm run test:update -w @marina/desktop-ui
+npm run test:update -w @laankit/desktop-ui
 ```
 
 Commit the resulting PNGs under
 `packages/desktop-ui/tests/visual.spec.js-snapshots/`. Subsequent
-`npm test -w @marina/desktop-ui` runs compare against them with a 0.2%
+`npm test -w @laankit/desktop-ui` runs compare against them with a 0.2%
 pixel-diff tolerance.
 
 **Done when:** `tests/visual.spec.js-snapshots/` exists in git with one
@@ -98,7 +98,7 @@ the old name. One-line fix.
 Per the README's "Cutting a release" section:
 
 ```bash
-git tag -a desktop-ui-v1.0.0 -m "@marina/desktop-ui 1.0.0"
+git tag -a desktop-ui-v1.0.0 -m "@laankit/desktop-ui 1.0.0"
 git push origin desktop-ui-v1.0.0
 ```
 
@@ -221,7 +221,7 @@ to ship.
 
 ### C.2 Paneable / reorderable sidebar — done
 
-Extracted `PaneHost` to `@marina/desktop-ui/panels`. The library owns
+Extracted `PaneHost` to `@laankit/desktop-ui/panels`. The library owns
 the layout chrome (header bar, drag-to-reorder, drag-to-resize,
 ResizeObserver-based height clamping); consumers provide pane content
 via `{ id, title, height, render: snippet, headerExtra?, closable? }`
@@ -235,7 +235,7 @@ simple; doesn't benefit from PaneHost).
 ### C.3 Help window pattern — done (option B)
 
 Extracted `createSecondaryWindow` / `getSecondaryWindow` /
-`closeSecondaryWindow` to `@marina/desktop-ui/secondary-window`. The
+`closeSecondaryWindow` to `@laankit/desktop-ui/secondary-window`. The
 helper owns the singleton "focus if open, otherwise create" registry,
 sandbox-compatible webPreferences defaults, dev/prod URL switching,
 and 'closed' cleanup.

@@ -8,16 +8,16 @@ proportional and monospace.
 
 - **The Svelte build had no font setting.** CodeMirror used the system UI
   font at a fixed 14 px.
-- **The native editor (`crates/marina-editor`) hard-codes its fonts:**
+- **The native editor (`crates/laankit-editor`) hard-codes its fonts:**
   - The highlighter (`highlight.rs`, `EditorColors::format`) uses
-    `FontFamily::Proportional` (Inter) for text, the `marina_egui::fonts`
+    `FontFamily::Proportional` (Inter) for text, the `laankit_egui::fonts`
     bold/italic families for emphasis and headings, and
     `FontFamily::Monospace` (JetBrains Mono NL) for code spans and fences.
   - The editor core (`editor_core/view.rs`) measures the row height with
     `FontId::proportional`. It estimates line widths and the gutter with
     fixed factors (`0.52 × size` per character, `0.62 × size` per digit).
   - The line-cache key (`Look`) holds the font size but no font.
-- **Bundled fonts** (`crates/marina-egui/assets/fonts`):
+- **Bundled fonts** (`crates/laankit-egui/assets/fonts`):
   - Inter (Regular, SemiBold, Bold, Italic, Bold Italic), with `calt`
     retagged so `->` isn't drawn as an arrow.
   - JetBrains Mono NL (Regular, Bold, Italic; no ligatures).
@@ -87,7 +87,7 @@ OpenType features off).
 
 ## Phases
 
-### Phase 1: Font registry in `marina-egui` (~2 days)
+### Phase 1: Font registry in `laankit-egui` (~2 days)
 
 - **`fonts::EditorFont`:** a list of the choices, each with an id,
   display name, kind (proportional/monospace) and four faces (bytes).
@@ -111,7 +111,7 @@ OpenType features off).
   - Installing a choice registers the `editor*` families.
   - Switching back and forth leaves no stale families.
 
-### Phase 2: Editor support in `marina-editor` (~3–4 days)
+### Phase 2: Editor support in `laankit-editor` (~3–4 days)
 
 - **Preferences:** `EditorPrefs` gains `font: EditorFont`.
 - **Highlighter:** `EditorColors::format` and `highlight.rs` use the
@@ -127,7 +127,7 @@ OpenType features off).
     the monospace family.
   - Keep scroll anchoring stable across a font change (re-anchor to the
     first visible line).
-- **Both engines:** the TextEdit fallback (`MARINA_EDITOR_ENGINE=textedit`)
+- **Both engines:** the TextEdit fallback (`LAANKIT_EDITOR_ENGINE=textedit`)
   also uses the chosen families.
 - **Tests:**
   - The highlighter uses the chosen families.
@@ -142,7 +142,7 @@ OpenType features off).
 
 - **Saving:** an `editorFont` pref in `config.rs` (read, default Inter,
   `set_prefs` patch), applied at startup and on change.
-- **Settings:** the Editor group and font list (`marina_egui::settings`
+- **Settings:** the Editor group and font list (`laankit_egui::settings`
   style, each row in its own font), plus the palette commands.
 - **Tests:**
   - The pref round-trips with the Tauri file shape kept, and unknown ids
@@ -151,7 +151,7 @@ OpenType features off).
     editor's families.
   - Offscreen screenshots (egui_kittest + wgpu, no real windows) of the
     editor in each font in a dark and a light theme.
-- **Docs:** the NoteLiner and `marina-editor` READMEs and the parity
+- **Docs:** the NoteLiner and `laankit-editor` READMEs and the parity
   table.
 
 ### Phase 4: Optional extras (~2–3 days, if wanted)

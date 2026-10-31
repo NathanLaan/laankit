@@ -11,10 +11,10 @@
 use std::sync::Arc;
 
 use egui::{vec2, Align2, Color32, Frame, Key, Margin, Rect, RichText, Sense, Stroke, Ui};
-use marina_egui::panes::{self, Pane, PaneLayout};
-use marina_egui::{icons, theme};
-use marina_richtext::resolve::{data_uri, LinkAction, Resolver};
-use marina_richtext::{Document, Face, Mark, Position, RichOutput, RichStyle, RichView};
+use laankit_egui::panes::{self, Pane, PaneLayout};
+use laankit_egui::{icons, theme};
+use laankit_richtext::resolve::{data_uri, LinkAction, Resolver};
+use laankit_richtext::{Document, Face, Mark, Position, RichOutput, RichStyle, RichView};
 use serde_json::Value;
 
 use crate::annotations::{self, AnnotationAction};
@@ -354,7 +354,7 @@ impl EpubView {
                 egui::Label::new(
                     RichText::new(title)
                         .color(p.text_secondary)
-                        .font(marina_egui::fonts::Style::BOLD.font(13.0)),
+                        .font(laankit_egui::fonts::Style::BOLD.font(13.0)),
                 )
                 .truncate(),
             )
@@ -535,7 +535,7 @@ impl EpubView {
             self.active_highlight = Some(id);
         }
         for action in out.actions {
-            let marina_richtext::Action::Open(url) = action;
+            let laankit_richtext::Action::Open(url) = action;
             events.push(EpubEvent::OpenUrl(url));
         }
         // `.edge` page buttons on both sides of the text.

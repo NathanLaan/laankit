@@ -16,7 +16,7 @@ use noteliner_export::{ExportOptions, LazyExporter, Title};
 
 // At startup: built and warmed up on a background thread (~200 ms of
 // one-time Typst setup, off the UI thread).
-let faces = marina_egui::fonts::bundled_faces().iter().map(|(_, bytes)| *bytes);
+let faces = laankit_egui::fonts::bundled_faces().iter().map(|(_, bytes)| *bytes);
 let exporter = LazyExporter::spawn(faces);
 
 // Per export (blocks only if the exporter isn't ready yet; run it off the
@@ -48,9 +48,9 @@ exports a note the way the app does and prints timings.
 ## Fonts
 
 - **Bundled.** The caller passes the font files the app bundles,
-  `marina_egui::fonts::bundled_faces()` (added for this crate). Body text is
+  `laankit_egui::fonts::bundled_faces()` (added for this crate). Body text is
   Inter and code is JetBrains Mono, matching the app. The crate doesn't
-  depend on `marina-egui` itself, so a helper binary could export without
+  depend on `laankit-egui` itself, so a helper binary could export without
   linking egui. Typst's own embedded fonts (`typst-assets`) aren't used,
   which saves several MB.
 - **System fallback.** Typst falls back glyph by glyph to any font it has.
@@ -73,7 +73,7 @@ return `Error::PdfUnavailable` ("PDF export isn't included in this build").
 | `export` example, with `pdf`            | 39.9 MB  | 11.8 MB  |
 | **Delta**                               | **+38.6 MB** | **+11.4 MB** |
 
-About 4.2 MB of the delta is `marina-egui`'s bundled fonts, which the app
+About 4.2 MB of the delta is `laankit-egui`'s bundled fonts, which the app
 links anyway, so Typst adds roughly 34 MB (about 10 MB compressed) to the
 app. The spike measured +43.4 MB because it also embedded Typst's own
 fonts. A clean release build of the crate takes about 12 minutes on a busy
@@ -164,7 +164,7 @@ callers show the source instead of something wrong.
   white on transparent, on a page that fits it (`top-edge`/`bottom-edge:
   "bounds"`, 3 pt above and below so radical bars aren't clipped). The
   NoteLiner preview and slides draw it tinted (via
-  `marina_richtext::math`). Typst's straight strokes (radical bars) are
+  `laankit_richtext::math`). Typst's straight strokes (radical bars) are
   rewritten as rectangles (`math::straight_strokes_as_rects`), because
   rasterizers skip zero-height paths.
 - **Tests** (`tests/math.rs`): every symbol in the table and ~30

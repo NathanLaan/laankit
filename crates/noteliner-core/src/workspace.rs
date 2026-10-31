@@ -16,7 +16,10 @@ pub type Shared = Arc<tokio::sync::Mutex<Workspace>>;
 
 impl Workspace {
     pub fn new(project: Project) -> Shared {
-        Arc::new(tokio::sync::Mutex::new(Self { project, links: LinkGraph::default() }))
+        Arc::new(tokio::sync::Mutex::new(Self {
+            project,
+            links: LinkGraph::default(),
+        }))
     }
 
     pub fn rebuild_links(&mut self) {

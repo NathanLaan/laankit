@@ -3,7 +3,7 @@
 NoteLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `noteliner-core`, with no
 webview or JavaScript. It's Phase 4 of plan Option C
 ([`docs/plans/plan-native-rust-egui.md`](../../../docs/plans/plan-native-rust-egui.md)): the app
-shell, the backend, the file tree, the dialogs, the Markdown editor (`crates/marina-editor`), the
+shell, the backend, the file tree, the dialogs, the Markdown editor (`crates/laankit-editor`), the
 preview, the SEARCH / TAGS / BACKLINKS panes, the History and Attachments panels, presentations
 (`crates/noteliner-slides`), PDF export (`crates/noteliner-export`) and the MCP dialogs.
 
@@ -30,7 +30,7 @@ builds.
   `mcp-runtime.json`, as the Tauri binary's `--mcp-bridge` does. The server needs a Unix socket, so
   on Windows it reports that it isn't available yet.
 - **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and
-  Marina's title bar (takes a restart).
+  LaanKit's title bar (takes a restart).
 - **Command palette.** Ctrl+K or Ctrl+Shift+P: every command, plus notes, tags and recent
   projects.
 - **Markdown files** dropped on the window become notes; files dropped on the editor (or
@@ -50,18 +50,18 @@ cargo run -p noteliner-native --release          # the demo is in Recent Project
 `noteliner_demo_data` creates a git project with nested notes, tags, wikilinks, a template and an image
 attachment, and lists it in `$XDG_CONFIG_HOME/NoteLiner/recent-projects.json` (Linux). On Windows
 the config folder is `%APPDATA%\NoteLiner` and on macOS `~/Library/Application Support/NoteLiner`,
-as `marina_core::paths` mirrors Electron's `userData`.
+as `laankit_core::paths` mirrors Electron's `userData`.
 
 ### Diagnostics
 
-`MARINA_SCREENSHOT=<file.png>` (with `MARINA_SCREENSHOT_EXIT=1`), `MARINA_THEME` and `MARINA_SCALE`
-work as in every Marina app (see `marina_egui::diagnostics`). Also:
+`LAANKIT_SCREENSHOT=<file.png>` (with `LAANKIT_SCREENSHOT_EXIT=1`), `LAANKIT_THEME` and `LAANKIT_SCALE`
+work as in every LaanKit app (see `laankit_egui::diagnostics`). Also:
 
 | Variable          | Effect                                                                                    |
 |-------------------|-------------------------------------------------------------------------------------------|
-| `MARINA_PROJECT`  | Open this project folder at launch                                                        |
-| `MARINA_FILE`     | Then select the nth note in display order, or the note with this name                     |
-| `MARINA_OPEN`     | Then open `settings[:ui\|mcp\|shortcuts]`, `sync`, `about`, `help`, `palette`, `new-file`, `new-project`, `project-settings`, `move`, `preview`, `slides`, `presentation-settings`, `present`, `log`, `search:<query>`, `tags`, `backlinks`, `history`, `attachments`, `tag-filter`, `tag-editor`, `mcp-walkthrough` or `mcp-confirm` (a sample request) |
+| `LAANKIT_PROJECT`  | Open this project folder at launch                                                        |
+| `LAANKIT_FILE`     | Then select the nth note in display order, or the note with this name                     |
+| `LAANKIT_OPEN`     | Then open `settings[:ui\|mcp\|shortcuts]`, `sync`, `about`, `help`, `palette`, `new-file`, `new-project`, `project-settings`, `move`, `preview`, `slides`, `presentation-settings`, `present`, `log`, `search:<query>`, `tags`, `backlinks`, `history`, `attachments`, `tag-filter`, `tag-editor`, `mcp-walkthrough` or `mcp-confirm` (a sample request) |
 
 The Help pages are `assets/help-pages.json` (loaded at build time with `include_str!`); edit that
 file to change the in-app Help.
@@ -76,7 +76,7 @@ file to change the in-app Help.
 | `config`         | `ui-preferences.json`, `recent-projects.json` and the per-project `Layout` in `window-state.json`   |
 | `model`          | Typed index entries, the tree order and sorts, drag-and-drop / move / clear-tags edits on the index JSON |
 | `commands`       | `registerCommands`: every command and shortcut, for the keyboard, the palette and Settings          |
-| `editor`         | `NoteEditor`: `marina-editor`'s widget with the autosave, status and event contract (see below)     |
+| `editor`         | `NoteEditor`: `laankit-editor`'s widget with the autosave, status and event contract (see below)     |
 | `spell`          | Hunspell dictionary lookup, background loading and the personal word list                           |
 | `deck`           | The open deck, parsed per edit, and the `noteliner-slides` widgets (pane, preview, presenter)       |
 | `views`          | `OpenScreen`, `StatusBar`, `LogPanel`; `views::tree` (`FileTree`), `views::sidebar` (`Sidebar`), `views::panes` (`SearchPane`, `BacklinksPane`, `TagsPane`, `TagFilterPopover`), `views::history` (`HistoryPanel`), `views::attachments` (`AttachmentPanel`), `views::preview` (`Preview`) |
@@ -88,9 +88,9 @@ file to change the in-app Help.
 
 ### Editor
 
-`src/editor.rs` holds `NoteEditor`, a wrapper around `marina-editor` (see
-`crates/marina-editor/README.md`). The editor runs on its own core engine;
-`MARINA_EDITOR_ENGINE=textedit noteliner` falls back to the previous engine
+`src/editor.rs` holds `NoteEditor`, a wrapper around `laankit-editor` (see
+`crates/laankit-editor/README.md`). The editor runs on its own core engine;
+`LAANKIT_EDITOR_ENGINE=textedit noteliner` falls back to the previous engine
 (egui's `TextEdit`) for one release, should the core engine misbehave with an
 input method or screen reader. The app only uses this API:
 
@@ -126,7 +126,7 @@ in the Svelte build.
 ### Spell checking
 
 The webview builds used the system spell checker. The native build uses Hunspell dictionaries
-(`marina-editor`'s `spellcheck` feature, pure Rust): the system language (`LANG`, then `en_US`)
+(`laankit-editor`'s `spellcheck` feature, pure Rust): the system language (`LANG`, then `en_US`)
 is looked up in `<userData>/dictionaries/`, then `/usr/share/hunspell` and `/usr/share/myspell`
 (Linux) or `~/Library/Spelling` and `/Library/Spelling` (macOS). Windows has no shared Hunspell
 folder: put `en_US.aff` and `en_US.dic` (for example LibreOffice's) in
@@ -150,9 +150,9 @@ Presenter View key; toolbar and palette) adds the speaker window (see
 ### Math
 
 `$…$`, `$$…$$` and ```` ```math ```` blocks are typeset in the preview, slides and speaker notes
-(`noteliner_core::export::preview_html` turns on comrak's math; `marina_richtext::from_note_html`
+(`noteliner_core::export::preview_html` turns on comrak's math; `laankit_richtext::from_note_html`
 keeps it) and in PDF export. `src/math.rs` installs Typst (through the warm PDF exporter) as
-`marina-richtext`'s math renderer when the backend attaches. LaTeX it can't convert shows as its
+`laankit-richtext`'s math renderer when the backend attaches. LaTeX it can't convert shows as its
 source. The webview builds showed math as text; the HTML export still does.
 
 ### PDF export
@@ -196,7 +196,7 @@ opens, like the HTML and Markdown exports.
 | `mcp:getStatus`, `mcp:confirm-response`, `mcp:confirm-request` | Done | Settings → MCP; the full confirmation dialog with raw arguments         |
 | `ui:getPrefs`, `ui:setPrefs` and their side effects       | Done    | `writeFrontmatter` and `mcpEnabled` apply live                          |
 | `ui:spellcheck-changed`                                   | Done    | F7 and Settings; Hunspell dictionaries instead of the webview's checker (see Spell checking) |
-| `update:*`                                                | Done    | About → Check for Updates (`marina_core::updates`)                      |
+| `update:*`                                                | Done    | About → Check for Updates (`laankit_core::updates`)                      |
 | `help:open`                                               | Done    | In-app Help dialog instead of a second window                           |
 | `app:relaunch`                                            | Done    | After the titlebar setting                                              |
 | `--mcp-bridge`                                            | Done    | Unix only for now (see above)                                           |
@@ -215,8 +215,8 @@ opens, like the HTML and Markdown exports.
 | `NewFileModal` (New File, New Presentation, Duplicate), `MoveFileModal` | Done |                                                    |
 | `DeleteFileModal`, `ClearTagsModal`            | Done    |                                                                       |
 | `OutlinePane`                                  | Done    |                                                                       |
-| `Editor`                                       | Done    | `marina-editor` on its core engine: highlighting (code fences by language), list editing with ordered-list renumbering, shortcuts, find/replace, Go to line (Ctrl+Alt+G), bracket and selection matches, `[[` completion, paste/drop attachments, spell check, several cursors (Ctrl+click, Ctrl+D, find "all", Alt+drag), folding (gutter, Ctrl+Shift+[ / ]), notes of 50,000+ lines. Its own parity table lists what's left |
-| `Preview`                                      | Done    | comrak + marina-richtext; wikilinks open or create notes; attachments |
+| `Editor`                                       | Done    | `laankit-editor` on its core engine: highlighting (code fences by language), list editing with ordered-list renumbering, shortcuts, find/replace, Go to line (Ctrl+Alt+G), bracket and selection matches, `[[` completion, paste/drop attachments, spell check, several cursors (Ctrl+click, Ctrl+D, find "all", Alt+drag), folding (gutter, Ctrl+Shift+[ / ]), notes of 50,000+ lines. Its own parity table lists what's left |
+| `Preview`                                      | Done    | comrak + laankit-richtext; wikilinks open or create notes; attachments |
 | `StatusBar`, `LogPanel`                        | Done    | Including a deck's slide and speaking time                            |
 | `SettingsModal` (UI, MCP, Keyboard Shortcuts)  | Done    | Turning MCP on opens the walkthrough                                  |
 | `ProjectSettingsModal`, `SyncModal`, `SyncingModal`, `ImportingModal` | Done |                                                              |

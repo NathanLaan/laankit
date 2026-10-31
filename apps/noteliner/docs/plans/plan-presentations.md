@@ -21,7 +21,7 @@ SlideLiner app. Presentations are built **inside NoteLiner**, because:
 3. **This direction is reversible.** `lib/slides.js`, `lib/layout.js`,
    `Slide.svelte`, and `deck-export-service.js` are exactly the modules a
    standalone app would need, proven against real decks. If presentations
-   outgrow NoteLiner, they lift into a `@marina/slides` package. Building the
+   outgrow NoteLiner, they lift into a `@laankit/slides` package. Building the
    app first would mean maintaining two Markdown editors and a split vault.
 
 Accepted cost: the sidebar pane stack goes from five to six, and a
@@ -72,7 +72,7 @@ stronger than it first looks:
   palette, `PaneHost` sidebar. A separate app re-implements all of it.
 - **No format lock-in.** The deck is a normal `.md` note. Turn presentation
   off and it is still just a note — searchable, linkable, backlinked.
-- **One app to maintain.** Marina already has three.
+- **One app to maintain.** LaanKit already has three.
 
 The cost: NoteLiner's surface area grows, and the toolbar/command list gets
 longer. Mitigation is that everything here is **inert until a note opts in**

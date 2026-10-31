@@ -4,7 +4,7 @@ mod common;
 
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
-use marina_egui::theme::ThemeState;
+use laankit_egui::theme::ThemeState;
 use pageliner_epub::{Book, EpubEvent, EpubView, NativeState, ReaderPrefs};
 
 struct State {
@@ -25,7 +25,7 @@ fn harness_with(state: NativeState, height: f32, prefs: ReaderPrefs) -> Harness<
         // Scrolling to a restored position settles over several frames.
         .with_max_steps(40)
         .with_context_setup(|ctx| {
-            marina_egui::fonts::install(ctx);
+            laankit_egui::fonts::install(ctx);
             ThemeState::default().apply(ctx);
         })
         .build_ui_state(

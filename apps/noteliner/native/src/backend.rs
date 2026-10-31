@@ -15,9 +15,9 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use marina_core::git::{LogEntry, SyncStatus};
-use marina_core::updates::{self, UpdateCheck};
-use marina_egui::about::UpdateStatus;
+use laankit_core::git::{LogEntry, SyncStatus};
+use laankit_core::updates::{self, UpdateCheck};
+use laankit_egui::about::UpdateStatus;
 use noteliner_core::git::{GitConfigRequired, NoteGit};
 use noteliner_core::links::LinkGraph;
 use noteliner_core::mcp::{self, ConfirmFuture, McpHost, McpServer};
@@ -195,7 +195,7 @@ pub enum Event {
         id: String,
         links: Vec<Value>,
     },
-    /// For wikilink autocomplete, with marina-editor.
+    /// For wikilink autocomplete, with laankit-editor.
     #[allow(dead_code)]
     NoteNames(Vec<Value>),
     History {
@@ -387,7 +387,7 @@ impl Backend {
             .expect("tokio runtime");
         // Debouncers (pushes, window state) spawn on this runtime when
         // scheduled from the UI thread.
-        marina_core::debounce::set_runtime(rt.handle().clone());
+        laankit_core::debounce::set_runtime(rt.handle().clone());
         let (tx, rx) = channel();
         let ctx: Arc<Mutex<Option<egui::Context>>> = Arc::new(Mutex::new(None));
 
@@ -412,7 +412,7 @@ impl Backend {
             env!("CARGO_PKG_VERSION"),
         );
         let exporter = Arc::new(noteliner_export::LazyExporter::spawn(
-            marina_egui::fonts::bundled_faces()
+            laankit_egui::fonts::bundled_faces()
                 .iter()
                 .map(|(_, bytes)| *bytes),
         ));
@@ -437,7 +437,7 @@ impl Backend {
         let mut slot = self.core.ctx.lock().unwrap();
         if slot.is_none() {
             *slot = Some(ctx.clone());
-            marina_richtext::math::install(
+            laankit_richtext::math::install(
                 ctx,
                 Arc::new(crate::math::TypstMath(self.core.exporter.clone())),
             );
@@ -1132,7 +1132,7 @@ impl Backend {
         });
     }
 
-    /// `links:getAllNames`: for wikilink autocomplete, with marina-editor.
+    /// `links:getAllNames`: for wikilink autocomplete, with laankit-editor.
     #[allow(dead_code)]
     pub fn note_names(&self) {
         self.spawn(|core| async move {
@@ -1270,7 +1270,7 @@ pub fn pdf_options(name: String, project_dir: PathBuf) -> noteliner_export::Expo
 
 /// Electron's `app.getPath('downloads')`.
 pub fn downloads_dir() -> PathBuf {
-    let home = marina_core::paths::home_dir();
+    let home = laankit_core::paths::home_dir();
     if cfg!(all(unix, not(target_os = "macos"))) {
         if let Ok(out) = std::process::Command::new("xdg-user-dir")
             .arg("DOWNLOAD")
@@ -1295,5 +1295,5 @@ pub fn system_info() -> (String, String, PathBuf) {
         .or_else(|_| std::env::var("HOSTNAME"))
         .or_else(|_| std::env::var("COMPUTERNAME"))
         .unwrap_or_default();
-    (user, host, marina_core::paths::home_dir())
+    (user, host, laankit_core::paths::home_dir())
 }

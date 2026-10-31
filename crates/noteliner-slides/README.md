@@ -11,8 +11,8 @@ cargo test -p noteliner-slides
 
 The example opens the SLIDES pane and the deck preview over a note held in
 memory. P presents from the selected slide, Ctrl+, opens the presentation
-settings, right-click a slide for its menu. `MARINA_SCREENSHOT`,
-`MARINA_THEME`, `MARINA_SLIDE=<n>` and `MARINA_OPEN=present|settings` work for
+settings, right-click a slide for its menu. `LAANKIT_SCREENSHOT`,
+`LAANKIT_THEME`, `LAANKIT_SLIDE=<n>` and `LAANKIT_OPEN=present|settings` work for
 screenshots. The sample deck and its image are synthetic.
 
 ## Modules
@@ -84,7 +84,7 @@ current Markdown and `Deck` every frame and return actions.
    to a URI egui's loaders can load: attachments to `file://…` or `bytes://…`.
    Install the loaders once (`egui_extras::install_image_loaders`) with the
    `file` feature (or register bytes). `PassThrough` passes URLs only.
-10. **Fonts:** `marina_egui::fonts::install` must have run (bold, italic and
+10. **Fonts:** `laankit_egui::fonts::install` must have run (bold, italic and
     mono faces, Font Awesome).
 
 ## Parity with the Svelte slides
@@ -99,10 +99,10 @@ current Markdown and `Deck` every frame and return actions.
 | Header/footer bands with `{{page}}`, `{{total}}`, host vars; slide numbers | Done | A bare `header` flag prints `true`, as the JS does |
 | `bg=` directive                                                | Done      | Hex, `rgb()`/`rgba()`, `transparent`, SVG names; gradients ignored |
 | `class=` directive                                             | Done      | `theme-light`/`theme-dark` and `layout-<id>` override the slide's theme and layout (the only class names `Slide.svelte`'s CSS styled); others ignored |
-| Inline Markdown: bold, italic, code, links, strikethrough      | Done      | comrak → `marina-richtext` blocks |
+| Inline Markdown: bold, italic, code, links, strikethrough      | Done      | comrak → `laankit-richtext` blocks |
 | Lists, quotes, code blocks (wrapped), tables                   | Done      | Including column alignment (`:-:`, `--:`) from the cells' `align` |
 | Task lists (`- [ ]` / `- [x]`)                                 | Done      | Drawn boxes, filled with a tick when checked, in the slide theme's colours |
-| Images: contain at natural size; full-bleed cover              | Done      | 8 px corners as `img { border-radius: 8px }`; square on full-bleed slides; inline `<svg>` via marina-richtext |
+| Images: contain at natural size; full-bleed cover              | Done      | 8 px corners as `img { border-radius: 8px }`; square on full-bleed slides; inline `<svg>` via laankit-richtext |
 | Video: YouTube/remote link card                                | Done      | |
 | Video: local files play inline                                 | Out of scope | Shown as the link card (decided 2026-10-18) |
 | Math (`$…$`, `$$…$$`, ```` ```math ````)                         | Native addition | Typeset by the app's math renderer (NoteLiner: Typst), tinted in the slide theme's text colour; source as code without one (`marked` showed text) |

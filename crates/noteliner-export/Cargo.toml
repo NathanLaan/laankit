@@ -23,7 +23,7 @@ typst-svg = { version = "0.15", optional = true }
 typst-kit = { version = "0.15", default-features = false, features = ["scan-fonts"], optional = true }
 
 [dev-dependencies]
-marina-egui.workspace = true
+laankit-egui.workspace = true
 typst-syntax = "0.15"
 hayro = "0.8"
 tempfile = "3"

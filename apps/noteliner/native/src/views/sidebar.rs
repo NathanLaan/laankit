@@ -1,4 +1,4 @@
-//! The sidebar (`Sidebar.svelte`): a `marina_egui::panes` stack of the
+//! The sidebar (`Sidebar.svelte`): a `laankit_egui::panes` stack of the
 //! FILES, OUTLINE, SLIDES, TAGS, SEARCH and BACKLINKS panes, in the user's
 //! order and heights (saved in the project's layout).
 //!
@@ -14,9 +14,9 @@
 use std::collections::HashSet;
 
 use egui::{pos2, vec2, Align2, FontId, Rect, RichText, Sense, Ui};
-use marina_egui::icons;
-use marina_egui::panes::{self, Pane, PaneLayout};
-use marina_egui::theme::{self, Palette};
+use laankit_egui::icons;
+use laankit_egui::panes::{self, Pane, PaneLayout};
+use laankit_egui::theme::{self, Palette};
 
 use noteliner_slides::{Deck, ImageSource, SlidesPane};
 

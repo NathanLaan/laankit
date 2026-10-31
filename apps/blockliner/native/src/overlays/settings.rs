@@ -1,8 +1,8 @@
 //! Settings: the UI tab (theme, scale, window, canvas) and Keyboard Shortcuts.
 
-use marina_egui::dialog;
-use marina_egui::settings::{self, SettingsShell, Tab};
-use marina_egui::theme::ThemeState;
+use laankit_egui::dialog;
+use laankit_egui::settings::{self, SettingsShell, Tab};
+use laankit_egui::theme::ThemeState;
 
 use crate::config::GRID_SIZES;
 

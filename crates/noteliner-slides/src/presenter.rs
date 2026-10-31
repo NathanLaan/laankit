@@ -152,7 +152,7 @@ struct Speaker {
     /// The speaker window's outer rect, as last seen.
     outer: Option<Rect>,
     /// The notes' rich-text view (scroll position and layout cache).
-    notes: Arc<Mutex<marina_richtext::RichView>>,
+    notes: Arc<Mutex<laankit_richtext::RichView>>,
 }
 
 impl std::fmt::Debug for Speaker {
@@ -545,11 +545,11 @@ fn speaker_ui(
     index: usize,
     timer: Option<Timer>,
     now: f64,
-    notes: &mut marina_richtext::RichView,
+    notes: &mut laankit_richtext::RichView,
     navs: &mut Vec<Nav>,
 ) {
     let total = deck.slides.len();
-    let p = marina_egui::theme::palette(ui.ctx());
+    let p = laankit_egui::theme::palette(ui.ctx());
     let rect = ui.max_rect();
     ui.painter().rect_filled(rect, 0.0, p.bg_base);
     let pad = 16.0;
@@ -709,23 +709,23 @@ fn speaker_ui(
 }
 
 /// The current slide's notes as rich text, or a muted "No notes".
-fn notes_view(ui: &mut Ui, slide: Option<&Slide>, view: &mut marina_richtext::RichView) {
-    let p = marina_egui::theme::palette(ui.ctx());
+fn notes_view(ui: &mut Ui, slide: Option<&Slide>, view: &mut laankit_richtext::RichView) {
+    let p = laankit_egui::theme::palette(ui.ctx());
     let notes = slide.map(|s| s.notes.trim()).unwrap_or_default();
     if notes.is_empty() {
         ui.label(RichText::new("No notes for this slide.").color(p.text_muted));
         return;
     }
     let doc = notes_document(ui, notes);
-    let mut style = marina_richtext::RichStyle::from_ctx(ui.ctx());
+    let mut style = laankit_richtext::RichStyle::from_ctx(ui.ctx());
     style.size = 18.0;
-    let _ = view.show(ui, &doc, &style, &mut marina_richtext::WebResolver);
+    let _ = view.show(ui, &doc, &style, &mut laankit_richtext::WebResolver);
 }
 
 /// Notes Markdown → a rich-text document (math included), cached per text.
-fn notes_document(ui: &Ui, notes: &str) -> std::sync::Arc<marina_richtext::Document> {
+fn notes_document(ui: &Ui, notes: &str) -> std::sync::Arc<laankit_richtext::Document> {
     type Cache =
-        egui::cache::FrameCache<std::sync::Arc<marina_richtext::Document>, NotesToDocument>;
+        egui::cache::FrameCache<std::sync::Arc<laankit_richtext::Document>, NotesToDocument>;
     ui.ctx()
         .memory_mut(|m| m.caches.cache::<Cache>().get(notes).clone())
 }
@@ -733,10 +733,12 @@ fn notes_document(ui: &Ui, notes: &str) -> std::sync::Arc<marina_richtext::Docum
 #[derive(Default)]
 struct NotesToDocument;
 
-impl egui::cache::ComputerMut<&str, std::sync::Arc<marina_richtext::Document>> for NotesToDocument {
-    fn compute(&mut self, notes: &str) -> std::sync::Arc<marina_richtext::Document> {
+impl egui::cache::ComputerMut<&str, std::sync::Arc<laankit_richtext::Document>>
+    for NotesToDocument
+{
+    fn compute(&mut self, notes: &str) -> std::sync::Arc<laankit_richtext::Document> {
         let blocks = crate::render::markdown_blocks(notes);
-        std::sync::Arc::new(marina_richtext::Document {
+        std::sync::Arc::new(laankit_richtext::Document {
             blocks,
             anchors: HashMap::new(),
         })

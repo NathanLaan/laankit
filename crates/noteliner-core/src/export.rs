@@ -5,7 +5,10 @@
 use std::path::Path;
 
 fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 pub fn markdown_to_html(md: &str) -> String {
@@ -73,7 +76,11 @@ pub fn html_document(name: &str, body_md: &str) -> String {
 pub fn pdf_document(name: &str, body_md: &str, attachments_dir: &Path) -> String {
     let re = regex::Regex::new(r#"(src|href)="\.?/?_attachments/([^"]+)""#).unwrap();
     let dir = attachments_dir.display().to_string();
-    let body = re.replace_all(&markdown_to_html(body_md), |c: &regex::Captures| format!("{}=\"file://{dir}/{}\"", &c[1], &c[2])).into_owned();
+    let body = re
+        .replace_all(&markdown_to_html(body_md), |c: &regex::Captures| {
+            format!("{}=\"file://{dir}/{}\"", &c[1], &c[2])
+        })
+        .into_owned();
     let title = escape_html(name);
     format!(
         "<!DOCTYPE html>
@@ -106,7 +113,9 @@ mod tests {
 
     #[test]
     fn gfm_constructs_render() {
-        let html = markdown_to_html("# T\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n~~x~~ - [ ] task\n\n<b>raw</b>");
+        let html = markdown_to_html(
+            "# T\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n~~x~~ - [ ] task\n\n<b>raw</b>",
+        );
         assert!(html.contains("<table>"));
         assert!(html.contains("<del>x</del>"));
         assert!(html.contains("<b>raw</b>"));
@@ -114,7 +123,11 @@ mod tests {
 
     #[test]
     fn pdf_rewrites_attachment_urls() {
-        let html = pdf_document("N", "![x](./_attachments/a.png)", Path::new("/p/_attachments"));
+        let html = pdf_document(
+            "N",
+            "![x](./_attachments/a.png)",
+            Path::new("/p/_attachments"),
+        );
         assert!(html.contains("src=\"file:///p/_attachments/a.png\""));
     }
 }

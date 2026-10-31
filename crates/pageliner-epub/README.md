@@ -2,7 +2,7 @@
 
 PageLiner's native EPUB reader (plan Option C, Phase 3; see
 `docs/plans/plan-native-rust-egui.md`). No webview and no epub.js: the book is converted to
-`marina-richtext` blocks and laid out by egui. It replaces `EpubReader.svelte` and
+`laankit-richtext` blocks and laid out by egui. It replaces `EpubReader.svelte` and
 `AnnotationsPane.svelte`.
 
 ```bash
@@ -20,7 +20,7 @@ cargo test -p pageliner-epub
   Highlight selection, Bookmark toggle, text size (60–220%), reading theme (Light, Sepia, Dark),
   serif/sans, previous/next page.
 - **Sidebar**: the Contents pane (the current entry marked) and the Annotations pane (bookmarks
-  and highlights, jump and delete), in a `marina_egui::panes` stack.
+  and highlights, jump and delete), in a `laankit_egui::panes` stack.
 - **Paging**: Page Down / Space / → and Page Up / ← (no modifiers, no text field focused), and
   the arrows at the sides of the page. A page keeps 48 px of the previous one.
 - **Selection and highlights**: drag to select across paragraphs, Ctrl+C to copy, then
@@ -58,8 +58,8 @@ if let Some(patch) = reader.flush() {
 }
 ```
 
-Call `egui_extras::install_image_loaders` and `marina_egui::fonts::install` once at startup
-(images decode on egui_extras' background thread; the serif face comes from `marina-egui`).
+Call `egui_extras::install_image_loaders` and `laankit_egui::fonts::install` once at startup
+(images decode on egui_extras' background thread; the serif face comes from `laankit-egui`).
 
 | Event          | When                                                                                         |
 |----------------|----------------------------------------------------------------------------------------------|
@@ -98,7 +98,7 @@ Per book, in `state/<id>.json`, under one key that only the native reader uses:
 ```
 
 - `spine` is the spine document, `block` the top-level block within it, and `offset` a character
-  offset through that block's text parts (`marina_richtext::Block::part_text`).
+  offset through that block's text parts (`laankit_richtext::Block::part_text`).
 - `Library::set_state` merges top-level keys, so the native reader's patches (`{ "native": … }`)
   and the other build's (`cfi`, `bookmarks`, `highlights`) never overwrite each other. A test
   checks both directions.
@@ -112,7 +112,7 @@ the Svelte reader) and `epubFace` (`serif` or `sans`, native only).
 
 ## Not yet
 
-- Real justification and hanging indents (see `marina-richtext`'s README).
+- Real justification and hanging indents (see `laankit-richtext`'s README).
 - Pagination (two-page spreads). The reader scrolls; paging moves a screen at a time.
 - Search inside the book.
 - Keyboard selection (Shift+arrows) and double-click word selection.

@@ -2,8 +2,8 @@
 //! here it's a full-size dialog with the same sections.
 
 use egui::RichText;
-use marina_egui::dialog::{Dialog, Size};
-use marina_egui::{fonts, icons, theme};
+use laankit_egui::dialog::{Dialog, Size};
+use laankit_egui::{fonts, icons, theme};
 
 /// (title, [(name, body)]). `{icon}` placeholders become Font Awesome glyphs.
 const SECTIONS: [(&str, &[(&str, &str)]); 4] = [

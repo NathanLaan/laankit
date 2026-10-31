@@ -541,7 +541,7 @@ fn fonts() -> Arc<usvg::fontdb::Database> {
     FONTS
         .get_or_init(|| {
             let mut db = usvg::fontdb::Database::new();
-            for (_, bytes) in marina_egui::fonts::bundled_faces() {
+            for (_, bytes) in laankit_egui::fonts::bundled_faces() {
                 db.load_font_data(bytes.to_vec());
             }
             db.set_sans_serif_family("Inter");

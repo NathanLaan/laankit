@@ -13,7 +13,7 @@ fn exporter() -> &'static Exporter {
     static EXPORTER: OnceLock<Exporter> = OnceLock::new();
     EXPORTER.get_or_init(|| {
         Exporter::new(
-            marina_egui::fonts::bundled_faces()
+            laankit_egui::fonts::bundled_faces()
                 .iter()
                 .map(|(_, bytes)| *bytes),
         )

@@ -4,7 +4,7 @@
 //! local files, so they run synchronously and return their result. Only the
 //! autosave runs in the background: [`Backend::save`] keeps the latest text
 //! and writes it (atomically, temp file + rename) once edits pause for the
-//! save delay, through `marina_core::debounce`. [`Backend::flush`] writes it
+//! save delay, through `laankit_core::debounce`. [`Backend::flush`] writes it
 //! at once, before switching diagrams or quitting.
 //!
 //! [`Backend::check`] notices when the open diagram's file was changed by
@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Context, Result};
-use marina_core::debounce::Debouncer;
+use laankit_core::debounce::Debouncer;
 use tokio::runtime::Runtime;
 
 /// Diagram files' extension.
@@ -154,7 +154,7 @@ impl Backend {
         if path.exists() {
             return Err(anyhow!(TAKEN));
         }
-        marina_core::json::write_string(path, text)
+        laankit_core::json::write_string(path, text)
     }
 
     /// Renames a diagram file, first writing any edits waiting for it.
@@ -277,7 +277,7 @@ impl Core {
         let Some((path, text)) = self.pending.lock().unwrap().clone() else {
             return true;
         };
-        let result = marina_core::json::write_string(&path, &text);
+        let result = laankit_core::json::write_string(&path, &text);
         {
             let mut pending = self.pending.lock().unwrap();
             if pending.as_ref() == Some(&(path.clone(), text.clone())) {

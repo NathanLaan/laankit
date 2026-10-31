@@ -30,7 +30,9 @@ fn s(o: &Obj, k: &str) -> String {
 }
 
 fn opt(v: Option<String>) -> Value {
-    v.filter(|s| !s.is_empty()).map(Value::String).unwrap_or(Value::Null)
+    v.filter(|s| !s.is_empty())
+        .map(Value::String)
+        .unwrap_or(Value::Null)
 }
 
 pub struct Store {
@@ -44,15 +46,19 @@ impl Store {
         for d in ["configuration", "data", "data/feeds"] {
             fs::create_dir_all(dir.join(d))?;
         }
-        let store = Self { dir: dir.to_path_buf(), feeds: None, tags: None };
+        let store = Self {
+            dir: dir.to_path_buf(),
+            feeds: None,
+            tags: None,
+        };
         if !store.feeds_path().exists() {
-            marina_core::json::write(&store.feeds_path(), &json!({ "feeds": [] }))?;
+            laankit_core::json::write(&store.feeds_path(), &json!({ "feeds": [] }))?;
         }
         if !store.settings_path().exists() {
-            marina_core::json::write(&store.settings_path(), &json!({}))?;
+            laankit_core::json::write(&store.settings_path(), &json!({}))?;
         }
         if !store.tags_path().exists() {
-            marina_core::json::write(&store.tags_path(), &json!({ "tags": [] }))?;
+            laankit_core::json::write(&store.tags_path(), &json!({ "tags": [] }))?;
         }
         Ok(store)
     }
@@ -74,7 +80,7 @@ impl Store {
     }
 
     fn read_list(path: &Path, key: &str) -> Vec<Obj> {
-        marina_core::json::read::<Value>(path)
+        laankit_core::json::read::<Value>(path)
             .and_then(|v| v.get(key).and_then(Value::as_array).cloned())
             .unwrap_or_default()
             .into_iter()
@@ -96,7 +102,7 @@ impl Store {
 
     fn save_feeds(&mut self) -> Result<()> {
         let feeds = self.feeds().clone();
-        marina_core::json::write(&self.feeds_path(), &json!({ "feeds": feeds }))
+        laankit_core::json::write(&self.feeds_path(), &json!({ "feeds": feeds }))
     }
 
     pub fn feed(&mut self, id: &str) -> Option<Obj> {
@@ -129,7 +135,13 @@ impl Store {
         out.into_iter().map(|(_, v)| v).collect()
     }
 
-    pub fn add_feed(&mut self, title: &str, url: &str, site_url: Option<String>, description: Option<String>) -> Result<Obj> {
+    pub fn add_feed(
+        &mut self,
+        title: &str,
+        url: &str,
+        site_url: Option<String>,
+        description: Option<String>,
+    ) -> Result<Obj> {
         if self.feeds().iter().any(|f| s(f, "url") == url) {
             bail!("Feed with this URL already exists");
         }
@@ -148,7 +160,10 @@ impl Store {
         self.save_feeds()?;
         let id = s(&feed, "id");
         fs::create_dir_all(self.feed_dir(&id))?;
-        marina_core::json::write(&self.entries_path(&id), &json!({ "feedId": id, "entries": [] }))?;
+        laankit_core::json::write(
+            &self.entries_path(&id),
+            &json!({ "feedId": id, "entries": [] }),
+        )?;
         Ok(feed)
     }
 
@@ -158,7 +173,12 @@ impl Store {
             .iter_mut()
             .find(|f| s(f, "id") == id)
             .ok_or_else(|| anyhow!("Feed not found"))?;
-        for (from, to) in [("title", "title"), ("url", "url"), ("siteUrl", "siteUrl"), ("description", "description")] {
+        for (from, to) in [
+            ("title", "title"),
+            ("url", "url"),
+            ("siteUrl", "siteUrl"),
+            ("description", "description"),
+        ] {
             if let Some(v) = data.get(from) {
                 feed.insert(to.into(), v.clone());
             }
@@ -187,7 +207,10 @@ impl Store {
 
     fn save_entries(&self, feed_id: &str, entries: &[Obj]) -> Result<()> {
         fs::create_dir_all(self.feed_dir(feed_id))?;
-        marina_core::json::write(&self.entries_path(feed_id), &json!({ "feedId": feed_id, "entries": entries }))
+        laankit_core::json::write(
+            &self.entries_path(feed_id),
+            &json!({ "feedId": feed_id, "entries": entries }),
+        )
     }
 
     /// Renderer format, newest first.
@@ -224,8 +247,10 @@ impl Store {
     /// Append entries whose guid isn't stored yet. Returns how many.
     pub fn insert_entries(&self, feed_id: &str, new: &[NewEntry]) -> Result<usize> {
         let mut existing = self.load_entries(feed_id);
-        let mut guids: std::collections::HashSet<String> =
-            existing.iter().filter_map(|e| e.get("guid").and_then(Value::as_str).map(str::to_string)).collect();
+        let mut guids: std::collections::HashSet<String> = existing
+            .iter()
+            .filter_map(|e| e.get("guid").and_then(Value::as_str).map(str::to_string))
+            .collect();
         let mut inserted = 0;
         for e in new {
             if guids.insert(e.guid.clone()) {
@@ -285,7 +310,7 @@ impl Store {
 
     fn save_tags(&mut self) -> Result<()> {
         let tags = self.tags().clone();
-        marina_core::json::write(&self.tags_path(), &json!({ "tags": tags }))
+        laankit_core::json::write(&self.tags_path(), &json!({ "tags": tags }))
     }
 
     pub fn tag(&mut self, id: &str) -> Option<Obj> {
@@ -312,7 +337,11 @@ impl Store {
             bail!("Tag name cannot be empty");
         }
         let lower = trimmed.to_lowercase();
-        if self.tags().iter().any(|t| Some(s(t, "id").as_str()) != except && s(t, "name").to_lowercase() == lower) {
+        if self
+            .tags()
+            .iter()
+            .any(|t| Some(s(t, "id").as_str()) != except && s(t, "name").to_lowercase() == lower)
+        {
             bail!("A tag with this name already exists");
         }
         Ok(trimmed)
@@ -370,7 +399,11 @@ impl Store {
         if self.tag(tag_id).is_none() {
             bail!("Tag not found");
         }
-        let feed = self.feeds().iter_mut().find(|f| s(f, "id") == feed_id).unwrap();
+        let feed = self
+            .feeds()
+            .iter_mut()
+            .find(|f| s(f, "id") == feed_id)
+            .unwrap();
         if !feed.get("tagIds").is_some_and(Value::is_array) {
             feed.insert("tagIds".into(), json!([]));
         }
@@ -400,13 +433,16 @@ impl Store {
     // --- Settings ------------------------------------------------------------
 
     pub fn get_setting(&self, key: &str) -> Value {
-        marina_core::json::read_object(&self.settings_path()).get(key).cloned().unwrap_or(Value::Null)
+        laankit_core::json::read_object(&self.settings_path())
+            .get(key)
+            .cloned()
+            .unwrap_or(Value::Null)
     }
 
     pub fn set_setting(&self, key: &str, value: Value) -> Result<()> {
-        let mut settings = marina_core::json::read_object(&self.settings_path());
+        let mut settings = laankit_core::json::read_object(&self.settings_path());
         settings.insert(key.into(), value);
-        marina_core::json::write(&self.settings_path(), &settings)
+        laankit_core::json::write(&self.settings_path(), &settings)
     }
 }
 
@@ -415,7 +451,14 @@ mod tests {
     use super::*;
 
     fn entry(guid: &str) -> NewEntry {
-        NewEntry { guid: guid.into(), title: Some("t".into()), link: None, content: None, author: None, published_at: None }
+        NewEntry {
+            guid: guid.into(),
+            title: Some("t".into()),
+            link: None,
+            content: None,
+            author: None,
+            published_at: None,
+        }
     }
 
     #[test]
@@ -424,11 +467,18 @@ mod tests {
         let mut st = Store::open(dir.path()).unwrap();
         let f = st.add_feed("Zeta", "https://z/feed", None, None).unwrap();
         let fid = s(&f, "id");
-        st.add_feed("alpha", "https://a/feed", Some("https://a".into()), None).unwrap();
+        st.add_feed("alpha", "https://a/feed", Some("https://a".into()), None)
+            .unwrap();
         assert!(st.add_feed("dup", "https://z/feed", None, None).is_err());
 
-        assert_eq!(st.insert_entries(&fid, &[entry("1"), entry("2")]).unwrap(), 2);
-        assert_eq!(st.insert_entries(&fid, &[entry("2"), entry("3")]).unwrap(), 1);
+        assert_eq!(
+            st.insert_entries(&fid, &[entry("1"), entry("2")]).unwrap(),
+            2
+        );
+        assert_eq!(
+            st.insert_entries(&fid, &[entry("2"), entry("3")]).unwrap(),
+            1
+        );
 
         let feeds = st.all_feeds();
         assert_eq!(feeds[0]["title"], "alpha");
@@ -464,7 +514,23 @@ mod tests {
         let mut st = Store::open(dir.path()).unwrap();
         st.add_feed("T", "https://t", None, None).unwrap();
         let raw = fs::read_to_string(dir.path().join("data/feeds.json")).unwrap();
-        let keys: Vec<&str> = raw.lines().filter_map(|l| l.trim().strip_prefix('"')).map(|l| l.split('"').next().unwrap()).collect();
-        assert_eq!(keys, ["feeds", "id", "title", "url", "siteUrl", "description", "createdAt", "updatedAt"]);
+        let keys: Vec<&str> = raw
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix('"'))
+            .map(|l| l.split('"').next().unwrap())
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "feeds",
+                "id",
+                "title",
+                "url",
+                "siteUrl",
+                "description",
+                "createdAt",
+                "updatedAt"
+            ]
+        );
     }
 }

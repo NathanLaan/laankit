@@ -3,8 +3,8 @@
 
 use blockliner_core::style::Colour;
 use egui::{vec2, Sense, Stroke, StrokeKind};
-use marina_egui::dialog::{self, ButtonKind, Dialog};
-use marina_egui::theme;
+use laankit_egui::dialog::{self, ButtonKind, Dialog};
+use laankit_egui::theme;
 
 use crate::canvas::paint;
 

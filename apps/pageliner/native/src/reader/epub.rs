@@ -12,9 +12,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use egui::Ui;
-use marina_egui::not_ported::NotPorted;
-use marina_egui::panes::PaneLayout;
-use marina_egui::theme;
+use laankit_egui::not_ported::NotPorted;
+use laankit_egui::panes::PaneLayout;
+use laankit_egui::theme;
 use pageliner_epub::{Book as EpubBook, EpubEvent, EpubView, NativeState, ReaderPrefs};
 use serde_json::{Map, Value};
 

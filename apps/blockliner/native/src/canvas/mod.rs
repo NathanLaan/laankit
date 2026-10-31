@@ -30,7 +30,7 @@ use blockliner_core::snap::snap_point;
 use blockliner_core::style::{common, preset_index, Common, Style, PRESETS};
 use blockliner_core::{Connector, Diagram, End, Point, Rect as ModelRect};
 use egui::{CursorIcon, Key, PointerButton, Pos2, Rect, Sense, Ui, Vec2};
-use marina_egui::theme;
+use laankit_egui::theme;
 
 pub use tools::Tool;
 use tools::{Gesture, Hit, Mods};

@@ -23,7 +23,7 @@ install as `/usr/bin/blockliner`.
   diagram and goes back to "No folder open"; the next start then opens no folder. If the save
   fails, the folder stays open and the error is shown.
 - **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and
-  Marina's title bar (takes a restart).
+  LaanKit's title bar (takes a restart).
 - **Command palette.** Ctrl+K: every command.
 
 ## Keys
@@ -74,7 +74,7 @@ The app (`apps/blockliner/native`):
 | `app`      | Owns everything; routes commands, canvas output, overlay actions and autosave events         |
 | `backend`  | The folder on disk: list, read, create, rename, delete; the debounced atomic autosave; outside changes |
 | `config`   | `ui-preferences.json` in `~/.config/BlockLiner` (the platform equivalent elsewhere)           |
-| `commands` | The marina-egui command registry: shortcuts, palette and the Settings shortcut list         |
+| `commands` | The laankit-egui command registry: shortcuts, palette and the Settings shortcut list         |
 | `canvas`   | The grid, painting, pan and zoom, the tools and their gestures, the label editor            |
 | `views`    | The toolbar, the diagram sidebar, empty states and the status bar                           |
 | `properties` | The Properties pane below the diagram list: the selection's Fill and Stroke (Mixed when they differ), hex fields, Reset Style |
@@ -118,9 +118,9 @@ BLOCKLINER_BLESS=1 cargo test -p blockliner-native the_svg_matches   # rewrite t
 
 | Variable                       | Effect                                                         |
 |--------------------------------|----------------------------------------------------------------|
-| `MARINA_SCREENSHOT=<png>`      | Saves a screenshot once the window has settled (`MARINA_SCREENSHOT_EXIT=1` closes afterwards) |
-| `MARINA_THEME`, `MARINA_SCALE` | Override the theme and scale                                   |
-| `MARINA_OPEN=<dialog>`         | `settings`, `about` or `palette`                               |
+| `LAANKIT_SCREENSHOT=<png>`      | Saves a screenshot once the window has settled (`LAANKIT_SCREENSHOT_EXIT=1` closes afterwards) |
+| `LAANKIT_THEME`, `LAANKIT_SCALE` | Override the theme and scale                                   |
+| `LAANKIT_OPEN=<dialog>`         | `settings`, `about` or `palette`                               |
 
 ## Still to verify by hand
 

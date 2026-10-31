@@ -6,16 +6,16 @@
 //!
 //! It plays the host's part with plain files: the book's state and the reading preferences are
 //! kept in `<temp dir>/pageliner-epub-example/` (`state-<id>.json`, `prefs.json`), with the same
-//! merge rules PageLiner uses. For screenshots (see `marina_egui::diagnostics`):
-//! `MARINA_SCREENSHOT=shot.png MARINA_SCREENSHOT_EXIT=1 MARINA_THEME=midnight`, plus
-//! `MARINA_READING_THEME=light|sepia|dark`, `MARINA_FONT_SIZE=<percent>`, `MARINA_FACE=sans|serif`
-//! and `MARINA_TOC=<n>` (jump to the n-th contents entry).
+//! merge rules PageLiner uses. For screenshots (see `laankit_egui::diagnostics`):
+//! `LAANKIT_SCREENSHOT=shot.png LAANKIT_SCREENSHOT_EXIT=1 LAANKIT_THEME=midnight`, plus
+//! `LAANKIT_READING_THEME=light|sepia|dark`, `LAANKIT_FONT_SIZE=<percent>`, `LAANKIT_FACE=sans|serif`
+//! and `LAANKIT_TOC=<n>` (jump to the n-th contents entry).
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use marina_egui::diagnostics::{self, Screenshot};
-use marina_egui::theme::ThemeState;
+use laankit_egui::diagnostics::{self, Screenshot};
+use laankit_egui::theme::ThemeState;
 use pageliner_epub::{Book, EpubEvent, EpubView, NativeState, ReaderPrefs, ReadingTheme};
 use serde_json::{Map, Value};
 
@@ -64,7 +64,7 @@ struct Reader {
 impl Reader {
     fn new(cc: &eframe::CreationContext<'_>, book: Book) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        marina_egui::fonts::install(&cc.egui_ctx);
+        laankit_egui::fonts::install(&cc.egui_ctx);
         let mut theme = ThemeState::default();
         diagnostics::theme_overrides(&mut theme);
         theme.apply(&cc.egui_ctx);
@@ -74,21 +74,21 @@ impl Reader {
         let state = NativeState::from_book_state(&read_object(&state_file));
         let mut prefs = ReaderPrefs::from_ui_prefs(&read_object(&dir.join("prefs.json")));
         let env = |k: &str| std::env::var(k).ok();
-        if let Some(t) = env("MARINA_READING_THEME") {
+        if let Some(t) = env("LAANKIT_READING_THEME") {
             prefs.theme = ReadingTheme::ALL
                 .into_iter()
                 .find(|r| r.id() == t)
                 .unwrap_or(prefs.theme);
         }
-        if let Some(n) = env("MARINA_FONT_SIZE").and_then(|n| n.parse().ok()) {
+        if let Some(n) = env("LAANKIT_FONT_SIZE").and_then(|n| n.parse().ok()) {
             prefs.font_size = n;
         }
-        match env("MARINA_FACE").as_deref() {
-            Some("sans") => prefs.face = marina_richtext::Face::Sans,
-            Some("serif") => prefs.face = marina_richtext::Face::Serif,
+        match env("LAANKIT_FACE").as_deref() {
+            Some("sans") => prefs.face = laankit_richtext::Face::Sans,
+            Some("serif") => prefs.face = laankit_richtext::Face::Serif,
             _ => {}
         }
-        let toc = env("MARINA_TOC").and_then(|n| n.parse::<usize>().ok());
+        let toc = env("LAANKIT_TOC").and_then(|n| n.parse::<usize>().ok());
         let target = toc
             .and_then(|i| book.toc.get(i))
             .and_then(|e| book.target(&e.target));

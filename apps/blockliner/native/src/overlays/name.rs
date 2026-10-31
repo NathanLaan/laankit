@@ -1,6 +1,6 @@
 //! The New Diagram and Rename Diagram dialogs: one name field.
 
-use marina_egui::dialog::{self, ButtonKind, Dialog};
+use laankit_egui::dialog::{self, ButtonKind, Dialog};
 
 pub struct NameState {
     /// The diagram being renamed; `None` for a new one.

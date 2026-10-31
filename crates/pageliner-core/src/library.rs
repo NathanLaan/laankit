@@ -43,7 +43,11 @@ fn one() -> u32 {
 
 impl Default for Index {
     fn default() -> Self {
-        Self { version: 1, books: Vec::new(), extra: Map::new() }
+        Self {
+            version: 1,
+            books: Vec::new(),
+            extra: Map::new(),
+        }
     }
 }
 
@@ -62,9 +66,12 @@ impl Library {
             fs::create_dir_all(dir.join(sub))?;
         }
         let path = dir.join("pageliner.json");
-        let mut lib = Self { index: Index::default(), dir };
+        let mut lib = Self {
+            index: Index::default(),
+            dir,
+        };
         if path.exists() {
-            lib.index = marina_core::json::read(&path).unwrap_or_default();
+            lib.index = laankit_core::json::read(&path).unwrap_or_default();
         } else {
             lib.save()?;
         }
@@ -85,7 +92,7 @@ impl Library {
     }
 
     pub fn save(&self) -> Result<()> {
-        marina_core::json::write(&self.index_path(), &self.index)
+        laankit_core::json::write(&self.index_path(), &self.index)
     }
 
     pub fn books(&self) -> &[Book] {
@@ -113,7 +120,9 @@ impl Library {
         let meta = metadata::extract(source);
         let cover = meta.cover.and_then(|c| {
             let name = format!("{id}.{}", c.ext);
-            fs::write(self.covers_dir().join(&name), c.data).ok().map(|_| name)
+            fs::write(self.covers_dir().join(&name), c.data)
+                .ok()
+                .map(|_| name)
         });
 
         let book = Book {
@@ -133,7 +142,9 @@ impl Library {
     }
 
     pub fn delete(&mut self, id: &str) -> Result<bool> {
-        let Some(book) = self.get(id).cloned() else { return Ok(false) };
+        let Some(book) = self.get(id).cloned() else {
+            return Ok(false);
+        };
         let _ = fs::remove_file(self.books_dir().join(&book.file));
         if let Some(c) = &book.cover {
             let _ = fs::remove_file(self.covers_dir().join(c));
@@ -149,18 +160,20 @@ impl Library {
     }
 
     pub fn cover_file(&self, id: &str) -> Option<PathBuf> {
-        self.get(id).and_then(|b| b.cover.as_ref()).map(|c| self.covers_dir().join(c))
+        self.get(id)
+            .and_then(|b| b.cover.as_ref())
+            .map(|c| self.covers_dir().join(c))
     }
 
     pub fn get_state(&self, id: &str) -> Map<String, Value> {
-        marina_core::json::read_object(&self.state_path(id))
+        laankit_core::json::read_object(&self.state_path(id))
     }
 
     pub fn set_state(&self, id: &str, patch: &Value) -> Result<Map<String, Value>> {
         let mut next = self.get_state(id);
-        marina_core::json::merge(&mut next, patch);
+        laankit_core::json::merge(&mut next, patch);
         next.insert("lastOpenedAt".into(), Value::String(now_iso()));
-        marina_core::json::write(&self.state_path(id), &next)?;
+        laankit_core::json::write(&self.state_path(id), &next)?;
         Ok(next)
     }
 }
@@ -211,6 +224,6 @@ mod tests {
   ]
 }"#;
         let idx: Index = serde_json::from_str(raw).unwrap();
-        assert_eq!(marina_core::json::to_pretty(&idx).unwrap(), raw);
+        assert_eq!(laankit_core::json::to_pretty(&idx).unwrap(), raw);
     }
 }

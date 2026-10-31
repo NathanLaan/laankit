@@ -1,8 +1,8 @@
 # Plan: Refresh ThreadLiner UI to Match NoteLiner
 
 Status: Draft for review
-Source app for reference: `apps/noteliner/` (within the Marina monorepo)
-Target app: `apps/threadliner/` (within the Marina monorepo)
+Source app for reference: `apps/noteliner/` (within the LaanKit monorepo)
+Target app: `apps/threadliner/` (within the LaanKit monorepo)
 
 ## Goal
 

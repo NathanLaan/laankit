@@ -19,7 +19,7 @@ use crate::config::Paths;
 pub(crate) fn harness(paths: Paths) -> Harness<'static, NoteLinerApp> {
     Harness::builder()
         .with_size(egui::vec2(1400.0, 900.0))
-        .with_context_setup(marina_egui::fonts::install)
+        .with_context_setup(laankit_egui::fonts::install)
         .build_ui_state(
             |ui, app: &mut NoteLinerApp| app.show(ui),
             NoteLinerApp::new(None, paths),
@@ -111,7 +111,7 @@ fn new_project_file_type_rename_move_delete() {
     assert!(project.join(".git").exists());
     assert!(project.join("noteliner.json").exists());
     // It's now a recent project, in the Tauri host's shape.
-    let recent: Vec<Value> = marina_core::json::read(&paths.recent_path()).unwrap();
+    let recent: Vec<Value> = laankit_core::json::read(&paths.recent_path()).unwrap();
     assert_eq!(recent[0]["path"], project.display().to_string());
 
     // New File, then type into it: the autosave writes after 500 ms.

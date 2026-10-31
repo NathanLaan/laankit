@@ -30,8 +30,8 @@ pub mod tags;
 use std::collections::BTreeSet;
 
 use egui::RichText;
-use marina_egui::dialog::{self, ButtonKind, Confirm, Dialog};
-use marina_egui::{fonts, icons, settings as shell, theme};
+use laankit_egui::dialog::{self, ButtonKind, Confirm, Dialog};
+use laankit_egui::{fonts, icons, settings as shell, theme};
 
 use crate::config::Recent;
 use crate::model::Entry;

@@ -5,7 +5,7 @@ JSON. It supports RSS 2.0, Atom and JSON Feed, with read-state tracking and
 optional cross-device sync through a git remote.
 
 It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) over
-the shared `marina-*` crates — no webview, no JavaScript. The shipped binary is
+the shared `laankit-*` crates — no webview, no JavaScript. The shipped binary is
 `threadliner`.
 
 - **Run, build, install:** see the [root README](../../README.md).
@@ -16,7 +16,7 @@ the shared `marina-*` crates — no webview, no JavaScript. The shipped binary i
 
 - Subscribe to RSS 2.0, Atom and JSON Feed sources
 - Article list with read/unread tracking and HTML article rendering
-  (`marina-richtext`)
+  (`laankit-richtext`)
 - Tags and filtering
 - Desktop notifications for new items
 - Optional git sync of feeds and read state

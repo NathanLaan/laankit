@@ -2,7 +2,7 @@
 
 mod common;
 
-use marina_richtext::{Align, Block, Position};
+use laankit_richtext::{Align, Block, Position};
 use pageliner_epub::{Book, Location, NativeState};
 use serde_json::json;
 

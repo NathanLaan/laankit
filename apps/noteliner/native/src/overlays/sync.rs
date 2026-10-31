@@ -3,9 +3,9 @@
 //! same confirmations.
 
 use egui::{pos2, vec2, Align, Color32, Layout, RichText, Sense};
-use marina_core::git::SyncStatus;
-use marina_egui::dialog::{self, ButtonKind, Confirm, Dialog, Size};
-use marina_egui::{icons, theme};
+use laankit_core::git::SyncStatus;
+use laankit_egui::dialog::{self, ButtonKind, Confirm, Dialog, Size};
+use laankit_egui::{icons, theme};
 
 use crate::backend::Op;
 
@@ -91,7 +91,7 @@ fn dot(status: Option<&SyncStatus>) -> Color32 {
         Some(SyncStatus::Synced) => Color32::from_rgb(0x4c, 0xaf, 0x50),
         Some(SyncStatus::Ahead { .. }) => Color32::from_rgb(0x42, 0x8b, 0xe8),
         Some(SyncStatus::Behind { .. }) => Color32::from_rgb(0xf0, 0x9a, 0x2b),
-        Some(SyncStatus::Diverged { .. } | SyncStatus::Error { .. }) => marina_egui::toast::DANGER,
+        Some(SyncStatus::Diverged { .. } | SyncStatus::Error { .. }) => laankit_egui::toast::DANGER,
         _ => Color32::from_gray(0x88),
     }
 }

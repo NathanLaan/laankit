@@ -36,11 +36,17 @@ impl Yaml {
             Yaml::Null => Value::Null,
             Yaml::Bool(b) => Value::Bool(*b),
             Yaml::Int(i) => Value::Number((*i).into()),
-            Yaml::Float(f) => Number::from_f64(*f).map(Value::Number).unwrap_or(Value::Null),
+            Yaml::Float(f) => Number::from_f64(*f)
+                .map(Value::Number)
+                .unwrap_or(Value::Null),
             Yaml::Str(s) => Value::String(s.clone()),
             Yaml::Date(d) => Value::String(iso(d)),
             Yaml::Seq(s) => Value::Array(s.iter().map(Yaml::to_json).collect()),
-            Yaml::Map(m) => Value::Object(m.iter().map(|(k, v)| (k.clone(), v.to_json())).collect::<Map<_, _>>()),
+            Yaml::Map(m) => Value::Object(
+                m.iter()
+                    .map(|(k, v)| (k.clone(), v.to_json()))
+                    .collect::<Map<_, _>>(),
+            ),
         }
     }
 
@@ -52,12 +58,20 @@ impl Yaml {
                 Some(i) => Yaml::Int(i),
                 None => {
                     let f = n.as_f64().unwrap_or(0.0);
-                    if f.fract() == 0.0 && f.abs() < 9.0e15 { Yaml::Int(f as i64) } else { Yaml::Float(f) }
+                    if f.fract() == 0.0 && f.abs() < 9.0e15 {
+                        Yaml::Int(f as i64)
+                    } else {
+                        Yaml::Float(f)
+                    }
                 }
             },
             Value::String(s) => Yaml::Str(s.clone()),
             Value::Array(a) => Yaml::Seq(a.iter().map(Yaml::from_json).collect()),
-            Value::Object(o) => Yaml::Map(o.iter().map(|(k, v)| (k.clone(), Yaml::from_json(v))).collect()),
+            Value::Object(o) => Yaml::Map(
+                o.iter()
+                    .map(|(k, v)| (k.clone(), Yaml::from_json(v)))
+                    .collect(),
+            ),
         }
     }
 }
@@ -82,7 +96,9 @@ pub fn load(src: &str) -> Result<Yaml, String> {
                     return Err("expected a single document in the stream, but found more".into());
                 }
             }
-            ev => b.event(ev).map_err(|e| format!("{e} at line {}", mark.line()))?,
+            ev => b
+                .event(ev)
+                .map_err(|e| format!("{e} at line {}", mark.line()))?,
         }
     }
     Ok(b.root.unwrap_or(Yaml::Null))
@@ -107,7 +123,11 @@ impl Builder {
             Event::Scalar(value, style, anchor, tag) => {
                 let is_plain = style == TScalarStyle::Plain;
                 let forced_str = tag.as_ref().is_some_and(|t| t.suffix == "str");
-                let node = if is_plain && !forced_str { resolve_plain(&value) } else { Yaml::Str(value.clone()) };
+                let node = if is_plain && !forced_str {
+                    resolve_plain(&value)
+                } else {
+                    Yaml::Str(value.clone())
+                };
                 // A plain `<<` in key position is a merge key.
                 let merge = is_plain && value == "<<";
                 self.push(node, anchor, merge)
@@ -351,13 +371,21 @@ fn is_yaml_float(s: &str) -> bool {
         Some(i) => (&mant[..i], Some(&mant[i + 1..])),
         None => (mant, None),
     };
-    let int_ok = int == "0" || (int.as_bytes().first().is_some_and(|c| (b'1'..=b'9').contains(c)) && digits_us(int));
+    let int_ok = int == "0"
+        || (int
+            .as_bytes()
+            .first()
+            .is_some_and(|c| (b'1'..=b'9').contains(c))
+            && digits_us(int));
     if int_ok && frac.is_none_or(digits_us) {
         // Plain integers are ints, not floats; js-yaml checks int first.
         return true;
     }
     // \.[0-9_]+([eE][-+]?[0-9]+)?  (no sign)
-    if b.first() == Some(&b'.') && int.is_empty() && frac.is_some_and(|f| !f.is_empty() && digits_us(f)) {
+    if b.first() == Some(&b'.')
+        && int.is_empty()
+        && frac.is_some_and(|f| !f.is_empty() && digits_us(f))
+    {
         return true;
     }
     // Sexagesimal float: [-+]?[0-9][0-9_]*(:[0-5]?[0-9])+\.[0-9_]*
@@ -366,7 +394,8 @@ fn is_yaml_float(s: &str) -> bool {
             let head = &mant[..dot];
             let mut parts = head.split(':');
             let first = parts.next().unwrap_or("");
-            let first_ok = first.as_bytes().first().is_some_and(u8::is_ascii_digit) && digits_us(first);
+            let first_ok =
+                first.as_bytes().first().is_some_and(u8::is_ascii_digit) && digits_us(first);
             let rest_ok = parts.all(|p| {
                 let p = p.as_bytes();
                 match p.len() {
@@ -402,21 +431,41 @@ fn construct_float(s: &str) -> f64 {
 fn construct_timestamp(s: &str) -> Option<DateTime<Utc>> {
     let b = s.as_bytes();
     // ^\d{4}-\d\d-\d\d$
-    if b.len() == 10 && b[4] == b'-' && b[7] == b'-' && s.bytes().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit()) {
-        let d = NaiveDate::from_ymd_opt(s[0..4].parse().ok()?, s[5..7].parse().ok()?, s[8..10].parse().ok()?)?;
+    if b.len() == 10
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && s.bytes()
+            .enumerate()
+            .all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+    {
+        let d = NaiveDate::from_ymd_opt(
+            s[0..4].parse().ok()?,
+            s[5..7].parse().ok()?,
+            s[8..10].parse().ok()?,
+        )?;
         return Some(Utc.from_utc_datetime(&d.and_hms_opt(0, 0, 0)?));
     }
     // ^\d{4}-\d\d?-\d\d?([Tt]|[ \t]+)\d\d?:\d\d:\d\d(\.\d*)?([ \t]*(Z|[-+]\d\d?(:\d\d)?))?$
     let num = |s: &str, lo: usize, hi: usize| -> Option<u32> {
-        (s.len() >= lo && s.len() <= hi && s.bytes().all(|c| c.is_ascii_digit())).then(|| s.parse().ok()).flatten()
+        (s.len() >= lo && s.len() <= hi && s.bytes().all(|c| c.is_ascii_digit()))
+            .then(|| s.parse().ok())
+            .flatten()
     };
     let (date, rest) = s.split_at(s.find(['T', 't', ' ', '\t'])?);
     let mut dp = date.split('-');
-    let (y, mo, d) = (num(dp.next()?, 4, 4)?, num(dp.next()?, 1, 2)?, num(dp.next()?, 1, 2)?);
+    let (y, mo, d) = (
+        num(dp.next()?, 4, 4)?,
+        num(dp.next()?, 1, 2)?,
+        num(dp.next()?, 1, 2)?,
+    );
     if dp.next().is_some() {
         return None;
     }
-    let rest = if rest.starts_with(['T', 't']) { &rest[1..] } else { rest.trim_start_matches([' ', '\t']) };
+    let rest = if rest.starts_with(['T', 't']) {
+        &rest[1..]
+    } else {
+        rest.trim_start_matches([' ', '\t'])
+    };
     let tz_at = rest.find(['Z', '+', '-', ' ', '\t']).unwrap_or(rest.len());
     let (time, tz) = rest.split_at(tz_at);
     let (hms, frac) = match time.split_once('.') {
@@ -424,16 +473,28 @@ fn construct_timestamp(s: &str) -> Option<DateTime<Utc>> {
         None => (time, None),
     };
     let mut tp = hms.split(':');
-    let (h, mi, sec) = (num(tp.next()?, 1, 2)?, num(tp.next()?, 2, 2)?, num(tp.next()?, 2, 2)?);
+    let (h, mi, sec) = (
+        num(tp.next()?, 1, 2)?,
+        num(tp.next()?, 2, 2)?,
+        num(tp.next()?, 2, 2)?,
+    );
     if tp.next().is_some() || frac.is_some_and(|f| !f.bytes().all(|c| c.is_ascii_digit())) {
         return None;
     }
-    let ms: u32 = frac.map(|f| format!("{:0<3}", &f[..f.len().min(3)]).parse().unwrap_or(0)).unwrap_or(0);
+    let ms: u32 = frac
+        .map(|f| format!("{:0<3}", &f[..f.len().min(3)]).parse().unwrap_or(0))
+        .unwrap_or(0);
     let tz = tz.trim_start_matches([' ', '\t']);
     let offset_min: i64 = match tz {
         "" | "Z" => 0,
         _ => {
-            let sign = if tz.starts_with('-') { -1 } else if tz.starts_with('+') { 1 } else { return None };
+            let sign = if tz.starts_with('-') {
+                -1
+            } else if tz.starts_with('+') {
+                1
+            } else {
+                return None;
+            };
             let body = &tz[1..];
             let (th, tm) = match body.split_once(':') {
                 Some((a, b)) => (num(a, 1, 2)?, num(b, 2, 2)?),
@@ -465,7 +526,11 @@ fn js_number(f: f64) -> String {
         return "NaN".into();
     }
     if f.is_infinite() {
-        return if f > 0.0 { "Infinity".into() } else { "-Infinity".into() };
+        return if f > 0.0 {
+            "Infinity".into()
+        } else {
+            "-Infinity".into()
+        };
     }
     if f.fract() == 0.0 && f.abs() < 1e21 {
         return format!("{}", f as i128);
@@ -487,7 +552,11 @@ fn represent_float(f: f64) -> String {
         return ".nan".into();
     }
     if f.is_infinite() {
-        return if f > 0.0 { ".inf".into() } else { "-.inf".into() };
+        return if f > 0.0 {
+            ".inf".into()
+        } else {
+            "-.inf".into()
+        };
     }
     if f == 0.0 && f.is_sign_negative() {
         return "-0.0".into();
@@ -514,7 +583,11 @@ fn write_node(level: usize, v: &Yaml, block: bool, compact: bool, is_key: bool) 
         Yaml::Bool(b) => b.to_string(),
         // JS has one number type: integral values use the int representer.
         Yaml::Int(i) => i.to_string(),
-        Yaml::Float(f) if f.fract() == 0.0 && !(*f == 0.0 && f.is_sign_negative()) && f.is_finite() => js_number(*f),
+        Yaml::Float(f)
+            if f.fract() == 0.0 && !(*f == 0.0 && f.is_sign_negative()) && f.is_finite() =>
+        {
+            js_number(*f)
+        }
         Yaml::Float(f) => represent_float(*f),
         Yaml::Date(d) => iso(d),
         Yaml::Str(s) => write_scalar(s, level, is_key),
@@ -531,7 +604,10 @@ fn write_node(level: usize, v: &Yaml, block: bool, compact: bool, is_key: bool) 
                 }
                 r
             } else {
-                let parts: Vec<String> = items.iter().map(|i| write_node(level, i, false, false, false)).collect();
+                let parts: Vec<String> = items
+                    .iter()
+                    .map(|i| write_node(level, i, false, false, false))
+                    .collect();
                 format!("[{}]", parts.join(", "))
             }
         }
@@ -573,8 +649,10 @@ fn write_node(level: usize, v: &Yaml, block: bool, compact: bool, is_key: bool) 
     }
 }
 
-const DEPRECATED_BOOLEANS: [&str; 16] =
-    ["y", "Y", "yes", "Yes", "YES", "on", "On", "ON", "n", "N", "no", "No", "NO", "off", "Off", "OFF"];
+const DEPRECATED_BOOLEANS: [&str; 16] = [
+    "y", "Y", "yes", "Yes", "YES", "on", "On", "ON", "n", "N", "no", "No", "NO", "off", "Off",
+    "OFF",
+];
 
 fn is_white(c: u16) -> bool {
     c == 0x20 || c == 0x09
@@ -603,8 +681,25 @@ fn is_plain_safe_first(c: u16) -> bool {
         && !is_white(c)
         && !matches!(
             c,
-            0x2D | 0x3F | 0x3A | 0x2C | 0x5B | 0x5D | 0x7B | 0x7D | 0x23 | 0x26 | 0x2A | 0x21 | 0x7C | 0x3D | 0x3E | 0x27
-                | 0x22 | 0x25 | 0x40 | 0x60
+            0x2D | 0x3F
+                | 0x3A
+                | 0x2C
+                | 0x5B
+                | 0x5D
+                | 0x7B
+                | 0x7D
+                | 0x23
+                | 0x26
+                | 0x2A
+                | 0x21
+                | 0x7C
+                | 0x3D
+                | 0x3E
+                | 0x27
+                | 0x22
+                | 0x25
+                | 0x40
+                | 0x60
         )
 }
 
@@ -632,7 +727,8 @@ fn choose_style(s: &[u16], single_line_only: bool, line_width: usize, text: &str
         if !single_line_only && c == 0x0A {
             has_line_break = true;
             let line_len = i as isize - prev_break - 1;
-            has_foldable = has_foldable || (line_len > line_width as isize && s[(prev_break + 1) as usize] != 0x20);
+            has_foldable = has_foldable
+                || (line_len > line_width as isize && s[(prev_break + 1) as usize] != 0x20);
             prev_break = i as isize;
         } else if !is_printable(c) {
             return Style::Double;
@@ -644,12 +740,21 @@ fn choose_style(s: &[u16], single_line_only: bool, line_width: usize, text: &str
     if !single_line_only {
         let line_len = i as isize - prev_break - 1;
         has_foldable = has_foldable
-            || (line_len > line_width as isize && s.get((prev_break + 1) as usize).copied() != Some(0x20));
+            || (line_len > line_width as isize
+                && s.get((prev_break + 1) as usize).copied() != Some(0x20));
     }
     if !has_line_break && !has_foldable {
-        return if plain && !is_ambiguous(text) { Style::Plain } else { Style::Single };
+        return if plain && !is_ambiguous(text) {
+            Style::Plain
+        } else {
+            Style::Single
+        };
     }
-    if has_foldable { Style::Folded } else { Style::Literal }
+    if has_foldable {
+        Style::Folded
+    } else {
+        Style::Literal
+    }
 }
 
 fn write_scalar(text: &str, level: usize, is_key: bool) -> String {
@@ -665,10 +770,18 @@ fn write_scalar(text: &str, level: usize, is_key: bool) -> String {
     match choose_style(&units, is_key, line_width, text) {
         Style::Plain => text.to_string(),
         Style::Single => format!("'{}'", text.replace('\'', "''")),
-        Style::Literal => format!("|{}{}", block_header(&units), drop_ending_newline(&indent_string(&units, indent))),
+        Style::Literal => format!(
+            "|{}{}",
+            block_header(&units),
+            drop_ending_newline(&indent_string(&units, indent))
+        ),
         Style::Folded => {
             let folded = fold_string(&units, line_width);
-            format!(">{}{}", block_header(&units), drop_ending_newline(&indent_string(&folded, indent)))
+            format!(
+                ">{}{}",
+                block_header(&units),
+                drop_ending_newline(&indent_string(&folded, indent))
+            )
         }
         Style::Double => format!("\"{}\"", escape_string(&units)),
     }
@@ -676,10 +789,20 @@ fn write_scalar(text: &str, level: usize, is_key: bool) -> String {
 
 fn block_header(s: &[u16]) -> String {
     let leading_nl = s.iter().take_while(|&&c| c == 0x0A).count();
-    let indicator = if s.get(leading_nl) == Some(&0x20) { INDENT.to_string() } else { String::new() };
+    let indicator = if s.get(leading_nl) == Some(&0x20) {
+        INDENT.to_string()
+    } else {
+        String::new()
+    };
     let clip = s.last() == Some(&0x0A);
     let keep = clip && (s.len() >= 2 && s[s.len() - 2] == 0x0A || s.len() == 1);
-    let chomp = if keep { "+" } else if clip { "" } else { "-" };
+    let chomp = if keep {
+        "+"
+    } else if clip {
+        ""
+    } else {
+        "-"
+    };
     format!("{indicator}{chomp}\n")
 }
 
@@ -733,7 +856,9 @@ fn fold_line(line: &[u16], width: usize) -> Vec<u16> {
         return line.to_vec();
     }
     // breakRe = / [^ ]/g
-    let breaks: Vec<usize> = (0..line.len().saturating_sub(1)).filter(|&i| line[i] == 0x20 && line[i + 1] != 0x20).collect();
+    let breaks: Vec<usize> = (0..line.len().saturating_sub(1))
+        .filter(|&i| line[i] == 0x20 && line[i + 1] != 0x20)
+        .collect();
     let (mut start, mut curr) = (0usize, 0usize);
     let mut result: Vec<u16> = Vec::new();
     for next in breaks {
@@ -760,7 +885,13 @@ fn escape_string(s: &[u16]) -> String {
     let mut out = String::new();
     let mut i = 0;
     let hex = |c: u32| {
-        let (h, len) = if c <= 0xFF { ('x', 2) } else if c <= 0xFFFF { ('u', 4) } else { ('U', 8) };
+        let (h, len) = if c <= 0xFF {
+            ('x', 2)
+        } else if c <= 0xFFFF {
+            ('u', 4)
+        } else {
+            ('U', 8)
+        };
         format!("\\{h}{:0>len$}", format!("{c:X}"), len = len)
     };
     while i < s.len() {
@@ -815,7 +946,10 @@ mod tests {
         let src = "id: 6f1c2a4e-1111-4222-8333-944455556666\nname: Meeting notes\ntags:\n  - work\n  - 'true'\ncreated: '2026-01-02T03:04:05.000Z'\nupdated: 2026-01-02T03:04:05.000Z\n";
         let y = load(src).unwrap();
         assert!(matches!(y.get("updated"), Some(Yaml::Date(_))));
-        assert_eq!(y.get("created"), Some(&Yaml::Str("2026-01-02T03:04:05.000Z".into())));
+        assert_eq!(
+            y.get("created"),
+            Some(&Yaml::Str("2026-01-02T03:04:05.000Z".into()))
+        );
         assert_eq!(dump(&y), src);
     }
 
@@ -863,7 +997,14 @@ mod tests {
         assert_eq!(load("a: .5").unwrap().get("a"), Some(&Yaml::Float(0.5)));
         assert_eq!(load("a: ~").unwrap().get("a"), Some(&Yaml::Null));
         assert!(load("a: 1\na: 2").is_err());
-        assert_eq!(load("base: &b {x: 1}\nd:\n  <<: *b\n  y: 2").unwrap().get("d").unwrap().get("x"), Some(&Yaml::Int(1)));
+        assert_eq!(
+            load("base: &b {x: 1}\nd:\n  <<: *b\n  y: 2")
+                .unwrap()
+                .get("d")
+                .unwrap()
+                .get("x"),
+            Some(&Yaml::Int(1))
+        );
     }
 }
 
@@ -892,11 +1033,18 @@ fn yaml_diff() {
             other => {
                 load_bad += 1;
                 if load_bad <= 5 {
-                    eprintln!("LOAD MISMATCH\n{theirs}\n js: {}\n us: {:?}", c["back"], other.map(|y| y.to_json()));
+                    eprintln!(
+                        "LOAD MISMATCH\n{theirs}\n js: {}\n us: {:?}",
+                        c["back"],
+                        other.map(|y| y.to_json())
+                    );
                 }
             }
         }
     }
-    eprintln!("{} cases: {dump_bad} dump mismatches, {load_bad} load mismatches", cases.len());
+    eprintln!(
+        "{} cases: {dump_bad} dump mismatches, {load_bad} load mismatches",
+        cases.len()
+    );
     assert_eq!((dump_bad, load_bad), (0, 0));
 }

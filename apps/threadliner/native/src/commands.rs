@@ -1,10 +1,10 @@
 //! ThreadLiner's commands and keyboard shortcuts (`App.svelte`'s
-//! `handleGlobalKeydown`), registered with marina-egui's command registry so
+//! `handleGlobalKeydown`), registered with laankit-egui's command registry so
 //! the same list drives the shortcuts, the command palette and Settings →
 //! Keyboard Shortcuts.
 
 use egui::{Key, Modifiers};
-use marina_egui::commands::{Binding, Command, Registry, ShortcutEntry};
+use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
 
 /// Everything a shortcut, toolbar button or palette entry can ask for.
 #[derive(Clone, Debug, PartialEq)]

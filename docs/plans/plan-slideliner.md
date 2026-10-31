@@ -23,7 +23,7 @@ instead. Three reasons:
    builds (`lib/slides.js`, `lib/layout.js`, `Slide.svelte`,
    `deck-export-service.js`) are exactly what a standalone SlideLiner needs,
    and would be proven against real decks by then. If presentations outgrow
-   NoteLiner, lift them into a `@marina/slides` package and build this app
+   NoteLiner, lift them into a `@laankit/slides` package and build this app
    around them. Building the app first means owning two Markdown editors and
    a vault split across two tools.
 
@@ -37,7 +37,7 @@ This document stays on the shelf rather than being deleted — if presentations
 outgrow NoteLiner, §4 (architecture) and §5 (phases) remain the plan, with
 the then-existing NoteLiner modules as the starting point.
 
-A fourth marina app: write a talk as one Markdown document, get slides,
+A fourth laankit app: write a talk as one Markdown document, get slides,
 speaker notes, a presenter view, and PDF / HTML / PPTX export. Modelled on
 [iA Presenter](https://ia.net/presenter).
 
@@ -190,7 +190,7 @@ core (what makes it a credible iA Presenter alternative), **L** = later.
 | X7 | Markdown export (strip notes / keep notes variants) | M |
 | X8 | Static-site publish (folder of HTML) | L |
 
-### 3.6 App shell (all from `@marina/desktop-ui`, mostly free)
+### 3.6 App shell (all from `@laankit/desktop-ui`, mostly free)
 
 | # | Feature | Tier |
 |---|---|---|
@@ -299,7 +299,7 @@ the PDF matches the screen because it *is* the screen.
 ### 4.4 Presentation windows and state
 
 - `present-service.js` opens two windows through the existing
-  `@marina/desktop-ui/secondary-window` helper (`id: 'stage'`,
+  `@laankit/desktop-ui/secondary-window` helper (`id: 'stage'`,
   `id: 'presenter'`) — it already does dev-URL/prod-file switching, sandbox
   webPreferences, and focus-if-open.
 - Stage window: `fullscreen: true` on the display chosen in `DisplayPicker`,
@@ -362,12 +362,12 @@ was built.
 
 Copy PageLiner's shell: `package.json`, `vite.config.mjs` (port 5254),
 `scripts/dev.js`, `scripts/build-icons.sh`, `electron-builder` block, icon
-SVG. Wire `@marina/desktop-ui` chrome — titlebar, themes, UI scale, command
+SVG. Wire `@laankit/desktop-ui` chrome — titlebar, themes, UI scale, command
 palette, settings modal, status bar. Add root `package.json` scripts
 (`dev:slideliner`, `electron:slideliner`, `build:slideliner`,
 `icons:rasterize:slideliner`) and the README app entry.
 
-**Done when:** `npm run electron:slideliner` opens a themed marina window
+**Done when:** `npm run electron:slideliner` opens a themed laankit window
 with working settings and palette.
 
 ### Phase 1 — Parser + preview (2–3 days) ← the risky one, do it early

@@ -8,19 +8,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use egui::{Frame, Ui};
-use marina_core::git::SyncStatus;
-use marina_editor::attachment_markdown;
-use marina_egui::about::{AboutAction, AboutIcon, AboutModal, UpdateStatus};
-use marina_egui::commands::{Recents, Registry};
-use marina_egui::diagnostics::{self, Screenshot};
-use marina_egui::dialog::Confirm;
-use marina_egui::file_dialog::FileDialogs;
-use marina_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
-use marina_egui::theme::{self, ThemeState};
-use marina_egui::titlebar::{self, TitleBar, TitleBarAction};
-use marina_egui::toast::Toasts;
-use marina_egui::toolbar::{self, ToolbarButton};
-use marina_egui::{fonts, icons, window};
+use laankit_core::git::SyncStatus;
+use laankit_editor::attachment_markdown;
+use laankit_egui::about::{AboutAction, AboutIcon, AboutModal, UpdateStatus};
+use laankit_egui::commands::{Recents, Registry};
+use laankit_egui::diagnostics::{self, Screenshot};
+use laankit_egui::dialog::Confirm;
+use laankit_egui::file_dialog::FileDialogs;
+use laankit_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
+use laankit_egui::theme::{self, ThemeState};
+use laankit_egui::titlebar::{self, TitleBar, TitleBarAction};
+use laankit_egui::toast::Toasts;
+use laankit_egui::toolbar::{self, ToolbarButton};
+use laankit_egui::{fonts, icons, window};
 use noteliner_slides::{
     normalize_presentation, Direction, PresentationSettings, PresenterAction, SettingsOutcome,
     SlideEdit,
@@ -58,9 +58,9 @@ const BOUNDS_DEBOUNCE_SECS: f64 = 1.0;
 /// eframe's own window-geometry key, which NoteLiner keeps blank (see `save`).
 const EFRAME_WINDOW_KEY: &str = "window";
 const DESCRIPTION: &str = "An outliner-style note-taking application built with Rust and egui.";
-const REPO_URL: &str = "https://github.com/NathanLaan/marina/";
+const REPO_URL: &str = "https://github.com/NathanLaan/laankit/";
 
-/// `MARINA_OPEN` / `MARINA_PROJECT` / `MARINA_FILE`: what to open at
+/// `LAANKIT_OPEN` / `LAANKIT_PROJECT` / `LAANKIT_FILE`: what to open at
 /// launch, for screenshots and tests.
 #[derive(Default)]
 struct Diagnostics {
@@ -129,7 +129,7 @@ pub struct NoteLinerApp {
     backend: Backend,
     theme: ThemeState,
     prefs: Prefs,
-    /// Whether the window was built undecorated, with Marina's title bar.
+    /// Whether the window was built undecorated, with LaanKit's title bar.
     custom_titlebar: bool,
     initialized: bool,
     project: Option<Project>,
@@ -250,9 +250,9 @@ impl NoteLinerApp {
             bounds_changed_at: None,
             screenshot: Screenshot::from_env(),
             diagnostics: Diagnostics {
-                open: env("MARINA_OPEN"),
-                project: env("MARINA_PROJECT").map(PathBuf::from),
-                file: env("MARINA_FILE"),
+                open: env("LAANKIT_OPEN"),
+                project: env("LAANKIT_PROJECT").map(PathBuf::from),
+                file: env("LAANKIT_FILE"),
             },
         }
     }
@@ -1163,7 +1163,7 @@ impl NoteLinerApp {
         if self.spell_checker.is_none() {
             if let Some(Some(checker)) = self.spell.ready() {
                 self.editor.set_spell_checker(Some(
-                    checker.clone() as Arc<dyn marina_editor::SpellChecker>
+                    checker.clone() as Arc<dyn laankit_editor::SpellChecker>
                 ));
                 self.spell_checker = Some(checker);
             }
@@ -2690,7 +2690,7 @@ impl NoteLinerApp {
             Overlay::About => {
                 let modal = AboutModal::new("NoteLiner", env!("CARGO_PKG_VERSION"))
                     .description(DESCRIPTION)
-                    .repo(REPO_URL, Some("github.com/NathanLaan/marina"))
+                    .repo(REPO_URL, Some("github.com/NathanLaan/laankit"))
                     .icon(AboutIcon::Glyph(icons::FILE_LINES))
                     .update(&self.update);
                 match modal.show(ctx) {
@@ -2789,7 +2789,7 @@ impl NoteLinerApp {
             let mut out = Vec::new();
             if let (false, Some(p)) = (q.is_empty(), project) {
                 for tag in model::all_tags(&p.index) {
-                    let score = marina_egui::commands::fuzzy_score(&tag, q);
+                    let score = laankit_egui::commands::fuzzy_score(&tag, q);
                     if score == 0 {
                         continue;
                     }
@@ -2809,7 +2809,7 @@ impl NoteLinerApp {
                     });
                 }
                 for e in &p.entries {
-                    let score = marina_egui::commands::fuzzy_score(&e.name, q);
+                    let score = laankit_egui::commands::fuzzy_score(&e.name, q);
                     if score == 0 {
                         continue;
                     }
@@ -2826,7 +2826,7 @@ impl NoteLinerApp {
             }
             if project.is_none() || !q.is_empty() {
                 for r in recent {
-                    let score = marina_egui::commands::fuzzy_score(&r.name, q);
+                    let score = laankit_egui::commands::fuzzy_score(&r.name, q);
                     if !q.is_empty() && score == 0 {
                         continue;
                     }

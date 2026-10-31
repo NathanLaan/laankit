@@ -19,8 +19,15 @@ fn dir(p: &Project) -> Option<PathBuf> {
 
 /// "meeting-notes.md" → "Meeting Notes".
 pub fn prettify(filename: &str) -> String {
-    let base = if filename.to_lowercase().ends_with(".md") { &filename[..filename.len() - 3] } else { filename };
-    let spaced: String = base.chars().map(|c| if c == '-' || c == '_' { ' ' } else { c }).collect();
+    let base = if filename.to_lowercase().ends_with(".md") {
+        &filename[..filename.len() - 3]
+    } else {
+        filename
+    };
+    let spaced: String = base
+        .chars()
+        .map(|c| if c == '-' || c == '_' { ' ' } else { c })
+        .collect();
     let collapsed = spaced.split_whitespace().collect::<Vec<_>>().join(" ");
     // /\b\w/g → uppercase: \w and \b are ASCII-only in JS.
     let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
@@ -28,14 +35,20 @@ pub fn prettify(filename: &str) -> String {
     let mut prev_word = false;
     for c in collapsed.chars() {
         let w = is_word(c);
-        out.push(if w && !prev_word { c.to_ascii_uppercase() } else { c });
+        out.push(if w && !prev_word {
+            c.to_ascii_uppercase()
+        } else {
+            c
+        });
         prev_word = w;
     }
     out
 }
 
 fn kind_of(path: &Path) -> &'static str {
-    let Ok(raw) = fs::read_to_string(path) else { return "note" };
+    let Ok(raw) = fs::read_to_string(path) else {
+        return "note";
+    };
     match frontmatter::get_field(&frontmatter::parse(&raw).data, "kind") {
         Some(Yaml::Str(k)) if k == "deck" => "deck",
         Some(Yaml::Str(k)) if k == "slide" => "slide",
@@ -46,7 +59,9 @@ fn kind_of(path: &Path) -> &'static str {
 /// `[{ id, name, kind }]`, sorted by display name.
 pub fn list(p: &Project) -> Vec<Value> {
     let Some(dir) = dir(p) else { return Vec::new() };
-    let Ok(entries) = fs::read_dir(&dir) else { return Vec::new() };
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Vec::new();
+    };
     let mut out: Vec<(String, Value)> = entries
         .flatten()
         .filter_map(|e| e.file_name().into_string().ok())
@@ -57,7 +72,11 @@ pub fn list(p: &Project) -> Vec<Value> {
             (name.clone(), json!({ "id": f, "name": name, "kind": kind }))
         })
         .collect();
-    out.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()).then(a.0.cmp(&b.0)));
+    out.sort_by(|a, b| {
+        a.0.to_lowercase()
+            .cmp(&b.0.to_lowercase())
+            .then(a.0.cmp(&b.0))
+    });
     out.into_iter().map(|(_, v)| v).collect()
 }
 
@@ -87,7 +106,9 @@ pub fn body_for(p: &Project, id: &str, title: &str) -> Option<String> {
 }
 
 pub async fn save(p: &Project, name: &str, body: &str) -> Result<Value> {
-    let Some(dir) = dir(p) else { bail!("No project open") };
+    let Some(dir) = dir(p) else {
+        bail!("No project open")
+    };
     let trimmed = name.trim();
     if trimmed.is_empty() {
         bail!("Template name cannot be empty");
@@ -97,7 +118,9 @@ pub async fn save(p: &Project, name: &str, body: &str) -> Result<Value> {
     let filename = format!("{}.md", if slug.is_empty() { "template" } else { &slug });
     fs::write(dir.join(&filename), body)?;
     let root = p.dir()?.to_path_buf();
-    p.git.commit(&root, &format!("Save template {trimmed}")).await?;
+    p.git
+        .commit(&root, &format!("Save template {trimmed}"))
+        .await?;
     p.git.schedule_push(&root);
     Ok(json!({ "id": filename, "name": prettify(&filename) }))
 }

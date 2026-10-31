@@ -212,7 +212,7 @@ complexity here; `toggleMarker` has the same limitation in practice.
 
 Three `.editor-btn` buttons in a group left of History/Preview, separated by a
 new `.editor-divider` (a 1px `var(--border)` rule with 4px margins — the editor
-toolbar has no divider element today; `ToolbarDivider` from `@marina/desktop-ui`
+toolbar has no divider element today; `ToolbarDivider` from `@laankit/desktop-ui`
 is styled for the app toolbar's 36px buttons, not the editor's 28px ones).
 
 | Button | Icon | Title |
