@@ -1,11 +1,8 @@
-node_modules/
-dist/
-.vite/
-release/
-out/
 *.log
 .DS_Store
 
-# Rust / Tauri
+# Rust
 target/
-apps/*/src-tauri/gen/
+
+# Packaging outputs (cargo run -p xtask -- icons, scripts/package-native.sh)
+packaging/generated/

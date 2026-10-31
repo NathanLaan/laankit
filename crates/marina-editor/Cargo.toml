@@ -1,0 +1,31 @@
+[package]
+name = "marina-editor"
+version = "0.1.0"
+description = "NoteLiner's Markdown editor for the native (egui) builds: its own editor core (rope index, multiple selections, virtualized layout, folding) with egui's TextEdit as a fallback engine, an incremental highlighting layouter, list editing, find/replace, wikilink completion and bounded undo. See docs/plans/plan-editor-slides-richtext.md."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = []
+# Hunspell spell checking (pure Rust, `spellbook`) with a host-supplied dictionary.
+spellcheck = ["dep:spellbook"]
+
+[dependencies]
+egui.workspace = true
+log.workspace = true
+marina-egui.workspace = true
+regex = "1"
+# The core engine's position index (char/byte/line in O(log n)). LF-only line
+# breaks, to match the highlighter's `split('\n')`.
+ropey = { version = "1.6", default-features = false, features = ["simd"] }
+# Code-fence highlighting: pure Rust (fancy-regex, no onig) and syntect's own
+# bundled syntaxes only (about 75 languages; see the plan's decision 2).
+syntect = { version = "5.3", default-features = false, features = ["default-syntaxes", "parsing", "regex-fancy"] }
+spellbook = { version = "0.4", optional = true }
+
+[dev-dependencies]
+eframe.workspace = true
+egui_kittest.workspace = true
+env_logger.workspace = true
+image.workspace = true

@@ -18,6 +18,22 @@ pub fn markdown_to_html(md: &str) -> String {
     comrak::markdown_to_html(md, &opts)
 }
 
+/// The native preview's HTML: [`markdown_to_html`] plus comrak's math (`$…$` and `$$…$$` as
+/// `<span data-math-style>`, ```` ```math ```` blocks), which the native build typesets. The
+/// HTML export and the Tauri build keep [`markdown_to_html`], where math stays text as `marked`
+/// leaves it.
+pub fn preview_html(md: &str) -> String {
+    let mut opts = comrak::Options::default();
+    opts.extension.table = true;
+    opts.extension.strikethrough = true;
+    opts.extension.autolink = true;
+    opts.extension.tasklist = true;
+    opts.extension.math_dollars = true;
+    opts.extension.math_code = true;
+    opts.render.unsafe_ = true;
+    comrak::markdown_to_html(md, &opts)
+}
+
 const STYLE: &str = "    h1, h2, h3, h4 { margin-top: 1.5em; }
     code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
     pre { background: #f0f0f0; padding: 16px; border-radius: 6px; overflow-x: auto; }

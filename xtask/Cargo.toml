@@ -1,0 +1,12 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+description = "Repository tasks for the native apps' packaging (icons). See docs/packaging.md."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }

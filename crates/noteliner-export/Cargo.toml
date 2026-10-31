@@ -1,0 +1,29 @@
+[package]
+name = "noteliner-export"
+version = "0.1.0"
+description = "NoteLiner's PDF export without a webview: Markdown → Typst markup → PDF, in-process (plan Option C, docs/plans/plan-native-rust-egui.md, Phase 4)."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["pdf"]
+# In-process Typst (about +43 MB to a release binary). Without it the crate still
+# builds and `export_pdf` returns `Error::PdfUnavailable`.
+pdf = ["dep:typst", "dep:typst-layout", "dep:typst-pdf", "dep:typst-kit", "dep:typst-svg"]
+
+[dependencies]
+noteliner-core = { path = "../noteliner-core" }
+comrak = { version = "0.39", default-features = false }
+log.workspace = true
+typst = { version = "0.15", optional = true }
+typst-layout = { version = "0.15", optional = true }
+typst-pdf = { version = "0.15", optional = true }
+typst-svg = { version = "0.15", optional = true }
+typst-kit = { version = "0.15", default-features = false, features = ["scan-fonts"], optional = true }
+
+[dev-dependencies]
+marina-egui.workspace = true
+typst-syntax = "0.15"
+hayro = "0.8"
+tempfile = "3"

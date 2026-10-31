@@ -1,0 +1,21 @@
+[package]
+name = "marina-egui"
+version = "0.1.0"
+description = "Marina's shared egui shell: themes, fonts, window chrome, command palette, settings shell, panes. See ARCHITECTURE.md."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+eframe = { workspace = true, features = ["system_fonts"] }
+egui.workspace = true
+# The system-font fallback for contexts eframe didn't create (eframe's `system_fonts` uses it too).
+egui_system_font_provider = "0.37"
+image.workspace = true
+log.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+egui_kittest.workspace = true
+env_logger.workspace = true
+serde_json.workspace = true

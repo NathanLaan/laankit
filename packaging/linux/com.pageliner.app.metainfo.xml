@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.pageliner.app</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>PageLiner</name>
+  <summary>EPUB and PDF reader and document library</summary>
+  <developer id="com.nathanlaan">
+    <name>Nathan Laan</name>
+  </developer>
+  <description>
+    <p>
+      PageLiner keeps a library of EPUB and PDF books, remembers where you are
+      in each, and stores bookmarks and highlights. The library and reading
+      state can be synced through git.
+    </p>
+    <ul>
+      <li>A cover grid with filters and sorting</li>
+      <li>A PDF reader with contents, search, text selection and highlights</li>
+      <li>An EPUB reader with reading themes, serif or sans text, bookmarks and highlights</li>
+      <li>Optional git sync of the library and reading state</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.pageliner.app.desktop</launchable>
+  <provides>
+    <binary>pageliner</binary>
+  </provides>
+  <url type="homepage">https://github.com/NathanLaan/marina</url>
+  <url type="bugtracker">https://github.com/NathanLaan/marina/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="2.3.1" date="2026-10-30"/>
+    <release version="2.2.5" date="2026-10-18"/>
+    <release version="2.0.1" date="2026-10-18"/>
+  </releases>
+</component>

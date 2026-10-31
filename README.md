@@ -1,184 +1,148 @@
 # Marina
 
-Monorepo for desktop apps that share UI and desktop-shell infrastructure.
-Each app ships two ways from the same Svelte renderer: the original
-Electron build, and a native Linux build on Tauri with a Rust backend
-(see [Native Linux builds](#native-linux-builds-tauri)).
+Marina is a workspace of local-first desktop apps that share one UI and backend
+foundation. Every app is **pure Rust**, built on [egui](https://github.com/emilk/egui)/
+[eframe](https://github.com/emilk/egui/tree/master/crates/eframe) — no webview,
+no JavaScript — and stores its data as plain files you control: a git
+repository for the notes, feed and library apps, any folder for BlockLiner.
 
 ## Apps
 
-- `apps/noteliner/`   — outliner-style note-taking
-- `apps/threadliner/` — RSS reader with git sync
-- `apps/pageliner/`   — EPUB/PDF e-reader and document library
+| App | Binary | What it is |
+|-----|--------|------------|
+| **NoteLiner**   | `noteliner`   | Outliner-style Markdown notes: a tree of notes with editor, preview, tags, wikilinks, backlinks, slides, PDF export and an optional MCP server for AI clients. |
+| **ThreadLiner** | `threadliner` | RSS reader (RSS 2.0, Atom, JSON Feed) with git-synced JSON. |
+| **PageLiner**   | `pageliner`   | EPUB/PDF e-reader and document library with bookmarks, highlights and reading-position persistence. |
+| **BlockLiner**  | `blockliner`  | Visio-style diagram editor for software components and architecture, saved as Mermaid flowcharts, with PNG/SVG export. |
 
-### NoteLiner
+Each lives in `apps/<app>/native/` and is a Cargo package named `<app>-native`.
+See the per-app README (`apps/<app>/README.md`) and its detailed
+`apps/<app>/native/README.md`.
 
-NoteLiner is a single-user outliner-style note-taking application, built with Electron and Svelte 5. It allows users to create and organize files in a hierarchical structure. Each file is written in Markdown with syntax highlighting, and all changes are automatically synced via Git.
+## Layout
 
-NoteLiner should be considered BETA software. I wrote it for my own personal use, and it meets my specific needs.
+```
+apps/<app>/native/   the four apps (egui UIs over the crates below)
+crates/
+  marina-core        shared backend: git sync, JSON stores, XDG paths, debouncing
+  marina-egui        shared egui shell: themes, fonts, window chrome, command palette, settings, panes
+  marina-editor      the Markdown editor widget (own text engine, highlighting, spell check)
+  marina-richtext    HTML/XHTML rendering (ThreadLiner articles, PageLiner EPUB)
+  <app>-core         each app's UI-independent backend
+  noteliner-export   in-process PDF export (Typst); noteliner-slides   presentations
+  pageliner-epub     EPUB parsing/state
+  blockliner-core    the diagram model, Mermaid read/write, layout
+packaging/           Linux desktop/metainfo files and Flatpak manifests
+scripts/, xtask/     packaging helpers and the icon pipeline
+docs/                packaging guide and historical plans
+```
 
-### ThreadLiner
-
-A desktop RSS reader built with Electron, Svelte, and Git-synced JSON. Supports RSS 2.0, Atom, and JSON Feed formats.
-
-### PageLiner
-
-An e-reader and document library for EPUB and PDF, with bookmarks, highlights, reading-position persistence, and optional Git sync of the library index and reading state.
-
-## Packages
-
-- `packages/desktop-ui/` — shared UI components, theme system, Electron host helpers, and the Tauri IPC shim.
-
-## Rust crates
-
-- `crates/marina-core/` — framework-independent backend shared by all apps: git sync, JSON stores, XDG paths, debouncing.
-- `crates/marina-tauri/` — the Tauri host shared by all apps: the Electron-compatible IPC bridge, window chrome, UI prefs, dialogs, update check.
-- `crates/noteliner-core/`, `crates/threadliner-core/`, `crates/pageliner-core/` — each app's backend (ported from its `src/main/*.js`), independent of the UI shell so the planned GTK build can reuse it.
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how these fit together, and
+[`SECURITY.md`](SECURITY.md) for the security model and how to report a
+vulnerability.
 
 ## Prerequisites
 
-- Node.js 20+ (Vite 6 prefers 22.12+; 20.x works with a warning)
-- npm 9+
-
-## Install
-
-```bash
-npm install
-```
-
-This installs all workspaces and links them via the root `package-lock.json`.
-
-## Build
-
-```bash
-npm run build              # builds both apps (apps/<app>/dist/)
-npm run build:noteliner
-npm run build:threadliner
-```
-
-## Run in development
-
-Both apps share the same dev orchestration (`scripts/dev.js` per app):
-start Vite, wait for `Local:` in its output, then spawn Electron with
-`NODE_ENV=development` so the main process loads the dev server URL
-instead of the built file. Save in your editor → HMR.
-
-```bash
-npm run electron:dev -w noteliner       # Vite on 5250 + Electron
-npm run electron:dev -w threadliner     # Vite on 5251 + Electron
-
-# Root shortcuts:
-npm run electron:noteliner
-npm run electron:threadliner
-```
-
-The two apps use different Vite ports (5250 / 5251), so you can run them
-side-by-side without a collision.
-
-Renderer-only (no Electron window — useful when you just want to iterate
-on Svelte components):
-
-```bash
-npm run dev -w noteliner       # or: npm run dev:noteliner
-npm run dev -w threadliner     # or: npm run dev:threadliner
-```
-
-## Run a built app
-
-After `npm run build`:
-
-```bash
-npm run start -w noteliner
-npm run start -w threadliner
-```
-
-## Native Linux builds (Tauri)
-
-Each app has a `src-tauri/` crate that replaces the Electron main process
-with Rust. The renderer and even `src/main/preload.js` are shared: at build
-time the preload is bundled against `@marina/desktop-ui/tauri-shim`, which
-stands in for the `electron` module, so `window.api` is identical in both
-builds and every `ipcRenderer.invoke(channel, …)` reaches a Rust handler
-with the same channel name.
-
-Settings and data live in the same places as the Electron build
-(`~/.config/<App>/…`, the same project/library/data folders, byte-identical
-JSON and frontmatter), so you can switch between the two builds freely.
-
-### Additional prerequisites
-
-- Rust 1.85+ (`rustup`)
-- Tauri's system libraries:
+- **Rust 1.92+** (install with [`rustup`](https://rustup.rs)).
+- **`git`** on the `PATH` at runtime — NoteLiner, ThreadLiner and PageLiner
+  shell out to it for sync and history. BlockLiner doesn't use git.
+- **Linux build libraries:**
 
   ```bash
-  sudo apt install build-essential pkg-config libwebkit2gtk-4.1-dev libssl-dev \
-    libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf
+  sudo apt install build-essential pkg-config \
+    libxkbcommon-dev libfontconfig1-dev libssl-dev \
+    libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
   ```
 
-- `git` at runtime, as with the Electron build.
+  macOS and Windows need only the Rust toolchain. The runtime libraries the
+  Linux packages depend on are listed in [`docs/packaging.md`](docs/packaging.md).
 
-### Develop
+## Run a development build
 
 ```bash
-npm run tauri:noteliner      # Vite on 5250 + the Tauri window, with HMR
-npm run tauri:threadliner    # 5251
-npm run tauri:pageliner      # 5253
+cargo run -p noteliner-native       # or pageliner-native / threadliner-native / blockliner-native
 ```
 
-### Test
+For an optimized run without the slow full-LTO release build (good for
+benchmarking or daily use from source):
+
+```bash
+cargo run -p noteliner-native --profile fast-release
+```
+
+Diagnostics shared by every app (open a project, take a screenshot, force a
+theme or scale) are documented in each app's `native/README.md`.
+
+## Build a release binary
+
+```bash
+cargo build --release -p noteliner-native    # → target/release/noteliner
+```
+
+The `release` profile uses full LTO (smaller, slower to build). To try it
+without installing, run the binary directly from `target/release/`.
+
+## Build installable packages
+
+Packages are produced by `scripts/package-native.sh`, which builds the release
+binaries and wraps them per format. Install the packaging tools once:
+
+```bash
+cargo install --locked cargo-deb cargo-generate-rpm cargo-packager
+```
+
+Then:
+
+```bash
+scripts/package-native.sh                          # every app, the host's formats
+scripts/package-native.sh noteliner                # one app
+FORMATS="deb appimage" scripts/package-native.sh   # chosen formats
+```
+
+Output lands in `target/packages/<app>/`. Host defaults are `deb rpm appimage`
+on Linux, `nsis` on Windows (run from Git Bash), `app dmg` on macOS. The full
+format table, CI release workflow, versioning (`scripts/set-version.sh`),
+runtime dependencies, Flatpak and code-signing status are in
+[`docs/packaging.md`](docs/packaging.md).
+
+## Install a release
+
+Pre-built packages for Linux, Windows and macOS are attached to each
+[GitHub release](https://github.com/NathanLaan/marina/releases).
+
+- **Linux**
+  - `.deb`: `sudo apt install ./noteliner_<ver>-1_amd64.deb`
+  - `.rpm`: `sudo dnf install ./noteliner-<ver>-1.x86_64.rpm`
+  - AppImage: `chmod +x noteliner_<ver>_x86_64.AppImage && ./noteliner_<ver>_x86_64.AppImage`
+- **Windows** — run the `_x64-setup.exe` installer (per-user, no admin). Current
+  builds are unsigned, so SmartScreen warns on first run: **More info → Run
+  anyway**.
+- **macOS** — open the `.dmg` and drag the app to `/Applications`. Current builds
+  are unsigned, so the first launch is blocked: right-click → **Open → Open**,
+  or `xattr -d com.apple.quarantine /Applications/<App>.app`.
+
+`git` must be installed on the target machine for sync and history to work
+(not needed for BlockLiner).
+
+## Test and lint
 
 ```bash
 cargo test --workspace
-cargo clippy --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-### Package
+UI tests run **headless** via [`egui_kittest`](https://github.com/emilk/egui):
+they drive widgets through AccessKit and never open a real window. See each
+app's `ui_tests*` modules.
 
-```bash
-npm run tauri:build -w noteliner    # → target/release/bundle/{deb,rpm,appimage}/
-npm run tauri:build -w threadliner
-npm run tauri:build -w pageliner
-```
+## Icons
 
-Packages are 5–7 MB (vs. 100 MB+ for Electron) and depend on the system WebKitGTK. If the
-Electron `.deb` of the same app is installed, remove it first; both
-install a `/usr/bin/<app>` launcher.
+Each app's packaged icons are generated from `apps/<app>/assets/icon.png` by
+`cargo run -p xtask -- icons` (into the git-ignored `packaging/generated/`). The
+master source is `apps/<app>/assets/icon.svg`; regenerate `icon.png` from it with
+any SVG rasterizer, e.g. `rsvg-convert -w 512 -h 512 assets/icon.svg -o assets/icon.png`.
 
-### NoteLiner's MCP server
+## License
 
-In the Tauri build the `noteliner` binary is its own MCP bridge: point MCP
-clients at `noteliner --mcp-bridge` (Settings → MCP shows the exact
-snippet). No Node.js runtime is required.
-
-## App icons
-
-Each app's icon originates from a master SVG inside the app:
-
-- `apps/noteliner/assets/icon.svg`
-- `apps/threadliner/assets/icon.svg`
-
-The pipeline from SVG to packaged app is:
-
-1. `scripts/rasterize-icon.js` (headless Electron) renders each app's
-   `assets/icon.svg` to a 512×512 `assets/icon.png` alongside it.
-2. Each app's `build:icons` step (ImageMagick, in `apps/<app>/scripts/build-icons.sh`)
-   pads that PNG into a square `apps/<app>/build/icon.png`.
-3. `electron-builder` reads `build/icon.png` and derives the platform
-   icons (`.icns`, `.ico`, multi-size PNG sets) at package time.
-
-The Tauri builds use pre-generated sizes in `apps/<app>/src-tauri/icons/`;
-regenerate them after changing `assets/icon.png` with
-`npx tauri icon assets/icon.png -o src-tauri/icons` from the app folder
-(then delete the `android/`, `ios/`, `Square*`, `StoreLogo` and `@2x`
-outputs, which the Linux bundles don't use).
-
-After editing either source SVG, regenerate the per-app PNGs:
-
-```bash
-npm run icons:rasterize                 # both apps
-npm run icons:rasterize:noteliner       # one app
-npm run icons:rasterize:threadliner
-```
-
-Commit the updated `apps/<app>/assets/icon.png` alongside the SVG change.
-Step 2 runs automatically as part of `build:linux` / `build:win` / `build:mac` / `build:all`.
+MIT — see [`LICENSE`](LICENSE). Bundled third-party fonts and assets are listed
+in [`NOTICE`](NOTICE).

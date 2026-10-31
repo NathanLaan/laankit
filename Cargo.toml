@@ -1,15 +1,21 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "apps/pageliner/src-tauri", "apps/threadliner/src-tauri", "apps/noteliner/src-tauri"]
+members = ["crates/*", "apps/threadliner/native", "apps/pageliner/native", "apps/noteliner/native", "apps/blockliner/native", "xtask"]
 
 [workspace.package]
 edition = "2021"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.92"
 
 [workspace.dependencies]
 marina-core = { path = "crates/marina-core" }
-marina-tauri = { path = "crates/marina-tauri" }
+marina-egui = { path = "crates/marina-egui" }
+marina-editor = { path = "crates/marina-editor" }
+marina-richtext = { path = "crates/marina-richtext" }
+pageliner-epub = { path = "crates/pageliner-epub" }
+noteliner-export = { path = "crates/noteliner-export" }
+noteliner-slides = { path = "crates/noteliner-slides" }
+blockliner-core = { path = "crates/blockliner-core" }
 anyhow = "1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
@@ -19,14 +25,28 @@ tokio = { version = "1", features = ["process", "time", "fs", "sync", "macros", 
 uuid = { version = "1", features = ["v4"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "deflate", "json"] }
 semver = "1"
-tauri = { version = "2", features = [] }
-tauri-build = { version = "2", features = [] }
-tauri-plugin-dialog = "2"
-tauri-plugin-opener = "2"
-tauri-plugin-single-instance = "2"
-tauri-plugin-notification = "2"
+# Pure Rust, egui. See docs/plans/plan-native-rust-egui.md.
+# Default features are off (to use glow instead of wgpu), so everything else the
+# apps need is listed: `clipboard` (the system clipboard; without it egui keeps a
+# private in-process clipboard, so copies never reach other apps) and `links`
+# (`ctx.open_url` opens the browser; without it, it does nothing).
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "accesskit", "wayland", "x11", "persistence", "clipboard", "links"] }
+egui = "0.37"
+egui_extras = { version = "0.37", default-features = false, features = ["image"] }
+egui_kittest = "0.37"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+log = "0.4"
+env_logger = "0.11"
 
 [profile.release]
 lto = true
 codegen-units = 1
 strip = true
+
+# Release speed without the full LTO build, for benchmarks and quick
+# optimised runs: `cargo run --profile fast-release -p noteliner-native`.
+[profile.fast-release]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = false

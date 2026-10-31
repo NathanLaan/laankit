@@ -1,0 +1,60 @@
+# NoteLiner as a Flatpak. Untested locally (no flatpak-builder on the dev
+# machine); see docs/packaging.md for how to build it.
+#
+# Offline build: cargo-sources.json is generated from the workspace
+# Cargo.lock by flatpak-cargo-generator (scripts/flatpak-sources.sh).
+id: com.nathanlaan.noteliner
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: noteliner
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # git sync, the update check.
+  - --share=network
+  # Projects are git repositories anywhere the user keeps them, reopened by
+  # path from the recent list and handed to git; document-portal paths
+  # (/run/user/…/doc) would break both, so the home directory is shared.
+  - --filesystem=home
+  # git push/pull over SSH.
+  - --socket=ssh-auth
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+modules:
+  - name: git
+    buildsystem: simple
+    build-commands:
+      - make -j$FLATPAK_BUILDER_N_JOBS prefix=/app NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1 NO_PYTHON=1 INSTALL_SYMLINKS=1
+      - make prefix=/app NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1 NO_PYTHON=1 INSTALL_SYMLINKS=1 install
+      - rm -rf /app/share/gitweb /app/share/git-gui /app/share/gitk
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/software/scm/git/git-2.51.0.tar.xz
+        sha256: 60a7c2251cc2e588d5cd87bae567260617c6de0c22dca9cdbfc4c7d2b8990b62
+
+  - name: noteliner
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/noteliner/cargo
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml
+      - cargo --offline run -p xtask -- icons
+      - cargo --offline build --release -p noteliner-native
+      - install -Dm755 target/release/noteliner /app/bin/noteliner
+      - install -Dm644 packaging/linux/com.nathanlaan.noteliner.desktop /app/share/applications/com.nathanlaan.noteliner.desktop
+      - install -Dm644 packaging/linux/com.nathanlaan.noteliner.metainfo.xml /app/share/metainfo/com.nathanlaan.noteliner.metainfo.xml
+      - for s in 16 24 32 48 64 128 256 512; do install -Dm644 packaging/generated/noteliner/icons/${s}x${s}/com.nathanlaan.noteliner.png /app/share/icons/hicolor/${s}x${s}/apps/com.nathanlaan.noteliner.png; done
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - target
+          - node_modules
+          - packaging/generated
+      - cargo-sources.json

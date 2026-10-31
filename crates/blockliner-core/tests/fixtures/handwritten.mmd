@@ -1,0 +1,18 @@
+---
+title: Shop
+---
+%%{init: {"theme": "neutral"}}%%
+graph TD;
+    %% Edge services
+    web[Web App] --> api(API Gateway)
+    api -- "REST" --> orders
+    api -->|events| bus[(Event Bus)]
+    orders --- orders_db[(Orders DB)]
+    orders -.-> audit
+    subgraph payments [Payments]
+        pay[Payment Service] --> psp
+    end
+    a1 & a2 --> api; note1["Retries are async"]:::bl_text
+    classDef hot fill:#f96
+    class api hot
+    click web "https://example.com"

@@ -1,0 +1,147 @@
+[package]
+name = "pageliner-native"
+version = "2.3.1"
+description = "PageLiner in pure Rust: an egui UI over pageliner-core, with a hayro PDF reader (plan Option C, docs/plans/plan-native-rust-egui.md)."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+# The shipped `pageliner` binary since the cutover (docs/packaging.md).
+[[bin]]
+name = "pageliner"
+path = "src/main.rs"
+
+[dependencies]
+marina-core.workspace = true
+marina-egui.workspace = true
+pageliner-core = { path = "../../../crates/pageliner-core" }
+pageliner-epub.workspace = true
+egui_extras.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+eframe.workspace = true
+egui.workspace = true
+env_logger.workspace = true
+image.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+hayro = "0.8"
+# 0.15, not 0.16: the Tauri dialog plugin enables 0.16's `gtk3` feature, which can't be
+# combined with `xdg-portal`. 0.15 stays a separate crate, on the pure-Rust portal backend.
+rfd = "0.15"
+
+# build.rs embeds the icon in the .exe (Windows hosts only).
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+
+[dev-dependencies]
+egui_kittest.workspace = true
+tempfile = "3"
+
+# --- Packaging (docs/packaging.md) --------------------------------------------
+# Run `cargo run -p xtask -- icons` first: the icons come from packaging/generated.
+# Since the cutover this is *the* PageLiner package: it installs /usr/bin/pageliner
+# and replaces the Tauri build's `page-liner` package. The Electron .deb/.rpm is
+# also named `pageliner`, so this one upgrades it in place.
+
+[package.metadata.deb]
+name = "pageliner"
+maintainer = "Nathan Laan <NathanLaan@users.noreply.github.com>"
+copyright = "2026, Nathan Laan"
+license-file = ["../../../LICENSE", "0"]
+extended-description = """\
+An e-reader and document library for EPUB and PDF, with bookmarks, \
+highlights, reading positions and optional git sync of the library."""
+section = "text"
+priority = "optional"
+# $auto adds libc/libgcc. The rest are dlopened by winit/glutin/fontconfig, so
+# dpkg-shlibdeps can't see them; git is run for sync.
+depends = "$auto, git, libegl1, libgl1, libfontconfig1, libxkbcommon0, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrender1, libxkbcommon-x11-0"
+conflicts = "page-liner"
+replaces = "page-liner"
+provides = "page-liner"
+assets = [
+    ["target/release/pageliner", "usr/bin/", "755"],
+    ["../../../packaging/linux/com.pageliner.app.desktop", "usr/share/applications/", "644"],
+    ["../../../packaging/linux/com.pageliner.app.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["../../../packaging/generated/pageliner/icons/16x16/com.pageliner.app.png", "usr/share/icons/hicolor/16x16/apps/", "644"],
+    ["../../../packaging/generated/pageliner/icons/24x24/com.pageliner.app.png", "usr/share/icons/hicolor/24x24/apps/", "644"],
+    ["../../../packaging/generated/pageliner/icons/32x32/com.pageliner.app.png", "usr/share/icons/hicolor/32x32/apps/", "644"],
+    ["../../../packaging/generated/pageliner/icons/48x48/com.pageliner.app.png", "usr/share/icons/hicolor/48x48/apps/", "644"],
+    ["../../../packaging/generated/pageliner/icons/64x64/com.pageliner.app.png", "usr/share/icons/hicolor/64x64/apps/", "644"],
+    ["../../../packaging/generated/pageliner/icons/128x128/com.pageliner.app.png", "usr/share/icons/hicolor/128x128/apps/", "644"],
+    ["../../../packaging/generated/pageliner/icons/256x256/com.pageliner.app.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
+    ["../../../packaging/generated/pageliner/icons/512x512/com.pageliner.app.png", "usr/share/icons/hicolor/512x512/apps/", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "pageliner"
+license = "MIT"
+summary = "EPUB and PDF reader and document library"
+url = "https://github.com/NathanLaan/marina"
+assets = [
+    { source = "target/release/pageliner", dest = "/usr/bin/pageliner", mode = "755" },
+    { source = "../../../packaging/linux/com.pageliner.app.desktop", dest = "/usr/share/applications/com.pageliner.app.desktop", mode = "644" },
+    { source = "../../../packaging/linux/com.pageliner.app.metainfo.xml", dest = "/usr/share/metainfo/com.pageliner.app.metainfo.xml", mode = "644" },
+    { source = "../../../packaging/generated/pageliner/icons/16x16/com.pageliner.app.png", dest = "/usr/share/icons/hicolor/16x16/apps/com.pageliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/pageliner/icons/24x24/com.pageliner.app.png", dest = "/usr/share/icons/hicolor/24x24/apps/com.pageliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/pageliner/icons/32x32/com.pageliner.app.png", dest = "/usr/share/icons/hicolor/32x32/apps/com.pageliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/pageliner/icons/48x48/com.pageliner.app.png", dest = "/usr/share/icons/hicolor/48x48/apps/com.pageliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/pageliner/icons/64x64/com.pageliner.app.png", dest = "/usr/share/icons/hicolor/64x64/apps/com.pageliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/pageliner/icons/128x128/com.pageliner.app.png", dest = "/usr/share/icons/hicolor/128x128/apps/com.pageliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/pageliner/icons/256x256/com.pageliner.app.png", dest = "/usr/share/icons/hicolor/256x256/apps/com.pageliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/pageliner/icons/512x512/com.pageliner.app.png", dest = "/usr/share/icons/hicolor/512x512/apps/com.pageliner.app.png", mode = "644" },
+]
+# Sonames, not package names, so the requirements hold across RPM distros.
+[package.metadata.generate-rpm.requires]
+git = "*"
+"libEGL.so.1()(64bit)" = "*"
+"libGL.so.1()(64bit)" = "*"
+"libfontconfig.so.1()(64bit)" = "*"
+"libxkbcommon.so.0()(64bit)" = "*"
+"libxkbcommon-x11.so.0()(64bit)" = "*"
+"libwayland-client.so.0()(64bit)" = "*"
+"libwayland-egl.so.1()(64bit)" = "*"
+"libX11.so.6()(64bit)" = "*"
+"libX11-xcb.so.1()(64bit)" = "*"
+"libXcursor.so.1()(64bit)" = "*"
+"libXi.so.6()(64bit)" = "*"
+"libXrender.so.1()(64bit)" = "*"
+[package.metadata.generate-rpm.conflicts]
+page-liner = "*"
+[package.metadata.generate-rpm.obsoletes]
+page-liner = "*"
+[package.metadata.generate-rpm.provides]
+page-liner = "*"
+
+# AppImage, the Windows NSIS installer and the macOS .app/.dmg (cargo-packager).
+[package.metadata.packager]
+product-name = "PageLiner"
+identifier = "com.pageliner.app"
+description = "EPUB and PDF reader and document library"
+homepage = "https://github.com/NathanLaan/marina"
+authors = ["Nathan Laan"]
+publisher = "Nathan Laan"
+copyright = "Copyright (c) 2026 Nathan Laan"
+license-file = "../../../LICENSE"
+category = "Productivity"
+out-dir = "../../../target/packages/pageliner"
+binaries-dir = "../../../target/release"
+binaries = [{ path = "pageliner", main = true }]
+icons = ["../../../packaging/generated/pageliner/icons/*/com.pageliner.app.png"]
+
+# The AppImage's desktop entry (cargo-packager builds it from its deb config).
+[package.metadata.packager.deb]
+desktop-template = "../../../packaging/linux/com.pageliner.app.appimage.desktop.hbs"
+
+[package.metadata.packager.nsis]
+installer-icon = "../../../packaging/generated/pageliner/com.pageliner.app.ico"
+installer-mode = "currentUser"
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"

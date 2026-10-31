@@ -1,0 +1,134 @@
+[package]
+name = "blockliner-native"
+version = "2.3.1"
+description = "BlockLiner: a Visio-style diagram editor for software architecture, saving Mermaid flowcharts. An egui UI over blockliner-core (docs/plans/plan-blockliner.md)."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "blockliner"
+path = "src/main.rs"
+
+[dependencies]
+blockliner-core.workspace = true
+marina-core.workspace = true
+marina-egui.workspace = true
+anyhow.workspace = true
+eframe.workspace = true
+egui.workspace = true
+env_logger.workspace = true
+image.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+# 0.15, as in the other apps: see apps/noteliner/native/Cargo.toml.
+rfd = "0.15"
+# PNG export: rasterises the SVG export (the version marina-richtext uses).
+resvg = { version = "0.45", default-features = false, features = ["text"] }
+
+# build.rs embeds the icon in the .exe (Windows hosts only).
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+
+[dev-dependencies]
+egui_kittest.workspace = true
+tempfile = "3"
+
+# --- Packaging (docs/packaging.md) --------------------------------------------
+# Run `cargo run -p xtask -- icons` first: the icons come from packaging/generated.
+# As PageLiner's, minus git (BlockLiner never runs it) and the old Tauri
+# package names (there was never another BlockLiner build).
+
+[package.metadata.deb]
+name = "blockliner"
+maintainer = "Nathan Laan <NathanLaan@users.noreply.github.com>"
+copyright = "2026, Nathan Laan"
+license-file = ["../../../LICENSE", "0"]
+extended-description = """\
+A diagram editor for software components and architecture: boxes, rounded \
+boxes, lines, arrows and labels on a grid, saved as Mermaid flowcharts in a \
+folder, and exported as PNG or SVG."""
+section = "graphics"
+priority = "optional"
+# $auto adds libc/libgcc. The rest are dlopened by winit/glutin/fontconfig, so
+# dpkg-shlibdeps can't see them.
+depends = "$auto, libegl1, libgl1, libfontconfig1, libxkbcommon0, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrender1, libxkbcommon-x11-0"
+assets = [
+    ["target/release/blockliner", "usr/bin/", "755"],
+    ["../../../packaging/linux/com.blockliner.app.desktop", "usr/share/applications/", "644"],
+    ["../../../packaging/linux/com.blockliner.app.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["../../../packaging/linux/com.blockliner.app.mime.xml", "usr/share/mime/packages/com.blockliner.app.xml", "644"],
+    ["../../../packaging/generated/blockliner/icons/16x16/com.blockliner.app.png", "usr/share/icons/hicolor/16x16/apps/", "644"],
+    ["../../../packaging/generated/blockliner/icons/24x24/com.blockliner.app.png", "usr/share/icons/hicolor/24x24/apps/", "644"],
+    ["../../../packaging/generated/blockliner/icons/32x32/com.blockliner.app.png", "usr/share/icons/hicolor/32x32/apps/", "644"],
+    ["../../../packaging/generated/blockliner/icons/48x48/com.blockliner.app.png", "usr/share/icons/hicolor/48x48/apps/", "644"],
+    ["../../../packaging/generated/blockliner/icons/64x64/com.blockliner.app.png", "usr/share/icons/hicolor/64x64/apps/", "644"],
+    ["../../../packaging/generated/blockliner/icons/128x128/com.blockliner.app.png", "usr/share/icons/hicolor/128x128/apps/", "644"],
+    ["../../../packaging/generated/blockliner/icons/256x256/com.blockliner.app.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
+    ["../../../packaging/generated/blockliner/icons/512x512/com.blockliner.app.png", "usr/share/icons/hicolor/512x512/apps/", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "blockliner"
+license = "MIT"
+summary = "Diagram editor for software architecture, saved as Mermaid"
+url = "https://github.com/NathanLaan/marina"
+assets = [
+    { source = "target/release/blockliner", dest = "/usr/bin/blockliner", mode = "755" },
+    { source = "../../../packaging/linux/com.blockliner.app.desktop", dest = "/usr/share/applications/com.blockliner.app.desktop", mode = "644" },
+    { source = "../../../packaging/linux/com.blockliner.app.metainfo.xml", dest = "/usr/share/metainfo/com.blockliner.app.metainfo.xml", mode = "644" },
+    { source = "../../../packaging/linux/com.blockliner.app.mime.xml", dest = "/usr/share/mime/packages/com.blockliner.app.xml", mode = "644" },
+    { source = "../../../packaging/generated/blockliner/icons/16x16/com.blockliner.app.png", dest = "/usr/share/icons/hicolor/16x16/apps/com.blockliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/blockliner/icons/24x24/com.blockliner.app.png", dest = "/usr/share/icons/hicolor/24x24/apps/com.blockliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/blockliner/icons/32x32/com.blockliner.app.png", dest = "/usr/share/icons/hicolor/32x32/apps/com.blockliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/blockliner/icons/48x48/com.blockliner.app.png", dest = "/usr/share/icons/hicolor/48x48/apps/com.blockliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/blockliner/icons/64x64/com.blockliner.app.png", dest = "/usr/share/icons/hicolor/64x64/apps/com.blockliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/blockliner/icons/128x128/com.blockliner.app.png", dest = "/usr/share/icons/hicolor/128x128/apps/com.blockliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/blockliner/icons/256x256/com.blockliner.app.png", dest = "/usr/share/icons/hicolor/256x256/apps/com.blockliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/blockliner/icons/512x512/com.blockliner.app.png", dest = "/usr/share/icons/hicolor/512x512/apps/com.blockliner.app.png", mode = "644" },
+]
+# Sonames, not package names, so the requirements hold across RPM distros.
+[package.metadata.generate-rpm.requires]
+"libEGL.so.1()(64bit)" = "*"
+"libGL.so.1()(64bit)" = "*"
+"libfontconfig.so.1()(64bit)" = "*"
+"libxkbcommon.so.0()(64bit)" = "*"
+"libxkbcommon-x11.so.0()(64bit)" = "*"
+"libwayland-client.so.0()(64bit)" = "*"
+"libwayland-egl.so.1()(64bit)" = "*"
+"libX11.so.6()(64bit)" = "*"
+"libX11-xcb.so.1()(64bit)" = "*"
+"libXcursor.so.1()(64bit)" = "*"
+"libXi.so.6()(64bit)" = "*"
+"libXrender.so.1()(64bit)" = "*"
+
+# AppImage, the Windows NSIS installer and the macOS .app/.dmg (cargo-packager).
+[package.metadata.packager]
+product-name = "BlockLiner"
+identifier = "com.blockliner.app"
+description = "Diagram editor for software architecture, saved as Mermaid"
+homepage = "https://github.com/NathanLaan/marina"
+authors = ["Nathan Laan"]
+publisher = "Nathan Laan"
+copyright = "Copyright (c) 2026 Nathan Laan"
+license-file = "../../../LICENSE"
+category = "GraphicsAndDesign"
+out-dir = "../../../target/packages/blockliner"
+binaries-dir = "../../../target/release"
+binaries = [{ path = "blockliner", main = true }]
+icons = ["../../../packaging/generated/blockliner/icons/*/com.blockliner.app.png"]
+
+# The AppImage's desktop entry (cargo-packager builds it from its deb config).
+[package.metadata.packager.deb]
+desktop-template = "../../../packaging/linux/com.blockliner.app.appimage.desktop.hbs"
+
+[package.metadata.packager.nsis]
+installer-icon = "../../../packaging/generated/blockliner/com.blockliner.app.ico"
+installer-mode = "currentUser"
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"

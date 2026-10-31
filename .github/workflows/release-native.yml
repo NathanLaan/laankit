@@ -1,0 +1,75 @@
+# Release packages of the native (egui) apps: .deb, .rpm and AppImage on
+# Linux, an NSIS installer on Windows, .app/.dmg on macOS. Runs on `native-v*`
+# tags (and by hand), uploads every package as a workflow artifact and, for a
+# tag, attaches them to a *draft* GitHub release; publishing stays manual.
+# See docs/packaging.md.
+name: release-native
+on:
+  push:
+    tags: ['native-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            formats: deb rpm appimage
+          - os: windows-latest
+            formats: nsis
+          - os: macos-latest
+            formats: app dmg
+    runs-on: ${{ matrix.os }}
+    env:
+      FORMATS: ${{ matrix.formats }}
+      # linuxdeploy (used by cargo-packager for the AppImage) is itself an
+      # AppImage; runners have no FUSE, so let it extract itself instead.
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libfontconfig1-dev libssl-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install packaging tools
+        shell: bash
+        run: |
+          tools=(cargo-packager)
+          if [ "$RUNNER_OS" = Linux ]; then tools+=(cargo-deb cargo-generate-rpm); fi
+          cargo install --locked "${tools[@]}"
+      - name: Build and package
+        shell: bash
+        run: scripts/package-native.sh
+      - uses: actions/upload-artifact@v6
+        with:
+          name: packages-${{ runner.os }}
+          path: |
+            target/packages/*/*.deb
+            target/packages/*/*.rpm
+            target/packages/*/*.AppImage
+            target/packages/*/*-setup.exe
+            target/packages/*/*.dmg
+          if-no-files-found: error
+
+  draft-release:
+    if: startsWith(github.ref, 'refs/tags/native-v')
+    needs: package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: packages
+          merge-multiple: true
+      - name: Draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: packages/**/*

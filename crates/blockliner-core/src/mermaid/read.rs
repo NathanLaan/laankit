@@ -1,0 +1,722 @@
+//! `.mmd` text → `Diagram`. Reads back everything the writer emits, and any
+//! hand-written flowchart: statements it doesn't model are kept verbatim, and
+//! nodes without an `@shape` line are placed by `layout`.
+
+use std::collections::HashMap;
+use std::fmt;
+
+use super::lex::{self, LinkKind, NodeRef, Token};
+use super::{edge_key, TEXT_CLASS};
+use crate::layout;
+use crate::model::{
+    Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect, Route, Shape,
+    ShapeKind,
+};
+use crate::style::{Colour, Style};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReadError {
+    /// Another Mermaid diagram type (`sequenceDiagram`, `classDiagram`, …).
+    Unsupported(String),
+}
+
+impl fmt::Display for ReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unsupported(kind) => {
+                write!(
+                    f,
+                    "`{kind}` diagrams aren't supported; BlockLiner edits Mermaid flowcharts"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ReadError {}
+
+/// Statements kept verbatim without looking for nodes in them.
+const KEYWORDS: &[&str] = &[
+    "classDef",
+    "class",
+    "style",
+    "click",
+    "linkStyle",
+    "direction",
+    "end",
+];
+
+pub fn read(text: &str) -> Result<Diagram, ReadError> {
+    let mut d = Diagram::new();
+    let mut layout = Layout::default();
+    let mut lines = text.lines().peekable();
+
+    // Front matter, `%%{init}%%` and comments, up to the header.
+    let mut header = false;
+    let mut first = true;
+    while let Some(line) = lines.next() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if first && t == "---" {
+            d.preamble.push(line.to_string());
+            for line in lines.by_ref() {
+                d.preamble.push(line.to_string());
+                if line.trim() == "---" {
+                    break;
+                }
+            }
+        } else if t.starts_with("%%") {
+            if !layout.comment(t) {
+                d.preamble.push(line.to_string());
+            }
+        } else {
+            let mut words = t.trim_end_matches(';').split_whitespace();
+            match words.next() {
+                Some("flowchart" | "graph") => {
+                    d.direction = words
+                        .next()
+                        .and_then(Direction::parse)
+                        .unwrap_or(Direction::TB);
+                    header = true;
+                    break;
+                }
+                Some(kind) => return Err(ReadError::Unsupported(kind.to_string())),
+                None => {}
+            }
+        }
+        first = false;
+    }
+    if !header {
+        // Empty, or only comments: a new diagram.
+        d.direction = Direction::default();
+    }
+
+    let mut body = Body::default();
+    let mut depth = 0usize;
+    for line in lines {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if t.starts_with("%%") {
+            if !layout.comment(t) {
+                body.passthrough.push(line.trim_end().to_string());
+            }
+            continue;
+        }
+        let word = t.split_whitespace().next().unwrap_or("");
+        if depth > 0 || word == "subgraph" {
+            // Subgraph blocks are kept whole; their nodes are shown but stay
+            // declared inside the block.
+            body.passthrough.push(line.trim_end().to_string());
+            match word {
+                "subgraph" => depth += 1,
+                "end" => depth -= 1,
+                _ => {
+                    for stmt in statements(t) {
+                        body.external(stmt);
+                    }
+                }
+            }
+            continue;
+        }
+        for stmt in statements(t) {
+            body.statement(stmt);
+        }
+    }
+
+    if let Some(grid) = layout.grid {
+        d.grid = grid;
+    }
+    body.build(&mut d, &layout);
+    Ok(d)
+}
+
+/// `a --> b; b --> c` → its statements: split at `;` outside quotes and
+/// brackets.
+fn statements(line: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut start, mut depth, mut quoted) = (0, 0usize, false);
+    for (i, c) in line.char_indices() {
+        match c {
+            '"' => quoted = !quoted,
+            '[' | '(' | '{' if !quoted => depth += 1,
+            ']' | ')' | '}' if !quoted => depth = depth.saturating_sub(1),
+            ';' if !quoted && depth == 0 => {
+                out.push(line[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(line[start..].trim());
+    out.retain(|s| !s.is_empty());
+    out
+}
+
+struct Node {
+    id: String,
+    shape: Option<(ShapeKind, String)>,
+    class: Option<String>,
+    external: bool,
+}
+
+struct Edge {
+    from: String,
+    to: String,
+    kind: ConnectorKind,
+    label: Option<String>,
+}
+
+#[derive(Default)]
+struct Body {
+    nodes: Vec<Node>,
+    index: HashMap<String, usize>,
+    edges: Vec<Edge>,
+    /// Edges in statements kept verbatim: not connectors, but they still
+    /// rank the nodes they join in the layout.
+    hints: Vec<(String, String)>,
+    passthrough: Vec<String>,
+    /// `style <id> …` lines, kept in `passthrough` until the build knows
+    /// whether `id` is a shape BlockLiner models (then the style is its).
+    styles: Vec<(usize, String, Style)>,
+    /// Every edge in file order, as Mermaid numbers them for `linkStyle`:
+    /// a modelled edge's index in `edges`, or `None` for a kept one…
+    order: Vec<Option<usize>>,
+    /// …until a kept statement whose edges can't be counted; `linkStyle`
+    /// indexes past that point aren't absorbed.
+    uncounted: bool,
+    /// `linkStyle <n>[,<n>…] …` lines (their place in `passthrough`, the
+    /// indexes and the style), absorbed at the build when every index names
+    /// a modelled edge.
+    link_styles: Vec<(usize, Vec<usize>, Style)>,
+}
+
+impl Body {
+    fn statement(&mut self, stmt: &str) {
+        let word = stmt.split_whitespace().next().unwrap_or("");
+        if word == "classDef" && stmt.split_whitespace().nth(1) == Some(TEXT_CLASS) {
+            return; // The writer adds it back when a text box needs it.
+        }
+        if KEYWORDS.contains(&word) {
+            if word == "linkStyle" {
+                self.link_style(stmt);
+            }
+            if word == "style" {
+                let rest = stmt["style".len()..].trim_start();
+                let (id, props) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+                // `style a,b …` names several shapes: it stays as written.
+                if let (false, Some(style)) = (id.contains(','), Style::parse(props)) {
+                    let at = self.passthrough.len();
+                    self.styles.push((at, id.to_owned(), style));
+                }
+            }
+            self.passthrough.push(format!("  {stmt}"));
+            return;
+        }
+        let Some(tokens) = lex::tokenize(stmt) else {
+            self.passthrough.push(format!("  {stmt}"));
+            self.uncountable(stmt);
+            return;
+        };
+        let modelled = tokens.iter().all(|t| match t {
+            Token::Amp => false,
+            Token::Link { kind, .. } => *kind != LinkKind::Other,
+            Token::Node(_) => true,
+        });
+        if !modelled {
+            self.passthrough.push(format!("  {stmt}"));
+            self.declare_all(tokens, true);
+            return;
+        }
+        let mut prev: Option<String> = None;
+        let mut link = None;
+        for token in tokens {
+            match token {
+                Token::Node(n) => {
+                    let id = n.id.clone();
+                    self.declare(n, false);
+                    if let (Some(from), Some((kind, label))) = (prev.take(), link.take()) {
+                        let kind = match kind {
+                            LinkKind::Line => ConnectorKind::Line,
+                            _ => ConnectorKind::Arrow,
+                        };
+                        if !self.uncounted {
+                            self.order.push(Some(self.edges.len()));
+                        }
+                        self.edges.push(Edge {
+                            from,
+                            to: id.clone(),
+                            kind,
+                            label,
+                        });
+                    }
+                    prev = Some(id);
+                }
+                Token::Link { kind, label } => link = Some((kind, label)),
+                Token::Amp => unreachable!("checked above"),
+            }
+        }
+    }
+
+    /// The nodes in a statement kept verbatim.
+    fn external(&mut self, stmt: &str) {
+        let word = stmt.split_whitespace().next().unwrap_or("");
+        if !KEYWORDS.contains(&word) {
+            match lex::tokenize(stmt) {
+                Some(tokens) => self.declare_all(tokens, true),
+                None => self.uncountable(stmt),
+            }
+        }
+    }
+
+    /// A statement the lexer can't read: if it may hold edges, the edges
+    /// after it can't be numbered.
+    fn uncountable(&mut self, stmt: &str) {
+        if ["--", "==", "-.", "~~~"].iter().any(|l| stmt.contains(l)) {
+            self.uncounted = true;
+        }
+    }
+
+    /// `linkStyle 0,2 stroke:#f00`: noted for the build. `default` and
+    /// anything unreadable stay as written.
+    fn link_style(&mut self, stmt: &str) {
+        let rest = stmt["linkStyle".len()..].trim_start();
+        let (ids, props) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+        let indexes: Option<Vec<usize>> = ids.split(',').map(|i| i.trim().parse().ok()).collect();
+        if let (Some(indexes), Some(style)) = (indexes, Style::parse(props)) {
+            self.link_styles
+                .push((self.passthrough.len(), indexes, style));
+        }
+    }
+
+    /// Declares a verbatim statement's nodes and notes its edges as layout
+    /// hints: `a & b --> c` joins each of `a`, `b` to `c`.
+    fn declare_all(&mut self, tokens: Vec<Token>, external: bool) {
+        let (mut prev, mut group) = (Vec::new(), Vec::new());
+        for token in tokens {
+            match token {
+                Token::Node(n) => {
+                    group.push(n.id.clone());
+                    self.declare(n, external);
+                }
+                Token::Amp => {}
+                Token::Link { .. } => {
+                    self.hint(&prev, &group);
+                    prev = std::mem::take(&mut group);
+                }
+            }
+        }
+        self.hint(&prev, &group);
+    }
+
+    /// Each pair is an edge Mermaid counts.
+    fn hint(&mut self, from: &[String], to: &[String]) {
+        for a in from {
+            for b in to {
+                self.hints.push((a.clone(), b.clone()));
+                if !self.uncounted {
+                    self.order.push(None);
+                }
+            }
+        }
+    }
+
+    /// Mermaid lets any mention declare a node, and a later shape replaces an
+    /// earlier one. A verbatim statement never overrides a modelled one.
+    fn declare(&mut self, n: NodeRef, external: bool) {
+        let Some(&i) = self.index.get(&n.id) else {
+            self.index.insert(n.id.clone(), self.nodes.len());
+            self.nodes.push(Node {
+                id: n.id,
+                shape: n.shape,
+                class: n.class,
+                external,
+            });
+            return;
+        };
+        let node = &mut self.nodes[i];
+        if external && !node.external {
+            return;
+        }
+        node.external = external;
+        if n.shape.is_some() {
+            node.shape = n.shape;
+        }
+        if n.class.is_some() {
+            node.class = n.class;
+        }
+    }
+
+    fn build(mut self, d: &mut Diagram, layout: &Layout) {
+        // Shapes keep the order of their `@shape` lines, which is the model's
+        // order when BlockLiner wrote the file; new ones follow in file order.
+        // Without this, nodes declared in verbatim statements would move
+        // behind the others on every save.
+        let rank = |n: &Node| layout.shapes.get(&n.id).map_or(usize::MAX, |&(i, _)| i);
+        self.nodes.sort_by_key(rank);
+        let mut unplaced = Vec::new();
+        for (i, n) in self.nodes.into_iter().enumerate() {
+            let text = n.class.as_deref() == Some(TEXT_CLASS);
+            let (kind, label) = n.shape.unwrap_or_else(|| (ShapeKind::Rect, n.id.clone()));
+            let kind = if text { ShapeKind::Text } else { kind };
+            let rect = layout
+                .shapes
+                .get(&n.id)
+                .map(|&(_, r)| r)
+                .unwrap_or_else(|| {
+                    unplaced.push(i);
+                    Rect::default()
+                });
+            d.shapes.push(Shape {
+                id: n.id,
+                kind,
+                label,
+                rect,
+                class: n.class.filter(|_| !text),
+                external: n.external,
+                style: Style::default(),
+            });
+        }
+
+        // A shape's own `style` lines become its style (later ones win);
+        // those for external or unknown nodes stay as written.
+        let mut absorbed = Vec::new();
+        for (at, id, style) in self.styles {
+            if let Some(s) = d.shape_mut(&id).filter(|s| !s.external) {
+                s.style.merge(style);
+                absorbed.push(at);
+            }
+        }
+
+        let mut seen: HashMap<(String, String), usize> = HashMap::new();
+        for e in self.edges {
+            let n = seen.entry((e.from.clone(), e.to.clone())).or_default();
+            *n += 1;
+            let (a, b, route) = layout
+                .edges
+                .get(&edge_key(&e.from, &e.to, *n))
+                .copied()
+                .unwrap_or_default();
+            d.connectors.push(Connector {
+                kind: e.kind,
+                from: End::glued(e.from, a),
+                to: End::glued(e.to, b),
+                label: e.label,
+                route,
+                style: Style::default(),
+            });
+        }
+        // A `linkStyle` naming only modelled edges is theirs (the edges are
+        // the first connectors, in order); others stay as written.
+        for (at, indexes, style) in self.link_styles {
+            let edges: Option<Vec<usize>> = indexes
+                .iter()
+                .map(|&n| self.order.get(n).copied().flatten())
+                .collect();
+            if let Some(edges) = edges {
+                for e in edges {
+                    d.connectors[e].style.merge(style.clone());
+                }
+                absorbed.push(at);
+            }
+        }
+        let mut i = 0;
+        self.passthrough.retain(|_| {
+            let keep = !absorbed.contains(&i);
+            i += 1;
+            keep
+        });
+        for line in &layout.lines {
+            let exists = |end: &End| end.shape().is_none_or(|id| d.shape(id).is_some());
+            if exists(&line.from) && exists(&line.to) {
+                d.connectors.push(line.clone());
+            }
+        }
+
+        d.passthrough = self.passthrough;
+        layout::layered(d, &unplaced, &self.hints);
+    }
+}
+
+/// What the `%% blockliner` and `%% @…` comments say.
+#[derive(Default)]
+struct Layout {
+    grid: Option<f32>,
+    /// Each `@shape`'s rectangle and its position among the `@shape` lines.
+    shapes: HashMap<String, (usize, Rect)>,
+    /// Each `@edge`'s fixed anchors and route.
+    edges: HashMap<String, (Option<Anchor>, Option<Anchor>, Route)>,
+    lines: Vec<Connector>,
+}
+
+impl Layout {
+    /// Takes in a `%%` comment; `false` if it isn't BlockLiner's. A malformed
+    /// `@` line is still BlockLiner's, and dropped.
+    fn comment(&mut self, t: &str) -> bool {
+        let body = t.trim_start_matches('%').trim();
+        let mut words = body.split_whitespace();
+        let (positional, fields) = split_fields(words.clone().skip(1));
+        match words.next() {
+            Some("blockliner") if positional.first().is_some_and(|v| v.parse::<u32>().is_ok()) => {
+                if let Some(g) = fields
+                    .get("grid")
+                    .and_then(|v| number(v))
+                    .filter(|g| *g > 0.0)
+                {
+                    self.grid = Some(g);
+                }
+            }
+            Some("@shape") => {
+                let rect = (|| {
+                    let n = |k: &str| fields.get(k).and_then(|v| number(v));
+                    Some(Rect::new(n("x")?, n("y")?, n("w")?, n("h")?))
+                })();
+                if let (Some(id), Some(rect)) = (positional.first(), rect) {
+                    let order = self.shapes.len();
+                    self.shapes.entry(id.to_string()).or_insert((order, rect)).1 = rect;
+                }
+            }
+            Some("@edge") => {
+                if let Some(key) = positional.first() {
+                    let anchor = |k: &str| fields.get(k).and_then(|v| Anchor::parse(v));
+                    self.edges.insert(
+                        key.to_string(),
+                        (anchor("from"), anchor("to"), route(&fields)),
+                    );
+                }
+            }
+            Some("@line") => {
+                let kind = match positional.first() {
+                    Some(&"line") => Some(ConnectorKind::Line),
+                    Some(&"arrow") => Some(ConnectorKind::Arrow),
+                    _ => None,
+                };
+                let end = |k: &str| fields.get(k).and_then(|v| parse_end(v));
+                if let (Some(kind), Some(from), Some(to)) = (kind, end("from"), end("to")) {
+                    let mut line = Connector::new(kind, from, to).with_route(route(&fields));
+                    line.style.stroke = fields.get("stroke").map(|c| Colour::parse(c));
+                    self.lines.push(line);
+                }
+            }
+            Some(w) if w.starts_with('@') => {}
+            _ => return false,
+        }
+        true
+    }
+}
+
+/// `route=elbow [mid=x:240]`; anything else is straight.
+fn route(fields: &HashMap<&str, &str>) -> Route {
+    match fields.get("route") {
+        Some(&"elbow") => Route::Elbow {
+            mid: fields.get("mid").and_then(|v| Mid::parse(v)),
+        },
+        _ => Route::Straight,
+    }
+}
+
+fn split_fields<'a>(
+    words: impl Iterator<Item = &'a str>,
+) -> (Vec<&'a str>, HashMap<&'a str, &'a str>) {
+    let mut positional = Vec::new();
+    let mut fields = HashMap::new();
+    for w in words {
+        match w.split_once('=') {
+            Some((k, v)) => {
+                fields.insert(k, v);
+            }
+            None => positional.push(w),
+        }
+    }
+    (positional, fields)
+}
+
+fn number(s: &str) -> Option<f32> {
+    s.parse::<f32>().ok().filter(|v| v.is_finite())
+}
+
+/// `x,y` or `id[:anchor]`.
+fn parse_end(s: &str) -> Option<End> {
+    if let Some((x, y)) = s.split_once(',') {
+        return Some(End::Free(Point::new(number(x)?, number(y)?)));
+    }
+    match s.split_once(':') {
+        Some((id, a)) => Some(End::glued(id, Some(Anchor::parse(a)?))),
+        None => Some(End::glued(s, None)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splits_statements() {
+        assert_eq!(statements("a --> b; b --> c;"), vec!["a --> b", "b --> c"]);
+        assert_eq!(
+            statements("a[\"x; y\"] --> b(c;d)"),
+            vec!["a[\"x; y\"] --> b(c;d)"]
+        );
+    }
+
+    #[test]
+    fn rejects_other_diagram_types() {
+        assert_eq!(
+            read("%% hi\nsequenceDiagram\n  a->>b: x\n"),
+            Err(ReadError::Unsupported("sequenceDiagram".into()))
+        );
+    }
+
+    #[test]
+    fn empty_is_a_new_diagram() {
+        assert_eq!(read(""), Ok(Diagram::new()));
+        assert_eq!(read("\n\n%% blockliner 1 grid=10\n").unwrap().grid, 10.0);
+    }
+
+    #[test]
+    fn link_styles_on_modelled_edges_are_theirs() {
+        // Edges in file order: 0 a-->b (modelled), 1 a-->c and 2 b-->c
+        // (kept: `&`), 3 b-->c (modelled).
+        let text = "flowchart LR\n  a --> b\n  a & b --> c\n  b --> c\n  \
+                    linkStyle 0 stroke:#f00,stroke-width:2px\n  \
+                    linkStyle 3 stroke:#0f0\n  linkStyle 1,4 stroke:#00f\n  \
+                    linkStyle 2 stroke:#999\n  linkStyle default stroke:#333\n";
+        let d = read(text).unwrap();
+        let props = |i: usize| d.connectors[i].style.props();
+        assert_eq!(props(0), "stroke:#f00,stroke-width:2px");
+        assert_eq!(props(1), "stroke:#0f0");
+        assert_eq!(
+            d.passthrough,
+            [
+                "  a & b --> c",
+                "  linkStyle 1,4 stroke:#00f",
+                "  linkStyle 2 stroke:#999",
+                "  linkStyle default stroke:#333",
+            ]
+        );
+        // Written back numbered as the edges now are: the modelled ones
+        // first.
+        let out = crate::write(&d);
+        assert!(
+            out.contains("  linkStyle 0 stroke:#f00,stroke-width:2px\n  linkStyle 1 stroke:#0f0\n"),
+            "{out}"
+        );
+
+        // After a statement whose edges can't be counted, indexes stay.
+        let d = read(
+            "flowchart LR\n  a --> b\n  x@{ shape: rect } --> b\n  c --> d\n  \
+             linkStyle 0 stroke:#f00\n  linkStyle 2 stroke:#0f0\n",
+        )
+        .unwrap();
+        assert_eq!(d.connectors[0].style.props(), "stroke:#f00");
+        assert!(d.connectors[1].style.is_empty());
+        assert!(d
+            .passthrough
+            .contains(&"  linkStyle 2 stroke:#0f0".to_string()));
+
+        // A free line's colour is in its `@line`.
+        let d = read("flowchart LR\n%% @line line from=5,5 to=9,9 stroke=#3b82f6\n").unwrap();
+        assert_eq!(d.connectors[0].style.props(), "stroke:#3b82f6");
+        assert!(crate::write(&d).contains("%% @line line from=5,5 to=9,9 stroke=#3b82f6\n"));
+    }
+
+    #[test]
+    fn implicit_nodes_and_chains() {
+        let d = read("graph\n  a --> b --- c\n").unwrap();
+        assert_eq!(d.direction, Direction::TB);
+        let ids: Vec<_> = d
+            .shapes
+            .iter()
+            .map(|s| (s.id.as_str(), s.label.as_str()))
+            .collect();
+        assert_eq!(ids, [("a", "a"), ("b", "b"), ("c", "c")]);
+        assert_eq!(d.connectors.len(), 2);
+        assert_eq!(d.connectors[1].kind, ConnectorKind::Line);
+        assert_eq!(d.connectors[1].from, End::glued("b", None));
+    }
+
+    #[test]
+    fn layout_comments() {
+        let d = read(
+            "flowchart LR\n  a[A]\n  b(B)\n  a --> b\n  a --> b\n\
+             %% blockliner 1 grid=10\n\
+             %% @shape a x=10 y=20 w=80 h=30\n\
+             %% @edge a->b#2 from=S\n\
+             %% @line line from=5,5 to=b:N\n\
+             %% @line arrow from=gone to=1,1\n\
+             %% @shape\n\
+             %% just a note\n",
+        )
+        .unwrap();
+        assert_eq!(d.grid, 10.0);
+        assert_eq!(d.shapes[0].rect, Rect::new(10.0, 20.0, 80.0, 30.0));
+        // `b` had no `@shape`: placed below `a`, on the grid.
+        assert_eq!(d.shapes[1].rect, Rect::new(20.0, 70.0, 80.0, 30.0));
+        assert_eq!(d.connectors[0].from, End::glued("a", None));
+        assert_eq!(d.connectors[1].from, End::glued("a", Some(Anchor::S)));
+        assert_eq!(
+            d.connectors.len(),
+            3,
+            "the line to a missing shape is dropped"
+        );
+        assert_eq!(d.connectors[2].from, End::Free(Point::new(5.0, 5.0)));
+        assert_eq!(d.connectors[2].to, End::glued("b", Some(Anchor::N)));
+        assert_eq!(d.passthrough, ["%% just a note"]);
+    }
+
+    #[test]
+    fn verbatim_statements_declare_external_nodes() {
+        let d = read(
+            "flowchart LR\n  a --> b\n  b -.-> c[(Store)]\n  subgraph s [Group]\n    d --> a\n  end\n",
+        )
+        .unwrap();
+        let ext: Vec<_> = d
+            .shapes
+            .iter()
+            .map(|s| (s.id.as_str(), s.external))
+            .collect();
+        assert_eq!(ext, [("a", false), ("b", false), ("c", true), ("d", true)]);
+        assert_eq!(d.shapes[2].label, "Store");
+        assert_eq!(d.connectors.len(), 1);
+        assert_eq!(
+            d.passthrough,
+            [
+                "  b -.-> c[(Store)]",
+                "  subgraph s [Group]",
+                "    d --> a",
+                "  end"
+            ]
+        );
+    }
+
+    #[test]
+    fn own_style_lines_become_the_shapes_style() {
+        let d = read(
+            "flowchart LR\n  a --> b\n  style a fill:#f9f,stroke-width:2px\n  classDef hot fill:red\n  \
+             style a stroke:#333,stroke-width:4px\n  style a,b fill:#000\n  style c fill:#fff\n  \
+             b -.-> c\n  style b fill:rgb(1, 2, 3)\n  style  b  color:#123\n",
+        )
+        .unwrap();
+        let a = &d.shape("a").unwrap().style;
+        // Merged in order, the later line winning.
+        assert_eq!(a.props(), "fill:#f9f,stroke:#333,stroke-width:4px");
+        let b = &d.shape("b").unwrap().style;
+        assert_eq!(b.fill.as_ref().unwrap().text, "rgb(1, 2, 3)");
+        assert_eq!(b.fill.as_ref().unwrap().rgba, None, "kept, not drawn");
+        assert_eq!(b.color.as_ref().unwrap().text, "#123");
+        // Several ids, and an external shape's style, stay as written.
+        assert_eq!(
+            d.passthrough,
+            [
+                "  classDef hot fill:red",
+                "  style a,b fill:#000",
+                "  style c fill:#fff",
+                "  b -.-> c",
+            ]
+        );
+        assert!(d.shape("c").unwrap().style.is_empty());
+    }
+}
