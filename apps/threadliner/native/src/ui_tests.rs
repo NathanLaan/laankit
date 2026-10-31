@@ -195,24 +195,28 @@ fn settings_are_written_like_the_tauri_build() {
     }
     assert!(done.iter().any(|d| d == &(Op::Setup, Ok(()))), "{done:?}");
 
-    // The Settings selects store strings, the toggle a boolean.
-    backend.set_setting("pollInterval", json!("5"));
-    backend.set_setting("pollNotificationsEnabled", json!(false));
-    let mut settings = None;
-    for _ in 0..500 {
-        for e in backend.poll() {
-            if let Event::Settings(s) = e {
-                settings = Some(s);
+    // The Settings selects store strings, the toggle a boolean. Each change
+    // runs as its own task, so the second is sent once the first is in (as
+    // a person changes them), keeping the file's key order fixed.
+    let wait_for = |done: &dyn Fn(&crate::backend::Settings) -> bool| {
+        for _ in 0..500 {
+            for e in backend.poll() {
+                if let Event::Settings(s) = e {
+                    if done(&s) {
+                        return s;
+                    }
+                }
             }
+            std::thread::sleep(Duration::from_millis(20));
         }
-        if settings.as_ref().is_some_and(|s| !s.notifications) {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    let settings = settings.expect("settings event");
+        panic!("no settings event");
+    };
+    backend.set_setting("pollInterval", json!("5"));
+    let settings = wait_for(&|s| s.poll_interval == "5");
+    assert!(settings.notifications);
+    backend.set_setting("pollNotificationsEnabled", json!(false));
+    let settings = wait_for(&|s| !s.notifications);
     assert_eq!(settings.poll_interval, "5");
-    assert!(!settings.notifications);
     let raw = std::fs::read_to_string(data.join("configuration/settings.json")).unwrap();
     assert_eq!(
         raw,
