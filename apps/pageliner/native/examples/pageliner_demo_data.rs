@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
     if cfg!(all(unix, not(target_os = "macos"))) && std::env::var_os("XDG_CONFIG_HOME").is_none() {
         anyhow::bail!("set XDG_CONFIG_HOME to a temp folder first");
     }
-    let dir = marina_core::paths::user_data_dir("PageLiner").join("library");
+    let dir = laankit_core::paths::user_data_dir("PageLiner").join("library");
     let mut library = Library::open(dir.clone())?;
     for arg in std::env::args().skip(1) {
         let path = PathBuf::from(&arg);

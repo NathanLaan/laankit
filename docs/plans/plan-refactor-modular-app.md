@@ -1,58 +1,30 @@
 # Plan: One Modular App — Installable NoteLiner and ThreadLiner Modules
 
-Status: Draft for review
-Working name: **Marina** (single Electron app, two installable modules)
+Status: Draft for review Working name: **LaanKit** (single Electron app, two installable modules)
 
 ## Goal
 
-Collapse NoteLiner and ThreadLiner into a single Electron application whose
-features are organised as modules the user can install, enable, disable,
-or uninstall at runtime. The shell looks and behaves like one product.
-Each module owns a domain (notes / RSS feeds / ...future), shows up in the
-toolbar when enabled, and can be removed without affecting other modules.
+Collapse NoteLiner and ThreadLiner into a single Electron application whose features are organised as modules the user can install, enable, disable, or uninstall at runtime. The shell looks and behaves like one product. Each module owns a domain (notes / RSS feeds / ...future), shows up in the toolbar when enabled, and can be removed without affecting other modules.
 
-This is a strictly larger change than [the shared-foundation
-plan](./plan-refactor-common-foundation.md). That plan keeps two apps with
-a shared UI library. This plan eliminates the second app entirely.
+This is a strictly larger change than [the shared-foundation plan](./plan-refactor-common-foundation.md). That plan keeps two apps with a shared UI library. This plan eliminates the second app entirely.
 
 ## Vision
 
-Boot the app cold and you see a chrome with no module-specific UI.
-Settings → Modules has an "Add module" row. Pick "NoteLiner" — a new
-toolbar group appears, the sidebar becomes available, the editor / preview
-panes mount on demand. Pick "ThreadLiner" too — a second toolbar group
-appears below the first, the sidebar gains a second sub-panel for feeds,
-the entry list and content viewer pane become available. Each module can
-be unticked and the UI shrinks back accordingly.
+Boot the app cold and you see a chrome with no module-specific UI. Settings → Modules has an "Add module" row. Pick "NoteLiner" — a new toolbar group appears, the sidebar becomes available, the editor / preview panes mount on demand. Pick "ThreadLiner" too — a second toolbar group appears below the first, the sidebar gains a second sub-panel for feeds, the entry list and content viewer pane become available. Each module can be unticked and the UI shrinks back accordingly.
 
 ## Why this is interesting
 
-- **One install for users who want both.** Today they'd ship two app
-  bundles, two updaters, two icon-in-the-dock entries, two sets of
-  settings, two windows.
-- **One menu / chrome.** Title bar, theme, scale, settings, about, sync
-  modal — all shared.
-- **Cross-module features.** A note can deep-link to an RSS entry. A feed
-  refresh can drop entries into the current project's notes.
-- **Forces module discipline.** Each module is a clean package with a
-  well-defined contract; that is the *real* refactor benefit.
+- **One install for users who want both.** Today they'd ship two app bundles, two updaters, two icon-in-the-dock entries, two sets of settings, two windows.
+- **One menu / chrome.** Title bar, theme, scale, settings, about, sync modal — all shared.
+- **Cross-module features.** A note can deep-link to an RSS entry. A feed refresh can drop entries into the current project's notes.
+- **Forces module discipline.** Each module is a clean package with a well-defined contract; that is the *real* refactor benefit.
 
 ## Why this is hard
 
-- **Layout.** The two apps disagree about what fills the editor pane.
-  NoteLiner's centre is an editor + preview + history + attachments;
-  ThreadLiner's centre is an entry list + content viewer. The shell needs
-  a "workspace" abstraction that one module owns at a time.
-- **Storage models.** NoteLiner is a folder of `.md` files with a JSON
-  index + git sync. ThreadLiner is a git-synced JSON store of feeds.
-  Either each module owns its own data directory, or we converge on a
-  single workspace folder that contains both.
-- **Lifecycle.** Install → enable → load → IPC handlers register → UI
-  contributions render. Disable / uninstall has to reverse all of that
-  without restart.
-- **Security.** Modules execute in the main process and have full
-  privileges. We need either (a) trust = "we maintain all modules" or
-  (b) sandboxing — out of scope for v1.
+- **Layout.** The two apps disagree about what fills the editor pane. NoteLiner's centre is an editor + preview + history + attachments; ThreadLiner's centre is an entry list + content viewer. The shell needs a "workspace" abstraction that one module owns at a time.
+- **Storage models.** NoteLiner is a folder of `.md` files with a JSON index + git sync. ThreadLiner is a git-synced JSON store of feeds. Either each module owns its own data directory, or we converge on a single workspace folder that contains both.
+- **Lifecycle.** Install → enable → load → IPC handlers register → UI contributions render. Disable / uninstall has to reverse all of that without restart.
+- **Security.** Modules execute in the main process and have full privileges. We need either (a) trust = "we maintain all modules" or (b) sandboxing — out of scope for v1.
 
 ## Module contract
 
@@ -95,9 +67,7 @@ export default {
 };
 ```
 
-The shell loads enabled modules at boot, calls `manifest.main` (which
-returns a `MainContext` controller), and the renderer registers
-`manifest.renderer` contributions into the shared registries.
+The shell loads enabled modules at boot, calls `manifest.main` (which returns a `MainContext` controller), and the renderer registers `manifest.renderer` contributions into the shared registries.
 
 ### Main-process API
 
@@ -166,7 +136,7 @@ export default function registerModule({ shell }) {
 ## Shell architecture
 
 ```
-apps/marina/
+apps/laankit/
 ├── src/main/
 │   ├── shell.js                    bootstraps Electron + module host
 │   ├── module-host.js              install/enable/disable lifecycle, IPC namespacing
@@ -191,7 +161,7 @@ apps/marina/
 
 ### Cold boot, no modules
 
-- Title bar: "Marina"
+- Title bar: "LaanKit"
 - Toolbar: only the utility group (settings, about, help)
 - Sidebar: empty placeholder
 - Body: "No workspace active. Open Settings → Modules to add one."
@@ -199,19 +169,14 @@ apps/marina/
 ### NoteLiner module installed and enabled
 
 - Toolbar gains the notes file/view groups.
-- Sidebar gains the four notes panes (files, tags, outline, backlinks),
-  toggleable individually.
+- Sidebar gains the four notes panes (files, tags, outline, backlinks), toggleable individually.
 - Body shows the editor + preview workspace.
 - Settings gains a "Notes" tab and an "MCP" tab.
 
 ### Both modules enabled
 
-- Sidebar shows panes from whichever workspace is active. A workspace
-  switcher (small tab strip above the sidebar? toolbar group? command
-  palette?) flips between Notes and Feeds.
-- Toolbar groups for the inactive workspace are visually de-emphasised
-  (greyed) but still clickable — clicking a Feeds button switches the
-  active workspace to Feeds first.
+- Sidebar shows panes from whichever workspace is active. A workspace switcher (small tab strip above the sidebar? toolbar group? command palette?) flips between Notes and Feeds.
+- Toolbar groups for the inactive workspace are visually de-emphasised (greyed) but still clickable — clicking a Feeds button switches the active workspace to Feeds first.
 - Theme/scale/sync controls are shared.
 
 ### Disabling a module
@@ -227,13 +192,12 @@ Two prompts:
 1. "Disable and remove from the shell?" → Yes.
 2. "Also delete data folder at `<path>`?" → defaults to No.
 
-After uninstall, the module package is removed from `modules-installed.json`
-and (optionally) from disk.
+After uninstall, the module package is removed from `modules-installed.json` and (optionally) from disk.
 
 ## Data model
 
 ```
-~/.config/marina/
+~/.config/laankit/
 ├── settings.json             theme, scale, customTitlebar, lastWorkspace
 ├── modules-installed.json    [{ id, version, enabled, dataDir }]
 ├── module-data/
@@ -242,72 +206,46 @@ and (optionally) from disk.
 └── window-state.json
 ```
 
-Each module gets one or more data directories under `module-data/<id>/`.
-Modules may declare additional dirs in their manifest.
+Each module gets one or more data directories under `module-data/<id>/`. Modules may declare additional dirs in their manifest.
 
 ## IPC discipline
 
-Every module-introduced IPC channel must be prefixed with its module id
-(`noteliner:`, `threadliner:`). The shell rejects unprefixed handlers.
-Shell-owned channels (`window:*`, `ui:*`, `app:*`, `theme:*`, `shell:*`)
-are reserved.
+Every module-introduced IPC channel must be prefixed with its module id (`noteliner:`, `threadliner:`). The shell rejects unprefixed handlers. Shell-owned channels (`window:*`, `ui:*`, `app:*`, `theme:*`, `shell:*`) are reserved.
 
 ## Module distribution
 
-For v1: modules ship *in-tree* with the app — installing means flipping a
-flag in `modules-installed.json`. There is no out-of-tree marketplace,
-no signed packages, no third-party modules. This keeps the security
-model simple ("everything we ship is trusted") while still exercising
-the full module API for our own code.
+For v1: modules ship *in-tree* with the app — installing means flipping a flag in `modules-installed.json`. There is no out-of-tree marketplace, no signed packages, no third-party modules. This keeps the security model simple ("everything we ship is trusted") while still exercising the full module API for our own code.
 
-For v2 (out of scope): consider out-of-tree modules loaded from a
-`~/.marina/modules/` directory. That introduces a code-signing
-requirement and a permission model — both substantial.
+For v2 (out of scope): consider out-of-tree modules loaded from a `~/.laankit/modules/` directory. That introduces a code-signing requirement and a permission model — both substantial.
 
 ## Migration from existing apps
 
 ### Step-by-step
 
-1. **Foundation first.** Land `@marina/desktop-ui` per the
-   [shared-foundation plan](./plan-refactor-common-foundation.md). The
-   shell is built on top of that library.
-2. **Create the shell skeleton.** `apps/marina/` with the chrome
-   from `@marina/desktop-ui` and the module host stubbed.
-3. **Define the contribution registries.** Toolbar groups, sidebar
-   panes, workspaces, settings tabs, commands, sync engines, IPC
-   namespacing.
+1. **Foundation first.** Land `@laankit/desktop-ui` per the [shared-foundation plan](./plan-refactor-common-foundation.md). The shell is built on top of that library.
+2. **Create the shell skeleton.** `apps/laankit/` with the chrome from `@laankit/desktop-ui` and the module host stubbed.
+3. **Define the contribution registries.** Toolbar groups, sidebar panes, workspaces, settings tabs, commands, sync engines, IPC namespacing.
 4. **Port NoteLiner into `modules/noteliner/`.**
    - Move main-process services under the module's `main/`.
-   - Rewrite `App.svelte`'s mounting logic as `registerModule(shell)`
-     calls.
+   - Rewrite `App.svelte`'s mounting logic as `registerModule(shell)` calls.
    - Namespace every IPC channel.
    - Persist data under `module-data/noteliner/`.
-5. **Smoke-test as a single-module app.** Should be feature-parity
-   with current NoteLiner.
+5. **Smoke-test as a single-module app.** Should be feature-parity with current NoteLiner.
 6. **Port ThreadLiner into `modules/threadliner/`.**
    - Same routine. Workspace id: `feeds`.
-   - Sync engine adapts the existing auto-push model to the shell's
-     sync registry contract.
-7. **Add the Module Manager UI.** Settings → Modules: list installed
-   modules, enable/disable toggles, uninstall, "Add module" picker that
-   in v1 only shows in-tree modules.
+   - Sync engine adapts the existing auto-push model to the shell's sync registry contract.
+7. **Add the Module Manager UI.** Settings → Modules: list installed modules, enable/disable toggles, uninstall, "Add module" picker that in v1 only shows in-tree modules.
 8. **Cross-module touches (optional, v1.x).**
    - Notes can `[[feed:<id>]]`-link into an RSS entry.
    - Command palette shows commands from both modules.
    - Theme stays shared.
-9. **Deprecate** the standalone NoteLiner and ThreadLiner binaries. Ship
-   the unified bundle.
+9. **Deprecate** the standalone NoteLiner and ThreadLiner binaries. Ship the unified bundle.
 
 ### Backwards-compatibility for existing users
 
-- Existing NoteLiner users have `~/.config/Electron/...` data. On first
-  Marina boot with the NoteLiner module enabled, prompt to import
-  recent projects (we already store these as JSON pointers — no data
-  copying needed).
-- Existing ThreadLiner users have a `dataDir` config. Same prompt to
-  import.
-- We do *not* move user data — we just point the module at the existing
-  location.
+- Existing NoteLiner users have `~/.config/Electron/...` data. On first LaanKit boot with the NoteLiner module enabled, prompt to import recent projects (we already store these as JSON pointers — no data copying needed).
+- Existing ThreadLiner users have a `dataDir` config. Same prompt to import.
+- We do *not* move user data — we just point the module at the existing location.
 
 ## Open design questions
 
@@ -325,22 +263,11 @@ These need a decision before implementation, in roughly this order.
 
 ## Risks
 
-- **Scope.** This is a 2–3 month project, not a 2–3 week one. The
-  shared-foundation plan delivers ~70% of the visual unification benefit
-  at ~25% of the cost.
-- **Coupling.** Modules sharing chrome but not internals is hard to get
-  right — the registry contracts are the load-bearing piece. Get them
-  wrong and the shell becomes a worse version of each app.
-- **Performance.** Two modules in one process = two file watchers, two
-  git engines, possibly an MCP server. The current single-app footprints
-  add up.
-- **Branding.** "NoteLiner" and "ThreadLiner" are recognisable. The unified
-  shell needs its own identity, or the modules need to remain marketed
-  as separate things even though they share an installer.
-- **Reversibility.** Once consumers migrate to the unified app, going
-  back to two standalone apps is awkward (data migration, two installers
-  again). Worth doing the foundation work first and only committing to
-  the modular app once the shared library is healthy.
+- **Scope.** This is a 2–3 month project, not a 2–3 week one. The shared-foundation plan delivers ~70% of the visual unification benefit at ~25% of the cost.
+- **Coupling.** Modules sharing chrome but not internals is hard to get right — the registry contracts are the load-bearing piece. Get them wrong and the shell becomes a worse version of each app.
+- **Performance.** Two modules in one process = two file watchers, two git engines, possibly an MCP server. The current single-app footprints add up.
+- **Branding.** "NoteLiner" and "ThreadLiner" are recognisable. The unified shell needs its own identity, or the modules need to remain marketed as separate things even though they share an installer.
+- **Reversibility.** Once consumers migrate to the unified app, going back to two standalone apps is awkward (data migration, two installers again). Worth doing the foundation work first and only committing to the modular app once the shared library is healthy.
 
 ## Effort estimate
 
@@ -353,8 +280,7 @@ These need a decision before implementation, in roughly this order.
 | Module manager UI + polish | 1 week |
 | QA + migration story | 1 week |
 
-Total: **~10–13 weeks of focused work**, conditional on the foundation
-landing first.
+Total: **~10–13 weeks of focused work**, conditional on the foundation landing first.
 
 ## Out of scope
 

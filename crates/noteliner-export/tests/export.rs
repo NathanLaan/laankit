@@ -13,7 +13,7 @@ use hayro::{PixmapSettings, RenderCache, RenderSettings};
 use noteliner_export::{markup, ExportOptions, Exporter, LazyExporter, Title, WikiLinks};
 
 fn faces() -> impl Iterator<Item = &'static [u8]> {
-    marina_egui::fonts::bundled_faces()
+    laankit_egui::fonts::bundled_faces()
         .iter()
         .map(|(_, bytes)| *bytes)
 }

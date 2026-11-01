@@ -1,8 +1,6 @@
 # BlockLiner Native
 
-BlockLiner's app: an [egui](https://github.com/emilk/egui) UI over `blockliner-core`, with no
-webview or JavaScript. It runs on Linux, Windows and macOS. The design, file format and the
-decisions behind them are in [`docs/plans/plan-blockliner.md`](../../../docs/plans/plan-blockliner.md).
+BlockLiner's app: an [egui](https://github.com/emilk/egui) UI over `blockliner-core`, with no webview or JavaScript. It runs on Linux, Windows and macOS. The design, file format and the decisions behind them are in [`docs/plans/plan-blockliner.md`](../../../docs/plans/plan-blockliner.md).
 
 ## Running
 
@@ -12,18 +10,11 @@ cargo run -p blockliner-native --release -- ~/diagrams/Checkout.mmd   # or a fol
 cargo test -p blockliner-core -p blockliner-native
 ```
 
-The package is `blockliner-native`; its binary is `blockliner`, the one the release packages
-install as `/usr/bin/blockliner`.
+The package is `blockliner-native`; its binary is `blockliner`, the one the release packages install as `/usr/bin/blockliner`.
 
-- **Opening.** Ctrl+O (or the toolbar's folder button) opens a folder; its `.mmd` files are the
-  sidebar's diagrams. The next start reopens the folder and diagram. A path on the command line
-  (a `.mmd` file or a folder) opens that instead; the Linux desktop entry passes the file a file
-  manager opens with BlockLiner.
-- **Closing.** Close Folder (the toolbar button after Open Folder, or the palette) saves the open
-  diagram and goes back to "No folder open"; the next start then opens no folder. If the save
-  fails, the folder stays open and the error is shown.
-- **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and
-  Marina's title bar (takes a restart).
+- **Opening.** Ctrl+O (or the toolbar's folder button) opens a folder; its `.mmd` files are the sidebar's diagrams. The next start reopens the folder and diagram. A path on the command line (a `.mmd` file or a folder) opens that instead; the Linux desktop entry passes the file a file manager opens with BlockLiner.
+- **Closing.** Close Folder (the toolbar button after Open Folder, or the palette) saves the open diagram and goes back to "No folder open"; the next start then opens no folder. If the save fails, the folder stays open and the error is shown.
+- **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and LaanKit's title bar (takes a restart).
 - **Command palette.** Ctrl+K: every command.
 
 ## Keys
@@ -74,7 +65,7 @@ The app (`apps/blockliner/native`):
 | `app`      | Owns everything; routes commands, canvas output, overlay actions and autosave events         |
 | `backend`  | The folder on disk: list, read, create, rename, delete; the debounced atomic autosave; outside changes |
 | `config`   | `ui-preferences.json` in `~/.config/BlockLiner` (the platform equivalent elsewhere)           |
-| `commands` | The marina-egui command registry: shortcuts, palette and the Settings shortcut list         |
+| `commands` | The laankit-egui command registry: shortcuts, palette and the Settings shortcut list         |
 | `canvas`   | The grid, painting, pan and zoom, the tools and their gestures, the label editor            |
 | `views`    | The toolbar, the diagram sidebar, empty states and the status bar                           |
 | `properties` | The Properties pane below the diagram list: the selection's Fill and Stroke (Mixed when they differ), hex fields, Reset Style |
@@ -84,20 +75,13 @@ The app (`apps/blockliner/native`):
 
 ### Files
 
-- **One diagram, one file:** `<folder>/<name>.mmd`. The flowchart says what exists; the `%%`
-  block at the end says where it is. Opening writes nothing; the first edit normalises a
-  hand-written file, and from then on saves are byte-stable.
-- **Autosave** writes 0.8 s after edits pause (temp file + rename), and at once before switching
-  diagrams or quitting.
-- **Outside changes** are noticed about once a second and reload as one undoable step, unless
-  BlockLiner's own edits are waiting to be written.
+- **One diagram, one file:** `<folder>/<name>.mmd`. The flowchart says what exists; the `%%` block at the end says where it is. Opening writes nothing; the first edit normalises a hand-written file, and from then on saves are byte-stable.
+- **Autosave** writes 0.8 s after edits pause (temp file + rename), and at once before switching diagrams or quitting.
+- **Outside changes** are noticed about once a second and reload as one undoable step, unless BlockLiner's own edits are waiting to be written.
 
 ### Export
 
-The diagram is drawn once, as SVG: fixed light colours, the canvas's font, corner radius,
-arrowheads and label wrapping. A PNG is that SVG rasterised by `resvg` with the bundled fonts, so
-it looks the same on every system. The page is the exported objects plus two grid cells, aligned
-to the grid.
+The diagram is drawn once, as SVG: fixed light colours, the canvas's font, corner radius, arrowheads and label wrapping. A PNG is that SVG rasterised by `resvg` with the bundled fonts, so it looks the same on every system. The page is the exported objects plus two grid cells, aligned to the grid.
 
 ## Tests
 
@@ -106,30 +90,22 @@ cargo test -p blockliner-core -p blockliner-native
 BLOCKLINER_BLESS=1 cargo test -p blockliner-native the_svg_matches   # rewrite the golden SVG
 ```
 
-- **Core:** model, geometry, snapping, ids, history, layout (including 300 random graphs with no
-  overlaps), export scope, and the Mermaid golden files in `crates/blockliner-core/tests/fixtures`
-  with a round trip over 2,000 generated diagrams.
-- **App:** egui_kittest, headless: drawing and editing shapes and lines, undo, the folder and
-  autosave, outside changes, importing plain Mermaid, the command line, and export (a golden SVG
-  in `tests/fixtures/export.svg`, PNG pixels, and the dialog from the keyboard to the written file).
-  They check widgets through AccessKit and files on disk, never pixels on screen.
+- **Core:** model, geometry, snapping, ids, history, layout (including 300 random graphs with no overlaps), export scope, and the Mermaid golden files in `crates/blockliner-core/tests/fixtures` with a round trip over 2,000 generated diagrams.
+- **App:** egui_kittest, headless: drawing and editing shapes and lines, undo, the folder and autosave, outside changes, importing plain Mermaid, the command line, and export (a golden SVG in `tests/fixtures/export.svg`, PNG pixels, and the dialog from the keyboard to the written file). They check widgets through AccessKit and files on disk, never pixels on screen.
 
 ## Diagnostics
 
 | Variable                       | Effect                                                         |
 |--------------------------------|----------------------------------------------------------------|
-| `MARINA_SCREENSHOT=<png>`      | Saves a screenshot once the window has settled (`MARINA_SCREENSHOT_EXIT=1` closes afterwards) |
-| `MARINA_THEME`, `MARINA_SCALE` | Override the theme and scale                                   |
-| `MARINA_OPEN=<dialog>`         | `settings`, `about` or `palette`                               |
+| `LAANKIT_SCREENSHOT=<png>`      | Saves a screenshot once the window has settled (`LAANKIT_SCREENSHOT_EXIT=1` closes afterwards) |
+| `LAANKIT_THEME`, `LAANKIT_SCALE` | Override the theme and scale                                   |
+| `LAANKIT_OPEN=<dialog>`         | `settings`, `about` or `palette`                               |
 
 ## Still to verify by hand
 
 - The folder picker and the export save dialog on Windows, macOS and KDE.
-- Opening a `.mmd` from the file manager (Linux packages register `text/vnd.mermaid` for `*.mmd`
-  and `*.mermaid`). Windows and macOS have no file association yet.
+- Opening a `.mmd` from the file manager (Linux packages register `text/vnd.mermaid` for `*.mmd` and `*.mermaid`). Windows and macOS have no file association yet.
 - The undecorated window on Windows and macOS.
 - Trackpad pan and pinch zoom on macOS.
-- Copy and paste through the system clipboard (Ctrl+C/X/V and the menu's Paste) on each
-  platform, between two BlockLiner windows, and into and out of a text editor.
-- Exported SVGs in browsers and in Inkscape (text uses the Inter font when installed, else the
-  system sans-serif).
+- Copy and paste through the system clipboard (Ctrl+C/X/V and the menu's Paste) on each platform, between two BlockLiner windows, and into and out of a text editor.
+- Exported SVGs in browsers and in Inkscape (text uses the Inter font when installed, else the system sans-serif).

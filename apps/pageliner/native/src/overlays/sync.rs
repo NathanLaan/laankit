@@ -2,9 +2,9 @@
 //! state. Enable/disable, the remote URL, Sync Now and Check status.
 
 use egui::RichText;
-use marina_core::git::SyncStatus;
-use marina_egui::dialog::{self, ButtonKind, Dialog, Size};
-use marina_egui::{icons, theme};
+use laankit_core::git::SyncStatus;
+use laankit_egui::dialog::{self, ButtonKind, Dialog, Size};
+use laankit_egui::{icons, theme};
 
 use crate::backend::{GitInfo, GitOp};
 

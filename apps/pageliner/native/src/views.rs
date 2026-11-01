@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use egui::{pos2, vec2, Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui};
-use marina_egui::theme::{self, Palette};
-use marina_egui::{fonts, icons, settings};
+use laankit_egui::theme::{self, Palette};
+use laankit_egui::{fonts, icons, settings};
 
 use crate::commands::Act;
 use crate::model::{self, Book, Counts, FormatFilter, SortMode};

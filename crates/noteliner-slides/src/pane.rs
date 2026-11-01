@@ -12,7 +12,7 @@ use egui::{
     pos2, vec2, Align2, CornerRadius, FontId, Id, Key, Rect, Response, RichText, ScrollArea, Sense,
     Stroke, StrokeKind, TextEdit, Ui, WidgetInfo,
 };
-use marina_egui::{fonts, icons, theme};
+use laankit_egui::{fonts, icons, theme};
 
 use crate::deck::{Deck, Layout, Slide};
 use crate::edits::{Direction, EditResult, SlideEdit};

@@ -80,7 +80,10 @@ pub fn parse(content_type: &str, body: &str) -> Result<ParsedFeed> {
 }
 
 pub fn normalize_entries(items: &[Item]) -> Vec<NewEntry> {
-    let first = |opts: &[&Option<String>]| opts.iter().find_map(|o| o.as_ref().filter(|s| !s.is_empty()).cloned());
+    let first = |opts: &[&Option<String>]| {
+        opts.iter()
+            .find_map(|o| o.as_ref().filter(|s| !s.is_empty()).cloned())
+    };
     items
         .iter()
         .map(|it| NewEntry {
@@ -109,7 +112,12 @@ fn try_json_feed(content_type: &str, body: &str) -> Option<ParsedFeed> {
     if !version.starts_with("https://jsonfeed.org/version/") {
         return None;
     }
-    let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
+    let s = |v: &Value, k: &str| {
+        v.get(k)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
     let items = feed
         .get("items")
         .and_then(Value::as_array)
@@ -146,18 +154,33 @@ fn try_json_feed(content_type: &str, body: &str) -> Option<ParsedFeed> {
 
 fn json_feed_author(item: &Value, feed: &Value) -> Option<String> {
     let names = |v: &Value| -> Option<String> {
-        if let Some(list) = v.get("authors").and_then(Value::as_array).filter(|a| !a.is_empty()) {
+        if let Some(list) = v
+            .get("authors")
+            .and_then(Value::as_array)
+            .filter(|a| !a.is_empty())
+        {
             let joined = list
                 .iter()
-                .filter_map(|a| a.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()))
+                .filter_map(|a| {
+                    a.get("name")
+                        .and_then(Value::as_str)
+                        .filter(|n| !n.is_empty())
+                })
                 .collect::<Vec<_>>()
                 .join(", ");
             return Some(joined).filter(|s| !s.is_empty());
         }
-        v.get("author").and_then(|a| a.get("name")).and_then(Value::as_str).filter(|n| !n.is_empty()).map(str::to_string)
+        v.get("author")
+            .and_then(|a| a.get("name"))
+            .and_then(Value::as_str)
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
     };
     // v1.1 "authors" array / v1 "author" object, item first, then feed.
-    let has_item_authors = item.get("authors").and_then(Value::as_array).is_some_and(|a| !a.is_empty());
+    let has_item_authors = item
+        .get("authors")
+        .and_then(Value::as_array)
+        .is_some_and(|a| !a.is_empty());
     if has_item_authors || item.get("author").and_then(|a| a.get("name")).is_some() {
         return names(item);
     }
@@ -175,8 +198,12 @@ fn qname(node: Node) -> String {
     }
 }
 
-fn children<'a, 'i, 'n>(node: Node<'a, 'i>, name: &'n str) -> impl Iterator<Item = Node<'a, 'i>> + use<'a, 'i, 'n> {
-    node.children().filter(move |c| c.is_element() && qname(*c) == name)
+fn children<'a, 'i, 'n>(
+    node: Node<'a, 'i>,
+    name: &'n str,
+) -> impl Iterator<Item = Node<'a, 'i>> + use<'a, 'i, 'n> {
+    node.children()
+        .filter(move |c| c.is_element() && qname(*c) == name)
 }
 
 fn child<'a, 'i>(node: Node<'a, 'i>, name: &str) -> Option<Node<'a, 'i>> {
@@ -184,12 +211,17 @@ fn child<'a, 'i>(node: Node<'a, 'i>, name: &str) -> Option<Node<'a, 'i>> {
 }
 
 fn own_text(node: Node) -> String {
-    node.children().filter(|c| c.is_text()).filter_map(|c| c.text()).collect()
+    node.children()
+        .filter(|c| c.is_text())
+        .filter_map(|c| c.text())
+        .collect()
 }
 
 /// Inner markup of an element, verbatim from the source.
 fn inner_xml<'i>(doc_src: &'i str, node: Node) -> &'i str {
-    let (Some(first), Some(last)) = (node.first_child(), node.last_child()) else { return "" };
+    let (Some(first), Some(last)) = (node.first_child(), node.last_child()) else {
+        return "";
+    };
     &doc_src[first.range().start..last.range().end]
 }
 
@@ -205,7 +237,10 @@ fn value(src: &str, node: Node) -> Option<String> {
     if !text.trim().is_empty() {
         return Some(text);
     }
-    let attrs: String = node.attributes().map(|a| format!(" {}=\"{}\"", a.name(), escape_attr(a.value()))).collect();
+    let attrs: String = node
+        .attributes()
+        .map(|a| format!(" {}=\"{}\"", a.name(), escape_attr(a.value())))
+        .collect();
     Some(format!("<div{attrs}>{}</div>", inner_xml(src, node)))
 }
 
@@ -221,7 +256,9 @@ fn field(src: &str, node: Node, name: &str) -> Option<String> {
 }
 
 fn escape_attr(s: &str) -> String {
-    s.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;")
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
 }
 
 fn link_rel<'a>(links: &[Node<'a, 'a>], rel: &str, fallback: usize) -> Option<String> {
@@ -234,7 +271,10 @@ fn link_rel<'a>(links: &[Node<'a, 'a>], rel: &str, fallback: usize) -> Option<St
 }
 
 fn parse_xml(body: &str) -> Result<ParsedFeed> {
-    let opts = roxmltree::ParsingOptions { allow_dtd: true, ..Default::default() };
+    let opts = roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
     let doc = Document::parse_with_options(body, opts).map_err(|e| anyhow!("{e}"))?;
     let root = doc.root_element();
     let name = qname(root);
@@ -276,7 +316,10 @@ fn rss_item(src: &str, item: Node) -> Item {
         summary: field(src, item, "summary"),
         creator: field(src, item, "dc:creator").or_else(|| field(src, item, "author")),
         author: field(src, item, "author"),
-        iso_date: pub_date.as_deref().or(date.as_deref()).and_then(js_iso_date),
+        iso_date: pub_date
+            .as_deref()
+            .or(date.as_deref())
+            .and_then(js_iso_date),
         pub_date,
         id: None,
     }
@@ -294,12 +337,26 @@ fn atom_feed(src: &str, feed: Node) -> ParsedFeed {
 
 fn atom_item(src: &str, entry: Node) -> Item {
     let links: Vec<Node> = children(entry, "link").collect();
-    let date_of = |name: &str| child(entry, name).map(own_text).filter(|d| !d.is_empty()).and_then(|d| js_iso_date(&d));
+    let date_of = |name: &str| {
+        child(entry, name)
+            .map(own_text)
+            .filter(|d| !d.is_empty())
+            .and_then(|d| js_iso_date(&d))
+    };
     let pub_date = date_of("published").or_else(|| date_of("updated"));
-    let author = child(entry, "author").and_then(|a| child(a, "name")).map(own_text).filter(|n| !n.is_empty());
+    let author = child(entry, "author")
+        .and_then(|a| child(a, "name"))
+        .map(own_text)
+        .filter(|n| !n.is_empty());
     Item {
-        title: child(entry, "title").map(own_text).filter(|t| !t.is_empty()),
-        link: if links.is_empty() { None } else { link_rel(&links, "alternate", 0) },
+        title: child(entry, "title")
+            .map(own_text)
+            .filter(|t| !t.is_empty()),
+        link: if links.is_empty() {
+            None
+        } else {
+            link_rel(&links, "alternate", 0)
+        },
         content: child(entry, "content").and_then(|c| value(src, c)),
         summary: child(entry, "summary").and_then(|c| value(src, c)),
         id: child(entry, "id").map(own_text).filter(|i| !i.is_empty()),
@@ -325,12 +382,24 @@ pub fn js_iso_date(s: &str) -> Option<String> {
     if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         return Some(fmt(Utc.from_utc_datetime(&d.and_hms_opt(0, 0, 0)?)));
     }
-    for f in ["%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%d %H:%M"] {
+    for f in [
+        "%Y-%m-%dT%H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%d %H:%M",
+    ] {
         if let Ok(d) = NaiveDateTime::parse_from_str(s, f) {
-            return Local.from_local_datetime(&d).single().map(|d| fmt(d.with_timezone(&Utc)));
+            return Local
+                .from_local_datetime(&d)
+                .single()
+                .map(|d| fmt(d.with_timezone(&Utc)));
         }
     }
-    for f in ["%Y-%m-%d %H:%M:%S%z", "%Y-%m-%dT%H:%M:%S%z", "%a, %d %b %Y %H:%M:%S %Z"] {
+    for f in [
+        "%Y-%m-%d %H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%a, %d %b %Y %H:%M:%S %Z",
+    ] {
         if let Ok(d) = DateTime::parse_from_str(s, f) {
             return Some(fmt(d.with_timezone(&Utc)));
         }
@@ -392,7 +461,10 @@ mod tests {
         assert_eq!(e[0].guid, "id-1");
         assert_eq!(e[0].content.as_deref(), Some("<p>Full &amp; long</p>"));
         assert_eq!(e[0].author.as_deref(), Some("Ann"));
-        assert_eq!(e[0].published_at.as_deref(), Some("2025-01-06T10:00:00.000Z"));
+        assert_eq!(
+            e[0].published_at.as_deref(),
+            Some("2025-01-06T10:00:00.000Z")
+        );
         // No guid: falls back to the link; unparseable date stays raw.
         assert_eq!(e[1].guid, "https://example.com/2");
         assert_eq!(e[1].content.as_deref(), Some("Plain & simple"));
@@ -410,10 +482,15 @@ mod tests {
         assert_eq!(e[0].title.as_deref(), Some("Post <One>"));
         assert_eq!(e[0].link.as_deref(), Some("https://a.example/p1"));
         assert_eq!(e[0].author.as_deref(), Some("Cat"));
-        assert_eq!(e[0].published_at.as_deref(), Some("2025-02-03T04:05:06.000Z"));
+        assert_eq!(
+            e[0].published_at.as_deref(),
+            Some("2025-02-03T04:05:06.000Z")
+        );
         assert_eq!(
             e[0].content.as_deref(),
-            Some(r#"<div type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hi</p></div></div>"#)
+            Some(
+                r#"<div type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hi</p></div></div>"#
+            )
         );
     }
 
@@ -444,7 +521,10 @@ mod tests {
         let e = normalize_entries(&feed.items);
         assert_eq!(e[0].guid, "https://r1/a");
         // dc:date feeds isoDate (setISODate reads item.date).
-        assert_eq!(e[0].published_at.as_deref(), Some("2024-05-04T23:02:03.000Z"));
+        assert_eq!(
+            e[0].published_at.as_deref(),
+            Some("2024-05-04T23:02:03.000Z")
+        );
     }
 
     #[test]
@@ -463,11 +543,17 @@ fn dump_for_diff() {
     let dir = std::path::PathBuf::from(std::env::var("FEED_DIFF_DIR").expect("FEED_DIFF_DIR"));
     let mut out = serde_json::Map::new();
     for i in 1.. {
-        let Ok(body) = std::fs::read_to_string(dir.join(format!("f{i}.body"))) else { break };
+        let Ok(body) = std::fs::read_to_string(dir.join(format!("f{i}.body"))) else {
+            break;
+        };
         let headers = std::fs::read_to_string(dir.join(format!("h{i}.txt"))).unwrap_or_default();
         let ct = headers
             .lines()
-            .filter_map(|l| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case("content-type")).map(|(_, v)| v.trim().to_string()))
+            .filter_map(|l| {
+                l.split_once(':')
+                    .filter(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                    .map(|(_, v)| v.trim().to_string())
+            })
             .next_back()
             .unwrap_or_default();
         let v = match parse(&ct, &body) {
@@ -482,5 +568,9 @@ fn dump_for_diff() {
         };
         out.insert(i.to_string(), v);
     }
-    std::fs::write(dir.join("rust.json"), serde_json::to_string_pretty(&out).unwrap()).unwrap();
+    std::fs::write(
+        dir.join("rust.json"),
+        serde_json::to_string_pretty(&out).unwrap(),
+    )
+    .unwrap();
 }

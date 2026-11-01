@@ -26,7 +26,7 @@ impl Paths {
     /// `~/.config/ThreadLiner` (`$XDG_CONFIG_HOME` respected).
     pub fn default_location() -> Self {
         Self {
-            user_data: marina_core::paths::user_data_dir(PRODUCT_NAME),
+            user_data: laankit_core::paths::user_data_dir(PRODUCT_NAME),
         }
     }
 
@@ -39,11 +39,11 @@ impl Paths {
     }
 
     pub fn read_config(&self) -> Map<String, Value> {
-        marina_core::json::read_object(&self.config())
+        laankit_core::json::read_object(&self.config())
     }
 
     pub fn write_config(&self, config: &Map<String, Value>) -> anyhow::Result<()> {
-        marina_core::json::write(&self.config(), config)
+        laankit_core::json::write(&self.config(), config)
     }
 
     /// The configured data folder, if any.
@@ -77,16 +77,16 @@ impl Paths {
 
     /// `customTitlebar` from the UI prefs (default off, as in the Tauri host).
     pub fn custom_titlebar(&self) -> bool {
-        marina_core::json::read_object(&self.ui_prefs())
+        laankit_core::json::read_object(&self.ui_prefs())
             .get("customTitlebar")
             .is_some_and(truthy)
     }
 
     /// Merges `customTitlebar` into the UI prefs, keeping other keys.
     pub fn set_custom_titlebar(&self, on: bool) -> anyhow::Result<()> {
-        let mut prefs = marina_core::json::read_object(&self.ui_prefs());
+        let mut prefs = laankit_core::json::read_object(&self.ui_prefs());
         prefs.insert("customTitlebar".into(), json!(on));
-        marina_core::json::write(&self.ui_prefs(), &prefs)
+        laankit_core::json::write(&self.ui_prefs(), &prefs)
     }
 }
 
@@ -160,10 +160,10 @@ mod tests {
     fn ui_prefs_keep_other_keys() {
         let (_tmp, paths) = paths();
         assert!(!paths.custom_titlebar());
-        marina_core::json::write(&paths.ui_prefs(), &json!({ "other": 1 })).unwrap();
+        laankit_core::json::write(&paths.ui_prefs(), &json!({ "other": 1 })).unwrap();
         paths.set_custom_titlebar(true).unwrap();
         assert!(paths.custom_titlebar());
-        let prefs = marina_core::json::read_object(&paths.ui_prefs());
+        let prefs = laankit_core::json::read_object(&paths.ui_prefs());
         assert_eq!(prefs.get("other"), Some(&json!(1)));
     }
 

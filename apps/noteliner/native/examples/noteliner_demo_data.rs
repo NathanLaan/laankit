@@ -7,7 +7,7 @@
 //! ```bash
 //! export XDG_CONFIG_HOME=$(mktemp -d)
 //! cargo run -p noteliner-native --example noteliner_demo_data -- /tmp/nl-demo
-//! cargo run -p noteliner-native            # or MARINA_PROJECT=/tmp/nl-demo
+//! cargo run -p noteliner-native            # or LAANKIT_PROJECT=/tmp/nl-demo
 //! ```
 
 use std::path::PathBuf;
@@ -133,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    marina_core::json::write(
+    laankit_core::json::write(
         &user_data.join("recent-projects.json"),
         &json!([{ "path": dir.display().to_string(), "name": name, "openedAt": noteliner_core::project::now_iso() }]),
     )?;

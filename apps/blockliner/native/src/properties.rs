@@ -10,9 +10,9 @@
 use blockliner_core::style::{Colour, Common, PRESETS};
 use blockliner_core::{Diagram, ShapeKind};
 use egui::{vec2, Rect, Sense, Ui};
-use marina_egui::dialog::{self, ButtonKind};
-use marina_egui::panes::HEADER_HEIGHT;
-use marina_egui::{fonts, theme};
+use laankit_egui::dialog::{self, ButtonKind};
+use laankit_egui::panes::HEADER_HEIGHT;
+use laankit_egui::{fonts, theme};
 
 use crate::canvas::paint::{self, SwatchLook};
 use crate::canvas::{current_swatch, SelectionStyle, Swatch};

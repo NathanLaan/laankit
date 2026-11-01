@@ -85,7 +85,12 @@ pub struct Project {
 
 impl Project {
     pub fn new(git: NoteGit) -> Self {
-        Self { path: None, index: None, write_frontmatter: true, git }
+        Self {
+            path: None,
+            index: None,
+            write_frontmatter: true,
+            git,
+        }
     }
 
     pub fn is_open(&self) -> bool {
@@ -93,7 +98,9 @@ impl Project {
     }
 
     pub fn dir(&self) -> Result<&Path> {
-        self.path.as_deref().ok_or_else(|| anyhow!("No project is open"))
+        self.path
+            .as_deref()
+            .ok_or_else(|| anyhow!("No project is open"))
     }
 
     fn index_path(&self) -> Result<PathBuf> {
@@ -104,18 +111,29 @@ impl Project {
     /// anything that would escape the project folder.
     pub fn file_path(&self, filename: &str) -> Result<PathBuf> {
         let rel = Path::new(filename);
-        if rel.is_absolute() || rel.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        if rel.is_absolute()
+            || rel
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
             bail!("Invalid file path: {filename}");
         }
         Ok(self.dir()?.join(rel))
     }
 
     pub fn files(&self) -> &[Value] {
-        self.index.as_ref().and_then(|i| i["files"].as_array()).map(Vec::as_slice).unwrap_or(&[])
+        self.index
+            .as_ref()
+            .and_then(|i| i["files"].as_array())
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     fn files_mut(&mut self) -> Result<&mut Vec<Value>> {
-        let index = self.index.as_mut().ok_or_else(|| anyhow!("No project is open"))?;
+        let index = self
+            .index
+            .as_mut()
+            .ok_or_else(|| anyhow!("No project is open"))?;
         if !index["files"].is_array() {
             index["files"] = json!([]);
         }
@@ -135,12 +153,17 @@ impl Project {
     }
 
     fn position_by_filename(&self, filename: &str) -> Option<usize> {
-        self.files().iter().position(|f| s(&f["filename"]) == filename)
+        self.files()
+            .iter()
+            .position(|f| s(&f["filename"]) == filename)
     }
 
     pub fn write_index(&self) -> Result<()> {
-        let index = self.index.as_ref().ok_or_else(|| anyhow!("No project is open"))?;
-        marina_core::json::write(&self.index_path()?, index)
+        let index = self
+            .index
+            .as_ref()
+            .ok_or_else(|| anyhow!("No project is open"))?;
+        laankit_core::json::write(&self.index_path()?, index)
     }
 
     async fn commit_and_schedule(&self, message: &str) -> Result<()> {
@@ -167,12 +190,15 @@ impl Project {
                 let rewritten = self.reconcile_frontmatter(true)?;
                 if rewritten > 0 {
                     let noun = if rewritten == 1 { "note" } else { "notes" };
-                    self.commit_and_schedule(&format!("Sync frontmatter on {rewritten} {noun}")).await?;
+                    self.commit_and_schedule(&format!("Sync frontmatter on {rewritten} {noun}"))
+                        .await?;
                 }
             } else {
                 self.reconcile_frontmatter(false)?;
             }
-            return Ok(json!({ "status": "loaded", "index": self.index, "needsGitConfig": needs_git_config }));
+            return Ok(
+                json!({ "status": "loaded", "index": self.index, "needsGitConfig": needs_git_config }),
+            );
         }
 
         if is_git {
@@ -182,7 +208,9 @@ impl Project {
             if !needs_git_config {
                 self.git.commit(folder, "Initialize noteliner.json").await?;
             }
-            return Ok(json!({ "status": "loaded", "index": self.index, "needsGitConfig": needs_git_config }));
+            return Ok(
+                json!({ "status": "loaded", "index": self.index, "needsGitConfig": needs_git_config }),
+            );
         }
 
         Ok(json!({ "status": "needs_setup" }))
@@ -224,7 +252,9 @@ impl Project {
     }
 
     pub async fn get_git_config(&self) -> Value {
-        let Ok(dir) = self.dir() else { return json!({ "name": null, "email": null }) };
+        let Ok(dir) = self.dir() else {
+            return json!({ "name": null, "email": null });
+        };
         let (name, email) = self.git.check_config(dir).await;
         json!({ "name": name, "email": email })
     }
@@ -256,7 +286,11 @@ impl Project {
 
     fn migrate_index(&mut self) -> Result<()> {
         let dir = self.dir()?.to_path_buf();
-        let version = self.index.as_ref().and_then(|i| i["version"].as_u64()).unwrap_or(0);
+        let version = self
+            .index
+            .as_ref()
+            .and_then(|i| i["version"].as_u64())
+            .unwrap_or(0);
         let mut dirty = false;
         if version < 2 {
             for f in self.files_mut()?.iter_mut() {
@@ -301,7 +335,9 @@ impl Project {
         for i in 0..n {
             let entry = self.files()[i].clone();
             let path = dir.join(s(&entry["filename"]));
-            let Ok(raw) = fs::read_to_string(&path) else { continue };
+            let Ok(raw) = fs::read_to_string(&path) else {
+                continue;
+            };
             let parsed = frontmatter::parse(&raw);
             apply_deck_flag(&mut self.files_mut()?[i], &parsed.data);
             if !can_rewrite {
@@ -330,7 +366,11 @@ impl Project {
     }
 
     pub fn read_frontmatter(&self, filename: &str) -> Value {
-        match self.file_path(filename).ok().and_then(|p| fs::read_to_string(p).ok()) {
+        match self
+            .file_path(filename)
+            .ok()
+            .and_then(|p| fs::read_to_string(p).ok())
+        {
             Some(raw) => frontmatter::to_json(&frontmatter::parse(&raw).data),
             None => json!({}),
         }
@@ -341,7 +381,9 @@ impl Project {
         let pos = self.position_by_filename(filename);
         let mut out = body.to_string();
         if self.write_frontmatter {
-            let existing = fs::read_to_string(&path).map(|r| frontmatter::parse(&r).data).unwrap_or_default();
+            let existing = fs::read_to_string(&path)
+                .map(|r| frontmatter::parse(&r).data)
+                .unwrap_or_default();
             let data = match pos {
                 Some(i) => frontmatter::mirror_from_entry(&self.files()[i], &existing),
                 None => existing,
@@ -356,7 +398,8 @@ impl Project {
             self.files_mut()?[i]["modifiedAt"] = json!(now_iso());
             let _ = self.write_index();
         }
-        self.commit_and_schedule(&format!("Update {filename}")).await
+        self.commit_and_schedule(&format!("Update {filename}"))
+            .await
     }
 
     /// Refresh only the on-disk frontmatter for `entry`, keeping the body.
@@ -365,7 +408,9 @@ impl Project {
             return Ok(false);
         }
         let path = self.file_path(s(&entry["filename"]))?;
-        let Ok(raw) = fs::read_to_string(&path) else { return Ok(false) };
+        let Ok(raw) = fs::read_to_string(&path) else {
+            return Ok(false);
+        };
         let parsed = frontmatter::parse(&raw);
         let data = frontmatter::mirror_from_entry(entry, &parsed.data);
         let next = frontmatter::serialize(&parsed.body, &data);
@@ -376,14 +421,26 @@ impl Project {
         Ok(false)
     }
 
-    pub async fn create_file(&mut self, name: &str, tags: &Value, body: Option<String>, parent_id: Option<&str>) -> Result<Value> {
+    pub async fn create_file(
+        &mut self,
+        name: &str,
+        tags: &Value,
+        body: Option<String>,
+        parent_id: Option<&str>,
+    ) -> Result<Value> {
         if name.trim().is_empty() {
             bail!("File name cannot be empty");
         }
         let id = uuid::Uuid::new_v4().to_string();
         let filename = self.unique_filename(&format!("{}.md", slugify(name)))?;
-        let parent = parent_id.filter(|p| self.find(p).is_some()).map(str::to_string);
-        let order = self.files().iter().filter(|f| f["parentId"].as_str() == parent.as_deref()).count();
+        let parent = parent_id
+            .filter(|p| self.find(p).is_some())
+            .map(str::to_string);
+        let order = self
+            .files()
+            .iter()
+            .filter(|f| f["parentId"].as_str() == parent.as_deref())
+            .count();
         let now = now_iso();
         let mut entry = json!({
             "id": id,
@@ -397,7 +454,8 @@ impl Project {
             "modifiedAt": now,
         });
         let path = self.file_path(&filename)?;
-        let initial = body.unwrap_or_else(|| format!("# {name} {}\n", chrono::Local::now().format("%Y-%m-%d")));
+        let initial = body
+            .unwrap_or_else(|| format!("# {name} {}\n", chrono::Local::now().format("%Y-%m-%d")));
         if self.write_frontmatter {
             // A template may carry its own frontmatter (a deck template's
             // `presentation:`); keep it, minus the template-only `kind`.
@@ -417,7 +475,9 @@ impl Project {
     }
 
     pub async fn delete_file(&mut self, id: &str) -> Result<()> {
-        let Some(entry) = self.find(id).cloned() else { return Ok(()) };
+        let Some(entry) = self.find(id).cloned() else {
+            return Ok(());
+        };
         let _ = fs::remove_file(self.file_path(s(&entry["filename"]))?);
         for f in self.files_mut()?.iter_mut() {
             if f["parentId"].as_str() == Some(id) {
@@ -426,17 +486,23 @@ impl Project {
         }
         self.files_mut()?.retain(|f| s(&f["id"]) != id);
         self.write_index()?;
-        self.commit_and_schedule(&format!("Delete {}", s(&entry["name"]))).await
+        self.commit_and_schedule(&format!("Delete {}", s(&entry["name"])))
+            .await
     }
 
     pub async fn rename_file(&mut self, id: &str, new_name: &str) -> Result<Option<Value>> {
         if new_name.trim().is_empty() {
             return Ok(None);
         }
-        let Some(i) = self.position(id) else { return Ok(None) };
+        let Some(i) = self.position(id) else {
+            return Ok(None);
+        };
         let old_filename = s(&self.files()[i]["filename"]).to_string();
         let new_filename = format!("{}.md", slugify(new_name));
-        let (old_path, new_path) = (self.file_path(&old_filename)?, self.file_path(&new_filename)?);
+        let (old_path, new_path) = (
+            self.file_path(&old_filename)?,
+            self.file_path(&new_filename)?,
+        );
         if old_path.exists() {
             fs::rename(old_path, new_path)?;
         }
@@ -448,12 +514,17 @@ impl Project {
         self.write_index()?;
         let entry = self.files()[i].clone();
         self.rewrite_frontmatter(&entry)?;
-        self.commit_and_schedule(&format!("Rename {old_filename} to {new_filename}")).await?;
+        self.commit_and_schedule(&format!("Rename {old_filename} to {new_filename}"))
+            .await?;
         Ok(Some(entry))
     }
 
     /// Add, replace, or (with null) remove a note's `presentation:` block.
-    pub async fn set_presentation(&mut self, filename: &str, presentation: &Value) -> Result<Value> {
+    pub async fn set_presentation(
+        &mut self,
+        filename: &str,
+        presentation: &Value,
+    ) -> Result<Value> {
         let path = self.file_path(filename)?;
         if !path.exists() {
             bail!("File does not exist");
@@ -472,9 +543,16 @@ impl Project {
             f["modifiedAt"] = json!(now_iso());
             let _ = self.write_index();
         }
-        let verb = if presentation.is_null() { "Convert to note" } else { "Update presentation settings" };
-        self.commit_and_schedule(&format!("{verb}: {filename}")).await?;
-        Ok(frontmatter::get_field(&next, "presentation").map(Yaml::to_json).unwrap_or(Value::Null))
+        let verb = if presentation.is_null() {
+            "Convert to note"
+        } else {
+            "Update presentation settings"
+        };
+        self.commit_and_schedule(&format!("{verb}: {filename}"))
+            .await?;
+        Ok(frontmatter::get_field(&next, "presentation")
+            .map(Yaml::to_json)
+            .unwrap_or(Value::Null))
     }
 
     // --- Attachments --------------------------------------------------------
@@ -487,13 +565,28 @@ impl Project {
         Ok(self.attachments_dir()?.join(filename))
     }
 
-    pub async fn add_attachment(&mut self, file_id: &str, data: &[u8], original_name: &str) -> Result<Value> {
+    pub async fn add_attachment(
+        &mut self,
+        file_id: &str,
+        data: &[u8],
+        original_name: &str,
+    ) -> Result<Value> {
         if data.len() > MAX_ATTACHMENT_SIZE {
-            bail!("File exceeds 30MB limit ({:.1}MB)", data.len() as f64 / 1024.0 / 1024.0);
+            bail!(
+                "File exceeds 30MB limit ({:.1}MB)",
+                data.len() as f64 / 1024.0 / 1024.0
+            );
         }
-        let i = self.position(file_id).ok_or_else(|| anyhow!("File not found"))?;
+        let i = self
+            .position(file_id)
+            .ok_or_else(|| anyhow!("File not found"))?;
         let ext = extname(original_name).to_lowercase();
-        let id = uuid::Uuid::new_v4().to_string().split('-').next().unwrap().to_string();
+        let id = uuid::Uuid::new_v4()
+            .to_string()
+            .split('-')
+            .next()
+            .unwrap()
+            .to_string();
         let stored = format!("att-{id}{ext}");
         let dir = self.attachments_dir()?;
         fs::create_dir_all(&dir)?;
@@ -510,41 +603,68 @@ impl Project {
         if !f["attachments"].is_array() {
             f["attachments"] = json!([]);
         }
-        f["attachments"].as_array_mut().unwrap().push(attachment.clone());
+        f["attachments"]
+            .as_array_mut()
+            .unwrap()
+            .push(attachment.clone());
         self.write_index()?;
-        self.commit_and_schedule(&format!("Attach {original_name}")).await?;
+        self.commit_and_schedule(&format!("Attach {original_name}"))
+            .await?;
         Ok(attachment)
     }
 
     pub async fn remove_attachment(&mut self, file_id: &str, attachment_id: &str) -> Result<()> {
-        let Some(i) = self.position(file_id) else { return Ok(()) };
-        let atts = self.files()[i]["attachments"].as_array().cloned().unwrap_or_default();
-        let Some(k) = atts.iter().position(|a| s(&a["id"]) == attachment_id) else { return Ok(()) };
+        let Some(i) = self.position(file_id) else {
+            return Ok(());
+        };
+        let atts = self.files()[i]["attachments"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let Some(k) = atts.iter().position(|a| s(&a["id"]) == attachment_id) else {
+            return Ok(());
+        };
         let att = atts[k].clone();
         let _ = fs::remove_file(self.attachments_dir()?.join(s(&att["filename"])));
-        self.files_mut()?[i]["attachments"].as_array_mut().unwrap().remove(k);
+        self.files_mut()?[i]["attachments"]
+            .as_array_mut()
+            .unwrap()
+            .remove(k);
         self.write_index()?;
-        self.commit_and_schedule(&format!("Remove attachment {}", s(&att["originalName"]))).await
+        self.commit_and_schedule(&format!("Remove attachment {}", s(&att["originalName"])))
+            .await
     }
 
     // --- Search -------------------------------------------------------------
 
     /// Line-level substring search over note bodies (frontmatter excluded).
     pub fn search(&self, query: &str, case_sensitive: bool) -> Vec<Value> {
-        let Ok(dir) = self.dir() else { return Vec::new() };
+        let Ok(dir) = self.dir() else {
+            return Vec::new();
+        };
         if query.is_empty() {
             return Vec::new();
         }
-        let needle = if case_sensitive { query.to_string() } else { query.to_lowercase() };
+        let needle = if case_sensitive {
+            query.to_string()
+        } else {
+            query.to_lowercase()
+        };
         let mut results = Vec::new();
         for f in self.files() {
-            let Ok(raw) = fs::read_to_string(dir.join(s(&f["filename"]))) else { continue };
+            let Ok(raw) = fs::read_to_string(dir.join(s(&f["filename"]))) else {
+                continue;
+            };
             let body = frontmatter::strip_body(&raw);
             let matches: Vec<Value> = body
                 .split('\n')
                 .enumerate()
                 .filter(|(_, line)| {
-                    if case_sensitive { line.contains(&needle) } else { line.to_lowercase().contains(&needle) }
+                    if case_sensitive {
+                        line.contains(&needle)
+                    } else {
+                        line.to_lowercase().contains(&needle)
+                    }
                 })
                 .map(|(i, line)| json!({ "line": i + 1, "text": line.trim_end() }))
                 .collect();
@@ -562,7 +682,8 @@ impl Project {
 
     fn unique_filename(&self, filename: &str) -> Result<String> {
         let dir = self.dir()?;
-        let taken = |c: &str| self.files().iter().any(|f| s(&f["filename"]) == c) || dir.join(c).exists();
+        let taken =
+            |c: &str| self.files().iter().any(|f| s(&f["filename"]) == c) || dir.join(c).exists();
         if !taken(filename) {
             return Ok(filename.to_string());
         }
@@ -607,7 +728,8 @@ fn mirror_fields_differ(a: &Value, b: &Value) -> bool {
 
 fn stat_times(path: &Path) -> (String, String) {
     let iso = |t: std::time::SystemTime| {
-        chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+        chrono::DateTime::<chrono::Utc>::from(t)
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
     };
     match fs::metadata(path) {
         Ok(m) => {
@@ -615,7 +737,11 @@ fn stat_times(path: &Path) -> (String, String) {
             let birth = m
                 .created()
                 .ok()
-                .filter(|t| t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() > 0).unwrap_or(false))
+                .filter(|t| {
+                    t.duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() > 0)
+                        .unwrap_or(false)
+                })
                 .map(iso)
                 .unwrap_or_else(|| mtime.clone());
             (birth, mtime)
@@ -661,37 +787,76 @@ mod tests {
         let res = p.open(&dir).await.unwrap();
         assert_eq!(res["status"], "loaded");
 
-        let a = p.create_file("First Note", &json!(["x"]), None, None).await.unwrap();
+        let a = p
+            .create_file("First Note", &json!(["x"]), None, None)
+            .await
+            .unwrap();
         assert_eq!(a["filename"], "first-note.md");
         let raw = fs::read_to_string(dir.join("first-note.md")).unwrap();
         assert!(raw.starts_with("---\nid: "));
         assert!(raw.contains("\nname: First Note\ntags:\n  - x\ncreated: '"));
 
-        let b = p.create_file("First Note", &json!([]), Some("body [[First Note]]".into()), Some(a["id"].as_str().unwrap())).await.unwrap();
+        let b = p
+            .create_file(
+                "First Note",
+                &json!([]),
+                Some("body [[First Note]]".into()),
+                Some(a["id"].as_str().unwrap()),
+            )
+            .await
+            .unwrap();
         assert_eq!(b["filename"], "first-note-2.md");
         assert_eq!(b["parentId"], a["id"]);
-        assert_eq!(p.read_file("first-note-2.md").unwrap(), "body [[First Note]]\n");
+        assert_eq!(
+            p.read_file("first-note-2.md").unwrap(),
+            "body [[First Note]]\n"
+        );
 
-        p.write_file("first-note.md", "new body\nsecond LINE").await.unwrap();
-        assert_eq!(p.read_file("first-note.md").unwrap(), "new body\nsecond LINE\n");
+        p.write_file("first-note.md", "new body\nsecond LINE")
+            .await
+            .unwrap();
+        assert_eq!(
+            p.read_file("first-note.md").unwrap(),
+            "new body\nsecond LINE\n"
+        );
         let hits = p.search("line", false);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0]["matches"][0]["line"], 2);
         assert!(p.search("line", true).is_empty());
 
-        let pres = p.set_presentation("first-note.md", &json!({ "theme": "dark" })).await.unwrap();
+        let pres = p
+            .set_presentation("first-note.md", &json!({ "theme": "dark" }))
+            .await
+            .unwrap();
         assert_eq!(pres, json!({ "theme": "dark" }));
         assert_eq!(p.find(a["id"].as_str().unwrap()).unwrap()["deck"], true);
-        assert_eq!(p.read_frontmatter("first-note.md")["presentation"]["theme"], "dark");
+        assert_eq!(
+            p.read_frontmatter("first-note.md")["presentation"]["theme"],
+            "dark"
+        );
 
-        let att = p.add_attachment(a["id"].as_str().unwrap(), b"PNGDATA", "pic.PNG").await.unwrap();
+        let att = p
+            .add_attachment(a["id"].as_str().unwrap(), b"PNGDATA", "pic.PNG")
+            .await
+            .unwrap();
         assert_eq!(att["mimeType"], "image/png");
-        assert!(p.attachment_path(att["filename"].as_str().unwrap()).unwrap().exists());
-        p.remove_attachment(a["id"].as_str().unwrap(), att["id"].as_str().unwrap()).await.unwrap();
+        assert!(p
+            .attachment_path(att["filename"].as_str().unwrap())
+            .unwrap()
+            .exists());
+        p.remove_attachment(a["id"].as_str().unwrap(), att["id"].as_str().unwrap())
+            .await
+            .unwrap();
 
-        let renamed = p.rename_file(a["id"].as_str().unwrap(), "Renamed").await.unwrap().unwrap();
+        let renamed = p
+            .rename_file(a["id"].as_str().unwrap(), "Renamed")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(renamed["filename"], "renamed.md");
-        assert!(fs::read_to_string(dir.join("renamed.md")).unwrap().contains("name: Renamed"));
+        assert!(fs::read_to_string(dir.join("renamed.md"))
+            .unwrap()
+            .contains("name: Renamed"));
 
         p.delete_file(a["id"].as_str().unwrap()).await.unwrap();
         assert_eq!(p.files().len(), 1);

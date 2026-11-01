@@ -14,10 +14,10 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use egui::ColorImage;
-use marina_core::debounce::Debouncer;
-use marina_core::git::{Git, SyncStatus};
-use marina_core::updates::{self, UpdateCheck};
-use marina_egui::about::UpdateStatus;
+use laankit_core::debounce::Debouncer;
+use laankit_core::git::{Git, SyncStatus};
+use laankit_core::updates::{self, UpdateCheck};
+use laankit_egui::about::UpdateStatus;
 use pageliner_core::library::{Book, Library};
 use serde_json::{json, Map, Value};
 use tokio::runtime::Runtime;
@@ -123,7 +123,7 @@ impl Backend {
             .build()
             .expect("tokio runtime");
         // The debouncer spawns on this runtime when scheduled from the UI thread.
-        marina_core::debounce::set_runtime(rt.handle().clone());
+        laankit_core::debounce::set_runtime(rt.handle().clone());
         let (tx, rx) = channel();
         let library = match Library::open(paths.library_dir()) {
             Ok(lib) => Some(lib),

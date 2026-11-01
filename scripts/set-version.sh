@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sets the version of every Marina app and refreshes Cargo.lock.
+# Sets the version of every LaanKit app and refreshes Cargo.lock.
 #
 #   scripts/set-version.sh 2.3.0
 #   scripts/set-version.sh 2.3.0-rc.1

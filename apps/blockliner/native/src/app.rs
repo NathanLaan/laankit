@@ -10,16 +10,16 @@ use blockliner_core::history::History;
 use blockliner_core::style::{Colour, Style, PRESETS};
 use blockliner_core::Diagram;
 use egui::{Frame, Ui};
-use marina_egui::about::{AboutAction, AboutIcon, AboutModal};
-use marina_egui::commands::{Recents, Registry};
-use marina_egui::diagnostics::{self, Screenshot};
-use marina_egui::dialog::{self, Confirm};
-use marina_egui::file_dialog::FileDialogs;
-use marina_egui::palette::{CommandPalette, PaletteOutcome};
-use marina_egui::theme::{self, ThemeState};
-use marina_egui::titlebar::{self, TitleBar, TitleBarAction};
-use marina_egui::toast::Toasts;
-use marina_egui::{fonts, icons, window};
+use laankit_egui::about::{AboutAction, AboutIcon, AboutModal};
+use laankit_egui::commands::{Recents, Registry};
+use laankit_egui::diagnostics::{self, Screenshot};
+use laankit_egui::dialog::{self, Confirm};
+use laankit_egui::file_dialog::FileDialogs;
+use laankit_egui::palette::{CommandPalette, PaletteOutcome};
+use laankit_egui::theme::{self, ThemeState};
+use laankit_egui::titlebar::{self, TitleBar, TitleBarAction};
+use laankit_egui::toast::Toasts;
+use laankit_egui::{fonts, icons, window};
 use serde_json::{json, Value};
 
 use crate::backend::{self, Backend, Change, Event};
@@ -41,8 +41,8 @@ const RECENTS_KEY: &str = "blockliner-recents";
 /// The Properties pane's height, kept with eframe's other layout state.
 const PROPERTIES_HEIGHT_KEY: &str = "blockliner-properties-height";
 const DESCRIPTION: &str =
-    "A diagram editor for software architecture, saving Mermaid flowcharts. Built on the marina framework.";
-const REPO_URL: &str = "https://github.com/NathanLaan/marina";
+    "A diagram editor for software architecture, saving Mermaid flowcharts. Built on the laankit framework.";
+const REPO_URL: &str = "https://github.com/NathanLaan/laankit";
 /// How often to look at the folder for outside changes, in seconds.
 const SCAN_SECONDS: f64 = 1.0;
 
@@ -64,7 +64,7 @@ struct Doc {
 pub struct BlockLinerApp {
     paths: Paths,
     theme: ThemeState,
-    /// Whether the window was built undecorated, with Marina's title bar.
+    /// Whether the window was built undecorated, with LaanKit's title bar.
     custom_titlebar: bool,
     sidebar_visible: bool,
     /// The Properties pane below the diagram list (`Ctrl+I`).
@@ -104,7 +104,7 @@ pub struct BlockLinerApp {
     registry: Registry<Act, View>,
     toasts: Toasts,
     screenshot: Option<Screenshot>,
-    /// `MARINA_OPEN`: a dialog to open on the first frame, for screenshots.
+    /// `LAANKIT_OPEN`: a dialog to open on the first frame, for screenshots.
     open_on_start: Option<String>,
     /// The folder and save dialogs, off the UI thread where they'd freeze it.
     dialogs: FileDialogs<Picked>,
@@ -173,7 +173,7 @@ impl BlockLinerApp {
             registry,
             toasts: Toasts::default(),
             screenshot: Screenshot::from_env(),
-            open_on_start: std::env::var("MARINA_OPEN").ok(),
+            open_on_start: std::env::var("LAANKIT_OPEN").ok(),
             // Tests answer in place, with no dialog.
             dialogs: if cfg!(test) {
                 FileDialogs::in_place()
@@ -1316,7 +1316,7 @@ impl BlockLinerApp {
             Overlay::About => {
                 let modal = AboutModal::new("BlockLiner", env!("CARGO_PKG_VERSION"))
                     .description(DESCRIPTION)
-                    .repo(REPO_URL, Some("github.com/NathanLaan/marina"))
+                    .repo(REPO_URL, Some("github.com/NathanLaan/laankit"))
                     .icon(AboutIcon::Glyph(icons::OBJECT_GROUP));
                 match modal.show(ctx) {
                     Some(AboutAction::Close) => keep = false,

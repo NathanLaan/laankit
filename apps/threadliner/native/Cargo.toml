@@ -13,9 +13,9 @@ name = "threadliner"
 path = "src/main.rs"
 
 [dependencies]
-marina-core.workspace = true
-marina-egui.workspace = true
-marina-richtext.workspace = true
+laankit-core.workspace = true
+laankit-egui.workspace = true
+laankit-richtext.workspace = true
 threadliner-core = { path = "../../../crates/threadliner-core" }
 anyhow.workspace = true
 chrono.workspace = true
@@ -82,7 +82,7 @@ assets = [
 name = "threadliner"
 license = "MIT"
 summary = "Feed reader (RSS, Atom, JSON Feed) with git sync"
-url = "https://github.com/NathanLaan/marina"
+url = "https://github.com/NathanLaan/laankit"
 assets = [
     { source = "target/release/threadliner", dest = "/usr/bin/threadliner", mode = "755" },
     { source = "../../../packaging/linux/com.threadline.app.desktop", dest = "/usr/share/applications/com.threadline.app.desktop", mode = "644" },
@@ -123,7 +123,7 @@ thread-liner = "*"
 product-name = "ThreadLiner"
 identifier = "com.threadline.app"
 description = "Feed reader (RSS, Atom, JSON Feed) with git sync"
-homepage = "https://github.com/NathanLaan/marina"
+homepage = "https://github.com/NathanLaan/laankit"
 authors = ["Nathan Laan"]
 publisher = "Nathan Laan"
 copyright = "Copyright (c) 2026 Nathan Laan"

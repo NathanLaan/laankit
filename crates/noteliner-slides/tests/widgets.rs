@@ -36,7 +36,7 @@ fn pane_harness() -> Harness<'static, PaneState> {
     };
     Harness::builder()
         .with_size(egui::vec2(360.0, 400.0))
-        .with_context_setup(marina_egui::fonts::install)
+        .with_context_setup(laankit_egui::fonts::install)
         .build_ui_state(
             |ui, s: &mut PaneState| {
                 let actions = s.pane.show(ui, MD, Some(&s.deck), Some(1), &PassThrough);
@@ -105,7 +105,7 @@ fn deck_preview_click_jumps() {
     let mut jump = None;
     let mut h = Harness::builder()
         .with_size(egui::vec2(600.0, 900.0))
-        .with_context_setup(marina_egui::fonts::install)
+        .with_context_setup(laankit_egui::fonts::install)
         .build_ui(|ui| {
             if let Some(line) = preview.show(ui, Some(&deck), Some(1), &vars, &PassThrough) {
                 jump = Some(line);
@@ -130,7 +130,7 @@ fn settings_harness() -> Harness<'static, SettingsState> {
     };
     Harness::builder()
         .with_size(egui::vec2(800.0, 800.0))
-        .with_context_setup(marina_egui::fonts::install)
+        .with_context_setup(laankit_egui::fonts::install)
         .build_ui_state(
             |ui, s: &mut SettingsState| {
                 let outcome = s.dialog.show(ui.ctx(), 3);
@@ -184,7 +184,7 @@ fn presenter_keys_navigate_and_escape_exits() {
     let vars = HashMap::new();
     let mut h = Harness::builder()
         .with_size(egui::vec2(800.0, 450.0))
-        .with_context_setup(marina_egui::fonts::install)
+        .with_context_setup(laankit_egui::fonts::install)
         .build_ui_state(
             move |ui, s: &mut PresenterState| {
                 let actions = s.presenter.show(ui.ctx(), &s.deck, &vars, &PassThrough);
@@ -224,7 +224,7 @@ fn presenter_click_advances() {
     let vars = HashMap::new();
     let mut h = Harness::builder()
         .with_size(egui::vec2(800.0, 450.0))
-        .with_context_setup(marina_egui::fonts::install)
+        .with_context_setup(laankit_egui::fonts::install)
         .build_ui_state(
             move |ui, s: &mut PresenterState| {
                 let actions = s.presenter.show(ui.ctx(), &s.deck, &vars, &PassThrough);
@@ -284,7 +284,7 @@ fn every_sample_slide_renders_at_every_size() {
     for width in [40.0, 104.0, 640.0, 1920.0] {
         let mut h = Harness::builder()
             .with_size(egui::vec2(width + 20.0, width))
-            .with_context_setup(marina_egui::fonts::install)
+            .with_context_setup(laankit_egui::fonts::install)
             .build_ui(|ui| {
                 for slide in &deck.slides {
                     noteliner_slides::SlideView::new(slide, &deck.config)
@@ -307,7 +307,7 @@ fn tasks_tables_and_marks_paint_in_both_slide_themes() {
         assert_eq!(deck.slides.len(), 3);
         let mut h = Harness::builder()
             .with_size(egui::vec2(980.0, 1700.0))
-            .with_context_setup(marina_egui::fonts::install)
+            .with_context_setup(laankit_egui::fonts::install)
             .build_ui(|ui| {
                 for slide in &deck.slides {
                     noteliner_slides::SlideView::new(slide, &deck.config)

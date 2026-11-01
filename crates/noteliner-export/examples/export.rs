@@ -43,7 +43,7 @@ fn main() {
     if let Some(typ) = typ {
         std::fs::write(typ, noteliner_export::typst_source(&raw, &options)).expect("write .typ");
     }
-    let faces = marina_egui::fonts::bundled_faces().iter().map(|(_, b)| *b);
+    let faces = laankit_egui::fonts::bundled_faces().iter().map(|(_, b)| *b);
     let t = Instant::now();
     let exporter = Exporter::new(faces);
     let fonts_ms = t.elapsed().as_secs_f64() * 1000.0;

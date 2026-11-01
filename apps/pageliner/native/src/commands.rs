@@ -1,10 +1,10 @@
 //! PageLiner's commands and keyboard shortcuts (`registerCommands` and
-//! `handleKeydown` in `App.svelte`), registered with marina-egui's command
+//! `handleKeydown` in `App.svelte`), registered with laankit-egui's command
 //! registry so the same list drives the shortcuts, the command palette and
 //! Settings → Keyboard Shortcuts.
 
 use egui::{Key, Modifiers};
-use marina_egui::commands::{Binding, Command, Registry, ShortcutEntry};
+use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
 
 /// Everything a shortcut, button or palette entry can ask for.
 #[derive(Clone, Debug, PartialEq)]

@@ -1,32 +1,28 @@
-# Plan: Marina foundation — remaining execution steps
+# Plan: LaanKit foundation — remaining execution steps
 
-Status: Active. Tracks the work needed to finish executing
-[`plan-refactor-common-foundation.md`](./plan-refactor-common-foundation.md)
-inside this monorepo.
+Status: Active. Tracks the work needed to finish executing [`plan-refactor-common-foundation.md`](./plan-refactor-common-foundation.md) inside this monorepo.
 
 ## Where we are
 
 Bootstrap and history import are complete:
 
-- `marina/` monorepo initialized with workspaces (`packages/*`, `apps/*`)
+- `laankit/` monorepo initialized with workspaces (`packages/*`, `apps/*`)
 - `apps/noteliner/` imported with full git history under `apps/noteliner/`
-- `apps/threadliner/` imported (renamed from `threadline`) with full git
-  history under `apps/threadliner/`
+- `apps/threadliner/` imported (renamed from `threadline`) with full git history under `apps/threadliner/`
 - npm package rename `threadline` → `threadliner` committed
 - `npm install` at the root has populated `node_modules/`
 
 Confirm with:
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 git log --oneline | head -5
 ls apps/                          # noteliner + threadliner
 node -p "require('./apps/threadliner/package.json').name"  # → "threadliner"
 node -p "require('./apps/noteliner/package.json').name"    # → "noteliner"
 ```
 
-If anything above is missing, finish the git-import sequence before
-continuing — see git history in `git log` for what's been done so far.
+If anything above is missing, finish the git-import sequence before continuing — see git history in `git log` for what's been done so far.
 
 ## Phase map (where each step lives in the bigger plan)
 
@@ -43,14 +39,12 @@ continuing — see git history in `git log` for what's been done so far.
 
 ## Step 4 — Consolidate root tooling (light touch)
 
-Goal: shared, version-agnostic project plumbing at the root. **Do not
-hoist `electron`, `vite`, `svelte`, or `@sveltejs/vite-plugin-svelte`
-yet** — ThreadLiner and NoteLiner are on different versions until Step 5.
+Goal: shared, version-agnostic project plumbing at the root. **Do not hoist `electron`, `vite`, `svelte`, or `@sveltejs/vite-plugin-svelte` yet** — ThreadLiner and NoteLiner are on different versions until Step 5.
 
 ### 4.1 Verify both apps still build
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 npm run build:noteliner
 npm run build:threadliner
 ```
@@ -112,8 +106,7 @@ jobs:
       - run: npm run build
 ```
 
-**Done when:** `npm run build` succeeds at the root for both apps, and the
-shared root files are committed.
+**Done when:** `npm run build` succeeds at the root for both apps, and the shared root files are committed.
 
 **Commit:** `chore: add root tooling files (editorconfig, gitattributes)`
 
@@ -121,8 +114,7 @@ shared root files are committed.
 
 ## Step 5 — Upgrade ThreadLiner to Svelte 5 + Vite 6 + Electron 41
 
-This is the longest single step. Budget 3–5 days. Best done on a
-dedicated branch: `git checkout -b step-5/threadliner-stack-upgrade`.
+This is the longest single step. Budget 3–5 days. Best done on a dedicated branch: `git checkout -b step-5/threadliner-stack-upgrade`.
 
 ### 5.1 Bump devDependencies
 
@@ -137,8 +129,7 @@ Edit `apps/threadliner/package.json`:
 }
 ```
 
-Match NoteLiner's exact versions (cross-check `apps/noteliner/package.json`).
-Run `npm install` at the root.
+Match NoteLiner's exact versions (cross-check `apps/noteliner/package.json`). Run `npm install` at the root.
 
 ### 5.2 Svelte 4 → 5 component rewrites
 
@@ -151,48 +142,36 @@ For each `.svelte` file under `apps/threadliner/src/renderer/`:
 - `on:click={handler}` → `onclick={handler}`
 - `bind:value={foo}` — unchanged
 - `<svelte:component this={X} {...props} />` — unchanged (still valid)
-- `createEventDispatcher()` + `dispatch('close')` → callback props
-  (`let { onClose } = $props()`; call site: `<Modal {onClose}/>`)
+- `createEventDispatcher()` + `dispatch('close')` → callback props (`let { onClose } = $props()`; call site: `<Modal {onClose}/>`)
 
 ### 5.3 Store rewrites
 
-Convert `src/renderer/stores/*.js` from `writable` to runed classes
-*only* for stores that own UI state. Stores backing IPC state (like
-`sync.js`) can stay `writable` — Svelte 5 still supports them via the
-`$store` auto-subscription syntax.
+Convert `src/renderer/stores/*.js` from `writable` to runed classes *only* for stores that own UI state. Stores backing IPC state (like `sync.js`) can stay `writable` — Svelte 5 still supports them via the `$store` auto-subscription syntax.
 
 Recommended conversions:
 
-- `stores/theme.js` → `theme.svelte.js` with a class instance (will be
-  replaced wholesale in Step 6 anyway, so a minimal port is fine).
-- Keep `stores/app.js`, `stores/sync.js` as-is for this step; they're
-  reactive store APIs that Svelte 5 still supports.
+- `stores/theme.js` → `theme.svelte.js` with a class instance (will be replaced wholesale in Step 6 anyway, so a minimal port is fine).
+- Keep `stores/app.js`, `stores/sync.js` as-is for this step; they're reactive store APIs that Svelte 5 still supports.
 
 ### 5.4 Vite 5 → 6 + Electron 28 → 41
 
 Both are mostly drop-in:
 
-- Vite 6: `@sveltejs/vite-plugin-svelte` v5 requires Svelte 5 — already
-  bumped above.
-- Electron 41: skim https://www.electronjs.org/docs/latest/breaking-changes
-  for the 28→41 jump. Most likely affected: deprecated `remote` module
-  (ThreadLiner doesn't use it), CSP defaults. Smoke-test the app.
+- Vite 6: `@sveltejs/vite-plugin-svelte` v5 requires Svelte 5 — already bumped above.
+- Electron 41: skim https://www.electronjs.org/docs/latest/breaking-changes for the 28→41 jump. Most likely affected: deprecated `remote` module (ThreadLiner doesn't use it), CSP defaults. Smoke-test the app.
 
 ### 5.5 Validate
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 npm install
 npm run build:threadliner
 npm run dev:threadliner
 ```
 
-Exercise every ThreadLiner feature manually: add a feed, refresh, mark
-read/unread, sync, settings dialog, tags dialog. Nothing should be worse
-than before this step.
+Exercise every ThreadLiner feature manually: add a feed, refresh, mark read/unread, sync, settings dialog, tags dialog. Nothing should be worse than before this step.
 
-**Done when:** ThreadLiner runs on the new stack with all current
-functionality intact. Commit the branch.
+**Done when:** ThreadLiner runs on the new stack with all current functionality intact. Commit the branch.
 
 **Commit:** `feat(threadliner): upgrade to Svelte 5 + Vite 6 + Electron 41`
 
@@ -209,8 +188,7 @@ Move from each app's `devDependencies` to the root `package.json`:
 }
 ```
 
-Keep app-specific devDependencies (Playwright in NoteLiner,
-electron-builder configs) in their respective workspaces.
+Keep app-specific devDependencies (Playwright in NoteLiner, electron-builder configs) in their respective workspaces.
 
 ```bash
 npm install
@@ -225,9 +203,7 @@ npm run build  # verify both apps still build
 
 Branch: `step-6/threadliner-ui-refresh`.
 
-Follow [`plan-refactor-refresh-ui.md`](./plan-refactor-refresh-ui.md)
-end-to-end. The eight sub-stages in that plan's §7 ("Sequencing") map
-to commits on this branch:
+Follow [`plan-refactor-refresh-ui.md`](./plan-refactor-refresh-ui.md) end-to-end. The eight sub-stages in that plan's §7 ("Sequencing") map to commits on this branch:
 
 1. Variable rename + theme store rewrite
 2. Adopt shared modal classes
@@ -238,46 +214,29 @@ to commits on this branch:
 7. Sync UI (drawer modal + status dot)
 8. About modal + small polish
 
-Budget: ~2 weeks. Each sub-stage is independently mergeable; ship them
-to `main` as they land if you'd rather not carry a long-running branch.
+Budget: ~2 weeks. Each sub-stage is independently mergeable; ship them to `main` as they land if you'd rather not carry a long-running branch.
 
-**Done when:** ThreadLiner side-by-side with NoteLiner looks like a
-sibling app. The two visual languages should be indistinguishable.
+**Done when:** ThreadLiner side-by-side with NoteLiner looks like a sibling app. The two visual languages should be indistinguishable.
 
-**Final commit (or merge):** `feat(threadliner): adopt NoteLiner visual
-language (refresh-ui plan)`
+**Final commit (or merge):** `feat(threadliner): adopt NoteLiner visual language (refresh-ui plan)`
 
 ---
 
 ## Step 6.5 — Unify ThreadLiner's dev script with NoteLiner's pattern
 
-Goal: bring ThreadLiner's dev workflow in line with NoteLiner's so both
-apps run via `npm run electron:dev -w <app>`. Eliminates the
-README-documented asymmetry and sets up the shared dev infra that can
-move into the library in Step 7.
+Goal: bring ThreadLiner's dev workflow in line with NoteLiner's so both apps run via `npm run electron:dev -w <app>`. Eliminates the README-documented asymmetry and sets up the shared dev infra that can move into the library in Step 7.
 
 ### Why
 
-- ThreadLiner's current `dev` script
-  (`vite build && vite build --watch & electron .`) rebuilds to disk and
-  requires a manual `Ctrl+R` in the Electron window after every renderer
-  change. NoteLiner's `scripts/dev.js` runs the Vite dev server with HMR
-  — instant updates, no reload.
-- After Steps 5 + 6, the two apps share the same stack and visual
-  language. Dev orchestration is the last meaningful inconsistency
-  before Step 7 turns the shared bits into a library.
+- ThreadLiner's current `dev` script (`vite build && vite build --watch & electron .`) rebuilds to disk and requires a manual `Ctrl+R` in the Electron window after every renderer change. NoteLiner's `scripts/dev.js` runs the Vite dev server with HMR — instant updates, no reload.
+- After Steps 5 + 6, the two apps share the same stack and visual language. Dev orchestration is the last meaningful inconsistency before Step 7 turns the shared bits into a library.
 
 ### 6.5.1 Port `scripts/dev.js` to ThreadLiner
 
-Copy `apps/noteliner/scripts/dev.js` → `apps/threadliner/scripts/dev.js`.
-Adjustments:
+Copy `apps/noteliner/scripts/dev.js` → `apps/threadliner/scripts/dev.js`. Adjustments:
 
-- Drop the `--class=NoteLiner` Linux WM hint (or replace with
-  `--class=ThreadLiner` if desired).
-- Vite port: NoteLiner uses 5250 (set in its `vite.config.mjs`
-  `server.port` and hardcoded into `main.js`). ThreadLiner's vite config
-  has no `server` block today — set it to 5251 so both apps can run
-  simultaneously without a port collision.
+- Drop the `--class=NoteLiner` Linux WM hint (or replace with `--class=ThreadLiner` if desired).
+- Vite port: NoteLiner uses 5250 (set in its `vite.config.mjs` `server.port` and hardcoded into `main.js`). ThreadLiner's vite config has no `server` block today — set it to 5251 so both apps can run simultaneously without a port collision.
 
 ### 6.5.2 Teach ThreadLiner's main process to load the dev server
 
@@ -288,9 +247,7 @@ const indexPath = path.join(__dirname, '../../dist/renderer/index.html');
 mainWindow.loadFile(indexPath);
 ```
 
-Switch to NoteLiner's pattern: gate on `NODE_ENV === 'development'` (set
-by `scripts/dev.js` when it spawns Electron) and `loadURL` the dev
-server URL in dev, `loadFile` the built `index.html` otherwise.
+Switch to NoteLiner's pattern: gate on `NODE_ENV === 'development'` (set by `scripts/dev.js` when it spawns Electron) and `loadURL` the dev server URL in dev, `loadFile` the built `index.html` otherwise.
 
 ```js
 const isDev = process.env.NODE_ENV === 'development';
@@ -312,8 +269,7 @@ if (isDev) {
 }
 ```
 
-Drop the old `dev:renderer` and `dev:electron` — they're redundant once
-`electron:dev` exists.
+Drop the old `dev:renderer` and `dev:electron` — they're redundant once `electron:dev` exists.
 
 ### 6.5.4 Add a Vite server config to ThreadLiner
 
@@ -326,9 +282,7 @@ server: {
 },
 ```
 
-`strictPort` is important — if 5251 is busy the run should fail loudly
-instead of silently falling back to a different port that `main.js`
-doesn't know about.
+`strictPort` is important — if 5251 is busy the run should fail loudly instead of silently falling back to a different port that `main.js` doesn't know about.
 
 ### 6.5.5 Optional: add root shortcuts
 
@@ -337,19 +291,13 @@ doesn't know about.
 "electron:threadliner": "npm run electron:dev -w threadliner"
 ```
 
-Keep `dev:noteliner` / `dev:threadliner` as the renderer-only escape
-hatch (handy for iterating on Svelte components without Electron
-overhead).
+Keep `dev:noteliner` / `dev:threadliner` as the renderer-only escape hatch (handy for iterating on Svelte components without Electron overhead).
 
 ### 6.5.6 Update README
 
-Both apps now have identical dev instructions modulo app name. Collapse
-the per-app sections in `README.md`'s "Run in development" into one
-block.
+Both apps now have identical dev instructions modulo app name. Collapse the per-app sections in `README.md`'s "Run in development" into one block.
 
-**Done when:** `npm run electron:dev -w threadliner` launches Vite on
-5251 + Electron in one command, with HMR working on save. Both apps can
-run simultaneously without port collision.
+**Done when:** `npm run electron:dev -w threadliner` launches Vite on 5251 + Electron in one command, with HMR working on save. Both apps can run simultaneously without port collision.
 
 **Commit:** `chore(threadliner): unify dev script with noteliner pattern`
 
@@ -362,7 +310,7 @@ Branch: `step-7/desktop-ui-library`.
 ### 7.1 Skeleton
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 mkdir -p packages/desktop-ui/src/{theme,components,stores,electron-host,preload,styles}
 mkdir -p packages/desktop-ui/examples/playground
 ```
@@ -371,7 +319,7 @@ mkdir -p packages/desktop-ui/examples/playground
 
 ```jsonc
 {
-  "name": "@marina/desktop-ui",
+  "name": "@laankit/desktop-ui",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -407,9 +355,7 @@ Source paths refer to `apps/noteliner/src/renderer/`.
 | `components/CommandPalette.svelte` | `packages/desktop-ui/src/command-palette/CommandPalette.svelte` |
 | `components/SettingsModal.svelte` (split) | `SettingsShell.svelte` + per-tab components |
 
-For NoteLiner-specific tabs (MCP, write-frontmatter, etc.), **don't**
-move them into the library — they stay in `apps/noteliner/` and register
-into `SettingsShell` as custom tabs.
+For NoteLiner-specific tabs (MCP, write-frontmatter, etc.), **don't** move them into the library — they stay in `apps/noteliner/` and register into `SettingsShell` as custom tabs.
 
 Main-process bits from `apps/noteliner/src/main/main.js`:
 
@@ -418,9 +364,7 @@ Main-process bits from `apps/noteliner/src/main/main.js`:
 - App relaunch handler (`app:relaunch`)
 - `frame: !uiPrefs.customTitlebar` helper
 
-These move into `packages/desktop-ui/src/electron-host/index.js` as
-exported helper functions per the foundation plan's §"Electron-host
-helpers".
+These move into `packages/desktop-ui/src/electron-host/index.js` as exported helper functions per the foundation plan's §"Electron-host helpers".
 
 Preload bits from `apps/noteliner/src/main/preload.js`:
 
@@ -429,38 +373,30 @@ Preload bits from `apps/noteliner/src/main/preload.js`:
 - `getUIPrefs`, `setUIPrefs`
 - `relaunchApp`
 
-Move to `packages/desktop-ui/src/preload/index.js` as
-`exposeWindowApi()` and `exposeUIPrefsApi()` factories.
+Move to `packages/desktop-ui/src/preload/index.js` as `exposeWindowApi()` and `exposeUIPrefsApi()` factories.
 
 ### 7.4 Build the playground
 
-`packages/desktop-ui/examples/playground/` is a standalone Electron +
-Vite app that imports `@marina/desktop-ui` and renders each component
-under each theme × scale. It exists to exercise the library without
-needing either consumer app.
+`packages/desktop-ui/examples/playground/` is a standalone Electron + Vite app that imports `@laankit/desktop-ui` and renders each component under each theme × scale. It exists to exercise the library without needing either consumer app.
 
 Minimum viable playground:
 
-- `package.json` declaring `electron` + `vite` + workspace dep on
-  `@marina/desktop-ui`
-- A single window that renders TitleBar, Toolbar, AboutModal,
-  SettingsShell with the built-in tabs, and a theme switcher
+- `package.json` declaring `electron` + `vite` + workspace dep on `@laankit/desktop-ui`
+- A single window that renders TitleBar, Toolbar, AboutModal, SettingsShell with the built-in tabs, and a theme switcher
 
 ### 7.5 Validate
 
 ```bash
-cd ~/dev/hub/laan/marina
+cd ~/dev/hub/laan/laankit
 npm install                                       # links the new workspace
-npm run dev -w @marina/desktop-ui/examples/playground
+npm run dev -w @laankit/desktop-ui/examples/playground
 ```
 
 Cycle every theme and scale; confirm every exported component renders.
 
-**Done when:** the playground app exercises every library export without
-crashing, with no dependency on `apps/noteliner/` or `apps/threadliner/`.
+**Done when:** the playground app exercises every library export without crashing, with no dependency on `apps/noteliner/` or `apps/threadliner/`.
 
-**Commit (or merge):** `feat(desktop-ui): initial library carve-out from
-NoteLiner`
+**Commit (or merge):** `feat(desktop-ui): initial library carve-out from NoteLiner`
 
 ---
 
@@ -474,7 +410,7 @@ Branch: `step-8/noteliner-on-desktop-ui`.
 
 ```jsonc
 "dependencies": {
-  "@marina/desktop-ui": "*",
+  "@laankit/desktop-ui": "*",
   // ... rest unchanged
 }
 ```
@@ -492,13 +428,12 @@ import { themeState } from './stores/theme.svelte.js';
 import './styles/global.css';
 
 // After
-import { TitleBar } from '@marina/desktop-ui/components';
-import { themeState } from '@marina/desktop-ui/theme';
-import '@marina/desktop-ui/styles';
+import { TitleBar } from '@laankit/desktop-ui/components';
+import { themeState } from '@laankit/desktop-ui/theme';
+import '@laankit/desktop-ui/styles';
 ```
 
-Delete the now-duplicated local files. Domain components (FileTree,
-OutlinePane, TagsPane, Editor, Preview, etc.) stay local.
+Delete the now-duplicated local files. Domain components (FileTree, OutlinePane, TagsPane, Editor, Preview, etc.) stay local.
 
 ### 8.3 Replace local IPC handlers in main
 
@@ -506,7 +441,7 @@ In `apps/noteliner/src/main/main.js`:
 
 ```js
 import { registerWindowHandlers, registerUIPrefsHandlers, registerRelaunchHandler, applyFrameFromPrefs }
-  from '@marina/desktop-ui/electron-host';
+  from '@laankit/desktop-ui/electron-host';
 
 // Replace ~120 lines of inline handlers with:
 registerWindowHandlers({ getWindow: () => mainWindow });
@@ -535,14 +470,11 @@ npm run dev:noteliner
   npm test -w noteliner
   ```
 
-Visual-diff against pre-step-8 screenshots — any drift gets fixed in the
-*library*, not in NoteLiner.
+Visual-diff against pre-step-8 screenshots — any drift gets fixed in the *library*, not in NoteLiner.
 
-**Done when:** NoteLiner runs identically to before, with library
-imports replacing every local copy.
+**Done when:** NoteLiner runs identically to before, with library imports replacing every local copy.
 
-**Commit (or merge):** `refactor(noteliner): consume @marina/desktop-ui
-for chrome and theming`
+**Commit (or merge):** `refactor(noteliner): consume @laankit/desktop-ui for chrome and theming`
 
 ---
 
@@ -550,15 +482,14 @@ for chrome and theming`
 
 Branch: `step-9/threadliner-on-desktop-ui`.
 
-Same routine as Step 8. ThreadLiner's custom tabs (Sync activity, future
-Feed Defaults) register as `SettingsShell` contributions.
+Same routine as Step 8. ThreadLiner's custom tabs (Sync activity, future Feed Defaults) register as `SettingsShell` contributions.
 
 ### 9.1 Add dependency
 
 ```jsonc
 // apps/threadliner/package.json
 "dependencies": {
-  "@marina/desktop-ui": "*",
+  "@laankit/desktop-ui": "*",
   // ...
 }
 ```
@@ -575,11 +506,9 @@ npm run dev:threadliner
 
 Exercise every feature; pixel-compare against the post-refresh-UI build.
 
-**Done when:** ThreadLiner runs identically to its post-Step-6 state,
-with library imports replacing every local copy.
+**Done when:** ThreadLiner runs identically to its post-Step-6 state, with library imports replacing every local copy.
 
-**Commit (or merge):** `refactor(threadliner): consume @marina/desktop-ui
-for chrome and theming`
+**Commit (or merge):** `refactor(threadliner): consume @laankit/desktop-ui for chrome and theming`
 
 ---
 
@@ -605,19 +534,17 @@ Pin the matrix in `packages/desktop-ui/tests/visual.spec.js`.
 
 ### 10.3 API freeze
 
-Lock the public surface area. Anything not in `src/index.js` or the
-`exports` map is internal and may change.
+Lock the public surface area. Anything not in `src/index.js` or the `exports` map is internal and may change.
 
 ### 10.4 Tag v1.0
 
 ```bash
-cd ~/dev/hub/laan/marina
-git tag -a desktop-ui-v1.0.0 -m "@marina/desktop-ui 1.0.0"
+cd ~/dev/hub/laan/laankit
+git tag -a desktop-ui-v1.0.0 -m "@laankit/desktop-ui 1.0.0"
 git push origin desktop-ui-v1.0.0   # if pushing to GitHub
 ```
 
-**Done when:** the playground snapshot tests pass, the README documents
-constraints, and the tag exists.
+**Done when:** the playground snapshot tests pass, the README documents constraints, and the tag exists.
 
 ---
 
@@ -633,17 +560,11 @@ constraints, and the tag exists.
 | 9 | Both apps thinner; library proven in production |
 | 10 | Stable, tagged library; foundation effort complete |
 
-The most natural "ship and rest" points are after Step 6 (visual
-unification done; users see the win) and after Step 9 (refactor done;
-maintenance gets cheaper).
+The most natural "ship and rest" points are after Step 6 (visual unification done; users see the win) and after Step 9 (refactor done; maintenance gets cheaper).
 
 ## When to stop entirely
 
-If after Step 5 + Step 6 you decide the library carve-out isn't worth
-the cost (e.g., you no longer plan to maintain both apps actively), stop
-there. You'll have a unified visual language across both apps without
-the maintenance contract of a shared library. That's a legitimate
-end-state for this work.
+If after Step 5 + Step 6 you decide the library carve-out isn't worth the cost (e.g., you no longer plan to maintain both apps actively), stop there. You'll have a unified visual language across both apps without the maintenance contract of a shared library. That's a legitimate end-state for this work.
 
 ## References
 

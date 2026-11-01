@@ -8,8 +8,8 @@
 use std::path::{Path, PathBuf};
 
 use egui::{pos2, vec2, Align2, FontId, Frame, Margin, Rect, RichText, Sense, Ui};
-use marina_egui::icons;
-use marina_egui::theme::{self, Palette};
+use laankit_egui::icons;
+use laankit_egui::theme::{self, Palette};
 use serde_json::Value;
 
 /// `MAX_SIZE`: larger files are refused (`file:addAttachment` refuses them too).
@@ -167,7 +167,7 @@ fn item(ui: &mut Ui, p: &Palette, a: &Attachment, dir: &Path, out: &mut Vec<Atta
     let path = dir.join(&a.filename);
     // Loaded like the Preview's images (`bytes://attachments/…`).
     let uri = a.is_image().then(|| {
-        use marina_richtext::Resolver;
+        use laankit_richtext::Resolver;
         crate::views::preview::AttachmentResolver {
             dir: Some(dir.to_path_buf()),
         }

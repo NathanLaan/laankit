@@ -4,10 +4,10 @@
 //! ([`super::mcp::walkthrough`]): MCP stays off until Enable is clicked.
 
 use egui::RichText;
-use marina_egui::dialog::{self, ButtonKind};
-use marina_egui::settings::{self, SettingsShell, Tab};
-use marina_egui::theme::ThemeState;
-use marina_egui::{fonts, theme};
+use laankit_egui::dialog::{self, ButtonKind};
+use laankit_egui::settings::{self, SettingsShell, Tab};
+use laankit_egui::theme::ThemeState;
+use laankit_egui::{fonts, theme};
 use serde_json::{json, Value};
 
 use crate::backend::McpStatus;
@@ -199,7 +199,7 @@ fn ui_tab(
     settings::setting_group(
         ui,
         "Editor",
-        Some("Underlines misspelled words in the editor. Toggle with F7. (The native editor's spell checker arrives with marina-editor; the setting is shared with the other builds.)"),
+        Some("Underlines misspelled words in the editor. Toggle with F7. (The native editor's spell checker arrives with laankit-editor; the setting is shared with the other builds.)"),
         |ui| {
             if settings::toggle_option(ui, "Check spelling", &mut state.spell_check, true).changed() {
                 out.push(SettingsAction::SetPrefs(

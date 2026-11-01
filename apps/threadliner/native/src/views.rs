@@ -7,10 +7,10 @@ use egui::{
     pos2, vec2, Align, Align2, Color32, FontId, Frame, Layout, Margin, Rect, RichText, ScrollArea,
     Sense, Stroke, StrokeKind, Ui,
 };
-use marina_egui::dialog::{self, ButtonKind};
-use marina_egui::theme::{self, Palette};
-use marina_egui::{fonts, icons};
-use marina_richtext::{Action, Document, RichStyle, RichView, WebResolver};
+use laankit_egui::dialog::{self, ButtonKind};
+use laankit_egui::theme::{self, Palette};
+use laankit_egui::{fonts, icons};
+use laankit_richtext::{Action, Document, RichStyle, RichView, WebResolver};
 
 use crate::model::{self, Entry, Feed, Tag};
 
@@ -55,7 +55,7 @@ impl Article {
         let doc = entry
             .content
             .as_deref()
-            .map(|html| marina_richtext::from_article_html(html, entry.link.as_deref()))
+            .map(|html| laankit_richtext::from_article_html(html, entry.link.as_deref()))
             .unwrap_or_default();
         Self {
             doc,
@@ -451,7 +451,7 @@ fn entry_row(ui: &Ui, p: &Palette, rect: Rect, entry: &Entry) {
 }
 
 /// `ContentViewer.svelte`: the article header, then its content through
-/// marina-richtext (sanitized with ThreadLiner's DOMPurify allow-list).
+/// laankit-richtext (sanitized with ThreadLiner's DOMPurify allow-list).
 pub fn content(
     ui: &mut Ui,
     entry: Option<&Entry>,

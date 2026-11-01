@@ -38,16 +38,25 @@ pub fn remove(data: &mut Data, key: &str) {
 pub fn parse(raw: &str) -> Parsed {
     match parse_matter(raw) {
         Ok(p) => p,
-        Err(_) => Parsed { data: Vec::new(), body: raw.to_string() },
+        Err(_) => Parsed {
+            data: Vec::new(),
+            body: raw.to_string(),
+        },
     }
 }
 
 fn parse_matter(input: &str) -> Result<Parsed, String> {
     if input.is_empty() {
-        return Ok(Parsed { data: Vec::new(), body: String::new() });
+        return Ok(Parsed {
+            data: Vec::new(),
+            body: String::new(),
+        });
     }
     let content = input.strip_prefix('\u{feff}').unwrap_or(input);
-    let plain = || Parsed { data: Vec::new(), body: content.to_string() };
+    let plain = || Parsed {
+        data: Vec::new(),
+        body: content.to_string(),
+    };
     if !content.starts_with("---") || content[3..].starts_with('-') {
         return Ok(plain());
     }
@@ -55,7 +64,13 @@ fn parse_matter(input: &str) -> Result<Parsed, String> {
     let len = s.len();
     // A language name may follow the opening delimiter ("---yaml").
     let first_line = match s.find('\n') {
-        Some(i) => &s[..if i > 0 && s.as_bytes()[i - 1] == b'\r' { i - 1 } else { i }],
+        Some(i) => {
+            &s[..if i > 0 && s.as_bytes()[i - 1] == b'\r' {
+                i - 1
+            } else {
+                i
+            }]
+        }
         // JS: str.slice(0, -1) when no newline exists.
         None => &s[..s.len().saturating_sub(1)],
     };
@@ -97,13 +112,21 @@ pub fn strip_body(raw: &str) -> String {
 }
 
 fn newline(s: &str) -> String {
-    if s.ends_with('\n') { s.to_string() } else { format!("{s}\n") }
+    if s.ends_with('\n') {
+        s.to_string()
+    } else {
+        format!("{s}\n")
+    }
 }
 
 /// Body with frontmatter prepended — managed fields first, then the user's.
 /// Empty data (after dropping nulls) returns the body unchanged.
 pub fn serialize(body: &str, data: &Data) -> String {
-    let cleaned: Data = data.iter().filter(|(_, v)| *v != Yaml::Null).cloned().collect();
+    let cleaned: Data = data
+        .iter()
+        .filter(|(_, v)| *v != Yaml::Null)
+        .cloned()
+        .collect();
     if cleaned.is_empty() {
         return body.to_string();
     }
@@ -170,7 +193,8 @@ pub fn mirror_diverges(a: &Data, b: &Data) -> bool {
     MIRROR_FIELDS.iter().filter(|k| **k != "updated").any(|k| {
         let (av, bv) = (get(a, k), get(b, k));
         if matches!(av, Some(Yaml::Seq(_))) || matches!(bv, Some(Yaml::Seq(_))) {
-            as_list(av).unwrap_or_else(|| empty.clone()) != as_list(bv).unwrap_or_else(|| empty.clone())
+            as_list(av).unwrap_or_else(|| empty.clone())
+                != as_list(bv).unwrap_or_else(|| empty.clone())
         } else {
             av != bv
         }
@@ -223,8 +247,14 @@ mod tests {
             ("id".into(), Yaml::Str("abc".into())),
             ("gone".into(), Yaml::Null),
         ];
-        assert_eq!(serialize("body", &data), "---\nid: abc\nname: Note\ncustom: keep\n---\nbody\n");
-        assert_eq!(serialize("", &data), "---\nid: abc\nname: Note\ncustom: keep\n---\n\n");
+        assert_eq!(
+            serialize("body", &data),
+            "---\nid: abc\nname: Note\ncustom: keep\n---\nbody\n"
+        );
+        assert_eq!(
+            serialize("", &data),
+            "---\nid: abc\nname: Note\ncustom: keep\n---\n\n"
+        );
         assert_eq!(serialize("x", &Vec::new()), "x");
     }
 

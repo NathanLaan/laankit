@@ -7,16 +7,16 @@
 //!
 //! P presents from the selected slide (Escape stops), Ctrl+, opens the
 //! presentation settings, right-click a slide for its menu. For screenshots:
-//! `MARINA_SCREENSHOT` / `MARINA_THEME` as everywhere, `MARINA_SLIDE=<n>`
-//! selects a slide, and `MARINA_OPEN=present|settings` opens one at launch.
+//! `LAANKIT_SCREENSHOT` / `LAANKIT_THEME` as everywhere, `LAANKIT_SLIDE=<n>`
+//! selects a slide, and `LAANKIT_OPEN=present|settings` opens one at launch.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use egui::{Key, Modifiers};
-use marina_egui::diagnostics::{self, Screenshot};
-use marina_egui::fonts;
-use marina_egui::theme::{self, ThemeState};
+use laankit_egui::diagnostics::{self, Screenshot};
+use laankit_egui::fonts;
+use laankit_egui::theme::{self, ThemeState};
 use noteliner_slides::{
     normalize_presentation, parse_deck, slide_at_line, Deck, DeckPreview, ImageSource, PaneAction,
     PresentationSettings, Presenter, PresenterAction, SettingsOutcome, SlidesPane,
@@ -80,7 +80,7 @@ impl DeckApp {
             ("name".to_string(), name.clone()),
             ("title".to_string(), name),
         ]);
-        let slide = std::env::var("MARINA_SLIDE")
+        let slide = std::env::var("LAANKIT_SLIDE")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .and_then(|i| deck.slide(i))
@@ -98,7 +98,7 @@ impl DeckApp {
             vars,
             screenshot: Screenshot::from_env(),
         };
-        match std::env::var("MARINA_OPEN").as_deref() {
+        match std::env::var("LAANKIT_OPEN").as_deref() {
             Ok("present") => app.present(),
             Ok("settings") => app.open_settings(),
             _ => {}

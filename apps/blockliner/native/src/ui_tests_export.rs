@@ -20,7 +20,7 @@ const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/export
 /// A context with the app's fonts, ready to lay out text.
 fn context() -> egui::Context {
     let ctx = egui::Context::default();
-    marina_egui::fonts::install(&ctx);
+    laankit_egui::fonts::install(&ctx);
     let mut out = ctx.run_ui(egui::RawInput::default(), |_| {});
     // No renderer to hand the font atlas to.
     out.textures_delta.clear();

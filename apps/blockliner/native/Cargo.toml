@@ -13,8 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 blockliner-core.workspace = true
-marina-core.workspace = true
-marina-egui.workspace = true
+laankit-core.workspace = true
+laankit-egui.workspace = true
 anyhow.workspace = true
 eframe.workspace = true
 egui.workspace = true
@@ -26,7 +26,7 @@ serde_json.workspace = true
 tokio.workspace = true
 # 0.15, as in the other apps: see apps/noteliner/native/Cargo.toml.
 rfd = "0.15"
-# PNG export: rasterises the SVG export (the version marina-richtext uses).
+# PNG export: rasterises the SVG export (the version laankit-richtext uses).
 resvg = { version = "0.45", default-features = false, features = ["text"] }
 
 # build.rs embeds the icon in the .exe (Windows hosts only).
@@ -76,7 +76,7 @@ assets = [
 name = "blockliner"
 license = "MIT"
 summary = "Diagram editor for software architecture, saved as Mermaid"
-url = "https://github.com/NathanLaan/marina"
+url = "https://github.com/NathanLaan/laankit"
 assets = [
     { source = "target/release/blockliner", dest = "/usr/bin/blockliner", mode = "755" },
     { source = "../../../packaging/linux/com.blockliner.app.desktop", dest = "/usr/share/applications/com.blockliner.app.desktop", mode = "644" },
@@ -111,7 +111,7 @@ assets = [
 product-name = "BlockLiner"
 identifier = "com.blockliner.app"
 description = "Diagram editor for software architecture, saved as Mermaid"
-homepage = "https://github.com/NathanLaan/marina"
+homepage = "https://github.com/NathanLaan/laankit"
 authors = ["Nathan Laan"]
 publisher = "Nathan Laan"
 copyright = "Copyright (c) 2026 Nathan Laan"

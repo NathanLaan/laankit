@@ -6,11 +6,14 @@ use anyhow::{anyhow, bail, Result};
 use roxmltree::{Document, Node};
 use serde_json::{json, Value};
 
-use super::{attach_image, ext_content_type, finish, resolve_zip_path, stats_json, tidy, Package, Stats};
+use super::{
+    attach_image, ext_content_type, finish, resolve_zip_path, stats_json, tidy, Package, Stats,
+};
 use crate::project::{extname, Project};
 
 const REL_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const NOTES_REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
+const NOTES_REL: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
 
 /// Elements named as in the source (`p:sp`), like xmldom's
 /// getElementsByTagName.
@@ -23,15 +26,21 @@ fn qname(n: Node) -> String {
 }
 
 fn by_tag<'a, 'i>(n: Node<'a, 'i>, name: &str) -> Vec<Node<'a, 'i>> {
-    n.descendants().filter(|d| d.is_element() && *d != n && qname(*d) == name).collect()
+    n.descendants()
+        .filter(|d| d.is_element() && *d != n && qname(*d) == name)
+        .collect()
 }
 
 fn first<'a, 'i>(n: Node<'a, 'i>, name: &str) -> Option<Node<'a, 'i>> {
-    n.descendants().find(|d| d.is_element() && *d != n && qname(*d) == name)
+    n.descendants()
+        .find(|d| d.is_element() && *d != n && qname(*d) == name)
 }
 
 fn text_content(n: Node) -> String {
-    n.descendants().filter(|d| d.is_text()).filter_map(|d| d.text()).collect()
+    n.descendants()
+        .filter(|d| d.is_text())
+        .filter_map(|d| d.text())
+        .collect()
 }
 
 fn collapse_ws(s: &str) -> String {
@@ -51,7 +60,11 @@ fn render_paragraph(p: Node, default_bullet: bool) -> Option<String> {
         return None;
     }
     let ppr = first(p, "a:pPr");
-    let lvl = ppr.and_then(|n| n.attribute("lvl")).and_then(|l| l.parse::<usize>().ok()).unwrap_or(0).min(6);
+    let lvl = ppr
+        .and_then(|n| n.attribute("lvl"))
+        .and_then(|l| l.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(6);
     let mut bullet = default_bullet;
     if let Some(ppr) = ppr {
         if first(ppr, "a:buNone").is_some() {
@@ -60,7 +73,11 @@ fn render_paragraph(p: Node, default_bullet: bool) -> Option<String> {
             bullet = true;
         }
     }
-    Some(if bullet { format!("{}- {text}", "  ".repeat(lvl)) } else { text })
+    Some(if bullet {
+        format!("{}- {text}", "  ".repeat(lvl))
+    } else {
+        text
+    })
 }
 
 fn rel_id(n: Node, local: &str) -> Option<String> {
@@ -72,11 +89,14 @@ pub async fn import(project: &mut Project, bytes: &[u8], stem: &str) -> Result<V
     if !pkg.has("ppt/presentation.xml") {
         bail!("Not a valid .pptx file (missing ppt/presentation.xml)");
     }
-    let entry = project.create_file(stem, &json!([]), Some(String::new()), None).await?;
+    let entry = project
+        .create_file(stem, &json!([]), Some(String::new()), None)
+        .await?;
     let file_id = entry["id"].as_str().unwrap_or("").to_string();
     let mut stats = Stats::default();
 
-    let slides = slide_order(&mut pkg).map_err(|e| anyhow!("Failed to resolve slide order: {e}"))?;
+    let slides =
+        slide_order(&mut pkg).map_err(|e| anyhow!("Failed to resolve slide order: {e}"))?;
     let date = chrono::Utc::now().format("%Y-%m-%d");
     let mut out = vec![format!("# {stem} (Imported {date})"), String::new()];
     for (i, path) in slides.iter().enumerate() {
@@ -86,7 +106,12 @@ pub async fn import(project: &mut Project, bytes: &[u8], stem: &str) -> Result<V
             Ok(md) => out.push(md),
             Err(e) => {
                 stats.warnings.push(format!("Slide {n}: {e}"));
-                out.extend([format!("## Slide {n}"), String::new(), format!("_[Slide {n} failed to import: {e}]_"), String::new()]);
+                out.extend([
+                    format!("## Slide {n}"),
+                    String::new(),
+                    format!("_[Slide {n} failed to import: {e}]_"),
+                    String::new(),
+                ]);
             }
         }
     }
@@ -97,20 +122,36 @@ pub async fn import(project: &mut Project, bytes: &[u8], stem: &str) -> Result<V
 }
 
 fn slide_order(pkg: &mut Package) -> Result<Vec<String>> {
-    let pres = pkg.text("ppt/presentation.xml").ok_or_else(|| anyhow!("missing presentation.xml"))?;
+    let pres = pkg
+        .text("ppt/presentation.xml")
+        .ok_or_else(|| anyhow!("missing presentation.xml"))?;
     let doc = Document::parse(&pres)?;
     let rels = pkg.rels("ppt/_rels/presentation.xml.rels");
     Ok(by_tag(doc.root(), "p:sldId")
         .into_iter()
         .filter_map(|s| rel_id(s, "id").or_else(|| s.attribute("r:id").map(str::to_string)))
-        .filter_map(|rid| rels.iter().find(|r| r.0 == rid).map(|r| resolve_zip_path("ppt/", &r.2)))
+        .filter_map(|rid| {
+            rels.iter()
+                .find(|r| r.0 == rid)
+                .map(|r| resolve_zip_path("ppt/", &r.2))
+        })
         .collect())
 }
 
-async fn render_slide(project: &mut Project, pkg: &mut Package, slide_path: &str, n: usize, file_id: &str, stats: &mut Stats) -> Result<String> {
-    let xml = pkg.text(slide_path).ok_or_else(|| anyhow!("missing {slide_path}"))?;
+async fn render_slide(
+    project: &mut Project,
+    pkg: &mut Package,
+    slide_path: &str,
+    n: usize,
+    file_id: &str,
+    stats: &mut Stats,
+) -> Result<String> {
+    let xml = pkg
+        .text(slide_path)
+        .ok_or_else(|| anyhow!("missing {slide_path}"))?;
     let doc = Document::parse(&xml)?;
-    let hidden = first(doc.root(), "p:sld").or_else(|| (qname(doc.root_element()) == "p:sld").then(|| doc.root_element()))
+    let hidden = first(doc.root(), "p:sld")
+        .or_else(|| (qname(doc.root_element()) == "p:sld").then(|| doc.root_element()))
         .and_then(|s| s.attribute("show"))
         == Some("0");
     let slide_dir = &slide_path[..slide_path.rfind('/').unwrap_or(0)];
@@ -128,24 +169,51 @@ async fn render_slide(project: &mut Project, pkg: &mut Package, slide_path: &str
                     let ph = placeholder_type(node);
                     let is_title = matches!(ph.as_deref(), Some("title" | "ctrTitle"));
                     let is_body = matches!(ph.as_deref(), Some("body" | "subTitle" | ""));
-                    let Some(tx) = first(node, "p:txBody") else { continue };
+                    let Some(tx) = first(node, "p:txBody") else {
+                        continue;
+                    };
                     if is_title && title.is_empty() {
-                        title = collapse_ws(&by_tag(tx, "a:t").into_iter().map(text_content).collect::<Vec<_>>().join(" "));
+                        title = collapse_ws(
+                            &by_tag(tx, "a:t")
+                                .into_iter()
+                                .map(text_content)
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        );
                         continue;
                     }
-                    body.extend(by_tag(tx, "a:p").into_iter().filter_map(|p| render_paragraph(p, is_body)));
+                    body.extend(
+                        by_tag(tx, "a:p")
+                            .into_iter()
+                            .filter_map(|p| render_paragraph(p, is_body)),
+                    );
                 }
                 "p:pic" => {
-                    let Some(blip) = first(node, "a:blip") else { continue };
-                    let Some(rid) = rel_id(blip, "embed").or_else(|| blip.attribute("r:embed").map(str::to_string)) else { continue };
-                    let Some(rel) = rels.iter().find(|r| r.0 == rid) else { continue };
+                    let Some(blip) = first(node, "a:blip") else {
+                        continue;
+                    };
+                    let Some(rid) = rel_id(blip, "embed")
+                        .or_else(|| blip.attribute("r:embed").map(str::to_string))
+                    else {
+                        continue;
+                    };
+                    let Some(rel) = rels.iter().find(|r| r.0 == rid) else {
+                        continue;
+                    };
                     let media = resolve_zip_path("ppt/slides/", &rel.2);
                     match pkg.bytes(&media) {
-                        Some(data) => pics.push((ext_content_type(&extname(&media).to_lowercase()).to_string(), data)),
-                        None => stats.warnings.push(format!("Missing embedded image: {media}")),
+                        Some(data) => pics.push((
+                            ext_content_type(&extname(&media).to_lowercase()).to_string(),
+                            data,
+                        )),
+                        None => stats
+                            .warnings
+                            .push(format!("Missing embedded image: {media}")),
                     }
                 }
-                "p:graphicFrame" => stats.warnings.push("Skipped embedded graphic frame (table/chart/SmartArt)".into()),
+                "p:graphicFrame" => stats
+                    .warnings
+                    .push("Skipped embedded graphic frame (table/chart/SmartArt)".into()),
                 _ => {}
             }
         }
@@ -164,7 +232,11 @@ async fn render_slide(project: &mut Project, pkg: &mut Package, slide_path: &str
     if !title.is_empty() {
         suffix.push(title);
     }
-    let heading = if suffix.is_empty() { format!("## Slide {n}") } else { format!("## Slide {n}: {}", suffix.join(": ")) };
+    let heading = if suffix.is_empty() {
+        format!("## Slide {n}")
+    } else {
+        format!("## Slide {n}: {}", suffix.join(": "))
+    };
     let mut lines = vec![heading, String::new()];
     if !body.is_empty() {
         lines.extend(body);
@@ -188,15 +260,25 @@ async fn render_slide(project: &mut Project, pkg: &mut Package, slide_path: &str
 }
 
 fn render_notes(pkg: &mut Package, path: &str) -> Vec<String> {
-    let Some(xml) = pkg.text(path) else { return Vec::new() };
-    let Ok(doc) = Document::parse(&xml) else { return Vec::new() };
+    let Some(xml) = pkg.text(path) else {
+        return Vec::new();
+    };
+    let Ok(doc) = Document::parse(&xml) else {
+        return Vec::new();
+    };
     let mut lines = Vec::new();
     for sp in by_tag(doc.root(), "p:sp") {
         if placeholder_type(sp).as_deref() == Some("sldImg") {
             continue;
         }
-        let Some(tx) = first(sp, "p:txBody") else { continue };
-        lines.extend(by_tag(tx, "a:p").into_iter().filter_map(|p| render_paragraph(p, false)));
+        let Some(tx) = first(sp, "p:txBody") else {
+            continue;
+        };
+        lines.extend(
+            by_tag(tx, "a:p")
+                .into_iter()
+                .filter_map(|p| render_paragraph(p, false)),
+        );
     }
     lines
 }

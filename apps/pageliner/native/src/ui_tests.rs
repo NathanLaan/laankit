@@ -17,7 +17,7 @@ use crate::reader::pdf::fixtures;
 fn harness(paths: Paths) -> Harness<'static, PageLinerApp> {
     Harness::builder()
         .with_size(egui::vec2(1400.0, 900.0))
-        .with_context_setup(marina_egui::fonts::install)
+        .with_context_setup(laankit_egui::fonts::install)
         .build_ui_state(
             |ui, app: &mut PageLinerApp| app.show(ui),
             PageLinerApp::new(None, paths),

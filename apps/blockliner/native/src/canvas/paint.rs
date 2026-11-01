@@ -7,8 +7,8 @@ use blockliner_core::route::middle_segment;
 use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{vec2, Align, Color32, CornerRadius, FontId, Painter, Pos2, Stroke, StrokeKind};
-use marina_egui::icons;
-use marina_egui::theme::Palette;
+use laankit_egui::icons;
+use laankit_egui::theme::Palette;
 
 use super::view::View;
 use super::{pos, tools::Hit};

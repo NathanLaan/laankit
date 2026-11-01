@@ -8,10 +8,10 @@ license = "MIT"
 rust-version = "1.92"
 
 [workspace.dependencies]
-marina-core = { path = "crates/marina-core" }
-marina-egui = { path = "crates/marina-egui" }
-marina-editor = { path = "crates/marina-editor" }
-marina-richtext = { path = "crates/marina-richtext" }
+laankit-core = { path = "crates/laankit-core" }
+laankit-egui = { path = "crates/laankit-egui" }
+laankit-editor = { path = "crates/laankit-editor" }
+laankit-richtext = { path = "crates/laankit-richtext" }
 pageliner-epub = { path = "crates/pageliner-epub" }
 noteliner-export = { path = "crates/noteliner-export" }
 noteliner-slides = { path = "crates/noteliner-slides" }

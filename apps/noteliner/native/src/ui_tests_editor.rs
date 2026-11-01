@@ -1,4 +1,4 @@
-//! egui_kittest flows for the marina-editor and noteliner-slides
+//! egui_kittest flows for the laankit-editor and noteliner-slides
 //! integration, against a project built with `noteliner-core` in a temp
 //! folder:
 //!

@@ -4,8 +4,8 @@
 //! on in Settings).
 
 use egui::{RichText, Ui};
-use marina_egui::dialog::{self, ButtonKind, Dialog};
-use marina_egui::{fonts, icons, theme};
+use laankit_egui::dialog::{self, ButtonKind, Dialog};
+use laankit_egui::{fonts, icons, theme};
 use serde_json::Value;
 
 use crate::backend::{McpConfirm, McpStatus};

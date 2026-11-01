@@ -10,7 +10,7 @@
 use blockliner_core::connect::path_midpoint;
 use blockliner_core::{ids, Diagram, Rect as ModelRect};
 use egui::{vec2, Align2, Event, Frame, Key, Margin, Stroke, TextEdit, Ui};
-use marina_egui::theme;
+use laankit_egui::theme;
 
 use super::{paint, pos, Canvas};
 

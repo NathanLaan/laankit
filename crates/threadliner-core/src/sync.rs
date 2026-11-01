@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use marina_core::debounce::Debouncer;
-use marina_core::git::{Git, LogEvent};
+use laankit_core::debounce::Debouncer;
+use laankit_core::git::{Git, LogEvent};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -72,22 +72,33 @@ impl SyncManager {
             timer_started: None,
         }));
         let sink_state = state.clone();
-        let git = Git::new().with_default_identity(identity.0, identity.1).with_log(Arc::new(move |ev| {
-            let command = match &ev {
-                LogEvent::CmdStart { command } | LogEvent::CmdOk { command, .. } | LogEvent::CmdError { command, .. } => command,
-            };
-            if FILTERED_COMMANDS.iter().any(|f| command.contains(f)) {
-                return;
-            }
-            let mut st = sink_state.lock().unwrap();
-            match ev {
-                LogEvent::CmdStart { command } => st.add_log("info", format!("$ {command}")),
-                LogEvent::CmdOk { output, .. } if !output.is_empty() => st.add_log("info", output),
-                LogEvent::CmdOk { .. } => {}
-                LogEvent::CmdError { message, .. } => st.add_log("error", message),
-            }
-        }));
-        Arc::new(Self { state, queue: tokio::sync::Mutex::new(()), push_timer: Debouncer::new(), git })
+        let git = Git::new()
+            .with_default_identity(identity.0, identity.1)
+            .with_log(Arc::new(move |ev| {
+                let command = match &ev {
+                    LogEvent::CmdStart { command }
+                    | LogEvent::CmdOk { command, .. }
+                    | LogEvent::CmdError { command, .. } => command,
+                };
+                if FILTERED_COMMANDS.iter().any(|f| command.contains(f)) {
+                    return;
+                }
+                let mut st = sink_state.lock().unwrap();
+                match ev {
+                    LogEvent::CmdStart { command } => st.add_log("info", format!("$ {command}")),
+                    LogEvent::CmdOk { output, .. } if !output.is_empty() => {
+                        st.add_log("info", output)
+                    }
+                    LogEvent::CmdOk { .. } => {}
+                    LogEvent::CmdError { message, .. } => st.add_log("error", message),
+                }
+            }));
+        Arc::new(Self {
+            state,
+            queue: tokio::sync::Mutex::new(()),
+            push_timer: Debouncer::new(),
+            git,
+        })
     }
 
     pub fn init(&self, dir: PathBuf, wait_seconds: u64) {
@@ -134,7 +145,8 @@ impl SyncManager {
     pub fn status(&self, since_log_id: Option<u64>) -> Value {
         let st = self.state.lock().unwrap();
         let remaining = if self.push_timer.is_pending() {
-            st.timer_started.map(|t| st.wait.saturating_sub(t.elapsed()).as_millis() as u64)
+            st.timer_started
+                .map(|t| st.wait.saturating_sub(t.elapsed()).as_millis() as u64)
         } else {
             None
         };
@@ -192,13 +204,19 @@ impl SyncManager {
         self.set_status("pulling", None);
         let pulled = self.git.sync_pull(&dir).await;
         if !pulled.success {
-            self.set_status("error", Some(format!("Pull failed: {}", pulled.error.unwrap_or_default())));
+            self.set_status(
+                "error",
+                Some(format!("Pull failed: {}", pulled.error.unwrap_or_default())),
+            );
             return;
         }
         self.set_status("pushing", None);
         let pushed = self.git.sync_push(&dir).await;
         if !pushed.success {
-            self.set_status("error", Some(format!("Push failed: {}", pushed.error.unwrap_or_default())));
+            self.set_status(
+                "error",
+                Some(format!("Push failed: {}", pushed.error.unwrap_or_default())),
+            );
             return;
         }
         self.state.lock().unwrap().last_sync_time =

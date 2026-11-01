@@ -64,9 +64,9 @@ impl FormatFilter {
 
     pub fn icon(self) -> &'static str {
         match self {
-            FormatFilter::All => marina_egui::icons::LAYER_GROUP,
-            FormatFilter::Epub => marina_egui::icons::BOOK,
-            FormatFilter::Pdf => marina_egui::icons::FILE_PDF,
+            FormatFilter::All => laankit_egui::icons::LAYER_GROUP,
+            FormatFilter::Epub => laankit_egui::icons::BOOK,
+            FormatFilter::Pdf => laankit_egui::icons::FILE_PDF,
         }
     }
 
@@ -136,9 +136,9 @@ fn locale_cmp(a: &str, b: &str) -> Ordering {
 /// `book.format` as the badge shows it.
 pub fn format_icon(format: &str) -> &'static str {
     if format == "pdf" {
-        marina_egui::icons::FILE_PDF
+        laankit_egui::icons::FILE_PDF
     } else {
-        marina_egui::icons::BOOK
+        laankit_egui::icons::BOOK
     }
 }
 

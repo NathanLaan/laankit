@@ -7,8 +7,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-marina-egui.workspace = true
-marina-richtext.workspace = true
+laankit-egui.workspace = true
+laankit-richtext.workspace = true
 egui.workspace = true
 anyhow.workspace = true
 chrono.workspace = true

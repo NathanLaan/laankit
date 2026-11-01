@@ -286,7 +286,7 @@ fn pdf_export_is_a_pdf() {
     let tmp = tempfile::tempdir().unwrap();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let exporter = Arc::new(noteliner_export::LazyExporter::spawn(
-        marina_egui::fonts::bundled_faces().iter().map(|(_, b)| *b),
+        laankit_egui::fonts::bundled_faces().iter().map(|(_, b)| *b),
     ));
     let raw = "---\nname: Alpha\n---\n# Heading\n\nSome **bold** text and a [[Wikilink]].\n\n- one\n- two\n\n```rust\nfn main() {}\n```\n";
     let pdf = rt

@@ -1,7 +1,7 @@
 //! Help (`HelpApp.svelte`). The Svelte builds open it in a second window;
 //! here it's a full-size dialog with the same pages: an index grouped by
 //! section with a search box (non-matching pages are greyed out), and the
-//! page's Markdown rendered by `marina-richtext`.
+//! page's Markdown rendered by `laankit-richtext`.
 //!
 //! The pages are `assets/help-pages.json`, generated from the Svelte build's
 //! `lib/helpContent.js` by `scripts/gen-help.mjs`, so both builds stay in
@@ -11,9 +11,9 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use egui::{pos2, vec2, Align2, FontId, RichText, Sense};
-use marina_egui::dialog::{self, Dialog, Size};
-use marina_egui::theme;
-use marina_richtext::{Document, RichStyle, RichView, WebResolver};
+use laankit_egui::dialog::{self, Dialog, Size};
+use laankit_egui::theme;
+use laankit_richtext::{Document, RichStyle, RichView, WebResolver};
 use serde::Deserialize;
 
 /// One help page.
@@ -167,7 +167,7 @@ pub fn show(ctx: &egui::Context, state: &mut HelpState, top_inset: f32) -> bool 
                 let style = RichStyle::from_ctx(ui.ctx());
                 let shown = state.view.show(ui, doc, &style, &mut WebResolver);
                 for a in shown.actions {
-                    let marina_richtext::Action::Open(url) = a;
+                    let laankit_richtext::Action::Open(url) = a;
                     ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                 }
             });

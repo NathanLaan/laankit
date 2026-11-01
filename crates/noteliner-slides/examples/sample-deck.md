@@ -3,7 +3,7 @@ presentation:
   theme: dark
   aspect: "16:9"
   slideLevel: 2
-  footer: "Marina native slides · {{page}} / {{total}}"
+  footer: "LaanKit native slides · {{page}} / {{total}}"
   slideNumbers: true
 ---
 # Native Slides

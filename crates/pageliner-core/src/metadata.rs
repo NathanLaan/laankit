@@ -28,7 +28,12 @@ pub fn title_from_filename(path: &Path) -> String {
 }
 
 pub fn format_from_ext(path: &Path) -> String {
-    match path.extension().and_then(|e| e.to_str()).map(str::to_lowercase).as_deref() {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_lowercase)
+        .as_deref()
+    {
         Some("epub") => "epub".into(),
         Some("pdf") => "pdf".into(),
         Some(other) if !other.is_empty() => other.into(),
@@ -48,11 +53,21 @@ fn decode_entities(s: &str) -> String {
 }
 
 fn ext_from_media_type(media_type: Option<&str>, href: Option<&str>) -> String {
-    if let Some(ext) = href.and_then(|h| Path::new(h).extension()).and_then(|e| e.to_str()) {
+    if let Some(ext) = href
+        .and_then(|h| Path::new(h).extension())
+        .and_then(|e| e.to_str())
+    {
         return ext.to_lowercase();
     }
     let mt = media_type.unwrap_or("");
-    for (needle, ext) in [("jpeg", "jpg"), ("jpg", "jpg"), ("png", "png"), ("gif", "gif"), ("svg", "svg"), ("webp", "webp")] {
+    for (needle, ext) in [
+        ("jpeg", "jpg"),
+        ("jpg", "jpg"),
+        ("png", "png"),
+        ("gif", "gif"),
+        ("svg", "svg"),
+        ("webp", "webp"),
+    ] {
         if mt.contains(needle) {
             return ext.into();
         }
@@ -85,7 +100,10 @@ fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     re.captures(tag).and_then(|c| c.get(1)).map(|m| m.as_str())
 }
 
-fn read_entry<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, name: &str) -> Option<Vec<u8>> {
+fn read_entry<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    name: &str,
+) -> Option<Vec<u8>> {
     let mut f = zip.by_name(name).ok()?;
     let mut buf = Vec::new();
     f.read_to_end(&mut buf).ok()?;
@@ -94,13 +112,23 @@ fn read_entry<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, name: &str)
 
 fn extract_epub(path: &Path) -> Option<Metadata> {
     let mut zip = zip::ZipArchive::new(File::open(path).ok()?).ok()?;
-    let fallback = || Metadata { title: title_from_filename(path), author: None, cover: None };
+    let fallback = || Metadata {
+        title: title_from_filename(path),
+        author: None,
+        cover: None,
+    };
 
-    let Some(container) = read_entry(&mut zip, "META-INF/container.xml") else { return Some(fallback()) };
+    let Some(container) = read_entry(&mut zip, "META-INF/container.xml") else {
+        return Some(fallback());
+    };
     let container = String::from_utf8_lossy(&container);
     let rootfile = Regex::new(r#"(?i)<rootfile[^>]*full-path="([^"]+)""#).unwrap();
-    let Some(opf_path) = rootfile.captures(&container).map(|c| c[1].to_string()) else { return Some(fallback()) };
-    let Some(opf) = read_entry(&mut zip, &opf_path) else { return Some(fallback()) };
+    let Some(opf_path) = rootfile.captures(&container).map(|c| c[1].to_string()) else {
+        return Some(fallback());
+    };
+    let Some(opf) = read_entry(&mut zip, &opf_path) else {
+        return Some(fallback());
+    };
     let opf = String::from_utf8_lossy(&opf).to_string();
 
     let dc = |tag: &str| {
@@ -120,10 +148,18 @@ fn extract_epub(path: &Path) -> Option<Metadata> {
     let meta_cover = Regex::new(r#"(?i)<meta[^>]*name="cover"[^>]*content="([^"]+)""#)
         .unwrap()
         .captures(&opf)
-        .or_else(|| Regex::new(r#"(?i)<meta[^>]*content="([^"]+)"[^>]*name="cover""#).unwrap().captures(&opf))
+        .or_else(|| {
+            Regex::new(r#"(?i)<meta[^>]*content="([^"]+)"[^>]*name="cover""#)
+                .unwrap()
+                .captures(&opf)
+        })
         .map(|c| c[1].to_string());
     if let Some(id) = meta_cover {
-        let item = Regex::new(&format!(r#"(?i)<item[^>]*id="{}"[^>]*>"#, regex::escape(&id))).unwrap();
+        let item = Regex::new(&format!(
+            r#"(?i)<item[^>]*id="{}"[^>]*>"#,
+            regex::escape(&id)
+        ))
+        .unwrap();
         if let Some(m) = item.find(&opf) {
             cover_href = attr(m.as_str(), "href").map(str::to_string);
             cover_type = attr(m.as_str(), "media-type").map(str::to_string);
@@ -145,17 +181,28 @@ fn extract_epub(path: &Path) -> Option<Metadata> {
         })
     });
 
-    Some(Metadata { title, author, cover })
+    Some(Metadata {
+        title,
+        author,
+        cover,
+    })
 }
 
 pub fn extract(path: &Path) -> Metadata {
-    let is_epub = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("epub"));
+    let is_epub = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("epub"));
     if is_epub {
         if let Some(m) = extract_epub(path) {
             return m;
         }
     }
-    Metadata { title: title_from_filename(path), author: None, cover: None }
+    Metadata {
+        title: title_from_filename(path),
+        author: None,
+        cover: None,
+    }
 }
 
 #[cfg(test)]
@@ -197,7 +244,10 @@ mod tests {
 
     #[test]
     fn zip_paths_resolve_like_posix_normalize() {
-        assert_eq!(resolve_zip_path("OEBPS/content.opf", "../images/c.jpg"), "images/c.jpg");
+        assert_eq!(
+            resolve_zip_path("OEBPS/content.opf", "../images/c.jpg"),
+            "images/c.jpg"
+        );
         assert_eq!(resolve_zip_path("content.opf", "./c.jpg"), "c.jpg");
     }
 }

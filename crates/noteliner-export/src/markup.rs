@@ -99,7 +99,7 @@ pub enum WikiLinks {
 }
 
 /// Fonts by family name. The defaults are the faces the app bundles
-/// (`marina_egui::fonts::bundled_faces`); glyphs they lack fall back to any
+/// (`laankit_egui::fonts::bundled_faces`); glyphs they lack fall back to any
 /// other font Typst has (system fonts, when the exporter loaded them).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FontFamilies {

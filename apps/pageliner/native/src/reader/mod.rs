@@ -9,8 +9,8 @@ pub mod epub;
 pub mod pdf;
 
 use egui::{vec2, Color32, FontId, Response, Sense, Stroke, Ui};
-use marina_egui::panes::PaneLayout;
-use marina_egui::theme::{self, Palette};
+use laankit_egui::panes::PaneLayout;
+use laankit_egui::theme::{self, Palette};
 use serde_json::Value;
 
 /// Something a reader asks the app to do.
@@ -61,7 +61,7 @@ pub fn back_bar(ui: &mut Ui, title: &str) -> bool {
     let p = theme::palette(ui.ctx());
     let back = tool_button(
         ui,
-        Some(marina_egui::icons::ARROW_LEFT),
+        Some(laankit_egui::icons::ARROW_LEFT),
         Some("Library"),
         "Back to Library",
         ToolState::default(),
@@ -102,8 +102,11 @@ fn unsupported(ui: &mut Ui, title: &str, format: &str) -> Vec<ReaderAction> {
             ui.vertical_centered(|ui| {
                 ui.add_space((ui.available_height() / 2.0 - 70.0).max(24.0));
                 ui.label(
-                    marina_egui::icons::icon_sized(marina_egui::icons::FILE_CIRCLE_QUESTION, 44.0)
-                        .color(p.text_muted.gamma_multiply(0.5)),
+                    laankit_egui::icons::icon_sized(
+                        laankit_egui::icons::FILE_CIRCLE_QUESTION,
+                        44.0,
+                    )
+                    .color(p.text_muted.gamma_multiply(0.5)),
                 );
                 ui.add_space(8.0);
                 ui.label(egui::RichText::new(title).size(22.0).color(p.text_primary));
@@ -148,7 +151,7 @@ pub fn tool_button(
     };
     let glyph_galley = glyph.map(|g| {
         ui.painter()
-            .layout_no_wrap(g.to_string(), marina_egui::icons::font(12.0), ink)
+            .layout_no_wrap(g.to_string(), laankit_egui::icons::font(12.0), ink)
     });
     let label_galley = label.map(|l| {
         ui.painter()
@@ -282,7 +285,7 @@ pub fn annotations_pane(
         ui.horizontal(|ui| {
             ui.add_space(10.0);
             ui.label(
-                marina_egui::fonts::weight(title.to_uppercase(), marina_egui::fonts::SEMIBOLD)
+                laankit_egui::fonts::weight(title.to_uppercase(), laankit_egui::fonts::SEMIBOLD)
                     .size(10.0)
                     .color(p.text_faint),
             );
@@ -366,8 +369,8 @@ fn annotation_row(
         painter.text(
             egui::pos2(x, rect.center().y),
             egui::Align2::LEFT_CENTER,
-            marina_egui::icons::BOOKMARK,
-            marina_egui::icons::font(11.0),
+            laankit_egui::icons::BOOKMARK,
+            laankit_egui::icons::font(11.0),
             p.accent,
         );
     }
@@ -394,8 +397,8 @@ fn annotation_row(
         painter.text(
             del_rect.center(),
             egui::Align2::CENTER_CENTER,
-            marina_egui::icons::XMARK,
-            marina_egui::icons::font(11.0),
+            laankit_egui::icons::XMARK,
+            laankit_egui::icons::font(11.0),
             ink,
         );
     }

@@ -9,9 +9,9 @@
 use std::collections::HashSet;
 
 use egui::{pos2, vec2, Align2, Color32, FontId, Id, Key, Rect, RichText, Sense, Stroke, Ui};
-use marina_egui::panes;
-use marina_egui::theme::{self, Palette};
-use marina_egui::{fonts, icons};
+use laankit_egui::panes;
+use laankit_egui::theme::{self, Palette};
+use laankit_egui::{fonts, icons};
 use serde_json::Value;
 
 use crate::model::{self, Entry, UNTAGGED_KEY};
@@ -115,7 +115,7 @@ impl SearchState {
         self.searching = false;
     }
 
-    /// Sets the query as if typed at `now` (`MARINA_OPEN=search:<query>`).
+    /// Sets the query as if typed at `now` (`LAANKIT_OPEN=search:<query>`).
     pub fn set_query(&mut self, query: &str, now: f64) {
         self.query = query.to_string();
         self.edited(now);

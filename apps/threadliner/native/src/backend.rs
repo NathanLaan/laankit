@@ -14,9 +14,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
-use marina_core::git::SyncStatus;
-use marina_core::updates::{self, UpdateCheck};
-use marina_egui::about::UpdateStatus;
+use laankit_core::git::SyncStatus;
+use laankit_core::updates::{self, UpdateCheck};
+use laankit_egui::about::UpdateStatus;
 use serde_json::Value;
 use threadliner_core::feed;
 use threadliner_core::store::Store;

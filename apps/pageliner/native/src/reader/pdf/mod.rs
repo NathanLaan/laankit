@@ -15,9 +15,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use egui::{pos2, vec2, Color32, Key, Modifiers, Pos2, Rect, Sense, Ui, Vec2};
-use marina_egui::panes::{self, Pane, PaneLayout};
-use marina_egui::theme;
-use marina_egui::{dialog, icons};
+use laankit_egui::panes::{self, Pane, PaneLayout};
+use laankit_egui::theme;
+use laankit_egui::{dialog, icons};
 use serde_json::{Map, Value};
 
 use super::{
@@ -102,7 +102,7 @@ pub struct PdfReader {
     search: Search,
     page_input: Option<String>,
     status: Option<String>,
-    /// Diagnostics: `MARINA_PDF_SELECT=<page>:<x0>,<y0>,<x1>,<y1>` (page
+    /// Diagnostics: `LAANKIT_PDF_SELECT=<page>:<x0>,<y0>,<x1>,<y1>` (page
     /// units) selects and highlights that range once its text is in.
     scripted: bool,
 }
@@ -143,13 +143,13 @@ impl PdfReader {
             status: None,
             scripted: false,
         };
-        if let Some(p) = std::env::var("MARINA_PDF_PAGE")
+        if let Some(p) = std::env::var("LAANKIT_PDF_PAGE")
             .ok()
             .and_then(|p| p.parse::<usize>().ok())
         {
             reader.jump_to = Some(p.clamp(1, pages) - 1);
         }
-        if let Some((page, from, to)) = std::env::var("MARINA_PDF_SELECT")
+        if let Some((page, from, to)) = std::env::var("LAANKIT_PDF_SELECT")
             .ok()
             .and_then(|v| parse_select(&v))
         {

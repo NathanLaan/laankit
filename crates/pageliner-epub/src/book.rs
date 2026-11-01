@@ -11,9 +11,9 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use epub::doc::{EpubDoc, NavPoint};
-use marina_richtext::convert::{self, Base, Options};
-use marina_richtext::css::StyleSheet;
-use marina_richtext::{Document, Position};
+use laankit_richtext::convert::{self, Base, Options};
+use laankit_richtext::css::StyleSheet;
+use laankit_richtext::{Document, Position};
 use scraper::{ElementRef, Html, Selector};
 
 use crate::state::Location;

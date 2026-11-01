@@ -1,9 +1,9 @@
 //! `SettingsModal.svelte`: the UI, Feeds, Sync and Keyboard Shortcuts tabs.
 
 use egui::{Frame, Margin, RichText, ScrollArea, Stroke};
-use marina_egui::settings::{self, SettingsShell, Tab};
-use marina_egui::theme::{self, ThemeId, ThemeState};
-use marina_egui::{dialog, toast};
+use laankit_egui::settings::{self, SettingsShell, Tab};
+use laankit_egui::theme::{self, ThemeId, ThemeState};
+use laankit_egui::{dialog, toast};
 use serde_json::{json, Value};
 use threadliner_core::sync::LogEntry;
 

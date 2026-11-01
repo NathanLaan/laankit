@@ -7,11 +7,11 @@ use egui::{
     pos2, vec2, Align2, Color32, FontId, Pos2, Rect, RichText, ScrollArea, Sense, Shape, Stroke,
     StrokeKind, Ui,
 };
-use marina_egui::dialog::{self, ButtonKind};
-use marina_egui::panes::{self, HEADER_HEIGHT};
-use marina_egui::theme::Palette;
-use marina_egui::toolbar::{self, ToolbarButton};
-use marina_egui::{fonts, icons, theme};
+use laankit_egui::dialog::{self, ButtonKind};
+use laankit_egui::panes::{self, HEADER_HEIGHT};
+use laankit_egui::theme::Palette;
+use laankit_egui::toolbar::{self, ToolbarButton};
+use laankit_egui::{fonts, icons, theme};
 
 use crate::canvas::{paint, Tool};
 use crate::commands::{tool_digit, tool_key, Act};

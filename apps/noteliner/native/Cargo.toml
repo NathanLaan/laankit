@@ -13,13 +13,13 @@ name = "noteliner"
 path = "src/main.rs"
 
 [dependencies]
-marina-core.workspace = true
-marina-egui.workspace = true
-marina-richtext.workspace = true
+laankit-core.workspace = true
+laankit-egui.workspace = true
+laankit-richtext.workspace = true
 noteliner-core = { path = "../../../crates/noteliner-core" }
 noteliner-export.workspace = true
 noteliner-slides.workspace = true
-marina-editor = { workspace = true, features = ["spellcheck"] }
+laankit-editor = { workspace = true, features = ["spellcheck"] }
 anyhow.workspace = true
 chrono.workspace = true
 eframe.workspace = true
@@ -88,7 +88,7 @@ assets = [
 name = "noteliner"
 license = "MIT"
 summary = "Outliner-style Markdown notes with git sync"
-url = "https://github.com/NathanLaan/marina"
+url = "https://github.com/NathanLaan/laankit"
 assets = [
     { source = "target/release/noteliner", dest = "/usr/bin/noteliner", mode = "755" },
     { source = "../../../packaging/linux/com.nathanlaan.noteliner.desktop", dest = "/usr/share/applications/com.nathanlaan.noteliner.desktop", mode = "644" },
@@ -129,7 +129,7 @@ note-liner = "*"
 product-name = "NoteLiner"
 identifier = "com.nathanlaan.noteliner"
 description = "Outliner-style Markdown notes with git sync"
-homepage = "https://github.com/NathanLaan/marina"
+homepage = "https://github.com/NathanLaan/laankit"
 authors = ["Nathan Laan"]
 publisher = "Nathan Laan"
 copyright = "Copyright (c) 2026 Nathan Laan"
