@@ -1,6 +1,6 @@
 # pageliner-epub
 
-PageLiner's native EPUB reader (plan Option C, Phase 3; see `docs/plans/plan-native-rust-egui.md`). No webview and no epub.js: the book is converted to `laankit-richtext` blocks and laid out by egui. It replaces `EpubReader.svelte` and `AnnotationsPane.svelte`.
+PageLiner's native EPUB reader. No webview and no epub.js: the book is converted to `laankit-richtext` blocks and laid out by egui. It replaces `EpubReader.svelte` and `AnnotationsPane.svelte`.
 
 ```bash
 cargo run -p pageliner-epub --example reader -- book.epub   # a standalone window

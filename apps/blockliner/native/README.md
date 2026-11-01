@@ -1,6 +1,6 @@
 # BlockLiner Native
 
-BlockLiner's app: an [egui](https://github.com/emilk/egui) UI over `blockliner-core`, with no webview or JavaScript. It runs on Linux, Windows and macOS. The design, file format and the decisions behind them are in [`docs/plans/plan-blockliner.md`](../../../docs/plans/plan-blockliner.md).
+BlockLiner's app: an [egui](https://github.com/emilk/egui) UI over `blockliner-core`, with no webview or JavaScript. It runs on Linux, Windows and macOS. The file format is described in the [BlockLiner README](../README.md#file-format).
 
 ## Running
 

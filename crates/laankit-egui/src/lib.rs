@@ -1,6 +1,5 @@
 //! The native (egui) counterpart of `@laankit/desktop-ui`, shared by the
-//! NoteLiner, ThreadLiner and PageLiner native builds (plan Option C, see
-//! `docs/plans/plan-native-rust-egui.md`).
+//! LaanKit apps.
 //!
 //! | Module         | desktop-ui equivalent                                                  |
 //! |----------------|------------------------------------------------------------------------|

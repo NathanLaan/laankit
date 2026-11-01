@@ -1,7 +1,6 @@
 //! Sanitized HTML/XHTML reduced to native rich-text blocks and laid out with egui, with no
 //! webview. Shared by ThreadLiner (articles), PageLiner (EPUB chapters) and, later, the NoteLiner
-//! Markdown preview. Promoted from the Phase 0 spikes 2 and 4 (see
-//! `docs/plans/plan-native-rust-egui.md`).
+//! Markdown preview.
 //!
 //! - [`convert`]: sanitize (ThreadLiner's DOMPurify allow-list) and convert to a [`Document`].
 //! - [`css`]: the bit of CSS that EPUB books need.

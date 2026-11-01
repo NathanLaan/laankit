@@ -1,8 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 //! BlockLiner: a Visio-style editor for software architecture diagrams,
-//! saved as Mermaid flowcharts. An egui UI over `blockliner-core`. See
-//! `docs/plans/plan-blockliner.md`.
+//! saved as Mermaid flowcharts. An egui UI over `blockliner-core`.
 
 mod app;
 mod backend;

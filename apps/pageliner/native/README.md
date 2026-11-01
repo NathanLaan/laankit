@@ -1,6 +1,6 @@
 # PageLiner Native
 
-PageLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `pageliner-core`, with a [hayro](https://github.com/LaurenzV/hayro) PDF reader and no webview or JavaScript. It's Phase 3 of plan Option C ([`docs/plans/plan-native-rust-egui.md`](../../../docs/plans/plan-native-rust-egui.md)) and runs on Linux, Windows and macOS.
+PageLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `pageliner-core`, with a [hayro](https://github.com/LaurenzV/hayro) PDF reader and no webview or JavaScript. It runs on Linux, Windows and macOS.
 
 It reads and writes exactly what the Electron and Tauri builds do: the same `~/.config/PageLiner` (`ui-preferences.json`) and the same library (`library/pageliner.json`, `books/`, `covers/`, `state/<id>.json`), through the same `pageliner-core` library. PDF positions, bookmarks and highlights are stored in the Svelte reader's format, so you can switch builds mid-book.
 

@@ -1,7 +1,6 @@
 //! NoteLiner's PDF export without a webview: frontmatter stripped →
 //! Markdown (comrak AST) → Typst markup ([`markup`]) → `typst::compile` in an
-//! in-memory world → `typst_pdf::pdf`. Plan Option C, Phase 4; promoted from
-//! the Phase 0 export spike (see `docs/plans/spikes/export.md`).
+//! in-memory world → `typst_pdf::pdf`.
 //!
 //! ```ignore
 //! // Once, at startup: built and warmed up on a background thread.

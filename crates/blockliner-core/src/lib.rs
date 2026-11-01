@@ -1,6 +1,6 @@
 //! BlockLiner's backend, independent of the UI shell: the diagram model and
 //! its file format, a Mermaid flowchart with the layout kept in `%%` comments.
-//! See `docs/plans/plan-blockliner.md`.
+//! The format is described in `apps/blockliner/README.md`.
 //!
 //! | Module    | Holds                                                              |
 //! |-----------|--------------------------------------------------------------------|

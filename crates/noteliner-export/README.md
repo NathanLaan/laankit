@@ -1,6 +1,6 @@
 # noteliner-export
 
-NoteLiner's PDF export without a webview, for the native (egui) build (plan Option C, Phase 4, step 9). Promoted from the Phase 0 export spike; `docs/plans/spikes/export.md` has the original comparison with Electron's `printToPDF`.
+NoteLiner's PDF export without a webview, for the native (egui) build.
 
 Frontmatter is stripped, comrak parses the Markdown (the same GFM options as `noteliner_core::export`, plus footnotes and `[[Real Name|Label]]` wikilinks), `markup` turns the AST into Typst markup, and Typst compiles it to PDF in-process. No system binaries, packages or network are needed.
 

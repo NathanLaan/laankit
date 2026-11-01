@@ -1,1 +1,0 @@
-When the user switches between the tabs in the Settings modal, keep the modal the same size as is required for the largest tab.

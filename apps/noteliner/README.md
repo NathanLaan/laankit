@@ -59,6 +59,6 @@ Enable it in **Settings → MCP**; the first time you do, a one-screen walkthrou
 
 **Safety** — optional confirm-before-write (*Allow once* / *for the session* / *Deny*), per-tool allow/deny, single-project scope, a `chmod 0600` socket, and a 10 MB body cap on writes. Every MCP call is logged to the Log panel, prefixed `[MCP]`. The server needs a Unix socket, so it is not yet available on Windows. See [`native/README.md`](native/README.md) for the bridge details.
 
-## Historical plans
+## Plans
 
-`docs/plans/` holds the planning and design notes written during development, including the completed phases under `docs/plans/completed/`. They are kept as a record and are not a guide to the current build.
+`docs/plans/` holds plans for features not built yet (or only partly built). Completed plans are removed; they remain in git history.

@@ -1,6 +1,6 @@
 # laankit-egui
 
-The native (egui) counterpart of `@laankit/desktop-ui`, shared by the NoteLiner, ThreadLiner and PageLiner native builds (plan Option C, see [`docs/plans/plan-native-rust-egui.md`](../../docs/plans/plan-native-rust-egui.md)). It runs on Linux, Windows and macOS.
+The native (egui) counterpart of `@laankit/desktop-ui`, shared by the NoteLiner, ThreadLiner and PageLiner native builds. It runs on Linux, Windows and macOS.
 
 ## Usage
 

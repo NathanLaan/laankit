@@ -1,5 +1,4 @@
-//! NoteLiner's presentations, natively (plan Option C, Phase 4; see
-//! `docs/plans/plan-native-rust-egui.md`).
+//! NoteLiner's presentations, natively.
 //!
 //! | Module      | Svelte / JS original                                   |
 //! |-------------|--------------------------------------------------------|
