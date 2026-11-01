@@ -1,6 +1,6 @@
 # Remaining Work — Native Apps
 
-Status: **Open (2026-10-18).** What's left after the Option C port ([plan-native-rust-egui.md](plan-native-rust-egui.md)) and the editor, slides and rich-text plan ([plan-editor-slides-richtext.md](plan-editor-slides-richtext.md)). The planned engineering work is done: the native ThreadLiner, PageLiner and NoteLiner are the default builds (version 2.2.5).
+Status: **Open (2026-10-18).** What's left after the port to pure Rust (egui) and the editor, slides and rich-text work. The planned engineering work is done: the native ThreadLiner, PageLiner and NoteLiner are the default builds (version 2.2.5).
 
 ## Suggested order
 

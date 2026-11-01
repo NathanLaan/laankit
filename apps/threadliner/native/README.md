@@ -1,6 +1,6 @@
 # ThreadLiner Native
 
-ThreadLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `threadliner-core`, with no webview and no JavaScript. It's the Phase 2 pilot of plan Option C ([`docs/plans/plan-native-rust-egui.md`](../../../docs/plans/plan-native-rust-egui.md)) and runs on Linux, Windows and macOS.
+ThreadLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `threadliner-core`, with no webview and no JavaScript. It runs on Linux, Windows and macOS.
 
 It reads and writes exactly what the Electron and Tauri builds do: the same `~/.config/ThreadLiner` (`config.json`, `ui-preferences.json`) and the same git-synced data folder (`data/feeds.json`, `data/tags.json`, `data/feeds/<id>/entries.json`, `configuration/settings.json`), through the same `threadliner-core` store and sync engine. You can switch between the builds at any time.
 

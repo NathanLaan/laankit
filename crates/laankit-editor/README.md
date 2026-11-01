@@ -1,10 +1,10 @@
 # laankit-editor
 
-NoteLiner's Markdown editor for the native (egui) builds, the counterpart of `apps/noteliner/src/renderer/components/Editor.svelte` (CodeMirror 6). Plan Option C, Phase 4 (`docs/plans/plan-native-rust-egui.md`), and the editor phases of `docs/plans/plan-editor-slides-richtext.md`.
+NoteLiner's Markdown editor for the native (egui) builds, the counterpart of `apps/noteliner/src/renderer/components/Editor.svelte` (CodeMirror 6).
 
 It runs on **its own editor core** ([`editor_core`](src/editor_core/mod.rs), the default since Phase 3) or, as a fallback for one release, on egui's `TextEdit::multiline` (see [Engines](#engines-and-the-fallback)). Either way:
 
-- **A cached, incremental highlighting layouter.** One galley per line; an edit rescans only the lines it touched. Promoted from Phase 0 spike 1 (`docs/plans/spikes/editor.md`). The core engine lays out only the lines on screen.
+- **A cached, incremental highlighting layouter.** One galley per line; an edit rescans only the lines it touched. The core engine lays out only the lines on screen.
 - **Everything `Editor.svelte` and CodeMirror's `basicSetup` add around the text:** list editing, emphasis toggles, bracket auto-closing, the line-number gutter and active line, find and replace, `[[` completion, the context menu, and the paste, drop and link hooks the host handles.
 - **Code fences highlighted by language** (`syntect`, its ~75 bundled syntaxes, pure Rust; [`code`](src/code.rs)), plus bracket matching, other occurrences of the selection, Go to line, and ordered lists that renumber after Enter, Backspace/Delete, Tab and paste. The logic is in engine-independent modules ([`code`](src/code.rs), [`matching`](src/matching.rs), [`list_edits`](src/list_edits.rs)) so it carries over to the planned custom editor core.
 - **Undo as diffs, with a memory bound** (8 MiB of changed text, 1,000 steps). egui's undoer keeps whole-text snapshots, about 250 MB for a 2.5 MB note.

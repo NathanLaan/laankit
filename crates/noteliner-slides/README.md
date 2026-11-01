@@ -1,6 +1,6 @@
 # noteliner-slides
 
-NoteLiner's presentations, natively (plan Option C, Phase 4; see `docs/plans/plan-native-rust-egui.md`): the deck parser and slide edits, plus the egui widgets that show and manage a deck.
+NoteLiner's presentations, natively: the deck parser and slide edits, plus the egui widgets that show and manage a deck.
 
 ```bash
 cargo run -p noteliner-slides --example deck -- crates/noteliner-slides/examples/sample-deck.md

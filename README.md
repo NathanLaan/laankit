@@ -29,7 +29,7 @@ Each lives in `apps/<app>/native/` and is a Cargo package named `<app>-native`. 
 | `crates/blockliner-core/`    | The diagram model, Mermaid read/write, layout. |
 | `packaging/`                 | Linux desktop/metainfo files and Flatpak manifests. |
 | `scripts/`, `xtask/`         | Packaging helpers and the icon pipeline. |
-| `docs/`                      | Packaging guide and historical plans. |
+| `docs/`                      | Packaging guide and open plans. |
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how these fit together, and [`SECURITY.md`](SECURITY.md) for the security model and how to report a vulnerability.
 

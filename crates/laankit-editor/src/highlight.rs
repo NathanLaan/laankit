@@ -1,6 +1,6 @@
 //! Markdown highlighting with a per-line galley cache, for both engines
 //! (the core editor lays out only the lines on screen; `TextEdit`'s layouter
-//! joins them all) (Phase 0 spike 1: see `docs/plans/spikes/editor.md`).
+//! joins them all).
 //!
 //! A line-based scanner (not a full CommonMark parse): each line is
 //! highlighted from its own text plus the block state it starts in (normal,

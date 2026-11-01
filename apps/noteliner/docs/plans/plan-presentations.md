@@ -1,6 +1,6 @@
 # Presentations in NoteLiner
 
-Status: **selected approach (2026-08-10); Phases 1–2 complete, Phase 3 next.** Chosen over `docs/plans/plan-slideliner.md` (repo root), which proposed a separate app and is now shelved.
+Status: **Phases 1–2 complete, Phase 3 partly done (2026-10-31).** Presenting and the speaker view are built natively (`crates/noteliner-slides`). Still to do: the rest of Phase 3 (slide PDF, handout PDF and notes-stripped Markdown export), and Phases 4 and 5.
 
 ## Decision
 
@@ -416,4 +416,4 @@ The deciding question is whether a deck is *a document you already have* or *a t
 5. ~~**Type control style**~~ — settled in Phase 2: segmented buttons. Both options are visible, which is what makes the Presentation type discoverable.
 6. ~~**Derived `deck` flag in `noteliner.json`**~~ — settled in Phase 2: yes. `reconcileFrontmatter` already parsed every note on open, so the flag is free, and the file-tree icon is the main signal that a note is a deck.
 7. ~~**Title/subtitle splitting**~~ — settled in Phase 2: no parser change; the pane makes it visible and "Merge Into Previous" fixes it.
-8. **Does this replace `plan-slideliner.md`,** or does that stay on the shelf in case presentations outgrow NoteLiner?
+8. ~~**Does this replace a separate SlideLiner app?**~~ — settled: yes, presentations live in NoteLiner.

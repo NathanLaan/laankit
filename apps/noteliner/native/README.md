@@ -1,6 +1,6 @@
 # NoteLiner Native
 
-NoteLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `noteliner-core`, with no webview or JavaScript. It's Phase 4 of plan Option C ([`docs/plans/plan-native-rust-egui.md`](../../../docs/plans/plan-native-rust-egui.md)): the app shell, the backend, the file tree, the dialogs, the Markdown editor (`crates/laankit-editor`), the preview, the SEARCH / TAGS / BACKLINKS panes, the History and Attachments panels, presentations (`crates/noteliner-slides`), PDF export (`crates/noteliner-export`) and the MCP dialogs.
+NoteLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `noteliner-core`, with no webview or JavaScript. It covers the app shell, the backend, the file tree, the dialogs, the Markdown editor (`crates/laankit-editor`), the preview, the SEARCH / TAGS / BACKLINKS panes, the History and Attachments panels, presentations (`crates/noteliner-slides`), PDF export (`crates/noteliner-export`) and the MCP dialogs.
 
 It reads and writes exactly what the Electron and Tauri builds do: the same projects (`noteliner.json`, the notes and their frontmatter, `_attachments/`, `_templates/`, git commits), the same `~/.config/NoteLiner` (`ui-preferences.json`, `recent-projects.json`, `window-state.json`) and the same MCP runtime file and socket, through the same `noteliner-core` workspace. You can switch builds on the same project at any time.
 

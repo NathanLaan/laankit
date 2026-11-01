@@ -1,7 +1,7 @@
 [package]
 name = "laankit-editor"
 version = "0.1.0"
-description = "NoteLiner's Markdown editor for the native (egui) builds: its own editor core (rope index, multiple selections, virtualized layout, folding) with egui's TextEdit as a fallback engine, an incremental highlighting layouter, list editing, find/replace, wikilink completion and bounded undo. See docs/plans/plan-editor-slides-richtext.md."
+description = "NoteLiner's Markdown editor for the native (egui) builds: its own editor core (rope index, multiple selections, virtualized layout, folding) with egui's TextEdit as a fallback engine, an incremental highlighting layouter, list editing, find/replace, wikilink completion and bounded undo."
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true

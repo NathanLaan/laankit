@@ -25,7 +25,7 @@ tokio = { version = "1", features = ["process", "time", "fs", "sync", "macros", 
 uuid = { version = "1", features = ["v4"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "deflate", "json"] }
 semver = "1"
-# Pure Rust, egui. See docs/plans/plan-native-rust-egui.md.
+# Pure Rust, egui.
 # Default features are off (to use glow instead of wgpu), so everything else the
 # apps need is listed: `clipboard` (the system clipboard; without it egui keeps a
 # private in-process clipboard, so copies never reach other apps) and `links`

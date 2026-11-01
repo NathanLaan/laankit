@@ -1,8 +1,7 @@
 //! Framework-independent backend logic shared by the LaanKit apps.
 //!
-//! Nothing in this crate depends on Tauri or a UI toolkit, so it is shared
-//! by the Tauri builds (plan Option A) and the native egui builds (Option C).
-//! See `docs/plans/plan-native-linux.md` and `docs/plans/plan-native-rust-egui.md`.
+//! Nothing in this crate depends on a UI toolkit, so the apps' backends stay
+//! testable on their own.
 
 pub mod debounce;
 pub mod git;

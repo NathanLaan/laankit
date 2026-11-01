@@ -1,7 +1,7 @@
 [package]
 name = "noteliner-export"
 version = "0.1.0"
-description = "NoteLiner's PDF export without a webview: Markdown → Typst markup → PDF, in-process (plan Option C, docs/plans/plan-native-rust-egui.md, Phase 4)."
+description = "NoteLiner's PDF export without a webview: Markdown → Typst markup → PDF, in-process."
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true

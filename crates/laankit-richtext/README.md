@@ -1,6 +1,6 @@
 # laankit-richtext
 
-Sanitized HTML and XHTML reduced to native rich-text blocks and laid out with egui, with no webview. Shared by ThreadLiner (articles), PageLiner (EPUB chapters) and, later, the NoteLiner Markdown preview. Promoted from the Phase 0 spikes 2 and 4 (results in `docs/plans/spikes/article.md` and `epub.md`); see `docs/plans/plan-native-rust-egui.md`.
+Sanitized HTML and XHTML reduced to native rich-text blocks and laid out with egui, with no webview. Shared by ThreadLiner (articles), PageLiner (EPUB chapters) and, later, the NoteLiner Markdown preview.
 
 ## API
 
