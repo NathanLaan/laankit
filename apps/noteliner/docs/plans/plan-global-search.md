@@ -2,10 +2,7 @@
 
 ## Overview
 
-Add a cross-document text search that lets the user search for text within any
-file in the project. Results display inline in a sidebar panel with file name,
-line number, and context snippet. Clicking a result navigates to that file and
-scrolls to the matching line.
+Add a cross-document text search that lets the user search for text within any file in the project. Results display inline in a sidebar panel with file name, line number, and context snippet. Clicking a result navigates to that file and scrolls to the matching line.
 
 ---
 
@@ -13,10 +10,7 @@ scrolls to the matching line.
 
 ### Panel Placement
 
-Search lives in a **new sidebar pane** integrated into the existing pane system
-(`Sidebar.svelte`). This is consistent with how FILES, TAGS, OUTLINE, and TAG
-GROUPS already work — it gets its own collapsible pane with a header, is
-reorderable via drag-and-drop, and resizes with the existing dividers.
+Search lives in a **new sidebar pane** integrated into the existing pane system (`Sidebar.svelte`). This is consistent with how FILES, TAGS, OUTLINE, and TAG GROUPS already work — it gets its own collapsible pane with a header, is reorderable via drag-and-drop, and resizes with the existing dividers.
 
 The pane contains a search input at the top and a scrollable results list below.
 
@@ -42,15 +36,9 @@ Active state (accent outline) when `layout.showSearch` is true.
 
 ### Keyboard Shortcuts
 
-**Ctrl+F** — toggle the global search pane. When toggling on, auto-focus the
-search input. Ctrl+F is intercepted at the App level before CodeMirror sees it.
+**Ctrl+F** — toggle the global search pane. When toggling on, auto-focus the search input. Ctrl+F is intercepted at the App level before CodeMirror sees it.
 
-**Ctrl+Shift+F** — open CodeMirror's built-in in-file search and replace. This
-is wired by adding the CodeMirror `search` extension to the editor, which
-provides the standard find/replace bar (with regex, case-sensitive, whole-word
-options). Ctrl+Shift+F is handled by CodeMirror directly — the App-level
-keydown handler must NOT `preventDefault()` for this combo, so it propagates
-to the editor.
+**Ctrl+Shift+F** — open CodeMirror's built-in in-file search and replace. This is wired by adding the CodeMirror `search` extension to the editor, which provides the standard find/replace bar (with regex, case-sensitive, whole-word options). Ctrl+Shift+F is handled by CodeMirror directly — the App-level keydown handler must NOT `preventDefault()` for this combo, so it propagates to the editor.
 
 This gives a clean split: **Ctrl+F = cross-file, Ctrl+Shift+F = in-file**.
 
@@ -63,8 +51,7 @@ This gives a clean split: **Ctrl+F = cross-file, Ctrl+Shift+F = in-file**.
 The search runs in the **main process** (Node.js), not the renderer. Reasons:
 
 1. The main process has direct `fs` access — no per-file IPC round-trip.
-2. For a note-taking app (typically <1000 small markdown files), synchronous
-   `fs.readFileSync` across all files completes in <50ms.
+2. For a note-taking app (typically <1000 small markdown files), synchronous `fs.readFileSync` across all files completes in <50ms.
 3. A single IPC call (`search:query` -> results) keeps the renderer simple.
 
 ### `ProjectService.search(query, options)` Method
@@ -132,8 +119,7 @@ ipcMain.handle('search:query', async (_event, query, options) => {
 
 ### SearchPane.svelte (New Component)
 
-A new component rendered inside Sidebar.svelte, following the same pattern as
-TagsPane, OutlinePane, etc.
+A new component rendered inside Sidebar.svelte, following the same pattern as TagsPane, OutlinePane, etc.
 
 **Structure:**
 
@@ -170,13 +156,10 @@ TagsPane, OutlinePane, etc.
 - Input is debounced (300ms) before triggering a search.
 - Results grouped by file, each group showing the file name as a header.
 - Each match row shows line number + line text with the query highlighted.
-- Clicking a result calls `projectState.selectFile(fileId)` then sets
-  `projectState.scrollToLine = { line, ts: Date.now() }` to scroll the editor.
-- The existing `scrollToLine` mechanism in Editor.svelte (line 253) already
-  handles this.
+- Clicking a result calls `projectState.selectFile(fileId)` then sets `projectState.scrollToLine = { line, ts: Date.now() }` to scroll the editor.
+- The existing `scrollToLine` mechanism in Editor.svelte (line 253) already handles this.
 
-**Match highlighting:** The matched substring within each line is wrapped in a
-`<mark>` element (or a `<span class="search-highlight">`) for visual emphasis.
+**Match highlighting:** The matched substring within each line is wrapped in a `<mark>` element (or a `<span class="search-highlight">`) for visual emphasis.
 
 ### Integration into Sidebar.svelte
 
@@ -192,23 +175,17 @@ Add to `isPaneVisible`:
 if (key === 'search') return searchVisible;
 ```
 
-Add `searchVisible` and `searchHeight` as props. The search pane renders
-`SearchPane` in its body, same pattern as the other panes.
+Add `searchVisible` and `searchHeight` as props. The search pane renders `SearchPane` in its body, same pattern as the other panes.
 
-Add a prop `searchFocusRequest` (timestamp) so the App can signal "focus the
-search input" when Ctrl+F is pressed.
+Add a prop `searchFocusRequest` (timestamp) so the App can signal "focus the search input" when Ctrl+F is pressed.
 
 ---
 
 ## Editor.svelte — In-File Search (Ctrl+Shift+F)
 
-`basicSetup` from `codemirror` already includes `@codemirror/search` with its
-`searchKeymap`, which binds `Mod-f` to `openSearchPanel`. Since Ctrl+F will be
-intercepted at the App level for global search, the built-in binding never
-fires.
+`basicSetup` from `codemirror` already includes `@codemirror/search` with its `searchKeymap`, which binds `Mod-f` to `openSearchPanel`. Since Ctrl+F will be intercepted at the App level for global search, the built-in binding never fires.
 
-To remap in-file search to Ctrl+Shift+F, add a custom keymap to the editor
-extensions:
+To remap in-file search to Ctrl+Shift+F, add a custom keymap to the editor extensions:
 
 ```javascript
 import { openSearchPanel } from '@codemirror/search';
@@ -220,11 +197,9 @@ keymap.of([
 ]),
 ```
 
-This opens CodeMirror's built-in search/replace panel inside the editor. It
-already supports case-sensitive, regex, and replace-all — no custom UI needed.
+This opens CodeMirror's built-in search/replace panel inside the editor. It already supports case-sensitive, regex, and replace-all — no custom UI needed.
 
-The App.svelte `handleKeydown` must NOT call `preventDefault()` for
-Ctrl+Shift+F, so the event propagates down to CodeMirror.
+The App.svelte `handleKeydown` must NOT call `preventDefault()` for Ctrl+Shift+F, so the event propagates down to CodeMirror.
 
 ---
 
@@ -265,13 +240,11 @@ Add to the `handleKeydown` function:
 
 ### Toolbar Wiring
 
-Pass `onToggleSearch={handleToggleSearch}` and
-`searchVisible={layout.showSearch}` to the Toolbar component.
+Pass `onToggleSearch={handleToggleSearch}` and `searchVisible={layout.showSearch}` to the Toolbar component.
 
 ### Sidebar Props
 
-Pass `searchVisible={layout.showSearch}`, `searchHeight={layout.searchHeight}`,
-and `searchFocusRequest={searchFocusTs}` to the Sidebar component.
+Pass `searchVisible={layout.showSearch}`, `searchHeight={layout.searchHeight}`, and `searchFocusRequest={searchFocusTs}` to the Sidebar component.
 
 ---
 

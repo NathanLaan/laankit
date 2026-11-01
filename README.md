@@ -36,8 +36,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how these fit together, and [`SECUR
 ## Prerequisites
 
 - **Rust 1.92+** (install with [`rustup`](https://rustup.rs)).
-- **`git`** on the `PATH` at runtime — NoteLiner, ThreadLiner and PageLiner
-  shell out to it for sync and history. BlockLiner doesn't use git.
+- **`git`** on the `PATH` at runtime — NoteLiner, ThreadLiner and PageLiner shell out to it for sync and history. BlockLiner doesn't use git.
 - **Linux build libraries:**
 
   ```bash

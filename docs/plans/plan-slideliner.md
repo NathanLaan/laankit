@@ -1,53 +1,26 @@
 # SlideLiner — Markdown Presentation App
 
-Status: **not selected (2026-08-10).** Shelved in favour of folding
-presentations into NoteLiner — see
-`apps/noteliner/docs/plans/plan-presentations.md`. Nothing implemented.
+Status: **not selected (2026-08-10).** Shelved in favour of folding presentations into NoteLiner — see `apps/noteliner/docs/plans/plan-presentations.md`. Nothing implemented.
 
 ## Decision
 
-Recorded 2026-08-10. Presentations are being built **inside NoteLiner**
-instead. Three reasons:
+Recorded 2026-08-10. Presentations are being built **inside NoteLiner** instead. Three reasons:
 
-1. **The corpus already exists.** iA Presenter's own thesis is that the talk
-   *is* the document. A separate app inverts that — you start a new document
-   in a different app, which is the friction the idea exists to remove. In
-   NoteLiner, an existing note becomes a deck by adding one frontmatter block.
-2. **Dropping iA file compatibility removed this plan's main advantage.** That
-   requirement was the thing genuinely easier in a greenfield codebase with
-   its own document model and tab-indent parser. Without it, this plan mostly
-   re-implements what NoteLiner ships: CodeMirror editor, `marked` renderer,
-   attachment protocol, templates, PDF/HTML export, secondary-window helper,
-   git sync.
-3. **Integration is reversible; this isn't.** The modules the integrated plan
-   builds (`lib/slides.js`, `lib/layout.js`, `Slide.svelte`,
-   `deck-export-service.js`) are exactly what a standalone SlideLiner needs,
-   and would be proven against real decks by then. If presentations outgrow
-   NoteLiner, lift them into a `@laankit/slides` package and build this app
-   around them. Building the app first means owning two Markdown editors and
-   a vault split across two tools.
+1. **The corpus already exists.** iA Presenter's own thesis is that the talk *is* the document. A separate app inverts that — you start a new document in a different app, which is the friction the idea exists to remove. In NoteLiner, an existing note becomes a deck by adding one frontmatter block.
+2. **Dropping iA file compatibility removed this plan's main advantage.** That requirement was the thing genuinely easier in a greenfield codebase with its own document model and tab-indent parser. Without it, this plan mostly re-implements what NoteLiner ships: CodeMirror editor, `marked` renderer, attachment protocol, templates, PDF/HTML export, secondary-window helper, git sync.
+3. **Integration is reversible; this isn't.** The modules the integrated plan builds (`lib/slides.js`, `lib/layout.js`, `Slide.svelte`, `deck-export-service.js`) are exactly what a standalone SlideLiner needs, and would be proven against real decks by then. If presentations outgrow NoteLiner, lift them into a `@laankit/slides` package and build this app around them. Building the app first means owning two Markdown editors and a vault split across two tools.
 
-The honest cost of the other direction, for the record: NoteLiner's sidebar
-already stacks five panes, and a presentation tool really wants a thumbnail
-rail plus a large stage rather than a sixth pane. What makes it survivable is
-that the **detached presenter window is the large stage**, so the main window
-never has to become a deck editor.
+The honest cost of the other direction, for the record: NoteLiner's sidebar already stacks five panes, and a presentation tool really wants a thumbnail rail plus a large stage rather than a sixth pane. What makes it survivable is that the **detached presenter window is the large stage**, so the main window never has to become a deck editor.
 
-This document stays on the shelf rather than being deleted — if presentations
-outgrow NoteLiner, §4 (architecture) and §5 (phases) remain the plan, with
-the then-existing NoteLiner modules as the starting point.
+This document stays on the shelf rather than being deleted — if presentations outgrow NoteLiner, §4 (architecture) and §5 (phases) remain the plan, with the then-existing NoteLiner modules as the starting point.
 
-A fourth laankit app: write a talk as one Markdown document, get slides,
-speaker notes, a presenter view, and PDF / HTML / PPTX export. Modelled on
-[iA Presenter](https://ia.net/presenter).
+A fourth laankit app: write a talk as one Markdown document, get slides, speaker notes, a presenter view, and PDF / HTML / PPTX export. Modelled on [iA Presenter](https://ia.net/presenter).
 
 ---
 
 ## 1. Name
 
-**SlideLiner** — recommended. Fits the `-Liner` family (NoteLiner,
-ThreadLiner, PageLiner), says exactly what it makes, and reads fine as a
-WM_CLASS / product name (`--class=SlideLiner`, `com.slideliner.app`).
+**SlideLiner** — recommended. Fits the `-Liner` family (NoteLiner, ThreadLiner, PageLiner), says exactly what it makes, and reads fine as a WM_CLASS / product name (`--class=SlideLiner`, `com.slideliner.app`).
 
 Alternates, if a different emphasis is wanted:
 
@@ -64,25 +37,16 @@ The rest of this document assumes `slideliner`.
 
 ## 2. What iA Presenter actually is
 
-Worth being precise, because the interesting part is a *constraint*, not a
-feature list. iA Presenter is not a slide editor with a Markdown import. It
-is a **text editor that projects a subset of the text**.
+Worth being precise, because the interesting part is a *constraint*, not a feature list. iA Presenter is not a slide editor with a Markdown import. It is a **text editor that projects a subset of the text**.
 
 Four ideas carry the whole product:
 
-1. **One document is both the talk and the slides.** You write prose. What
-   the audience sees is derived from it. There is no separate notes field.
-2. **Visibility is a syntax, not a mode.** In iA Presenter, tab-indented
-   blocks are shown on the slide; unindented prose is speaker-only
-   (teleprompter). Headings and tables are always visible.
-3. **No manual layout.** The number and kind of visible blocks on a slide
-   picks the layout (single / split / grid) automatically. The user cannot
-   drag a text box, on purpose.
-4. **The deck is a byproduct.** The same document exports as a slide PDF, a
-   readable handout, a web page, or PPTX.
+1. **One document is both the talk and the slides.** You write prose. What the audience sees is derived from it. There is no separate notes field.
+2. **Visibility is a syntax, not a mode.** In iA Presenter, tab-indented blocks are shown on the slide; unindented prose is speaker-only (teleprompter). Headings and tables are always visible.
+3. **No manual layout.** The number and kind of visible blocks on a slide picks the layout (single / split / grid) automatically. The user cannot drag a text box, on purpose.
+4. **The deck is a byproduct.** The same document exports as a slide PDF, a readable handout, a web page, or PPTX.
 
-Everything else — themes, media manager, timers — is ordinary desktop-app
-surface area we already know how to build.
+Everything else — themes, media manager, timers — is ordinary desktop-app surface area we already know how to build.
 
 ### Syntax summary (as documented by iA)
 
@@ -100,34 +64,23 @@ surface area we already know how to build.
 | Math | `$…$`, `$$…$$` (KaTeX) | Inherits block |
 | Footnotes | `[^id]` / `[^id]: …` | Handout only |
 
-Sources: [iA Presenter](https://ia.net/presenter),
-[Markdown guide](https://ia.net/presenter/support/basics/markdown),
-[support index](https://ia.net/presenter/support).
+Sources: [iA Presenter](https://ia.net/presenter), [Markdown guide](https://ia.net/presenter/support/basics/markdown), [support index](https://ia.net/presenter/support).
 
 ### Judgement call on the tab rule
 
-The tab-indent rule is elegant and gives us **file compatibility with iA
-Presenter documents**, which is worth having. It is also the single most
-surprising thing about the app, and hostile to editors that convert tabs to
-spaces.
+The tab-indent rule is elegant and gives us **file compatibility with iA Presenter documents**, which is worth having. It is also the single most surprising thing about the app, and hostile to editors that convert tabs to spaces.
 
-Recommendation: implement the tab rule as the default, and mitigate rather
-than replace it —
+Recommendation: implement the tab rule as the default, and mitigate rather than replace it —
 
 - CodeMirror gutter marker showing, per line, `visible` vs `notes`;
-- `Tab` / `Shift-Tab` bound to "show/hide this block on the slide" with a
-  toolbar button and `Ctrl+Shift+V`;
-- an app-level setting `visibilityMode: 'tab' | 'explicit'`, where
-  `explicit` treats *all* body text as visible and requires `// ` or a
-  `> notes:` fence for speaker notes. Ship `tab` first; `explicit` is a
-  Phase-6 nicety only if the tab rule proves annoying in real use.
+- `Tab` / `Shift-Tab` bound to "show/hide this block on the slide" with a toolbar button and `Ctrl+Shift+V`;
+- an app-level setting `visibilityMode: 'tab' | 'explicit'`, where `explicit` treats *all* body text as visible and requires `// ` or a `> notes:` fence for speaker notes. Ship `tab` first; `explicit` is a Phase-6 nicety only if the tab rule proves annoying in real use.
 
 ---
 
 ## 3. Feature list
 
-Tiered. **M** = MVP (must ship for the app to be worth opening), **C** =
-core (what makes it a credible iA Presenter alternative), **L** = later.
+Tiered. **M** = MVP (must ship for the app to be worth opening), **C** = core (what makes it a credible iA Presenter alternative), **L** = later.
 
 ### 3.1 Editor
 
@@ -202,10 +155,7 @@ core (what makes it a credible iA Presenter alternative), **L** = later.
 | S6 | Autosave + local file history | C |
 | S7 | Help window (secondary window + `helpContent.js` pattern) | C |
 
-**Explicitly out of scope:** drag-to-position layout editing, animations and
-slide transitions beyond a cross-fade, real-time collaboration, cloud
-accounts. These are the things iA Presenter deliberately refuses, and the
-constraint is the product.
+**Explicitly out of scope:** drag-to-position layout editing, animations and slide transitions beyond a cross-fade, real-time collaboration, cloud accounts. These are the things iA Presenter deliberately refuses, and the constraint is the product.
 
 ---
 
@@ -247,14 +197,11 @@ apps/slideliner/
         └── stores/deck.svelte.js   # $state deck + derived slides
 ```
 
-Ports so far: 5250 NoteLiner, 5251 ThreadLiner, 5252 playground, 5253
-PageLiner → **5254 SlideLiner**.
+Ports so far: 5250 NoteLiner, 5251 ThreadLiner, 5252 playground, 5253 PageLiner → **5254 SlideLiner**.
 
 ### 4.2 The slide model
 
-`slide-parser.js` is the heart of the app and the thing to get right first.
-Pure function, no Electron, no DOM — so it is trivially testable with plain
-Node assertions like `tests/integration/pptx-import.test.js`.
+`slide-parser.js` is the heart of the app and the thing to get right first. Pure function, no Electron, no DOM — so it is trivially testable with plain Node assertions like `tests/integration/pptx-import.test.js`.
 
 ```js
 // parse(markdown, { visibilityMode }) → Deck
@@ -273,43 +220,26 @@ Block = { kind: 'heading'|'para'|'list'|'quote'|'code'|'table'|'image'|'video'|'
 
 Design notes:
 
-- `sourceRange` gives two-way binding for free: caret line → current slide
-  (thumbnail highlight, preview follow), thumbnail click → scroll editor.
-- Parse on a debounce (~120 ms) from `editorContent`; `$derived` in
-  `deck.svelte.js` recomputes slides, thumbnails, outline, and status-bar
-  counts from one source.
-- Rendering uses `marked` (already a dependency in NoteLiner) with custom
-  extensions for `==highlight==`, `^sup^`, `~sub~`, `// comment`, and
-  `media/` URL rewriting to `media:///…`.
+- `sourceRange` gives two-way binding for free: caret line → current slide (thumbnail highlight, preview follow), thumbnail click → scroll editor.
+- Parse on a debounce (~120 ms) from `editorContent`; `$derived` in `deck.svelte.js` recomputes slides, thumbnails, outline, and status-bar counts from one source.
+- Rendering uses `marked` (already a dependency in NoteLiner) with custom extensions for `==highlight==`, `^sup^`, `~sub~`, `// comment`, and `media/` URL rewriting to `media:///…`.
 
 ### 4.3 One layout, four surfaces
 
-The stage is a **fixed pixel box** (e.g. 1920×1080 for 16:9) rendered by one
-`Slide.svelte`, then scaled by its container:
+The stage is a **fixed pixel box** (e.g. 1920×1080 for 16:9) rendered by one `Slide.svelte`, then scaled by its container:
 
 ```
 scale = min(containerW / stageW, containerH / stageH)
 ```
 
-That single component then serves the editor preview, the thumbnail rail
-(small scale), the presenter view's current/next panes, the fullscreen stage
-window, and the export renderer. Any layout bug is one bug in one place, and
-the PDF matches the screen because it *is* the screen.
+That single component then serves the editor preview, the thumbnail rail (small scale), the presenter view's current/next panes, the fullscreen stage window, and the export renderer. Any layout bug is one bug in one place, and the PDF matches the screen because it *is* the screen.
 
 ### 4.4 Presentation windows and state
 
-- `present-service.js` opens two windows through the existing
-  `@laankit/desktop-ui/secondary-window` helper (`id: 'stage'`,
-  `id: 'presenter'`) — it already does dev-URL/prod-file switching, sandbox
-  webPreferences, and focus-if-open.
-- Stage window: `fullscreen: true` on the display chosen in `DisplayPicker`,
-  `frame: false`, `setMenu(null)`, cursor auto-hide.
-- State bus: main process owns `{ slideIndex, blank, elapsed, startedAt }`
-  and broadcasts `present:state` to all three windows on change. Navigation
-  keys from any window go `present:goto` → main → broadcast. Single source of
-  truth; no window-to-window coupling.
-- Presenter view is a Vite entry (`presenter.html`), exactly the pattern
-  NoteLiner uses for `help.html`.
+- `present-service.js` opens two windows through the existing `@laankit/desktop-ui/secondary-window` helper (`id: 'stage'`, `id: 'presenter'`) — it already does dev-URL/prod-file switching, sandbox webPreferences, and focus-if-open.
+- Stage window: `fullscreen: true` on the display chosen in `DisplayPicker`, `frame: false`, `setMenu(null)`, cursor auto-hide.
+- State bus: main process owns `{ slideIndex, blank, elapsed, startedAt }` and broadcasts `present:state` to all three windows on change. Navigation keys from any window go `present:goto` → main → broadcast. Single source of truth; no window-to-window coupling.
+- Presenter view is a Vite entry (`presenter.html`), exactly the pattern NoteLiner uses for `help.html`.
 
 ### 4.5 Deck storage
 
@@ -323,105 +253,64 @@ A deck is a **folder**, which makes media and Git sync straightforward:
 └── theme.css          # optional custom theme (Phase 6)
 ```
 
-Media is served through a `media://` protocol handler registered with
-`protocol.handle()` — the same approach as NoteLiner's `attachment://`
-(`main.js:308`) — so the renderer never needs filesystem access and the CSP
-stays tight.
+Media is served through a `media://` protocol handler registered with `protocol.handle()` — the same approach as NoteLiner's `attachment://` (`main.js:308`) — so the renderer never needs filesystem access and the CSP stays tight.
 
-Git sync (opt-in) is a direct lift of `apps/pageliner/src/main/git-sync.js`:
-version `deck.md`, `deck.json`, and `media/` (media matters here, unlike
-book blobs), debounced commit+push, explicit "Sync Now" for pull.
+Git sync (opt-in) is a direct lift of `apps/pageliner/src/main/git-sync.js`: version `deck.md`, `deck.json`, and `media/` (media matters here, unlike book blobs), debounced commit+push, explicit "Sync Now" for pull.
 
 ### 4.6 PPTX export
 
 Two modes, because they trade off differently and both are wanted:
 
-1. **Editable** (`pptxgenjs` 4.0.1): map each slide's blocks to text boxes
-   and picture placeholders using the same geometry the CSS layout produced,
-   and put `notes` in the slide's notes field. Fidelity is approximate
-   (fonts, `==highlight==`, code blocks degrade), but the recipient can edit
-   it — which is the whole reason people ask for PPTX.
-2. **Fidelity** (image-per-slide): render each slide to PNG via
-   `webContents.capturePage()` on the offscreen stage, then one full-bleed
-   picture per slide with real notes text. Pixel-perfect, not editable.
+1. **Editable** (`pptxgenjs` 4.0.1): map each slide's blocks to text boxes and picture placeholders using the same geometry the CSS layout produced, and put `notes` in the slide's notes field. Fidelity is approximate (fonts, `==highlight==`, code blocks degrade), but the recipient can edit it — which is the whole reason people ask for PPTX.
+2. **Fidelity** (image-per-slide): render each slide to PNG via `webContents.capturePage()` on the offscreen stage, then one full-bleed picture per slide with real notes text. Pixel-perfect, not editable.
 
-Ship mode 1 as "Export → PowerPoint" and mode 2 as "PowerPoint (images)".
-Alternative considered: hand-rolling OOXML with JSZip + `@xmldom/xmldom`,
-which the repo already does for PPTX *import*. Rejected — writing valid
-`p:sld` XML, theme parts, and content-type overrides by hand is a lot of
-work for no gain over `pptxgenjs`.
+Ship mode 1 as "Export → PowerPoint" and mode 2 as "PowerPoint (images)". Alternative considered: hand-rolling OOXML with JSZip + `@xmldom/xmldom`, which the repo already does for PPTX *import*. Rejected — writing valid `p:sld` XML, theme parts, and content-type overrides by hand is a lot of work for no gain over `pptxgenjs`.
 
 ---
 
 ## 5. Implementation phases
 
-Each phase is independently runnable and reviewable, mirroring how PageLiner
-was built.
+Each phase is independently runnable and reviewable, mirroring how PageLiner was built.
 
 ### Phase 0 — Scaffold (0.5 day)
 
-Copy PageLiner's shell: `package.json`, `vite.config.mjs` (port 5254),
-`scripts/dev.js`, `scripts/build-icons.sh`, `electron-builder` block, icon
-SVG. Wire `@laankit/desktop-ui` chrome — titlebar, themes, UI scale, command
-palette, settings modal, status bar. Add root `package.json` scripts
-(`dev:slideliner`, `electron:slideliner`, `build:slideliner`,
-`icons:rasterize:slideliner`) and the README app entry.
+Copy PageLiner's shell: `package.json`, `vite.config.mjs` (port 5254), `scripts/dev.js`, `scripts/build-icons.sh`, `electron-builder` block, icon SVG. Wire `@laankit/desktop-ui` chrome — titlebar, themes, UI scale, command palette, settings modal, status bar. Add root `package.json` scripts (`dev:slideliner`, `electron:slideliner`, `build:slideliner`, `icons:rasterize:slideliner`) and the README app entry.
 
-**Done when:** `npm run electron:slideliner` opens a themed laankit window
-with working settings and palette.
+**Done when:** `npm run electron:slideliner` opens a themed laankit window with working settings and palette.
 
 ### Phase 1 — Parser + preview (2–3 days) ← the risky one, do it early
 
-`slide-parser.js`, `layout.js`, `render.js`, `Slide.svelte`,
-`SlidePreview.svelte`, CodeMirror editor, `deck.svelte.js`. Aspect-ratio
-switch. Node test suite over a fixture corpus (`tests/fixtures/*.md`),
-including a document exported from real iA Presenter to prove compatibility.
+`slide-parser.js`, `layout.js`, `render.js`, `Slide.svelte`, `SlidePreview.svelte`, CodeMirror editor, `deck.svelte.js`. Aspect-ratio switch. Node test suite over a fixture corpus (`tests/fixtures/*.md`), including a document exported from real iA Presenter to prove compatibility.
 
-**Done when:** typing Markdown in the left pane updates a correct, scaled
-slide on the right; notes never leak onto slides.
+**Done when:** typing Markdown in the left pane updates a correct, scaled slide on the right; notes never leak onto slides.
 
 ### Phase 2 — Deck files + media (2 days)
 
-`deck-service.js` (new/open/save/recents, autosave debounce),
-`OpenScreen.svelte`, `media-service.js` + `media://` protocol, drag-drop and
-paste image import, `deck.json` persistence, thumbnail rail with
-click-to-navigate.
+`deck-service.js` (new/open/save/recents, autosave debounce), `OpenScreen.svelte`, `media-service.js` + `media://` protocol, drag-drop and paste image import, `deck.json` persistence, thumbnail rail with click-to-navigate.
 
-**Done when:** a deck round-trips through disk with images intact, and the
-rail tracks the caret.
+**Done when:** a deck round-trips through disk with images intact, and the rail tracks the caret.
 
 ### Phase 3 — Presentation (2–3 days)
 
-`present-service.js`, stage window, presenter window, display picker,
-keyboard navigation, blank/black, elapsed timer, teleprompter pane. Windowed
-share mode.
+`present-service.js`, stage window, presenter window, display picker, keyboard navigation, blank/black, elapsed timer, teleprompter pane. Windowed share mode.
 
-**Done when:** `F5` puts slides fullscreen on the external display while the
-presenter view shows current + next + notes + timer, and arrows drive both.
+**Done when:** `F5` puts slides fullscreen on the external display while the presenter view shows current + next + notes + timer, and arrows drive both.
 
 ### Phase 4 — Export (2–3 days)
 
-`export-service.js`: slide PDF, handout PDF, self-contained HTML, Markdown.
-Then `pptxgenjs` editable PPTX and the image-per-slide variant.
-`ExportModal.svelte` with per-format options.
+`export-service.js`: slide PDF, handout PDF, self-contained HTML, Markdown. Then `pptxgenjs` editable PPTX and the image-per-slide variant. `ExportModal.svelte` with per-format options.
 
-**Done when:** all five formats open correctly in their native viewers and
-PowerPoint reports no repair prompt.
+**Done when:** all five formats open correctly in their native viewers and PowerPoint reports no repair prompt.
 
 ### Phase 5 — Themes + polish (2 days)
 
-Built-in themes, `ThemePane.svelte` (font scale, accent, header/footer,
-slide numbers), progressive accent shift, per-slide directives, outline and
-search panes, duration estimate in the status bar, help window.
+Built-in themes, `ThemePane.svelte` (font scale, accent, header/footer, slide numbers), progressive accent shift, per-slide directives, outline and search panes, duration estimate in the status bar, help window.
 
 ### Phase 6 — Import, sync, extras (2 days)
 
-Markdown/PPTX import (port from NoteLiner), opt-in Git sync (port from
-PageLiner), file history, `explicit` visibility mode if the tab rule has
-proven irritating, video blocks, KaTeX.
+Markdown/PPTX import (port from NoteLiner), opt-in Git sync (port from PageLiner), file history, `explicit` visibility mode if the tab rule has proven irritating, video blocks, KaTeX.
 
-**Rough total: 12–16 working days** to a complete app; Phases 0–3 (~7 days)
-already give something genuinely usable for giving a talk.
+**Rough total: 12–16 working days** to a complete app; Phases 0–3 (~7 days) already give something genuinely usable for giving a talk.
 
 ---
 
@@ -438,11 +327,6 @@ already give something genuinely usable for giving a talk.
 ## 7. Decisions needed before Phase 1
 
 1. **Name** — SlideLiner, or one of the alternates?
-2. **Deck = folder** (as proposed) or single `.md` with a sidecar media
-   folder? Folder is cleaner for Git sync; single-file is friendlier to
-   NoteLiner vaults.
-3. **iA compatibility as a hard requirement?** If yes, the tab rule and
-   `---` breaks are fixed, and the fixture corpus should include real iA
-   documents. If no, we get freedom to pick a less surprising syntax.
-4. **Phase 4 export priority order** — is PPTX the reason for the app, or is
-   PDF-plus-presenter-mode enough for v1?
+2. **Deck = folder** (as proposed) or single `.md` with a sidecar media folder? Folder is cleaner for Git sync; single-file is friendlier to NoteLiner vaults.
+3. **iA compatibility as a hard requirement?** If yes, the tab rule and `---` breaks are fixed, and the fixture corpus should include real iA documents. If no, we get freedom to pick a less surprising syntax.
+4. **Phase 4 export priority order** — is PPTX the reason for the app, or is PDF-plus-presenter-mode enough for v1?

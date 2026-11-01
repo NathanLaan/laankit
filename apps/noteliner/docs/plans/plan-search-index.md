@@ -55,14 +55,11 @@ CREATE TABLE index_meta (
 
 ### Query translation
 
-User types: `tag:research performance`
-App runs: `SELECT ... WHERE notes MATCH 'tags:research performance'`
+User types: `tag:research performance` App runs: `SELECT ... WHERE notes MATCH 'tags:research performance'`
 
-User types: `"exact phrase"`
-App runs: `SELECT ... WHERE notes MATCH '"exact phrase"'`
+User types: `"exact phrase"` App runs: `SELECT ... WHERE notes MATCH '"exact phrase"'`
 
-User types: `plan*`
-App runs: `SELECT ... WHERE notes MATCH 'plan*'`
+User types: `plan*` App runs: `SELECT ... WHERE notes MATCH 'plan*'`
 
 A lightweight query translator in the main process handles the `tag:` alias and validates the query (FTS5 rejects malformed MATCH expressions). If translation/validation fails, fall back to a literal phrase search: `MATCH '"<user query>"'`.
 

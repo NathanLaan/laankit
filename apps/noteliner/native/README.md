@@ -1,17 +1,8 @@
 # NoteLiner Native
 
-NoteLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `noteliner-core`, with no
-webview or JavaScript. It's Phase 4 of plan Option C
-([`docs/plans/plan-native-rust-egui.md`](../../../docs/plans/plan-native-rust-egui.md)): the app
-shell, the backend, the file tree, the dialogs, the Markdown editor (`crates/laankit-editor`), the
-preview, the SEARCH / TAGS / BACKLINKS panes, the History and Attachments panels, presentations
-(`crates/noteliner-slides`), PDF export (`crates/noteliner-export`) and the MCP dialogs.
+NoteLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `noteliner-core`, with no webview or JavaScript. It's Phase 4 of plan Option C ([`docs/plans/plan-native-rust-egui.md`](../../../docs/plans/plan-native-rust-egui.md)): the app shell, the backend, the file tree, the dialogs, the Markdown editor (`crates/laankit-editor`), the preview, the SEARCH / TAGS / BACKLINKS panes, the History and Attachments panels, presentations (`crates/noteliner-slides`), PDF export (`crates/noteliner-export`) and the MCP dialogs.
 
-It reads and writes exactly what the Electron and Tauri builds do: the same projects
-(`noteliner.json`, the notes and their frontmatter, `_attachments/`, `_templates/`, git commits),
-the same `~/.config/NoteLiner` (`ui-preferences.json`, `recent-projects.json`,
-`window-state.json`) and the same MCP runtime file and socket, through the same `noteliner-core`
-workspace. You can switch builds on the same project at any time.
+It reads and writes exactly what the Electron and Tauri builds do: the same projects (`noteliner.json`, the notes and their frontmatter, `_attachments/`, `_templates/`, git commits), the same `~/.config/NoteLiner` (`ui-preferences.json`, `recent-projects.json`, `window-state.json`) and the same MCP runtime file and socket, through the same `noteliner-core` workspace. You can switch builds on the same project at any time.
 
 ## Running
 
@@ -20,23 +11,13 @@ cargo run -p noteliner-native --release     # or: npm run native:noteliner
 cargo test -p noteliner-native
 ```
 
-The package is `noteliner-native`; its binary is `noteliner`, the one the release packages install
-as `/usr/bin/noteliner` (the native build replaced the Tauri and Electron ones; see
-[`docs/packaging.md`](../../../docs/packaging.md)). It needs `git` on the PATH, like the other
-builds.
+The package is `noteliner-native`; its binary is `noteliner`, the one the release packages install as `/usr/bin/noteliner` (the native build replaced the Tauri and Electron ones; see [`docs/packaging.md`](../../../docs/packaging.md)). It needs `git` on the PATH, like the other builds.
 
-- **MCP.** Settings → MCP turns the server on. Point MCP clients at `noteliner
-  --mcp-bridge` (the settings show the exact snippet); the bridge finds the running app through
-  `mcp-runtime.json`, as the Tauri binary's `--mcp-bridge` does. The server needs a Unix socket, so
-  on Windows it reports that it isn't available yet.
-- **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and
-  LaanKit's title bar (takes a restart).
-- **Command palette.** Ctrl+K or Ctrl+Shift+P: every command, plus notes, tags and recent
-  projects.
-- **Markdown files** dropped on the window become notes; files dropped on the editor (or
-  pasted, including images) become attachments of the open note.
-- **Presenting.** F5, the toolbar's play button or "Present" in the palette shows the deck full
-  screen from the caret's slide (arrows, Space, Page Up/Down, S for speaker notes, Escape).
+- **MCP.** Settings → MCP turns the server on. Point MCP clients at `noteliner --mcp-bridge` (the settings show the exact snippet); the bridge finds the running app through `mcp-runtime.json`, as the Tauri binary's `--mcp-bridge` does. The server needs a Unix socket, so on Windows it reports that it isn't available yet.
+- **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and LaanKit's title bar (takes a restart).
+- **Command palette.** Ctrl+K or Ctrl+Shift+P: every command, plus notes, tags and recent projects.
+- **Markdown files** dropped on the window become notes; files dropped on the editor (or pasted, including images) become attachments of the open note.
+- **Presenting.** F5, the toolbar's play button or "Present" in the palette shows the deck full screen from the caret's slide (arrows, Space, Page Up/Down, S for speaker notes, Escape).
 - **Spell check** (F7) needs a Hunspell dictionary for your language; see "Spell checking" below.
 
 ### Trying it without touching your projects
@@ -47,15 +28,11 @@ cargo run -p noteliner-native --example noteliner_demo_data -- /tmp/nl-demo
 cargo run -p noteliner-native --release          # the demo is in Recent Projects
 ```
 
-`noteliner_demo_data` creates a git project with nested notes, tags, wikilinks, a template and an image
-attachment, and lists it in `$XDG_CONFIG_HOME/NoteLiner/recent-projects.json` (Linux). On Windows
-the config folder is `%APPDATA%\NoteLiner` and on macOS `~/Library/Application Support/NoteLiner`,
-as `laankit_core::paths` mirrors Electron's `userData`.
+`noteliner_demo_data` creates a git project with nested notes, tags, wikilinks, a template and an image attachment, and lists it in `$XDG_CONFIG_HOME/NoteLiner/recent-projects.json` (Linux). On Windows the config folder is `%APPDATA%\NoteLiner` and on macOS `~/Library/Application Support/NoteLiner`, as `laankit_core::paths` mirrors Electron's `userData`.
 
 ### Diagnostics
 
-`LAANKIT_SCREENSHOT=<file.png>` (with `LAANKIT_SCREENSHOT_EXIT=1`), `LAANKIT_THEME` and `LAANKIT_SCALE`
-work as in every LaanKit app (see `laankit_egui::diagnostics`). Also:
+`LAANKIT_SCREENSHOT=<file.png>` (with `LAANKIT_SCREENSHOT_EXIT=1`), `LAANKIT_THEME` and `LAANKIT_SCALE` work as in every LaanKit app (see `laankit_egui::diagnostics`). Also:
 
 | Variable          | Effect                                                                                    |
 |-------------------|-------------------------------------------------------------------------------------------|
@@ -63,8 +40,7 @@ work as in every LaanKit app (see `laankit_egui::diagnostics`). Also:
 | `LAANKIT_FILE`     | Then select the nth note in display order, or the note with this name                     |
 | `LAANKIT_OPEN`     | Then open `settings[:ui\|mcp\|shortcuts]`, `sync`, `about`, `help`, `palette`, `new-file`, `new-project`, `project-settings`, `move`, `preview`, `slides`, `presentation-settings`, `present`, `log`, `search:<query>`, `tags`, `backlinks`, `history`, `attachments`, `tag-filter`, `tag-editor`, `mcp-walkthrough` or `mcp-confirm` (a sample request) |
 
-The Help pages are `assets/help-pages.json` (loaded at build time with `include_str!`); edit that
-file to change the in-app Help.
+The Help pages are `assets/help-pages.json` (loaded at build time with `include_str!`); edit that file to change the in-app Help.
 
 ## Architecture
 
@@ -88,81 +64,36 @@ file to change the in-app Help.
 
 ### Editor
 
-`src/editor.rs` holds `NoteEditor`, a wrapper around `laankit-editor` (see
-`crates/laankit-editor/README.md`). The editor runs on its own core engine;
-`LAANKIT_EDITOR_ENGINE=textedit noteliner` falls back to the previous engine
-(egui's `TextEdit`) for one release, should the core engine misbehave with an
-input method or screen reader. The app only uses this API:
+`src/editor.rs` holds `NoteEditor`, a wrapper around `laankit-editor` (see `crates/laankit-editor/README.md`). The editor runs on its own core engine; `LAANKIT_EDITOR_ENGINE=textedit noteliner` falls back to the previous engine (egui's `TextEdit`) for one release, should the core engine misbehave with an input method or screen reader. The app only uses this API:
 
 - `load(id, name, filename, body)` when `file:read` arrives; `clear()`; `renamed(id, name, filename)`.
-- `show(ui, preview_on, history_on) -> Vec<EditorAction>`: the toolbar (list buttons, History,
-  Preview) and the text. It returns `Save(SaveRequest)` when the 500 ms autosave timer fires
-  (`scheduleSave`), the toolbar toggles, the context menu's exports, `PasteImage` / `AttachFiles`
-  (saved through `file:addAttachment`, then the Markdown reference is inserted, as `processFiles`
-  does), `OpenWikilink` / `OpenLink` (Ctrl/Cmd+click) and `AddToDictionary`.
-- `saved(id, content, ok)` when the write finishes; `flush()` before switching notes, closing or
-  quitting, so a pending edit lands in the note it was made in.
+- `show(ui, preview_on, history_on) -> Vec<EditorAction>`: the toolbar (list buttons, History, Preview) and the text. It returns `Save(SaveRequest)` when the 500 ms autosave timer fires (`scheduleSave`), the toolbar toggles, the context menu's exports, `PasteImage` / `AttachFiles` (saved through `file:addAttachment`, then the Markdown reference is inserted, as `processFiles` does), `OpenWikilink` / `OpenLink` (Ctrl/Cmd+click) and `AddToDictionary`.
+- `saved(id, content, ok)` when the write finishes; `flush()` before switching notes, closing or quitting, so a pending edit lands in the note it was made in.
 - `apply_slide_edit(markdown, caret_line)`: `applySlideEdit` (one undo step, written at once).
-- `insert(snippet, now)` / `insert_at(char, snippet, now)`: the Attachments panel's "Insert into
-  Note", pasted attachments, and a note dragged from FILES onto the text (a `[name](./file.md)`
-  link at the drop point, `interceptInternalDrops`).
+- `insert(snippet, now)` / `insert_at(char, snippet, now)`: the Attachments panel's "Insert into Note", pasted attachments, and a note dragged from FILES onto the text (a `[name](./file.md)` link at the drop point, `interceptInternalDrops`).
 - `scroll_to_line(line)`; `status()`, `cursor()`, `selection_len()`, `selected_lines()`, `text()`.
 - `go_to_line()`: opens the editor's Go to line bar (Ctrl+Alt+G, or "Go to Line" in the palette).
-- `view()` / `restore_view(anchor, head, scroll)`: the open note's caret and scroll, and putting
-  them back (see below).
+- `view()` / `restore_view(anchor, head, scroll)`: the open note's caret and scroll, and putting them back (see below).
 
-`[[` completes the names of the other notes in the index (`wikilinkCompletions`). The editor's
-display matches the CodeMirror setup (14 px, line numbers, wrapping); only `spellCheckEnabled` is
-a preference.
+`[[` completes the names of the other notes in the index (`wikilinkCompletions`). The editor's display matches the CodeMirror setup (14 px, line numbers, wrapping); only `spellCheckEnabled` is a preference.
 
-**Reopening a project** opens the note that was open, with its caret and scroll where they were
-(the editor plan's decision 3). Only that one note is remembered: the app keeps
-`lastFilePosition: { fileId, anchor, cursor, scrollX, scroll }` in the project's layout in
-`window-state.json` (the Tauri shape, plus this key, which the Svelte build ignores), updates it
-as the caret and scroll move, and saves it with the layout (debounced) and on close and quit. It's
-applied once the note has loaded, and ignored if the note is gone. Other notes open at the top, as
-in the Svelte build.
+**Reopening a project** opens the note that was open, with its caret and scroll where they were (the editor plan's decision 3). Only that one note is remembered: the app keeps `lastFilePosition: { fileId, anchor, cursor, scrollX, scroll }` in the project's layout in `window-state.json` (the Tauri shape, plus this key, which the Svelte build ignores), updates it as the caret and scroll move, and saves it with the layout (debounced) and on close and quit. It's applied once the note has loaded, and ignored if the note is gone. Other notes open at the top, as in the Svelte build.
 
 ### Spell checking
 
-The webview builds used the system spell checker. The native build uses Hunspell dictionaries
-(`laankit-editor`'s `spellcheck` feature, pure Rust): the system language (`LANG`, then `en_US`)
-is looked up in `<userData>/dictionaries/`, then `/usr/share/hunspell` and `/usr/share/myspell`
-(Linux) or `~/Library/Spelling` and `/Library/Spelling` (macOS). Windows has no shared Hunspell
-folder: put `en_US.aff` and `en_US.dic` (for example LibreOffice's) in
-`%APPDATA%\NoteLiner\dictionaries`. Without a dictionary nothing is underlined. "Add to
-dictionary" words go to `<userData>/dictionary.txt`. The dictionary loads on a background thread
-at startup (or when F7 turns checking on).
+The webview builds used the system spell checker. The native build uses Hunspell dictionaries (`laankit-editor`'s `spellcheck` feature, pure Rust): the system language (`LANG`, then `en_US`) is looked up in `<userData>/dictionaries/`, then `/usr/share/hunspell` and `/usr/share/myspell` (Linux) or `~/Library/Spelling` and `/Library/Spelling` (macOS). Windows has no shared Hunspell folder: put `en_US.aff` and `en_US.dic` (for example LibreOffice's) in `%APPDATA%\NoteLiner\dictionaries`. Without a dictionary nothing is underlined. "Add to dictionary" words go to `<userData>/dictionary.txt`. The dictionary loads on a background thread at startup (or when F7 turns checking on).
 
 ### Presentations
 
-`src/deck.rs` follows `crates/noteliner-slides/README.md`'s contract: the deck is re-parsed when
-the note's text or `presentation:` block changes; the SLIDES pane (jump, rename, drag, context
-menu) and the deck commands (New Slide, Split, Move Up/Down, Speaker Notes) apply their edits
-through `apply_slide_edit`; the preview column renders a deck as slides; Presentation Settings
-writes the block through `file:setPresentation`; "Convert to Presentation" lands in the settings
-with the SLIDES pane open, as in Svelte. The status bar shows the caret's slide and the speaking
-time at 130 words a minute. Slide images come from `_attachments/`, like the preview's.
-**Present** (F5, toolbar) is full screen; **Present with Speaker View** (Alt+F5, PowerPoint's
-Presenter View key; toolbar and palette) adds the speaker window (see
-`crates/noteliner-slides/README.md`).
+`src/deck.rs` follows `crates/noteliner-slides/README.md`'s contract: the deck is re-parsed when the note's text or `presentation:` block changes; the SLIDES pane (jump, rename, drag, context menu) and the deck commands (New Slide, Split, Move Up/Down, Speaker Notes) apply their edits through `apply_slide_edit`; the preview column renders a deck as slides; Presentation Settings writes the block through `file:setPresentation`; "Convert to Presentation" lands in the settings with the SLIDES pane open, as in Svelte. The status bar shows the caret's slide and the speaking time at 130 words a minute. Slide images come from `_attachments/`, like the preview's. **Present** (F5, toolbar) is full screen; **Present with Speaker View** (Alt+F5, PowerPoint's Presenter View key; toolbar and palette) adds the speaker window (see `crates/noteliner-slides/README.md`).
 
 ### Math
 
-`$…$`, `$$…$$` and ```` ```math ```` blocks are typeset in the preview, slides and speaker notes
-(`noteliner_core::export::preview_html` turns on comrak's math; `laankit_richtext::from_note_html`
-keeps it) and in PDF export. `src/math.rs` installs Typst (through the warm PDF exporter) as
-`laankit-richtext`'s math renderer when the backend attaches. LaTeX it can't convert shows as its
-source. The webview builds showed math as text; the HTML export still does.
+`$…$`, `$$…$$` and ```` ```math ```` blocks are typeset in the preview, slides and speaker notes (`noteliner_core::export::preview_html` turns on comrak's math; `laankit_richtext::from_note_html` keeps it) and in PDF export. `src/math.rs` installs Typst (through the warm PDF exporter) as `laankit-richtext`'s math renderer when the backend attaches. LaTeX it can't convert shows as its source. The webview builds showed math as text; the HTML export still does.
 
 ### PDF export
 
-`Backend::export(ExportKind::Pdf, …)` renders the note in-process with `noteliner-export`
-(Typst): a `LazyExporter` is built and warmed up on a background thread when the app starts,
-and each export runs on a blocking thread. The options match today's WebKit print
-(`export::pdf_document`): Letter, 0.5 in margins, the note's name as the title heading, images
-from `_attachments/`, wikilinks as styled text. The PDF goes to the Downloads folder, which then
-opens, like the HTML and Markdown exports.
+`Backend::export(ExportKind::Pdf, …)` renders the note in-process with `noteliner-export` (Typst): a `LazyExporter` is built and warmed up on a background thread when the app starts, and each export runs on a blocking thread. The options match today's WebKit print (`export::pdf_document`): Letter, 0.5 in margins, the note's name as the title heading, images from `_attachments/`, wikilinks as styled text. The PDF goes to the Downloads folder, which then opens, like the HTML and Markdown exports.
 
 ## Parity with the Svelte build
 

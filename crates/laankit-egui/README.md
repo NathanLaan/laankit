@@ -1,9 +1,6 @@
 # laankit-egui
 
-The native (egui) counterpart of `@laankit/desktop-ui`, shared by the
-NoteLiner, ThreadLiner and PageLiner native builds (plan Option C, see
-[`docs/plans/plan-native-rust-egui.md`](../../docs/plans/plan-native-rust-egui.md)).
-It runs on Linux, Windows and macOS.
+The native (egui) counterpart of `@laankit/desktop-ui`, shared by the NoteLiner, ThreadLiner and PageLiner native builds (plan Option C, see [`docs/plans/plan-native-rust-egui.md`](../../docs/plans/plan-native-rust-egui.md)). It runs on Linux, Windows and macOS.
 
 ## Usage
 
@@ -64,8 +61,7 @@ cargo run -p laankit-egui --example gallery
 
 ## Fonts
 
-The Svelte builds use each platform's system UI font; the native builds
-bundle one family so they look the same everywhere.
+The Svelte builds use each platform's system UI font; the native builds bundle one family so they look the same everywhere.
 
 | Family                     | Face                                   | Size    |
 |----------------------------|----------------------------------------|---------|
@@ -80,23 +76,13 @@ bundle one family so they look the same everywhere.
 | `fonts::SERIF` (+ `_ITALIC`, `_BOLD`, `_BOLD_ITALIC`) | Source Serif 4.005 Regular, Italic, Bold, Bold Italic (books) | 893 KB |
 | `icons::FAMILY`            | Font Awesome Free 6.7.2 Solid          | 416 KB  |
 
-About 4.2 MB in all, embedded with `include_bytes!`. Pick a face with a
-`fonts::Style` (`fonts::styled`, `fonts::bold`, `fonts::italic`,
-`fonts::weight` for `RichText`; `fonts::format` for `LayoutJob`s).
+About 4.2 MB in all, embedded with `include_bytes!`. Pick a face with a `fonts::Style` (`fonts::styled`, `fonts::bold`, `fonts::italic`, `fonts::weight` for `RichText`; `fonts::format` for `LayoutJob`s).
 
-Inter's `calt` feature is retagged `ss20` and JetBrains Mono NL is the
-no-ligatures build, both for the same reason: egui can't switch OpenType
-features off, and code should show `->` and `!=` as typed.
+Inter's `calt` feature is retagged `ss20` and JetBrains Mono NL is the no-ligatures build, both for the same reason: egui can't switch OpenType features off, and code should show `->` and `!=` as typed.
 
-The faces are static instances rather than variable fonts on purpose: egui
-shapes text about twice as fast with them, and first-time shaping is what
-opening a long note or article costs (see `crates/laankit-richtext/README.md`).
+The faces are static instances rather than variable fonts on purpose: egui shapes text about twice as fast with them, and first-time shaping is what opening a long note or article costs (see `crates/laankit-richtext/README.md`).
 
-Anything these faces lack (CJK, emoji, Arabic, Devanagari, …) falls back to
-the operating system's fonts through eframe's `system_fonts` feature
-(fontique: fontconfig, DirectWrite, CoreText), loaded the first time a script
-is drawn. Contexts eframe doesn't create (tests) call
-`fonts::install_system_fallback`.
+Anything these faces lack (CJK, emoji, Arabic, Devanagari, …) falls back to the operating system's fonts through eframe's `system_fonts` feature (fontique: fontconfig, DirectWrite, CoreText), loaded the first time a script is drawn. Contexts eframe doesn't create (tests) call `fonts::install_system_fallback`.
 
 ## Diagnostics
 
@@ -106,14 +92,8 @@ WAYLAND_DISPLAY= LAANKIT_THEME=light LAANKIT_SCALE=125 \
   cargo run -p laankit-egui --example gallery
 ```
 
-On Wayland a locked session or hidden window gets no frames, so the capture
-never fires; `WAYLAND_DISPLAY=` runs through XWayland. Headless CI uses
-`egui_kittest` instead.
+On Wayland a locked session or hidden window gets no frames, so the capture never fires; `WAYLAND_DISPLAY=` runs through XWayland. Headless CI uses `egui_kittest` instead.
 
 ## Licences
 
-Inter and JetBrains Mono are under the SIL Open Font License 1.1; Font
-Awesome Free's font is under the OFL 1.1 and its icons under CC BY 4.0. The
-licence files are in `assets/fonts/`. `window.rs` and `toast.rs` are adapted
-from ArtCraft's `artcraft-native` (MIT OR Apache-2.0). See the repository's
-`NOTICE`.
+Inter and JetBrains Mono are under the SIL Open Font License 1.1; Font Awesome Free's font is under the OFL 1.1 and its icons under CC BY 4.0. The licence files are in `assets/fonts/`. `window.rs` and `toast.rs` are adapted from ArtCraft's `artcraft-native` (MIT OR Apache-2.0). See the repository's `NOTICE`.

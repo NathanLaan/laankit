@@ -1,32 +1,13 @@
 # laankit-editor
 
-NoteLiner's Markdown editor for the native (egui) builds, the counterpart of
-`apps/noteliner/src/renderer/components/Editor.svelte` (CodeMirror 6). Plan
-Option C, Phase 4 (`docs/plans/plan-native-rust-egui.md`), and the editor
-phases of `docs/plans/plan-editor-slides-richtext.md`.
+NoteLiner's Markdown editor for the native (egui) builds, the counterpart of `apps/noteliner/src/renderer/components/Editor.svelte` (CodeMirror 6). Plan Option C, Phase 4 (`docs/plans/plan-native-rust-egui.md`), and the editor phases of `docs/plans/plan-editor-slides-richtext.md`.
 
-It runs on **its own editor core** ([`editor_core`](src/editor_core/mod.rs),
-the default since Phase 3) or, as a fallback for one release, on egui's
-`TextEdit::multiline` (see [Engines](#engines-and-the-fallback)). Either way:
+It runs on **its own editor core** ([`editor_core`](src/editor_core/mod.rs), the default since Phase 3) or, as a fallback for one release, on egui's `TextEdit::multiline` (see [Engines](#engines-and-the-fallback)). Either way:
 
-- **A cached, incremental highlighting layouter.** One galley per line; an
-  edit rescans only the lines it touched. Promoted from Phase 0 spike 1
-  (`docs/plans/spikes/editor.md`). The core engine lays out only the lines
-  on screen.
-- **Everything `Editor.svelte` and CodeMirror's `basicSetup` add around the
-  text:** list editing, emphasis toggles, bracket auto-closing, the
-  line-number gutter and active line, find and replace, `[[` completion,
-  the context menu, and the paste, drop and link hooks the host handles.
-- **Code fences highlighted by language** (`syntect`, its ~75 bundled
-  syntaxes, pure Rust; [`code`](src/code.rs)), plus bracket matching,
-  other occurrences of the selection, Go to line, and ordered lists that
-  renumber after Enter, Backspace/Delete, Tab and paste. The logic is in
-  engine-independent modules ([`code`](src/code.rs),
-  [`matching`](src/matching.rs), [`list_edits`](src/list_edits.rs)) so it
-  carries over to the planned custom editor core.
-- **Undo as diffs, with a memory bound** (8 MiB of changed text, 1,000
-  steps). egui's undoer keeps whole-text snapshots, about 250 MB for a
-  2.5 MB note.
+- **A cached, incremental highlighting layouter.** One galley per line; an edit rescans only the lines it touched. Promoted from Phase 0 spike 1 (`docs/plans/spikes/editor.md`). The core engine lays out only the lines on screen.
+- **Everything `Editor.svelte` and CodeMirror's `basicSetup` add around the text:** list editing, emphasis toggles, bracket auto-closing, the line-number gutter and active line, find and replace, `[[` completion, the context menu, and the paste, drop and link hooks the host handles.
+- **Code fences highlighted by language** (`syntect`, its ~75 bundled syntaxes, pure Rust; [`code`](src/code.rs)), plus bracket matching, other occurrences of the selection, Go to line, and ordered lists that renumber after Enter, Backspace/Delete, Tab and paste. The logic is in engine-independent modules ([`code`](src/code.rs), [`matching`](src/matching.rs), [`list_edits`](src/list_edits.rs)) so it carries over to the planned custom editor core.
+- **Undo as diffs, with a memory bound** (8 MiB of changed text, 1,000 steps). egui's undoer keeps whole-text snapshots, about 250 MB for a 2.5 MB note.
 
 ```bash
 cargo run -p laankit-editor --example editor -- note.md        # or --lines 20000
@@ -43,10 +24,7 @@ LAANKIT_EDITOR_ENGINE=textedit cargo run -p noteliner-native   # the fallback en
 | `Engine::Core` (default) | The editor's own widget: a rope index, several selections, only the visible lines laid out, folding | Default |
 | `Engine::TextEdit` | egui's `TextEdit` with the same highlighter and commands: one selection, the whole note laid out, no folding | `LAANKIT_EDITOR_ENGINE=textedit` in the environment, or `EditorPrefs { engine: Engine::TextEdit, .. }` |
 
-The fallback stays for one release while the core engine's IME and screen
-reader support are checked by hand (see the end of this file), then goes.
-Every shared test runs on both engines (`tests/editor.rs`); the core
-engine's own features are tested in `tests/core.rs`.
+The fallback stays for one release while the core engine's IME and screen reader support are checked by hand (see the end of this file), then goes. Every shared test runs on both engines (`tests/editor.rs`); the core engine's own features are tested in `tests/core.rs`.
 
 ### The core engine
 
@@ -58,41 +36,12 @@ engine's own features are tested in `tests/core.rs`.
 | [`editor_core::fold`](src/editor_core/fold.rs) | What folds (headings to the next heading of the same or a higher level, fences, list items with nested lines) and the closed folds, moved along with edits |
 | `editor_core::view` | Layout, input and painting (below) |
 
-- **Model.** The note stays one `String`: `text()` hands out `&str`, and the
-  list, find and markup helpers work on strings. The rope beside it answers
-  every position question without scanning the note. An edit is a splice;
-  the rope sync tells the highlighter which lines changed, so neither diffs
-  the text again.
-- **Layout.** Every line has a top: its measured height once laid out, an
-  estimate before (one row, or as many as its length wraps to), none when
-  folded. Only the visible lines get galleys. On frames that happen anyway
-  (no repaint is requested for it), a 2 ms budget lays out off-screen lines
-  to replace estimates; galleys past 3,000 are dropped again (their heights
-  stay), so memory is bounded. When heights above the first visible line
-  change, the scroll offset moves with them, so the text on screen stays put.
-- **Input.** Everything the editor relied on `TextEdit` for: caret moves
-  by character, word, row (keeping the column), page, line and document,
-  with Shift; smart Home; click, double-click (word) and triple-click
-  (line); drag selection with autoscroll; cut, copy and paste; IME (the
-  preedit sits in the note, out of the history, until the commit, which is
-  one step), with the candidate window placed at the caret.
-- **Several cursors.** Ctrl/Cmd+click adds one (on a link it opens the link
-  instead), Ctrl/Cmd+D selects the word, then the next occurrence, the
-  find panel's "all" selects every match, Alt+drag makes a rectangle (the
-  same character columns on each line, as CodeMirror). Typing, Backspace,
-  Delete, Enter and paste act at every cursor in one undo step; paste puts
-  one line at each cursor when the counts match; copy joins the selections
-  with newlines. Escape goes back to one cursor. Undo restores the primary
-  cursor only. List continuation, Tab and the toolbar's list commands act on
-  the primary cursor.
-- **Folding.** A chevron in the gutter (shown while the pointer is over
-  it, and always for a closed fold), Ctrl/Cmd+Shift+[ / ] at the caret.
-  A closed fold shows `…` after its first line. Folds live in memory, per
-  open note; they move with edits around them and open when an edit or a
-  caret reaches inside.
-- **Screen readers.** AccessKit gets the visible lines as text runs (the
-  field's value is those lines), the caret and selection when they're on
-  screen, and the field's name. Nothing it gets grows with the note.
+- **Model.** The note stays one `String`: `text()` hands out `&str`, and the list, find and markup helpers work on strings. The rope beside it answers every position question without scanning the note. An edit is a splice; the rope sync tells the highlighter which lines changed, so neither diffs the text again.
+- **Layout.** Every line has a top: its measured height once laid out, an estimate before (one row, or as many as its length wraps to), none when folded. Only the visible lines get galleys. On frames that happen anyway (no repaint is requested for it), a 2 ms budget lays out off-screen lines to replace estimates; galleys past 3,000 are dropped again (their heights stay), so memory is bounded. When heights above the first visible line change, the scroll offset moves with them, so the text on screen stays put.
+- **Input.** Everything the editor relied on `TextEdit` for: caret moves by character, word, row (keeping the column), page, line and document, with Shift; smart Home; click, double-click (word) and triple-click (line); drag selection with autoscroll; cut, copy and paste; IME (the preedit sits in the note, out of the history, until the commit, which is one step), with the candidate window placed at the caret.
+- **Several cursors.** Ctrl/Cmd+click adds one (on a link it opens the link instead), Ctrl/Cmd+D selects the word, then the next occurrence, the find panel's "all" selects every match, Alt+drag makes a rectangle (the same character columns on each line, as CodeMirror). Typing, Backspace, Delete, Enter and paste act at every cursor in one undo step; paste puts one line at each cursor when the counts match; copy joins the selections with newlines. Escape goes back to one cursor. Undo restores the primary cursor only. List continuation, Tab and the toolbar's list commands act on the primary cursor.
+- **Folding.** A chevron in the gutter (shown while the pointer is over it, and always for a closed fold), Ctrl/Cmd+Shift+[ / ] at the caret. A closed fold shows `…` after its first line. Folds live in memory, per open note; they move with edits around them and open when an edit or a caret reaches inside.
+- **Screen readers.** AccessKit gets the visible lines as text runs (the field's value is those lines), the caret and selection when they're on screen, and the field's name. Nothing it gets grows with the note.
 
 ## API
 
@@ -138,10 +87,7 @@ for event in out.events { /* see the contract below */ }
 | `EditorColors::from_palette(&palette)`        | The editor's colours (derived from the theme; see `highlight.rs`)     |
 | `code::syntaxes(Some(ctx))` / `load_blocking()` | The code-fence syntaxes: loaded on a background thread on first use (`None` until then), or now |
 
-`Command`: `OrderedList`, `UnorderedList`, `IndentSubList`, `Bold`, `Italic`,
-`Undo`, `Redo`, `SelectAll`, `Cut`, `Copy`, `Paste`, `Find`, `FindNext`,
-`FindPrevious`, `GoToLine`, `Insert(String)` (replaces the selection) and
-`InsertAt(char, String)`.
+`Command`: `OrderedList`, `UnorderedList`, `IndentSubList`, `Bold`, `Italic`, `Undo`, `Redo`, `SelectAll`, `Cut`, `Copy`, `Paste`, `Find`, `FindNext`, `FindPrevious`, `GoToLine`, `Insert(String)` (replaces the selection) and `InsertAt(char, String)`.
 
 ## Integration contract (for `apps/noteliner/native`)
 
@@ -156,29 +102,11 @@ for event in out.events { /* see the contract below */ }
 | `Save(SaveFormat)`        | Context menu "Save to HTML/PDF/Markdown"           | Runs the export (`onSaveToHtml` …)                                                                      |
 | `AddToDictionary(word)`   | Context menu on a misspelled word                  | Adds it to the checker and the user's word list, then `state.refresh_spelling()`                        |
 
-- **Dragging a note from the file tree** (`interceptInternalDrops`): the tree
-  keeps its own `egui::DragAndDrop` payload. On release over the editor,
-  the host reads `out.char_at_pointer` and runs
-  `Command::InsertAt(c, format!("[{name}](./{filename})"))`.
-  `char_at_pointer` is only computed while something is dragged, or on a
-  click or release, because it walks the galley's rows (about 12 ms at
-  50,000 lines).
-- **Toolbar:** `ToolbarAction::ToggleHistory` and `TogglePreview` are the
-  host's. The list buttons run their commands themselves.
-- **Shortcuts the host owns** stay with the host: Ctrl+H, Ctrl+P, Ctrl+S
-  and the rest of `App.svelte`'s keymap. The editor only takes the keys
-  listed below, and only while it has focus.
-- **Theme:** the palette is read every frame, so theme changes apply
-  without rebuilding (the Svelte editor recreates CodeMirror).
-- **Spell checking:** build with `--features spellcheck` and call
-  `state.set_spell_checker(Some(Arc::new(Hunspell::new(&aff, &dic)?)))`.
-  The dictionary can be bundled, or taken from `/usr/share/hunspell`, or
-  from a Windows or macOS dictionary folder. The Svelte build used the
-  webview's checker for the system locale. Any type implementing
-  `SpellChecker` works. Misspelled prose is underlined; code, URLs,
-  wikilinks and frontmatter are skipped, as are words with digits or
-  inner capitals (`HTTP`, `v2`). The context menu offers suggestions and
-  "Add to dictionary".
+- **Dragging a note from the file tree** (`interceptInternalDrops`): the tree keeps its own `egui::DragAndDrop` payload. On release over the editor, the host reads `out.char_at_pointer` and runs `Command::InsertAt(c, format!("[{name}](./{filename})"))`. `char_at_pointer` is only computed while something is dragged, or on a click or release, because it walks the galley's rows (about 12 ms at 50,000 lines).
+- **Toolbar:** `ToolbarAction::ToggleHistory` and `TogglePreview` are the host's. The list buttons run their commands themselves.
+- **Shortcuts the host owns** stay with the host: Ctrl+H, Ctrl+P, Ctrl+S and the rest of `App.svelte`'s keymap. The editor only takes the keys listed below, and only while it has focus.
+- **Theme:** the palette is read every frame, so theme changes apply without rebuilding (the Svelte editor recreates CodeMirror).
+- **Spell checking:** build with `--features spellcheck` and call `state.set_spell_checker(Some(Arc::new(Hunspell::new(&aff, &dic)?)))`. The dictionary can be bundled, or taken from `/usr/share/hunspell`, or from a Windows or macOS dictionary folder. The Svelte build used the webview's checker for the system locale. Any type implementing `SpellChecker` works. Misspelled prose is underlined; code, URLs, wikilinks and frontmatter are skipped, as are words with digits or inner capitals (`HTTP`, `v2`). The context menu offers suggestions and "Add to dictionary".
 
 ### Keys
 
@@ -238,9 +166,7 @@ for event in out.events { /* see the contract below */ }
 
 ### Core engine against `TextEdit` (Phase 3, 2026-10-18)
 
-`cargo run --profile fast-release -p laankit-editor --example bench -- --sizes 5000,20000,50000 [--engine textedit] [--accesskit]`,
-CPU per frame (`run_ui` and `tessellate`, 1200×800), p50 / p95 / max in ms.
-Load average **≈4** (≈7.5 for the AccessKit rows).
+`cargo run --profile fast-release -p laankit-editor --example bench -- --sizes 5000,20000,50000 [--engine textedit] [--accesskit]`, CPU per frame (`run_ui` and `tessellate`, 1200×800), p50 / p95 / max in ms. Load average **≈4** (≈7.5 for the AccessKit rows).
 
 | Engine   | Lines  | Open  | Idle               | Type at start      | Type in middle     | Type at end        | Enter in list      | Wheel scroll       |
 |----------|--------|-------|--------------------|--------------------|--------------------|--------------------|--------------------|--------------------|
@@ -260,30 +186,15 @@ With AccessKit on (a screen reader running):
 | TextEdit | 5,000  | 7.36 / 8.42 / 8.70 | 8.44 / 8.80 / 9.44 | 8.96 / 9.88 / 10.1 | 9.34 / 9.96 / 10.3 |
 | TextEdit | 50,000 | 86.2 / 89.2 / 94.1 | 110 / 112 / 115    | 114 / 116 / 117    | 121 / 123 / 124    |
 
-- **The plan's exit criteria hold:** typing at 50,000 lines is 1.8–5.2 ms
-  at p95 (under 8 ms), 3.3 ms inside a code fence (`--fences 4`); with
-  AccessKit on, an idle frame costs about the same at 5,000 and 50,000
-  lines (2.6 and 3.0 ms) where `TextEdit` goes from 8.4 to 89 ms.
-- **The core's idle column is the off-screen measuring budget** (≤2 ms
-  per frame, only on frames that happen anyway) until every line has a
-  measured height; then idle frames cost what `TextEdit`'s do.
-- **Enter in a list** at 50,000 lines (8.8 ms p95) is list continuation:
-  it still works on the whole note (to outdent a nested item it reads the
-  lines above, and it renumbers what follows). Plain Enter is a typing frame.
-- **Opening** scans every line (for fences and frontmatter) but lays out
-  only what's on screen: 1.2 s at 50,000 lines against 2.9 s.
-- What made typing fast besides the virtualized layout: the rope sync
-  passes the edited lines to the highlighter (no second diff), the
-  highlighter splices its line list instead of cloning it, prefix/suffix
-  comparisons run a block at a time ([`fastcmp`](src/fastcmp.rs)), and the
-  bracket and `[[` helpers run on the caret's line only.
+- **The plan's exit criteria hold:** typing at 50,000 lines is 1.8–5.2 ms at p95 (under 8 ms), 3.3 ms inside a code fence (`--fences 4`); with AccessKit on, an idle frame costs about the same at 5,000 and 50,000 lines (2.6 and 3.0 ms) where `TextEdit` goes from 8.4 to 89 ms.
+- **The core's idle column is the off-screen measuring budget** (≤2 ms per frame, only on frames that happen anyway) until every line has a measured height; then idle frames cost what `TextEdit`'s do.
+- **Enter in a list** at 50,000 lines (8.8 ms p95) is list continuation: it still works on the whole note (to outdent a nested item it reads the lines above, and it renumbers what follows). Plain Enter is a typing frame.
+- **Opening** scans every line (for fences and frontmatter) but lays out only what's on screen: 1.2 s at 50,000 lines against 2.9 s.
+- What made typing fast besides the virtualized layout: the rope sync passes the edited lines to the highlighter (no second diff), the highlighter splices its line list instead of cloning it, prefix/suffix comparisons run a block at a time ([`fastcmp`](src/fastcmp.rs)), and the bracket and `[[` helpers run on the caret's line only.
 
 ### With code-fence highlighting (Phase 2, 2026-10-18, `TextEdit` engine)
 
-`cargo run --profile fast-release -p laankit-editor --example bench -- --sizes 1000,5000,20000 --fences 4`:
-the generated notes plus four 200-line fences (Rust, Python, JSON, shell),
-syntaxes loaded. Load average **≈20** (another agent compiling), so these are
-upper bounds. p50 / p95 / max in ms, AccessKit off.
+`cargo run --profile fast-release -p laankit-editor --example bench -- --sizes 1000,5000,20000 --fences 4`: the generated notes plus four 200-line fences (Rust, Python, JSON, shell), syntaxes loaded. Load average **≈20** (another agent compiling), so these are upper bounds. p50 / p95 / max in ms, AccessKit off.
 
 | Lines  | Open   | Idle               | Type at start      | Type in middle     | Type at end        | Type in a fence    | Wheel scroll       |
 |--------|--------|--------------------|--------------------|--------------------|--------------------|--------------------|--------------------|
@@ -291,29 +202,13 @@ upper bounds. p50 / p95 / max in ms, AccessKit off.
 | 5,000  | 554    | 0.18 / 0.31 / 0.34 | 1.54 / 1.73 / 3.22 | 2.18 / 2.49 / 3.10 | 2.47 / 2.70 / 2.88 | 2.01 / 2.23 / 2.45 | 0.23 / 0.26 / 0.43 |
 | 20,000 | 1,402  | 1.02 / 1.59 / 1.88 | 10.7 / 11.9 / 15.0 | 13.1 / 14.1 / 14.8 | 14.8 / 15.7 / 16.3 | 12.7 / 13.6 / 14.1 | 1.06 / 1.15 / 1.23 |
 
-- **The gate holds:** typing at 5,000 lines stays under 4 ms at p95 (1.7–2.7
-  ms), inside a fence too (2.2 ms). The same note without the big fences, run
-  back to back: 1.7–2.5 ms, so the highlighting adds nothing measurable per
-  keystroke (an edit re-highlights one line).
-- **Opening** a note parses every fence line once: 554 ms against 440 ms for
-  the same 5,000 lines without the big fences. Until the syntaxes have
-  loaded (in the background, the first time a note is shown) fences are one
-  colour, then only the fence lines are laid out again.
-- **Binary size** (release, LTO, stripped): the `editor` example grows from 17.78 MB to
-  18.60 MB (**+0.8 MB**: syntect's parser and its bundled syntaxes). The
-  release `noteliner` binary didn't grow measurably (60.44 → 60.43 MB),
-  because Typst (PDF export) already links syntect; that build also has
-  other changes, so it's not a clean comparison.
+- **The gate holds:** typing at 5,000 lines stays under 4 ms at p95 (1.7–2.7 ms), inside a fence too (2.2 ms). The same note without the big fences, run back to back: 1.7–2.5 ms, so the highlighting adds nothing measurable per keystroke (an edit re-highlights one line).
+- **Opening** a note parses every fence line once: 554 ms against 440 ms for the same 5,000 lines without the big fences. Until the syntaxes have loaded (in the background, the first time a note is shown) fences are one colour, then only the fence lines are laid out again.
+- **Binary size** (release, LTO, stripped): the `editor` example grows from 17.78 MB to 18.60 MB (**+0.8 MB**: syntect's parser and its bundled syntaxes). The release `noteliner` binary didn't grow measurably (60.44 → 60.43 MB), because Typst (PDF export) already links syntect; that build also has other changes, so it's not a clean comparison.
 
 ### Before code highlighting
 
-`cargo run --profile fast-release -p laankit-editor --example bench`: CPU per frame
-(`run_ui` and `tessellate`, 1200×800), p50 / p95 / max in ms. These were
-taken on a 16-core laptop at load average **≈10**: other agents were
-compiling. Run back to back at the same load, the Phase 0 spike measured
-10–20% less while typing, because this widget also paints the gutter and
-active line, records undo diffs and tracks completion. On a quiet machine,
-scale both down (the spike's quiet runs were about 30% lower).
+`cargo run --profile fast-release -p laankit-editor --example bench`: CPU per frame (`run_ui` and `tessellate`, 1200×800), p50 / p95 / max in ms. These were taken on a 16-core laptop at load average **≈10**: other agents were compiling. Run back to back at the same load, the Phase 0 spike measured 10–20% less while typing, because this widget also paints the gutter and active line, records undo diffs and tracks completion. On a quiet machine, scale both down (the spike's quiet runs were about 30% lower).
 
 AccessKit off:
 
@@ -332,19 +227,10 @@ AccessKit on (a screen reader running):
 | 5,000  | 7.93 / 8.53 / 9.36 | 11.1 / 12.0 / 12.4 | 11.1 / 12.2 / 12.7 | 7.84 / 9.12 / 9.60 |
 | 20,000 | 34.4 / 37.6 / 38.7 | 63.3 / 68.5 / 70.4 | 48.5 / 49.6 / 51.2 | 36.4 / 37.1 / 38.1 |
 
-- **Normal notes are fast:** 5,000 lines types at p95 2–3.5 ms (the plan's
-  bar is 16 ms), and 20,000 lines is at the bar under this load. 50,000
-  lines doesn't pass. That cost is inside `TextEdit` (it copies the whole
-  text several times a frame) and in `Galley::concat`, as the spike found.
-- **Screen readers:** egui's `TextEdit` gives AccessKit every row of the
-  galley each frame, about 1.7 ms per 1,000 lines even when idle. Exposing
-  only the visible rows would need a fork of `TextEdit`, so it isn't done.
-  The cost is fine up to about 8,000 lines.
-- **Undo memory:** typing 210 characters plus 20 list Enters keeps 234
-  bytes of history. A whole-text snapshot undoer would keep 100 copies of
-  the note.
-- **Opening a note** lays out every line once: 0.3 s at 5,000 lines, 1 s at
-  20,000, 2 s at 50,000 (one frame).
+- **Normal notes are fast:** 5,000 lines types at p95 2–3.5 ms (the plan's bar is 16 ms), and 20,000 lines is at the bar under this load. 50,000 lines doesn't pass. That cost is inside `TextEdit` (it copies the whole text several times a frame) and in `Galley::concat`, as the spike found.
+- **Screen readers:** egui's `TextEdit` gives AccessKit every row of the galley each frame, about 1.7 ms per 1,000 lines even when idle. Exposing only the visible rows would need a fork of `TextEdit`, so it isn't done. The cost is fine up to about 8,000 lines.
+- **Undo memory:** typing 210 characters plus 20 list Enters keeps 234 bytes of history. A whole-text snapshot undoer would keep 100 copies of the note.
+- **Opening a note** lays out every line once: 0.3 s at 5,000 lines, 1 s at 20,000, 2 s at 50,000 (one frame).
 
 ## Tests
 
@@ -358,27 +244,11 @@ AccessKit on (a screen reader running):
   - find options and replace-all with groups
   - spelling word splitting and Hunspell
   - file-URI pastes
-  - code fences: syntaxes by name, extension and alias; Rust, Python, JSON
-    and shell tokens; state across lines; edits re-highlight only what
-    changed; the syntaxes arriving re-highlight only fence lines; theme
-    colours
-  - bracket matching (including inline code), selection queries and
-    whole-word matching, Go to line parsing
-  - ordered-list renumbering (inserts, deletes, pastes, nesting, `)` lists,
-    quotes, continuation lines, lazy `1. 1. 1.` lists left alone)
-- **Core engine units:** the rope follows edits and moves folds; the
-  highlighter told the edited lines matches a full scan over 150 random
-  edits (fences, headings, frontmatter, multi-line deletions); selections
-  merge and keep their primary; word groups and smart Home; replacing many
-  ranges; fold ranges and moving folds with edits; block prefix/suffix.
-- **kittest, core engine (`tests/core.rs`):** Ctrl/Cmd+D and typing at
-  every cursor (one undo step), Escape; Ctrl/Cmd+click adds a caret but
-  opens a wikilink; find "all"; Alt+drag rectangles; multi-cursor paste and
-  copy; word moves, smart Home and word Backspace; vertical moves keep the
-  column and skip a fold, and a caret moved into a fold opens it; the fold
-  gutter, a fold moved by an edit above it; double, triple click and drag
-  selection; screen readers get the visible lines only (and follow the
-  scroll); a 20,000-line note holds a bounded number of galleys.
+  - code fences: syntaxes by name, extension and alias; Rust, Python, JSON and shell tokens; state across lines; edits re-highlight only what changed; the syntaxes arriving re-highlight only fence lines; theme colours
+  - bracket matching (including inline code), selection queries and whole-word matching, Go to line parsing
+  - ordered-list renumbering (inserts, deletes, pastes, nesting, `)` lists, quotes, continuation lines, lazy `1. 1. 1.` lists left alone)
+- **Core engine units:** the rope follows edits and moves folds; the highlighter told the edited lines matches a full scan over 150 random edits (fences, headings, frontmatter, multi-line deletions); selections merge and keep their primary; word groups and smart Home; replacing many ranges; fold ranges and moving folds with edits; block prefix/suffix.
+- **kittest, core engine (`tests/core.rs`):** Ctrl/Cmd+D and typing at every cursor (one undo step), Escape; Ctrl/Cmd+click adds a caret but opens a wikilink; find "all"; Alt+drag rectangles; multi-cursor paste and copy; word moves, smart Home and word Backspace; vertical moves keep the column and skip a fold, and a caret moved into a fold opens it; the fold gutter, a fold moved by an edit above it; double, triple click and drag selection; screen readers get the visible lines only (and follow the scroll); a 20,000-line note holds a bounded number of galleys.
 - **kittest, both engines (`tests/editor.rs`):**
   - the text paints, and `set_text` isn't an edit
   - Enter continues lists as one undo step; plain Enter/Backspace type normally; Tab/Shift+Tab
@@ -390,30 +260,17 @@ AccessKit on (a screen reader running):
   - image and file pastes; find, replace all, Escape
   - status and list kind; scroll to line
   - Go to line (absolute, relative, invalid input, Escape)
-  - renumbering after Enter, a deleted item, a paste and Tab, each undone
-    in one step; plain typing never renumbers
+  - renumbering after Enter, a deleted item, a paste and Tab, each undone in one step; plain typing never renumbers
   - bracket-match, unmatched-bracket and selection-match backgrounds paint
 
 ## Not yet / for the host to check
 
-- **The `TextEdit` fallback** goes after one release, once the manual
-  checks below pass on the core engine.
-- **Languages outside syntect's bundled set** (TypeScript, TOML, Svelte, …)
-  are one colour (plan decision 2: the bundled set only for now).
-- **Core engine, not done:** dragging selected text to move it (neither
-  engine does it); Alt+↑/↓ to move lines; list continuation and Tab at
-  every cursor (they act on the primary); undo restoring every cursor.
-- **To check by hand on the core engine** (headless tests can only inject
-  events):
-  - IME: IBus and Fcitx on Wayland and X11, Windows TSF, macOS input
-    methods. Composition inline, the candidate window at the caret, commit
-    and cancel, Enter and Backspace while composing.
-  - Screen readers: Orca (Linux), NVDA (Windows), VoiceOver (macOS).
-    Reading the visible lines, the caret and selection announced as it
-    moves, reading after scrolling.
-  - Alt+drag on Linux desktops that move windows with Alt+drag (use
-    Alt+Shift+drag there, or change the window manager's modifier).
-  - Trackpad scrolling and the scroll position staying put while lines
-    off screen are measured.
-  - The context menu's Paste on each platform (it asks the platform with
-    `ViewportCommand::RequestPaste`); dropping files on Windows and macOS.
+- **The `TextEdit` fallback** goes after one release, once the manual checks below pass on the core engine.
+- **Languages outside syntect's bundled set** (TypeScript, TOML, Svelte, …) are one colour (plan decision 2: the bundled set only for now).
+- **Core engine, not done:** dragging selected text to move it (neither engine does it); Alt+↑/↓ to move lines; list continuation and Tab at every cursor (they act on the primary); undo restoring every cursor.
+- **To check by hand on the core engine** (headless tests can only inject events):
+  - IME: IBus and Fcitx on Wayland and X11, Windows TSF, macOS input methods. Composition inline, the candidate window at the caret, commit and cancel, Enter and Backspace while composing.
+  - Screen readers: Orca (Linux), NVDA (Windows), VoiceOver (macOS). Reading the visible lines, the caret and selection announced as it moves, reading after scrolling.
+  - Alt+drag on Linux desktops that move windows with Alt+drag (use Alt+Shift+drag there, or change the window manager's modifier).
+  - Trackpad scrolling and the scroll position staying put while lines off screen are measured.
+  - The context menu's Paste on each platform (it asks the platform with `ViewportCommand::RequestPaste`); dropping files on Windows and macOS.

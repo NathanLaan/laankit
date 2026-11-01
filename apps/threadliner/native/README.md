@@ -1,15 +1,8 @@
 # ThreadLiner Native
 
-ThreadLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `threadliner-core`,
-with no webview and no JavaScript. It's the Phase 2 pilot of plan Option C
-([`docs/plans/plan-native-rust-egui.md`](../../../docs/plans/plan-native-rust-egui.md)) and runs on
-Linux, Windows and macOS.
+ThreadLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `threadliner-core`, with no webview and no JavaScript. It's the Phase 2 pilot of plan Option C ([`docs/plans/plan-native-rust-egui.md`](../../../docs/plans/plan-native-rust-egui.md)) and runs on Linux, Windows and macOS.
 
-It reads and writes exactly what the Electron and Tauri builds do: the same
-`~/.config/ThreadLiner` (`config.json`, `ui-preferences.json`) and the same git-synced data folder
-(`data/feeds.json`, `data/tags.json`, `data/feeds/<id>/entries.json`,
-`configuration/settings.json`), through the same `threadliner-core` store and sync engine. You can
-switch between the builds at any time.
+It reads and writes exactly what the Electron and Tauri builds do: the same `~/.config/ThreadLiner` (`config.json`, `ui-preferences.json`) and the same git-synced data folder (`data/feeds.json`, `data/tags.json`, `data/feeds/<id>/entries.json`, `configuration/settings.json`), through the same `threadliner-core` store and sync engine. You can switch between the builds at any time.
 
 ## Running
 
@@ -18,13 +11,10 @@ cargo run -p threadliner-native --release     # or: npm run native:threadliner
 cargo test -p threadliner-native              # needs `git` on the PATH, like the app
 ```
 
-The package is `threadliner-native`; its binary is `threadliner`, the one the release packages
-install as `/usr/bin/threadliner` (the native build replaced the Tauri and Electron ones; see
-[`docs/packaging.md`](../../../docs/packaging.md)).
+The package is `threadliner-native`; its binary is `threadliner`, the one the release packages install as `/usr/bin/threadliner` (the native build replaced the Tauri and Electron ones; see [`docs/packaging.md`](../../../docs/packaging.md)).
 
 - **First run** shows the setup dialog: pick (or create) the data folder and optionally a git remote.
-- **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and
-  LaanKit's title bar (shared with the Tauri build's `ui-preferences.json`; takes a restart).
+- **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and LaanKit's title bar (shared with the Tauri build's `ui-preferences.json`; takes a restart).
 - **Command palette.** Ctrl+Shift+P: every command, plus the feeds by name.
 
 ### Trying it without touching your setup
@@ -36,10 +26,7 @@ cargo run -p threadliner-native --example threadliner_demo_data -- /tmp/tl-data 
 cargo run -p threadliner-native --release
 ```
 
-`threadliner_demo_data` creates a git-backed data folder with those feeds and two tags, and a `config.json`
-under the temp `XDG_CONFIG_HOME` (Linux). On Windows the config folder is `%APPDATA%\ThreadLiner`
-(set `APPDATA` to redirect it) and on macOS `~/Library/Application Support/ThreadLiner`, as
-`laankit_core::paths` mirrors Electron's `userData`.
+`threadliner_demo_data` creates a git-backed data folder with those feeds and two tags, and a `config.json` under the temp `XDG_CONFIG_HOME` (Linux). On Windows the config folder is `%APPDATA%\ThreadLiner` (set `APPDATA` to redirect it) and on macOS `~/Library/Application Support/ThreadLiner`, as `laankit_core::paths` mirrors Electron's `userData`.
 
 ## Architecture
 
@@ -55,13 +42,11 @@ under the temp `XDG_CONFIG_HOME` (Linux). On Windows the config folder is `%APPD
 | `overlays`  | Add/Edit Feed, Remove Feed, Tags (+ Add/Edit/Delete Tag), Settings, Remote Sync, Help, About      |
 | `ui_tests`  | egui_kittest: setup → add feed → read → mark unread → tag, against a local HTTP feed; settings file shape |
 
-Nothing in `threadliner-core` knows about egui; everything UI-specific is in this crate or in
-`laankit-egui` / `laankit-richtext`.
+Nothing in `threadliner-core` knows about egui; everything UI-specific is in this crate or in `laankit-egui` / `laankit-richtext`.
 
 ## Parity with the Svelte build
 
-Every IPC channel of `src/main/preload.js` (as the Tauri host implements them) and the renderer's
-features.
+Every IPC channel of `src/main/preload.js` (as the Tauri host implements them) and the renderer's features.
 
 | Channel or feature                                         | Status          | Notes                                                                 |
 |------------------------------------------------------------|-----------------|-----------------------------------------------------------------------|
@@ -101,12 +86,10 @@ features.
 | `LAANKIT_FEED=<n>`, `LAANKIT_ENTRY=<n>` | Select the nth feed and entry once loaded                    |
 | `LAANKIT_OPEN=<dialog>`         | `add`, `tags`, `settings[:ui\|feeds\|sync\|shortcuts]`, `sync`, `about`, `help` or `palette` |
 
-On GNOME Wayland the compositor stops painting while the session is locked, so screenshots never
-fire; use `WAYLAND_DISPLAY=` (XWayland) or an unlocked session.
+On GNOME Wayland the compositor stops painting while the session is locked, so screenshots never fire; use `WAYLAND_DISPLAY=` (XWayland) or an unlocked session.
 
 ## Still to verify by hand
 
-- Windows and macOS: folder dialog, notifications, undecorated window chrome, keyboard shortcuts on
-  non-US layouts.
+- Windows and macOS: folder dialog, notifications, undecorated window chrome, keyboard shortcuts on non-US layouts.
 - Linux: notifications under GNOME/KDE, the folder dialog without an XDG portal (minimal window managers).
 - Connect, pull, push and reset against a real remote (the tests cover a local repo only).
