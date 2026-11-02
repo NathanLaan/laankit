@@ -266,14 +266,10 @@ fn generate(rng: &mut Rng) -> Diagram {
                 ShapeKind::Circle,
                 ShapeKind::Parallelogram,
                 ShapeKind::Trapezoid,
-                ShapeKind::Other {
-                    open: "(((".into(),
-                    close: ")))".into(),
-                },
-                ShapeKind::Other {
-                    open: "[\\".into(),
-                    close: "/]".into(),
-                },
+                ShapeKind::DoubleCircle,
+                ShapeKind::ReverseParallelogram,
+                ShapeKind::InvertedTrapezoid,
+                ShapeKind::Asymmetric,
             ])
             .clone();
         let rect = Rect::new(

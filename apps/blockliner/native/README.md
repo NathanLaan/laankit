@@ -22,10 +22,10 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | Keys | Does |
 |---|---|
 | V, R, O, L, A, J, E, T, or 1–9 | Select, Rectangle, Rounded Rectangle, Line, Arrow, Right-Angle Line, Right-Angle Arrow, Text tool (Shift: keep the tool after each shape). The numbers follow the toolbar and show in each tool button's corner; they're physical keys, so the number row works on any layout |
-| D, H, C, S, or 4 | Diamond, Hexagon, Database (cylinder), Subroutine. They share the More Shapes button with Stadium, Circle, Parallelogram and Trapezoid (no letters; the list or the palette): 4 (or a click) picks the one it shows, the last used; its corner triangle or a right-click lists all eight |
+| D, H, C, S, or 4 | Diamond, Hexagon, Database (cylinder), Subroutine. They share the More Shapes button with Stadium, Circle, Double Circle, Parallelogram, Reverse Parallelogram, Trapezoid, Inverted Trapezoid and Asymmetric (no letters; the list or the palette): 4 (or a click) picks the one it shows, the last used; its corner triangle or a right-click lists all twelve |
 | Drag a right-angle line's middle handle | Moves its middle segment across (double-click the handle: automatic again) |
 | Right-click | Selects what's under it, then a menu: Edit Label, Cut, Copy, Paste, Fill ▸ (shapes) and Stroke ▸ (shapes and lines; eight presets, Default, Custom…) and Reset Style, Right-Angle / Straight for lines, Delete, Select All |
-| Drag / click (shape tool) | Draws a shape (click: the default size, 8 × 3 cells; 8 × 4 for a diamond, 6 × 4 for a database) |
+| Drag / click (shape tool) | Draws a shape (click: the default size, 8 × 3 cells; 8 × 4 for a diamond, 6 × 4 for a database, 4 × 4 for a circle, 5 × 5 for a double circle) |
 | Double-click a shape | Edits its label (Enter commits, Shift+Enter adds a line, Esc cancels) |
 | Double-click a connector or its label, or Enter | Edits the edge label (`a -->\|"HTTPS"\| b`); empty removes it. Enter edits the single selected shape's or connector's label. A free line has no Mermaid edge to keep a label on |
 | Arrow keys | Nudge one grid step (Shift: 5 steps, Alt: 1 px) |

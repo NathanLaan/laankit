@@ -34,8 +34,12 @@ pub enum Tool {
     Subroutine,
     Stadium,
     Circle,
+    DoubleCircle,
     Parallelogram,
+    ReverseParallelogram,
     Trapezoid,
+    InvertedTrapezoid,
+    Asymmetric,
     Line,
     Arrow,
     ElbowLine,
@@ -45,7 +49,7 @@ pub enum Tool {
 
 impl Tool {
     /// In toolbar order. The [`Tool::MORE`] shapes share one button.
-    pub const ALL: [Tool; 16] = [
+    pub const ALL: [Tool; 20] = [
         Tool::Select,
         Tool::Rect,
         Tool::RoundRect,
@@ -55,8 +59,12 @@ impl Tool {
         Tool::Subroutine,
         Tool::Stadium,
         Tool::Circle,
+        Tool::DoubleCircle,
         Tool::Parallelogram,
+        Tool::ReverseParallelogram,
         Tool::Trapezoid,
+        Tool::InvertedTrapezoid,
+        Tool::Asymmetric,
         Tool::Line,
         Tool::Arrow,
         Tool::ElbowLine,
@@ -65,15 +73,19 @@ impl Tool {
     ];
 
     /// Behind the toolbar's More Shapes button.
-    pub const MORE: [Tool; 8] = [
+    pub const MORE: [Tool; 12] = [
         Tool::Diamond,
         Tool::Hexagon,
         Tool::Database,
         Tool::Subroutine,
         Tool::Stadium,
         Tool::Circle,
+        Tool::DoubleCircle,
         Tool::Parallelogram,
+        Tool::ReverseParallelogram,
         Tool::Trapezoid,
+        Tool::InvertedTrapezoid,
+        Tool::Asymmetric,
     ];
 
     /// One of the [`Tool::MORE`] shapes.
@@ -84,7 +96,7 @@ impl Tool {
     /// Its place in the toolbar, from 0 (which the number keys follow).
     pub fn slot(self) -> usize {
         let i = Tool::ALL.iter().position(|&t| t == self).unwrap_or(0);
-        // The more shapes (3 to 10) are one button.
+        // The more shapes (3 to 14) are one button.
         let more = Tool::MORE.len();
         match i {
             0..=3 => i,
@@ -104,8 +116,12 @@ impl Tool {
             Tool::Subroutine => "Subroutine",
             Tool::Stadium => "Stadium",
             Tool::Circle => "Circle",
+            Tool::DoubleCircle => "Double Circle",
             Tool::Parallelogram => "Parallelogram",
+            Tool::ReverseParallelogram => "Reverse Parallelogram",
             Tool::Trapezoid => "Trapezoid",
+            Tool::InvertedTrapezoid => "Inverted Trapezoid",
+            Tool::Asymmetric => "Asymmetric",
             Tool::Line => "Line",
             Tool::Arrow => "Arrow",
             Tool::ElbowLine => "Right-Angle Line",
@@ -125,8 +141,12 @@ impl Tool {
             Tool::Subroutine => Some(ShapeKind::Subroutine),
             Tool::Stadium => Some(ShapeKind::Stadium),
             Tool::Circle => Some(ShapeKind::Circle),
+            Tool::DoubleCircle => Some(ShapeKind::DoubleCircle),
             Tool::Parallelogram => Some(ShapeKind::Parallelogram),
+            Tool::ReverseParallelogram => Some(ShapeKind::ReverseParallelogram),
             Tool::Trapezoid => Some(ShapeKind::Trapezoid),
+            Tool::InvertedTrapezoid => Some(ShapeKind::InvertedTrapezoid),
+            Tool::Asymmetric => Some(ShapeKind::Asymmetric),
             Tool::Text => Some(ShapeKind::Text),
             _ => None,
         }

@@ -1,5 +1,6 @@
 //! Opening a hand-written flowchart, headlessly: its nodes are laid out in
-//! ranks, shapes BlockLiner can't fully edit say why, and the first edit
+//! ranks, shapes BlockLiner can't fully edit say why (and its own shapes,
+//! the double circle among them, say nothing), and the first edit
 //! saves the layout with the kept statements intact.
 
 use std::fs;
@@ -44,9 +45,9 @@ fn a_hand_written_file_is_laid_out_in_ranks() {
     let rect = |id: &str| d.shape(id).unwrap().rect;
     assert_eq!(rect("web").center().x, rect("api").center().x, "a column");
 
-    // The cache is a Mermaid shape drawn as a box; psp is declared in the
-    // subgraph. Hovering says so; a plain box or a database (one of
-    // BlockLiner's own shapes) says nothing.
+    // psp is declared in the subgraph: hovering says so. A plain box, a
+    // database or the cache's double circle (BlockLiner's own shapes) says
+    // nothing.
     let note = |h: &crate::ui_tests::H| {
         let s = h.state();
         s.canvas().limitation(s.diagram()).map(|(_, text)| text)
@@ -59,15 +60,15 @@ fn a_hand_written_file_is_laid_out_in_ranks() {
         d.shape("bus").unwrap().kind,
         blockliner_core::ShapeKind::Database
     );
+    assert_eq!(
+        d.shape("cache").unwrap().kind,
+        blockliner_core::ShapeKind::DoubleCircle
+    );
     let (cache, psp, web) = (center("cache"), center("psp"), center("web"));
     let bus = center("bus");
     h.hover_at(cache);
     h.run_steps(2);
-    assert!(
-        note(&h).unwrap().contains("((( ))) shape"),
-        "{:?}",
-        note(&h)
-    );
+    assert_eq!(note(&h), None);
     h.hover_at(bus);
     h.run_steps(2);
     assert_eq!(note(&h), None);

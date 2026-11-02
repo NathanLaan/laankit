@@ -307,10 +307,6 @@ mod tests {
                 Some((ShapeKind::RoundRect, "Orders service"))
             )])
         );
-        let other = |o: &str, c: &str| ShapeKind::Other {
-            open: o.into(),
-            close: c.into(),
-        };
         assert_eq!(
             tokenize("db[(Orders)]"),
             Some(vec![node("db", Some((ShapeKind::Database, "Orders")))])
@@ -343,14 +339,27 @@ mod tests {
             tokenize("t[/Trap\\]"),
             Some(vec![node("t", Some((ShapeKind::Trapezoid, "Trap")))])
         );
-        // The mirrored ones stay as written.
         assert_eq!(
             tokenize("m[\\Out\\]"),
-            Some(vec![node("m", Some((other("[\\", "\\]"), "Out")))])
+            Some(vec![node(
+                "m",
+                Some((ShapeKind::ReverseParallelogram, "Out"))
+            )])
+        );
+        assert_eq!(
+            tokenize("i[\\Manual/]"),
+            Some(vec![node(
+                "i",
+                Some((ShapeKind::InvertedTrapezoid, "Manual"))
+            )])
         );
         assert_eq!(
             tokenize("c(((Stop)))"),
-            Some(vec![node("c", Some((other("(((", ")))"), "Stop")))])
+            Some(vec![node("c", Some((ShapeKind::DoubleCircle, "Stop")))])
+        );
+        assert_eq!(
+            tokenize("f>\"Flag\"]"),
+            Some(vec![node("f", Some((ShapeKind::Asymmetric, "Flag")))])
         );
         assert_eq!(
             tokenize("n[\"Retries #quot;soon#quot;<br>maybe\"]:::bl_text"),
