@@ -9,6 +9,7 @@ use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
 
 use blockliner_core::style::PRESETS;
+use blockliner_core::ShapeKind;
 
 use crate::canvas::{Swatch, Tool};
 
@@ -41,6 +42,12 @@ pub enum Act {
     RouteElbow,
     /// …or straight.
     RouteStraight,
+    /// The selected shapes become this kind (Change Shape).
+    ChangeShape(ShapeKind),
+    /// The selected lines get an arrowhead…
+    AddArrowheads,
+    /// …or lose it.
+    RemoveArrowheads,
     /// The selected shapes' fill…
     Fill(Swatch),
     /// …or stroke.
@@ -83,6 +90,12 @@ pub struct View {
     pub fillable: bool,
     /// The selection is one shape or Mermaid edge whose label can be edited.
     pub labellable: bool,
+    /// A selected shape can change kind (one BlockLiner declares).
+    pub changeable: bool,
+    /// Selected lines include one without an arrowhead…
+    pub plain_line_selected: bool,
+    /// …or one with.
+    pub arrow_selected: bool,
     pub can_undo: bool,
     pub can_redo: bool,
 }
@@ -126,6 +139,18 @@ fn fillable(v: &View) -> bool {
 
 fn labellable(v: &View) -> bool {
     ready(v) && v.labellable
+}
+
+fn changeable(v: &View) -> bool {
+    ready(v) && v.changeable
+}
+
+fn has_plain_line(v: &View) -> bool {
+    ready(v) && v.plain_line_selected
+}
+
+fn has_arrow(v: &View) -> bool {
+    ready(v) && v.arrow_selected
 }
 
 fn undoable(v: &View) -> bool {
@@ -333,6 +358,44 @@ pub fn registry() -> Registry<Act, View> {
         )
         .when(has_elbow),
     );
+    // Change Shape and arrowheads: palette-only (and the right-click menu
+    // and the Properties pane). The letters already pick drawing tools.
+    for kind in ShapeKind::CHANGEABLE {
+        let id: String = kind
+            .name()
+            .to_lowercase()
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect();
+        let label = format!("Change Shape: {}", kind.name());
+        r.register(
+            add(
+                &format!("edit.changeShape.{id}"),
+                &label,
+                "Edit",
+                Act::ChangeShape(kind),
+            )
+            .when(changeable),
+        );
+    }
+    r.register(
+        add(
+            "edit.addArrowheads",
+            "Add Arrowheads",
+            "Edit",
+            Act::AddArrowheads,
+        )
+        .when(has_plain_line),
+    );
+    r.register(
+        add(
+            "edit.removeArrowheads",
+            "Remove Arrowheads",
+            "Edit",
+            Act::RemoveArrowheads,
+        )
+        .when(has_arrow),
+    );
     // Colours: palette-only (and the right-click menu).
     type When = fn(&View) -> bool;
     for (part, make, when) in [
@@ -473,6 +536,9 @@ mod tests {
             stylable: true,
             fillable: true,
             labellable: true,
+            changeable: true,
+            plain_line_selected: true,
+            arrow_selected: true,
             can_undo: true,
             can_redo: true,
         };
@@ -496,6 +562,9 @@ mod tests {
                 stylable: true,
                 fillable: true,
                 labellable: true,
+                changeable: true,
+                plain_line_selected: true,
+                arrow_selected: true,
                 can_undo: true,
                 can_redo: true,
             })

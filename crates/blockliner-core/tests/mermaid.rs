@@ -348,3 +348,71 @@ fn generated_diagrams_round_trip() {
         assert_eq!(write(&back), text, "seed {seed}");
     }
 }
+
+/// Change Shape and arrowheads: each kind a shape can become saves and
+/// reads back as that kind, with its box, label, colour, class (but see
+/// Text) and glued
+/// connectors kept; a line flipped to an arrow (and back) keeps its label,
+/// route and colour; a free line's `@line` kind flips too.
+#[test]
+fn changed_kinds_round_trip() {
+    let mut d = Diagram::new();
+    let mut api = Shape::new(
+        "api",
+        ShapeKind::Rect,
+        "API",
+        Rect::new(40.0, 40.0, 160.0, 60.0),
+    );
+    api.style.set_fill(Some(Colour::parse("#dbeafe")));
+    api.class = Some("hot".into());
+    d.shapes.push(api);
+    d.shapes.push(Shape::new(
+        "db",
+        ShapeKind::Database,
+        "DB",
+        Rect::new(300.0, 40.0, 120.0, 80.0),
+    ));
+    let mut edge = Connector::new(
+        ConnectorKind::Line,
+        End::glued("api", Some(Anchor::E)),
+        End::glued("db", None),
+    )
+    .with_route(Route::ELBOW);
+    edge.label = Some("SQL".into());
+    edge.style.stroke = Some(Colour::parse("#ef4444"));
+    d.connectors.push(edge);
+    d.connectors.push(Connector::new(
+        ConnectorKind::Arrow,
+        End::Free(Point::new(0.0, 0.0)),
+        End::glued("api", None),
+    ));
+
+    for kind in ShapeKind::CHANGEABLE {
+        let mut changed = d.clone();
+        let n = changed.set_shape_kind(&["api".into()], &kind);
+        assert_eq!(n, usize::from(kind != ShapeKind::Rect), "{kind:?}");
+        let back = read(&write(&changed)).unwrap();
+        let api = back.shape("api").unwrap();
+        assert_eq!(api.kind, kind);
+        assert_eq!(api.rect, Rect::new(40.0, 40.0, 160.0, 60.0));
+        assert_eq!(api.label, "API");
+        // Text is written `:::bl_text`, and a node takes one class, so a
+        // class of its own isn't saved.
+        let class = (kind != ShapeKind::Text).then_some("hot");
+        assert_eq!(api.class.as_deref(), class, "{kind:?}");
+        assert_eq!(api.style.props(), d.shape("api").unwrap().style.props());
+        assert_eq!(back.connectors, changed.connectors, "{kind:?}");
+    }
+
+    // Line → arrow, then the free arrow → line.
+    let mut flipped = d.clone();
+    assert_eq!(flipped.set_connector_kind(&[0, 1], ConnectorKind::Arrow), 1);
+    assert_eq!(flipped.set_connector_kind(&[1], ConnectorKind::Line), 1);
+    let text = write(&flipped);
+    assert!(text.contains("  api -->|\"SQL\"| db\n"), "{text}");
+    assert!(text.contains("  linkStyle 0 stroke:#ef4444\n"), "{text}");
+    assert!(text.contains("%% @line line from=0,0 to=api"), "{text}");
+    let back = read(&text).unwrap();
+    assert_eq!(back.connectors, flipped.connectors);
+    assert!(back.connectors[0].route.is_elbow());
+}

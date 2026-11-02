@@ -252,26 +252,39 @@ fn more_shapes_button(ui: &mut Ui, shown: Tool, tool: Tool) -> Option<Tool> {
 /// A row of the More Shapes list: the shape's icon, name and letter (if it
 /// has one).
 fn more_shapes_row(ui: &mut Ui, tool: Tool, active: bool) -> bool {
+    let letter = tool_key(tool).map(|(_, letter)| letter);
+    icon_row(ui, tool, tool.name(), letter, active, 190.0).clicked()
+}
+
+/// A row of an icon list (More Shapes, Change Shape, Change Line): `icon`'s
+/// toolbar icon, `name`, and a key letter on the right if it has one;
+/// ticked (in the accent) when `active`.
+pub(crate) fn icon_row(
+    ui: &mut Ui,
+    icon: Tool,
+    name: &str,
+    letter: Option<&str>,
+    active: bool,
+    width: f32,
+) -> egui::Response {
     let p = theme::palette(ui.ctx());
-    let (rect, resp) = ui.allocate_exact_size(vec2(190.0, 30.0), Sense::click());
-    resp.widget_info(|| {
-        egui::WidgetInfo::selected(egui::Role::MenuItemRadio, true, active, tool.name())
-    });
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::MenuItemRadio, true, active, name));
     if resp.hovered() {
         ui.painter().rect_filled(rect, 4.0, p.bg_button);
     }
     let ink = if active { p.accent } else { p.text_primary };
-    let icon = pos2(rect.left() + 18.0, rect.center().y);
-    paint_tool_icon(ui.painter(), tool, icon, ink);
+    let at = pos2(rect.left() + 18.0, rect.center().y);
+    paint_tool_icon(ui.painter(), icon, at, ink);
     let font = FontId::proportional(theme::BODY_SIZE);
     ui.painter().text(
         pos2(rect.left() + 38.0, rect.center().y),
         Align2::LEFT_CENTER,
-        tool.name(),
+        name,
         font.clone(),
         ink,
     );
-    if let Some((_, letter)) = tool_key(tool) {
+    if let Some(letter) = letter {
         ui.painter().text(
             pos2(rect.right() - 10.0, rect.center().y),
             Align2::RIGHT_CENTER,
@@ -280,10 +293,11 @@ fn more_shapes_row(ui: &mut Ui, tool: Tool, active: bool) -> bool {
             p.text_muted,
         );
     }
-    resp.clicked()
+    resp
 }
 
-fn paint_tool_icon(painter: &egui::Painter, tool: Tool, c: Pos2, ink: Color32) {
+/// A tool's toolbar icon, centred on `c`.
+pub(crate) fn paint_tool_icon(painter: &egui::Painter, tool: Tool, c: Pos2, ink: Color32) {
     let stroke = Stroke::new(1.6, ink);
     let shape = Rect::from_center_size(c, vec2(18.0, 12.0));
     match tool {
@@ -350,7 +364,15 @@ fn paint_tool_icon(painter: &egui::Painter, tool: Tool, c: Pos2, ink: Color32) {
                 paint::outline(painter, r, &kind, 0.4, Color32::TRANSPARENT, stroke);
             }
         }
-        Tool::Select | Tool::Text => {}
+        // The toolbar draws these as glyphs; lists draw them here.
+        Tool::Select | Tool::Text => {
+            let glyph = if tool == Tool::Text {
+                icons::FONT
+            } else {
+                icons::ARROW_POINTER
+            };
+            painter.text(c, Align2::CENTER_CENTER, glyph, icons::font(14.0), ink);
+        }
     }
 }
 

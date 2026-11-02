@@ -128,6 +128,48 @@ impl ShapeKind {
         ShapeKind::Asymmetric,
     ];
 
+    /// What a shape can be changed into (Change Shape), in toolbar order:
+    /// the boxes, the More Shapes, then text.
+    pub const CHANGEABLE: [ShapeKind; 15] = [
+        ShapeKind::Rect,
+        ShapeKind::RoundRect,
+        ShapeKind::Diamond,
+        ShapeKind::Hexagon,
+        ShapeKind::Database,
+        ShapeKind::Subroutine,
+        ShapeKind::Stadium,
+        ShapeKind::Circle,
+        ShapeKind::DoubleCircle,
+        ShapeKind::Parallelogram,
+        ShapeKind::ReverseParallelogram,
+        ShapeKind::Trapezoid,
+        ShapeKind::InvertedTrapezoid,
+        ShapeKind::Asymmetric,
+        ShapeKind::Text,
+    ];
+
+    /// Its name in the UI: "Rectangle", "Double Circle", …
+    pub fn name(&self) -> &'static str {
+        match self {
+            ShapeKind::Rect => "Rectangle",
+            ShapeKind::RoundRect => "Rounded Rectangle",
+            ShapeKind::Text => "Text",
+            ShapeKind::Diamond => "Diamond",
+            ShapeKind::Hexagon => "Hexagon",
+            ShapeKind::Database => "Database",
+            ShapeKind::Subroutine => "Subroutine",
+            ShapeKind::Stadium => "Stadium",
+            ShapeKind::Circle => "Circle",
+            ShapeKind::DoubleCircle => "Double Circle",
+            ShapeKind::Parallelogram => "Parallelogram",
+            ShapeKind::ReverseParallelogram => "Reverse Parallelogram",
+            ShapeKind::Trapezoid => "Trapezoid",
+            ShapeKind::InvertedTrapezoid => "Inverted Trapezoid",
+            ShapeKind::Asymmetric => "Asymmetric",
+            ShapeKind::Other { .. } => "Shape",
+        }
+    }
+
     /// The Mermaid brackets around the label.
     pub fn delimiters(&self) -> (&str, &str) {
         match self {
@@ -453,6 +495,34 @@ impl Diagram {
         before - self.shapes.len()
     }
 
+    /// Makes the shapes with these ids `kind` (Change Shape), keeping their
+    /// box, label, colours, class and glued connectors. Shapes declared in
+    /// kept Mermaid statements are skipped: their brackets aren't
+    /// BlockLiner's to rewrite. Returns how many changed.
+    pub fn set_shape_kind(&mut self, ids: &[String], kind: &ShapeKind) -> usize {
+        let mut changed = 0;
+        for s in &mut self.shapes {
+            if !s.external && s.kind != *kind && ids.contains(&s.id) {
+                s.kind = kind.clone();
+                changed += 1;
+            }
+        }
+        changed
+    }
+
+    /// Makes the connectors at these indexes lines or arrows, keeping
+    /// everything else about them. Returns how many changed.
+    pub fn set_connector_kind(&mut self, indexes: &[usize], kind: ConnectorKind) -> usize {
+        let mut changed = 0;
+        for &i in indexes {
+            if let Some(c) = self.connectors.get_mut(i).filter(|c| c.kind != kind) {
+                c.kind = kind;
+                changed += 1;
+            }
+        }
+        changed
+    }
+
     /// Gives a shape a new id, updating the connectors glued to it. `false`
     /// if `from` doesn't exist or `to` is taken.
     pub fn rename_shape(&mut self, from: &str, to: &str) -> bool {
@@ -514,5 +584,37 @@ mod tests {
         assert_eq!(d.connectors.len(), 1, "the line glued to api_2 went too");
         assert_eq!(d.remove_shapes(&["db".into()]), 1);
         assert!(d.connectors.is_empty());
+    }
+
+    #[test]
+    fn changing_kinds() {
+        let mut d = Diagram::new();
+        let r = Rect::new(0.0, 0.0, 10.0, 10.0);
+        let a = d.add_shape(ShapeKind::Rect, r, "a");
+        let b = d.add_shape(ShapeKind::Diamond, r, "b");
+        let kept = d.add_shape(ShapeKind::Rect, r, "kept");
+        d.shape_mut(&kept).unwrap().external = true;
+        let ids = [a.clone(), b.clone(), kept.clone()];
+        // b is already a diamond; the kept-statement shape is skipped.
+        assert_eq!(d.set_shape_kind(&ids, &ShapeKind::Diamond), 1);
+        assert_eq!(d.shape(&a).unwrap().kind, ShapeKind::Diamond);
+        assert_eq!(d.shape(&kept).unwrap().kind, ShapeKind::Rect);
+        assert_eq!(d.set_shape_kind(&ids, &ShapeKind::Diamond), 0);
+
+        d.connectors.push(Connector::new(
+            ConnectorKind::Line,
+            End::glued(a.as_str(), None),
+            End::glued(b.as_str(), None),
+        ));
+        // A missing index is ignored.
+        assert_eq!(d.set_connector_kind(&[0, 9], ConnectorKind::Arrow), 1);
+        assert_eq!(d.connectors[0].kind, ConnectorKind::Arrow);
+        assert_eq!(d.set_connector_kind(&[0], ConnectorKind::Arrow), 0);
+
+        // Every changeable kind has a name of its own.
+        let mut names: Vec<_> = ShapeKind::CHANGEABLE.iter().map(|k| k.name()).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), ShapeKind::CHANGEABLE.len());
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "blockliner-native"
-version = "2.3.1"
+version = "2.4.0"
 description = "BlockLiner: a Visio-style diagram editor for software architecture, saving Mermaid flowcharts. An egui UI over blockliner-core."
 edition.workspace = true
 license.workspace = true

@@ -28,7 +28,9 @@ pub mod view;
 use blockliner_core::geometry::Handle;
 use blockliner_core::snap::snap_point;
 use blockliner_core::style::{common, preset_index, Common, Style, PRESETS};
-use blockliner_core::{Connector, Diagram, End, Point, Rect as ModelRect};
+use blockliner_core::{
+    Connector, ConnectorKind, Diagram, End, Point, Rect as ModelRect, ShapeKind,
+};
 use egui::{CursorIcon, Key, PointerButton, Pos2, Rect, Sense, Ui, Vec2};
 use laankit_egui::theme;
 
@@ -62,9 +64,12 @@ pub struct Output {
 }
 
 /// The canvas's right-click menu. Each is also a command.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuAction {
     EditLabel,
+    ChangeShape(ShapeKind),
+    AddArrowheads,
+    RemoveArrowheads,
     Cut,
     Copy,
     Paste,
@@ -75,6 +80,54 @@ pub enum MenuAction {
     ResetStyle,
     Delete,
     SelectAll,
+}
+
+/// One kind (a shape's, a line's) across a selection.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Agreed<T> {
+    /// Nothing to ask.
+    None,
+    /// They are all this.
+    Same(T),
+    /// They differ.
+    Mixed,
+}
+
+impl<T: PartialEq> Agreed<T> {
+    fn of(values: impl IntoIterator<Item = T>) -> Self {
+        let mut values = values.into_iter();
+        let Some(first) = values.next() else {
+            return Agreed::None;
+        };
+        if values.all(|v| v == first) {
+            Agreed::Same(first)
+        } else {
+            Agreed::Mixed
+        }
+    }
+}
+
+/// What [`Canvas::selected_kinds`] reports: the kinds of the selected
+/// shapes BlockLiner declares, and of the selected lines.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SelectionKinds {
+    pub shape: Agreed<ShapeKind>,
+    pub line: Agreed<ConnectorKind>,
+}
+
+impl SelectionKinds {
+    /// Whether a selected line has no arrowhead…
+    pub fn any_line(&self) -> bool {
+        matches!(self.line, Agreed::Mixed | Agreed::Same(ConnectorKind::Line))
+    }
+
+    /// …or has one.
+    pub fn any_arrow(&self) -> bool {
+        matches!(
+            self.line,
+            Agreed::Mixed | Agreed::Same(ConnectorKind::Arrow)
+        )
+    }
 }
 
 /// What [`Canvas::selected_style`] reports.
@@ -188,6 +241,46 @@ impl Canvas {
                 }
             }
         }
+    }
+
+    /// The selected shapes' and lines' kinds, for Change Shape and Change
+    /// Line. Kept-statement shapes don't count: they can't change.
+    pub fn selected_kinds(&self, d: &Diagram) -> SelectionKinds {
+        SelectionKinds {
+            shape: Agreed::of(
+                self.selection
+                    .iter()
+                    .filter_map(|id| d.shape(id))
+                    .filter(|s| !s.external)
+                    .map(|s| s.kind.clone()),
+            ),
+            line: Agreed::of(
+                self.lines
+                    .iter()
+                    .filter_map(|&i| d.connectors.get(i))
+                    .map(|c| c.kind),
+            ),
+        }
+    }
+
+    /// Makes each selected shape BlockLiner declares `kind`. A label being
+    /// edited is committed first, so the change is an undo step of its own.
+    /// `false` if none changed.
+    pub fn change_shape(&mut self, d: &mut Diagram, kind: &ShapeKind) -> bool {
+        self.commit_label(d);
+        d.set_shape_kind(&self.selection, kind) > 0
+    }
+
+    /// Gives the selected lines an arrowhead (`on`) or takes it away.
+    /// `false` if none changed.
+    pub fn set_arrowheads(&mut self, d: &mut Diagram, on: bool) -> bool {
+        self.commit_label(d);
+        let kind = if on {
+            ConnectorKind::Arrow
+        } else {
+            ConnectorKind::Line
+        };
+        d.set_connector_kind(&self.lines, kind) > 0
     }
 
     /// The canvas's top-left corner on screen (model origin at 100 % and no
@@ -368,6 +461,7 @@ impl Canvas {
         let (stylable, fillable) = (self.stylable(d), self.fillable(d));
         let style = self.selected_style(d);
         let labelled = self.can_edit_label(d);
+        let kinds = self.selected_kinds(d);
         let mut picked = None;
         resp.context_menu(|ui| {
             let mut item = |ui: &mut Ui, text: &str, keys: &str, on: bool, act: MenuAction| {
@@ -387,6 +481,21 @@ impl Canvas {
             }
             item(ui, "Paste", "Ctrl+V", true, MenuAction::Paste);
             ui.separator();
+            // Change Shape ▸: every kind, the selection's own ticked.
+            if fillable {
+                ui.menu_button("Change Shape", |ui| {
+                    for kind in ShapeKind::CHANGEABLE {
+                        let icon = Tool::for_shape(&kind).unwrap_or(Tool::Rect);
+                        let active = kinds.shape == Agreed::Same(kind.clone());
+                        if crate::views::icon_row(ui, icon, kind.name(), None, active, 210.0)
+                            .clicked()
+                        {
+                            picked = Some(MenuAction::ChangeShape(kind));
+                            ui.close();
+                        }
+                    }
+                });
+            }
             if stylable {
                 for (title, stroke) in [("Fill", false), ("Stroke", true)] {
                     // Lines take only a stroke.
@@ -420,6 +529,15 @@ impl Canvas {
             if lines {
                 item(ui, "Right-Angle", "", straight, MenuAction::RouteElbow);
                 item(ui, "Straight", "", elbow, MenuAction::RouteStraight);
+                let (plain, arrow) = (kinds.any_line(), kinds.any_arrow());
+                item(ui, "Add Arrowhead", "", plain, MenuAction::AddArrowheads);
+                item(
+                    ui,
+                    "Remove Arrowhead",
+                    "",
+                    arrow,
+                    MenuAction::RemoveArrowheads,
+                );
                 ui.separator();
             }
             item(ui, "Delete", "Delete", any, MenuAction::Delete);

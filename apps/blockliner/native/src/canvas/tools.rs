@@ -106,27 +106,16 @@ impl Tool {
     }
 
     pub fn name(self) -> &'static str {
+        if let Some(kind) = self.shape_kind() {
+            return kind.name();
+        }
         match self {
             Tool::Select => "Select",
-            Tool::Rect => "Rectangle",
-            Tool::RoundRect => "Rounded Rectangle",
-            Tool::Diamond => "Diamond",
-            Tool::Hexagon => "Hexagon",
-            Tool::Database => "Database",
-            Tool::Subroutine => "Subroutine",
-            Tool::Stadium => "Stadium",
-            Tool::Circle => "Circle",
-            Tool::DoubleCircle => "Double Circle",
-            Tool::Parallelogram => "Parallelogram",
-            Tool::ReverseParallelogram => "Reverse Parallelogram",
-            Tool::Trapezoid => "Trapezoid",
-            Tool::InvertedTrapezoid => "Inverted Trapezoid",
-            Tool::Asymmetric => "Asymmetric",
             Tool::Line => "Line",
             Tool::Arrow => "Arrow",
             Tool::ElbowLine => "Right-Angle Line",
             Tool::ElbowArrow => "Right-Angle Arrow",
-            Tool::Text => "Text",
+            _ => unreachable!("a shape tool"),
         }
     }
 
@@ -150,6 +139,13 @@ impl Tool {
             Tool::Text => Some(ShapeKind::Text),
             _ => None,
         }
+    }
+
+    /// The tool that draws `kind` (whose icon stands for it), if any.
+    pub fn for_shape(kind: &ShapeKind) -> Option<Tool> {
+        Tool::ALL
+            .into_iter()
+            .find(|t| t.shape_kind().as_ref() == Some(kind))
     }
 
     /// The connector a line tool makes.

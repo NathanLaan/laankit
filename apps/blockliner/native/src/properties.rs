@@ -1,6 +1,7 @@
-//! The Properties pane, below the diagram list: what's selected, and its
-//! Fill and Stroke (the current value, Default and the presets as swatches,
-//! a hex field), plus Reset Style.
+//! The Properties pane, below the diagram list: what's selected, Change
+//! Shape (the selected shapes' kind) and Change Line (whether the selected
+//! lines have arrowheads), then Fill and Stroke (the current value, Default
+//! and the presets as swatches, a hex field), plus Reset Style.
 //!
 //! A row whose shapes don't all agree shows **Mixed**: a split swatch, an
 //! empty field with a "Mixed" placeholder, and no swatch ringed. Picking a
@@ -8,18 +9,19 @@
 //! on its own, so one can be shared while the other is Mixed.
 
 use blockliner_core::style::{Colour, Common, PRESETS};
-use blockliner_core::{Diagram, ShapeKind};
-use egui::{vec2, Rect, Sense, Ui};
+use blockliner_core::{ConnectorKind, Diagram, ShapeKind};
+use egui::{pos2, vec2, Align2, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
 use laankit_egui::dialog::{self, ButtonKind};
 use laankit_egui::panes::HEADER_HEIGHT;
-use laankit_egui::{fonts, theme};
+use laankit_egui::{fonts, icons, theme};
 
 use crate::canvas::paint::{self, SwatchLook};
-use crate::canvas::{current_swatch, SelectionStyle, Swatch};
+use crate::canvas::{current_swatch, Agreed, SelectionKinds, SelectionStyle, Swatch, Tool};
 use crate::overlays::colour::INVALID;
 
-/// The pane's height when there's no saved one.
-pub const DEFAULT_HEIGHT: f32 = 380.0;
+/// The pane's height when there's no saved one: room for everything with
+/// both Change Shape and Change Line showing (shapes and lines selected).
+pub const DEFAULT_HEIGHT: f32 = 500.0;
 /// Its smallest height, and the least the diagram list keeps above it.
 pub const MIN_HEIGHT: f32 = 120.0;
 
@@ -32,6 +34,10 @@ pub enum PropertiesAction {
     FillHex(Colour),
     StrokeHex(Colour),
     ResetStyle,
+    /// Change Shape: the selected shapes become this kind.
+    ChangeShape(ShapeKind),
+    /// Change Line: arrowheads on (Arrow) or off (Line).
+    SetArrowheads(bool),
 }
 
 /// The pane's own state between frames: its two hex fields.
@@ -55,13 +61,20 @@ pub struct PropertiesProps {
     /// "2 shapes, 1 line", "Rectangle “API Gateway”", "Nothing selected".
     pub summary: String,
     pub style: SelectionStyle,
+    pub kinds: SelectionKinds,
 }
 
 impl PropertiesProps {
-    pub fn new(d: &Diagram, selection: &[String], style: SelectionStyle) -> Self {
+    pub fn new(
+        d: &Diagram,
+        selection: &[String],
+        style: SelectionStyle,
+        kinds: SelectionKinds,
+    ) -> Self {
         Self {
             summary: summary(d, selection, style.lines),
             style,
+            kinds,
         }
     }
 
@@ -111,24 +124,7 @@ pub fn summary(d: &Diagram, selection: &[String], lines: usize) -> String {
         ([], 0) => "Nothing selected".into(),
         ([id], 0) => match d.shape(id) {
             Some(s) => {
-                let kind = match s.kind {
-                    ShapeKind::Rect => "Rectangle",
-                    ShapeKind::RoundRect => "Rounded Rectangle",
-                    ShapeKind::Text => "Text",
-                    ShapeKind::Diamond => "Diamond",
-                    ShapeKind::Hexagon => "Hexagon",
-                    ShapeKind::Database => "Database",
-                    ShapeKind::Subroutine => "Subroutine",
-                    ShapeKind::Stadium => "Stadium",
-                    ShapeKind::Circle => "Circle",
-                    ShapeKind::DoubleCircle => "Double Circle",
-                    ShapeKind::Parallelogram => "Parallelogram",
-                    ShapeKind::ReverseParallelogram => "Reverse Parallelogram",
-                    ShapeKind::Trapezoid => "Trapezoid",
-                    ShapeKind::InvertedTrapezoid => "Inverted Trapezoid",
-                    ShapeKind::Asymmetric => "Asymmetric",
-                    ShapeKind::Other { .. } => "Shape",
-                };
+                let kind = s.kind.name();
                 let label = s.label.lines().next().unwrap_or("").trim();
                 if label.is_empty() {
                     kind.into()
@@ -198,6 +194,24 @@ fn contents(
             );
             ui.add_space(8.0);
             let reason = props.reason();
+            // Change Shape: also shown (off) for kept-statement shapes alone,
+            // whose reason is below.
+            if props.style.shapes > 0 || !props.style.external.is_empty() {
+                let on = props.style.shapes > 0;
+                if let Some(kind) = ui
+                    .add_enabled_ui(on, |ui| shape_row(ui, &props.kinds.shape))
+                    .inner
+                {
+                    out = Some(PropertiesAction::ChangeShape(kind));
+                }
+                ui.add_space(10.0);
+            }
+            if props.style.lines > 0 {
+                if let Some(on) = line_row(ui, &props.kinds.line) {
+                    out = Some(PropertiesAction::SetArrowheads(on));
+                }
+                ui.add_space(10.0);
+            }
             ui.add_enabled_ui(reason.is_none(), |ui| {
                 for stroke in [false, true] {
                     let field = if stroke {
@@ -232,6 +246,130 @@ fn contents(
         });
     });
     out
+}
+
+/// Change Shape: the selected shapes' kind (or Mixed), opening a list of
+/// every kind. The kind picked, unless they all already are it.
+fn shape_row(ui: &mut Ui, current: &Agreed<ShapeKind>) -> Option<ShapeKind> {
+    dialog::field_label(ui, "Change Shape:");
+    let shown = match current {
+        Agreed::Same(kind) => Some((Tool::for_shape(kind).unwrap_or(Tool::Rect), kind.name())),
+        _ => None,
+    };
+    let mut picked = None;
+    kind_select(ui, "Change Shape", shown, |ui, width| {
+        for kind in ShapeKind::CHANGEABLE {
+            let icon = Tool::for_shape(&kind).unwrap_or(Tool::Rect);
+            let active = *current == Agreed::Same(kind.clone());
+            if crate::views::icon_row(ui, icon, kind.name(), None, active, width).clicked() {
+                picked = Some(kind);
+            }
+        }
+    });
+    picked.filter(|k| *current != Agreed::Same(k.clone()))
+}
+
+/// Change Line: Line or Arrow (or Mixed) for the selected lines. `true`
+/// for arrowheads on, unless they all already have them.
+fn line_row(ui: &mut Ui, current: &Agreed<ConnectorKind>) -> Option<bool> {
+    dialog::field_label(ui, "Change Line:");
+    let look = |k: ConnectorKind| match k {
+        ConnectorKind::Line => (Tool::Line, "Line"),
+        ConnectorKind::Arrow => (Tool::Arrow, "Arrow"),
+    };
+    let shown = match current {
+        Agreed::Same(k) => Some(look(*k)),
+        _ => None,
+    };
+    let mut picked = None;
+    kind_select(ui, "Change Line", shown, |ui, width| {
+        for kind in [ConnectorKind::Line, ConnectorKind::Arrow] {
+            let (icon, name) = look(kind);
+            let active = *current == Agreed::Same(kind);
+            if crate::views::icon_row(ui, icon, name, None, active, width).clicked() {
+                picked = Some(kind);
+            }
+        }
+    });
+    picked
+        .filter(|k| *current != Agreed::Same(*k))
+        .map(|k| k == ConnectorKind::Arrow)
+}
+
+/// A closed select like Settings' (`laankit_egui::settings::select`), but
+/// showing the current value's icon, or "Mixed" when there's no one value;
+/// `options` fills the list below it, given the row width.
+fn kind_select(
+    ui: &mut Ui,
+    label: &str,
+    current: Option<(Tool, &str)>,
+    options: impl FnOnce(&mut Ui, f32),
+) {
+    let p = theme::palette(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, ui.is_enabled(), label));
+    let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&resp));
+    let fill = if resp.hovered() {
+        p.bg_button_hover
+    } else {
+        p.bg_button
+    };
+    let edge = if open || resp.has_focus() {
+        p.accent
+    } else {
+        p.border
+    };
+    let painter = ui.painter();
+    painter.rect(
+        rect,
+        CornerRadius::same(6),
+        fill,
+        Stroke::new(1.0, edge),
+        StrokeKind::Inside,
+    );
+    let font = FontId::proportional(theme::BODY_SIZE);
+    match current {
+        Some((icon, name)) => {
+            let ink = p.text_primary;
+            crate::views::paint_tool_icon(
+                painter,
+                icon,
+                pos2(rect.left() + 18.0, rect.center().y),
+                ink,
+            );
+            painter.text(
+                pos2(rect.left() + 38.0, rect.center().y),
+                Align2::LEFT_CENTER,
+                name,
+                font,
+                ink,
+            );
+        }
+        None => {
+            painter.text(
+                pos2(rect.left() + 12.0, rect.center().y),
+                Align2::LEFT_CENTER,
+                "Mixed",
+                font,
+                p.text_muted,
+            );
+        }
+    }
+    painter.text(
+        pos2(rect.right() - 12.0, rect.center().y),
+        Align2::RIGHT_CENTER,
+        icons::CHEVRON_DOWN,
+        icons::font(11.0),
+        p.text_muted,
+    );
+    let width = rect.width();
+    egui::Popup::menu(&resp)
+        .width(width)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        .show(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            options(ui, width - 8.0);
+        });
 }
 
 /// One property: its name, the current value's swatch and hex field, then
@@ -413,6 +551,10 @@ mod tests {
                 shapes,
                 lines,
                 external: external.iter().map(|s| s.to_string()).collect(),
+            },
+            kinds: crate::canvas::SelectionKinds {
+                shape: Agreed::None,
+                line: Agreed::None,
             },
         };
         assert_eq!(

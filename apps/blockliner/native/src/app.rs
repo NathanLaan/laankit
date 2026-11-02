@@ -305,6 +305,7 @@ impl BlockLinerApp {
     }
 
     fn view(&self) -> View {
+        let kinds = self.canvas.selected_kinds(&self.diagram);
         View {
             modal_open: self.overlay.is_some() || self.palette.is_some(),
             project_open: self.project.is_some(),
@@ -316,6 +317,9 @@ impl BlockLinerApp {
             stylable: self.canvas.stylable(&self.diagram),
             fillable: self.canvas.fillable(&self.diagram),
             labellable: self.canvas.can_edit_label(&self.diagram),
+            changeable: self.canvas.fillable(&self.diagram),
+            plain_line_selected: kinds.any_line(),
+            arrow_selected: kinds.any_arrow(),
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
         }
@@ -434,6 +438,15 @@ impl BlockLinerApp {
             }
             Act::RouteStraight => {
                 self.canvas.set_route(&mut self.diagram, false);
+            }
+            Act::ChangeShape(kind) => {
+                self.canvas.change_shape(&mut self.diagram, &kind);
+            }
+            Act::AddArrowheads => {
+                self.canvas.set_arrowheads(&mut self.diagram, true);
+            }
+            Act::RemoveArrowheads => {
+                self.canvas.set_arrowheads(&mut self.diagram, false);
             }
             Act::Fill(swatch) => self.style(swatch, false),
             Act::Stroke(swatch) => self.style(swatch, true),
@@ -1177,6 +1190,7 @@ impl BlockLinerApp {
             &self.diagram,
             &self.canvas.selection,
             self.canvas.selected_style(&self.diagram),
+            self.canvas.selected_kinds(&self.diagram),
         );
         if let (Some(project), true) = (&self.project, self.sidebar_visible) {
             let p = theme::palette(ui.ctx());
@@ -1245,6 +1259,9 @@ impl BlockLinerApp {
                 }
                 acts.extend(out.menu.map(|m| match m {
                     MenuAction::EditLabel => Act::EditLabel,
+                    MenuAction::ChangeShape(kind) => Act::ChangeShape(kind),
+                    MenuAction::AddArrowheads => Act::AddArrowheads,
+                    MenuAction::RemoveArrowheads => Act::RemoveArrowheads,
                     MenuAction::Cut => Act::Cut,
                     MenuAction::Copy => Act::Copy,
                     MenuAction::Paste => Act::Paste,
@@ -1266,6 +1283,9 @@ impl BlockLinerApp {
             Some(PropertiesAction::FillHex(c)) => self.apply_colour(Some(c), false),
             Some(PropertiesAction::StrokeHex(c)) => self.apply_colour(Some(c), true),
             Some(PropertiesAction::ResetStyle) => self.apply(Act::ResetStyle),
+            Some(PropertiesAction::ChangeShape(kind)) => self.apply(Act::ChangeShape(kind)),
+            Some(PropertiesAction::SetArrowheads(true)) => self.apply(Act::AddArrowheads),
+            Some(PropertiesAction::SetArrowheads(false)) => self.apply(Act::RemoveArrowheads),
             None => {}
         }
         for action in side {
