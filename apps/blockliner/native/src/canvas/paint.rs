@@ -4,6 +4,7 @@
 use blockliner_core::connect::path_midpoint;
 use blockliner_core::geometry::{self, Handle, DOUBLE_CIRCLE_GAP, SUBROUTINE_INSET};
 use blockliner_core::route::middle_segment;
+use blockliner_core::style::Dash;
 use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{vec2, Align, Color32, CornerRadius, FontId, Painter, Pos2, Stroke, StrokeKind};
@@ -23,7 +24,9 @@ pub const EDGE_LABEL_SIZE: f32 = 12.0;
 /// Space between an edge label's text and the edge of its patch, at 100 %.
 pub const EDGE_LABEL_PAD: f32 = 3.0;
 /// The round rectangle's corner radius at 100 %.
-pub const CORNER: f32 = 12.0;
+pub const CORNER: f32 = geometry::CORNER_RADIUS;
+/// A dotted stroke's pitch at 100 %: a dot and the gap after it (`2 3`).
+pub const DOT_PITCH: f32 = 5.0;
 /// Arrowhead length at 100 %.
 pub const ARROW: f32 = 12.0;
 /// Handles are this many screen points square, at any zoom.
@@ -50,6 +53,56 @@ pub fn screen_rect(view: View, origin: Pos2, r: &Rect) -> egui::Rect {
 
 fn stroke_width(zoom: f32) -> f32 {
     (1.5 * zoom).clamp(1.0, 4.0)
+}
+
+/// How a stroke is drawn on screen: solid, or dashes or dots scaled to the
+/// zoom.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Pattern {
+    Solid,
+    Dashed { dash: f32, gap: f32 },
+    Dotted { spacing: f32 },
+}
+
+impl Pattern {
+    /// A style's dash at `zoom`. A Custom dash draws with its first two
+    /// numbers, or solid when they don't parse.
+    pub fn of(dash: Option<&Dash>, zoom: f32) -> Self {
+        match dash {
+            None => Self::Solid,
+            Some(Dash::Dotted) => Self::Dotted {
+                spacing: (DOT_PITCH * zoom).max(2.0),
+            },
+            Some(d) => match d.pattern() {
+                Some((dash, gap)) => Self::Dashed {
+                    dash: (dash * zoom).max(1.0),
+                    gap: (gap * zoom).max(1.0),
+                },
+                None => Self::Solid,
+            },
+        }
+    }
+}
+
+/// A polyline in `pattern`.
+pub fn stroke_path(painter: &Painter, points: &[Pos2], stroke: Stroke, pattern: Pattern) {
+    match pattern {
+        Pattern::Solid => {
+            painter.add(egui::Shape::line(points.to_vec(), stroke));
+        }
+        Pattern::Dashed { dash, gap } => {
+            painter.extend(egui::Shape::dashed_line(points, stroke, dash, gap));
+        }
+        Pattern::Dotted { spacing } => {
+            let radius = (stroke.width / 2.0).max(0.75);
+            painter.extend(egui::Shape::dotted_line(
+                points,
+                stroke.color,
+                spacing,
+                radius,
+            ));
+        }
+    }
 }
 
 /// What the overlays need besides the diagram.
@@ -116,7 +169,14 @@ pub fn diagram(
             (true, None) => p.accent,
             (false, None) => p.text_secondary,
         };
-        connector(painter, &points, c.kind, Stroke::new(width, ink), view.zoom);
+        let pattern = Pattern::of(c.style.dash().as_ref(), view.zoom);
+        connector(
+            painter,
+            &points,
+            c.kind,
+            (Stroke::new(width, ink), pattern),
+            view.zoom,
+        );
         if let (Some(text), Some(at), false) =
             (&c.label, path_midpoint(&path), o.editing_line == Some(i))
         {
@@ -317,33 +377,53 @@ fn shape(
     let ink = colour(s.style.stroke.as_ref());
     let stroke = Stroke::new(stroke_width(zoom), ink.unwrap_or(p.text_secondary));
     let body = fill.unwrap_or(p.bg_surface);
+    // A dashed or dotted shape is drawn without its stroke, then its
+    // outline drawn over it in the pattern.
+    let pattern = Pattern::of(s.style.dash().as_ref(), zoom);
+    let solid = if pattern == Pattern::Solid {
+        stroke
+    } else {
+        Stroke::NONE
+    };
+    // A text box has an outline only when given a stroke colour.
+    let outlined = s.kind != ShapeKind::Text || ink.is_some();
     match &s.kind {
-        ShapeKind::Rect => {
-            painter.rect(r, 0.0, body, stroke, StrokeKind::Inside);
+        // Other Mermaid shapes are drawn as rectangles; the badge says so.
+        ShapeKind::Rect | ShapeKind::Other { .. } => {
+            painter.rect(r, 0.0, body, solid, StrokeKind::Inside);
         }
         ShapeKind::RoundRect => {
-            painter.rect(r, corner(r, zoom), body, stroke, StrokeKind::Inside);
-        }
-        // Other Mermaid shapes are drawn as rectangles, dashed so they read
-        // as "not quite this".
-        ShapeKind::Other { .. } => {
-            painter.rect_filled(r, 0.0, body);
-            dashed_rect(painter, r, stroke);
+            painter.rect(r, corner(r, zoom), body, solid, StrokeKind::Inside);
         }
         // Bare text, unless it's been given colours; an empty one keeps a
-        // faint outline so it can be found.
+        // faint dotted outline so it can be found.
         ShapeKind::Text => {
-            let none = egui::Stroke::NONE;
-            let outline = if ink.is_some() { stroke } else { none };
+            let outline = if ink.is_some() { solid } else { Stroke::NONE };
             if fill.is_some() || ink.is_some() {
                 let fill = fill.unwrap_or(Color32::TRANSPARENT);
                 painter.rect(r, 0.0, fill, outline, StrokeKind::Inside);
             } else if s.label.is_empty() && !editing {
-                dashed_rect(painter, r, Stroke::new(1.0, p.text_faint));
+                let corners = [
+                    r.left_top(),
+                    r.right_top(),
+                    r.right_bottom(),
+                    r.left_bottom(),
+                    r.left_top(),
+                ];
+                let faint = Stroke::new(1.0, p.text_faint);
+                stroke_path(painter, &corners, faint, Pattern::Dotted { spacing: 4.0 });
             }
         }
         kind => {
-            outline(painter, r, kind, zoom, body, stroke);
+            outline(painter, r, kind, zoom, body, solid);
+        }
+    }
+    if pattern != Pattern::Solid && outlined {
+        let inner = r.shrink(stroke.width / 2.0);
+        let m = Rect::new(inner.left(), inner.top(), inner.width(), inner.height());
+        for path in geometry::outline_path(&s.kind, &m, zoom) {
+            let points: Vec<Pos2> = path.iter().map(|q| Pos2::new(q.x, q.y)).collect();
+            stroke_path(painter, &points, stroke, pattern);
         }
     }
     if !editing {
@@ -495,9 +575,16 @@ pub fn middle_handle(path: &[blockliner_core::Point]) -> Option<blockliner_core:
     ))
 }
 
-/// A connector through `points`; an arrow's last segment stops at the
-/// head's base so the tip stays sharp.
-fn connector(painter: &Painter, points: &[Pos2], kind: ConnectorKind, stroke: Stroke, zoom: f32) {
+/// A connector through `points`, in its stroke and pattern; an arrow's last
+/// segment stops at the head's base so the tip stays sharp, and the head is
+/// solid whatever the pattern.
+fn connector(
+    painter: &Painter,
+    points: &[Pos2],
+    kind: ConnectorKind,
+    (stroke, pattern): (Stroke, Pattern),
+    zoom: f32,
+) {
     let [.., a, b] = points else {
         return;
     };
@@ -512,7 +599,7 @@ fn connector(painter: &Painter, points: &[Pos2], kind: ConnectorKind, stroke: St
             painter.add(arrowhead(*a, *b, head, stroke.color));
         }
     }
-    painter.add(egui::Shape::line(line, stroke));
+    stroke_path(painter, &line, stroke, pattern);
 }
 
 /// An edge label, on a patch of background at the midpoint.
@@ -559,6 +646,7 @@ fn label(
         .galley(at, galley, color);
 }
 
+/// The outline of a box or text box being created.
 pub fn dashed_rect(painter: &Painter, r: egui::Rect, stroke: Stroke) {
     let corners = [
         r.left_top(),
@@ -606,7 +694,7 @@ pub fn line_preview(
         painter,
         points,
         kind,
-        Stroke::new(stroke_width(zoom), p.accent),
+        (Stroke::new(stroke_width(zoom), p.accent), Pattern::Solid),
         zoom,
     );
 }

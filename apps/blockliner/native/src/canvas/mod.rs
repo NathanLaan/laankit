@@ -27,7 +27,9 @@ pub mod view;
 
 use blockliner_core::geometry::Handle;
 use blockliner_core::snap::snap_point;
-use blockliner_core::style::{common, preset_index, Common, Style, PRESETS};
+use blockliner_core::style::{
+    common, common_dash, preset_index, Common, Dash, DashCommon, Style, PRESETS,
+};
 use blockliner_core::{
     Connector, ConnectorKind, Diagram, End, Point, Rect as ModelRect, ShapeKind,
 };
@@ -77,6 +79,8 @@ pub enum MenuAction {
     RouteStraight,
     Fill(Swatch),
     Stroke(Swatch),
+    /// Solid (`None`), Dashed or Dotted.
+    StrokeStyle(Option<Dash>),
     ResetStyle,
     Delete,
     SelectAll,
@@ -135,6 +139,8 @@ impl SelectionKinds {
 pub struct SelectionStyle {
     pub fill: Common,
     pub stroke: Common,
+    /// The stroke's dash, across the same shapes and lines.
+    pub dash: DashCommon,
     /// Selected shapes that can take colours…
     pub shapes: usize,
     /// …selected lines (a stroke only)…
@@ -212,13 +218,22 @@ impl Canvas {
         let shapes: Vec<&blockliner_core::Shape> =
             self.selection.iter().filter_map(|id| d.shape(id)).collect();
         let (own, external): (Vec<_>, Vec<_>) = shapes.into_iter().partition(|s| !s.external);
-        let lines = self.lines.iter().filter_map(|&i| d.connectors.get(i));
+        let lines: Vec<_> = self
+            .lines
+            .iter()
+            .filter_map(|&i| d.connectors.get(i))
+            .collect();
         SelectionStyle {
             fill: common(own.iter().map(|s| s.style.fill.as_ref())),
             stroke: common(
                 own.iter()
                     .map(|s| s.style.stroke.as_ref())
-                    .chain(lines.map(|c| c.style.stroke.as_ref())),
+                    .chain(lines.iter().map(|c| c.style.stroke.as_ref())),
+            ),
+            dash: common_dash(
+                own.iter()
+                    .map(|s| s.style.dash())
+                    .chain(lines.iter().map(|c| c.style.dash())),
             ),
             shapes: own.len(),
             lines: self.lines.len(),
@@ -514,6 +529,19 @@ impl Canvas {
                         }
                     });
                 }
+                // Stroke Style ▸: Solid, Dashed, Dotted, the selection's own
+                // ticked (none for Mixed or Custom).
+                ui.menu_button("Stroke Style", |ui| {
+                    for dash in STROKE_STYLES {
+                        let active = style.dash == DashCommon::Same(dash.clone());
+                        let name = Dash::name(dash.as_ref());
+                        let glyph = crate::views::Glyph::Dash(dash.clone());
+                        if crate::views::icon_row(ui, glyph, name, None, active, 170.0).clicked() {
+                            picked = Some(MenuAction::StrokeStyle(dash));
+                            ui.close();
+                        }
+                    }
+                });
                 if ui.button("Reset Style").clicked() {
                     picked = Some(MenuAction::ResetStyle);
                     ui.close();
@@ -590,6 +618,9 @@ fn resize_cursor(h: Handle) -> CursorIcon {
         Handle::E | Handle::W => CursorIcon::ResizeHorizontal,
     }
 }
+
+/// The stroke styles offered, in order: Solid, Dashed, Dotted.
+pub const STROKE_STYLES: [Option<Dash>; 3] = [None, Some(Dash::Dashed), Some(Dash::Dotted)];
 
 /// A menu row with its shortcut on the right; `true` when clicked.
 fn menu_item(ui: &mut Ui, text: &str, keys: &str, on: bool) -> bool {

@@ -286,3 +286,47 @@ fn the_mirrored_shapes_export_as_themselves() {
     );
     export::png(&svg, 1.0).expect("resvg reads it");
 }
+
+#[test]
+fn dashed_and_dotted_strokes_export_with_a_dasharray() {
+    use blockliner_core::style::Dash;
+    let ctx = context();
+    let mut d = Diagram::new();
+    let mut a = Shape::new(
+        "a",
+        ShapeKind::Rect,
+        "A",
+        Rect::new(40.0, 40.0, 160.0, 60.0),
+    );
+    a.style.set_dash(Some(Dash::Dashed));
+    let mut b = Shape::new(
+        "b",
+        ShapeKind::Database,
+        "B",
+        Rect::new(300.0, 40.0, 120.0, 80.0),
+    );
+    b.style.set_dash(Some(Dash::Custom("wavy".into())));
+    d.shapes.extend([a, b]);
+    let mut edge = Connector::new(
+        ConnectorKind::Arrow,
+        End::glued("a", Some(Anchor::E)),
+        End::glued("b", Some(Anchor::W)),
+    );
+    edge.style.set_dash(Some(Dash::Dotted));
+    d.connectors.push(edge);
+    let s = scope(&d, Objects::All).unwrap();
+    let svg = export::svg(&ctx, &d, &s, false);
+    assert!(
+        svg.contains(r##"<rect x="40.75" y="40.75" width="158.5" height="58.5" rx="0" fill="#f7f8fa" stroke="#4b5563" stroke-dasharray="6 4""##),
+        "{svg}"
+    );
+    // Dots as on the canvas; the arrowhead stays solid.
+    assert!(
+        svg.contains(
+            r##"stroke="#4b5563" stroke-dasharray="1.5 3.5" stroke-width="1.5"/><polygon"##
+        ),
+        "{svg}"
+    );
+    assert_eq!(svg.matches("stroke-dasharray").count(), 2, "{svg}");
+    export::png(&svg, 1.0).expect("resvg reads it");
+}

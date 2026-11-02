@@ -8,7 +8,7 @@
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
 
-use blockliner_core::style::PRESETS;
+use blockliner_core::style::{Dash, PRESETS};
 use blockliner_core::ShapeKind;
 
 use crate::canvas::{Swatch, Tool};
@@ -53,6 +53,8 @@ pub enum Act {
     /// …or stroke.
     Stroke(Swatch),
     /// Both back to the theme's.
+    /// Solid (`None`), Dashed or Dotted.
+    StrokeStyle(Option<Dash>),
     ResetStyle,
     /// Move the selection by this many grid steps (the arrow keys go
     /// through `App::nudge_keys`, which also reads Shift and Alt).
@@ -413,6 +415,18 @@ pub fn registry() -> Registry<Act, View> {
             swatch(id, preset.name, Swatch::Preset(i));
         }
         swatch(format!("style.{key}.custom"), "Custom…", Swatch::Custom);
+    }
+    for dash in crate::canvas::STROKE_STYLES {
+        let name = Dash::name(dash.as_ref());
+        r.register(
+            add(
+                &format!("style.strokeStyle.{}", name.to_lowercase()),
+                &format!("Stroke Style: {name}"),
+                "Style",
+                Act::StrokeStyle(dash),
+            )
+            .when(stylable),
+        );
     }
     r.register(add("style.reset", "Reset Style", "Style", Act::ResetStyle).when(stylable));
     r.register(

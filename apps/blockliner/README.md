@@ -15,6 +15,7 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - **Connectors** — straight or right-angle lines and arrows that glue to a shape's sides (fixed) or to the shape (turning as it moves), plus free lines anywhere. Right-angle routes go round shapes in the way, and their middle segment can be dragged. Edge labels ("HTTPS", "reads") are edited in place: double-click the connector or its label.
 - **Change shape** — turn a selected shape into any other (a box into a diamond, a circle into a database, a shape into a text box) from the Properties pane's Change Shape list, the right-click menu's Change Shape ▸ or the palette. The box, label, colours and attached lines stay; only the outline changes. Lines gain or lose an arrowhead the same way (Change Line, Add / Remove Arrowhead).
 - **Colours** — fill and stroke from eight preset swatches or any hex value, saved as Mermaid `style` lines, with labels kept readable on the fill. Connectors take a colour too, saved as `linkStyle` lines. Set them from the right-click menu, the palette, or the Properties pane (Ctrl+I), which shows "Mixed" when the selected shapes differ.
+- **Stroke styles** — draw a shape's outline or a line solid, dashed or dotted, from the Properties pane's Stroke Style list, the right-click menu's Stroke Style ▸ or the palette. Saved as plain Mermaid: `stroke-dasharray` in a shape's `style` line or an edge's `linkStyle`, and a dotted edge as Mermaid's own `-.->` / `-.-`. A hand-written dash pattern shows as Custom and is kept until you pick a style; Reset Style makes the stroke solid again.
 - **Copy and paste** — Ctrl+C, Ctrl+X and Ctrl+V, within a diagram, between diagrams and between windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out; other text pastes as a text box.
 - **Editing** — box select, nudge with the arrow keys, undo and redo, single-key tools (V, R, O, D, H, C, S, L, A, J, E, T, or 1–9 in toolbar order), a right-click menu and a command palette (Ctrl+K).
 - **A folder of diagrams** — open any folder; its `.mmd` files are the sidebar's diagrams. Right-click one to rename it, delete it or open its containing folder in the system file manager. Changes autosave, and edits made elsewhere (an editor, `git pull`) reload as an undoable step. Close Folder saves and goes back to no folder.
@@ -65,7 +66,7 @@ The layout block goes at the end because Mermaid front matter (`---`) must be th
 | `%% blockliner <version> grid=<px>` | Format version (1) and grid size. |
 | `%% @shape <id> x= y= w= h=` | Every shape's rectangle, in model order. |
 | `%% @edge <from>-><to>[#n] [from=<anchor>] [to=<anchor>] [route=elbow [mid=x:<n>\|y:<n>]]` | Fixed anchors and the route of the nth edge between two nodes. Written only when an anchor is fixed or the route is right-angle; otherwise the glue is dynamic and the edge straight. Keyed by endpoints, not position, so a hand-inserted edge doesn't shift the others. |
-| `%% @line <line\|arrow> from=<end> to=<end> [route=elbow [mid=…]] [stroke=<colour>]` | A connector with at least one free end. An end is `x,y` or `id[:anchor]`. `stroke=` is its colour. |
+| `%% @line <line\|arrow> from=<end> to=<end> [route=elbow [mid=…]] [stroke=<colour>] [dash=dashed\|dotted\|<dasharray>]` | A connector with at least one free end. An end is `x,y` or `id[:anchor]`. `stroke=` is its colour, `dash=` its stroke style. |
 
 Any other `%% @…` line is reserved and dropped. Other `%%` comments are kept.
 
@@ -86,13 +87,14 @@ Any other `%% @…` line is reserved and dropped. Other `%%` comments are kept.
 | Edge label | `a -->\|"label"\| b` | Also reads `a -- label --> b`. |
 | Shape colours | `style id fill:#dbeafe,stroke:#3b82f6,color:#111827` | One line per styled shape, after the edges. Other properties (`stroke-width`, …) are kept. |
 | Edge colours | `linkStyle 2 stroke:#3b82f6` | One line per styled edge, after the `style` lines, numbered among the edges BlockLiner writes (which come first). Other properties are kept. |
+| Stroke styles | `stroke-dasharray:6 4` (dashed), `stroke-dasharray:2 3` (dotted) | In a shape's `style` line or a dashed edge's `linkStyle`. A dotted edge is written `a -.-> b` (or `-.-`) instead, so it is dotted in any Mermaid renderer. Other `stroke-dasharray` values are kept as written. |
 
 New diagrams default to `LR`. A file's own direction is kept. `graph` is written back as `flowchart`.
 
 ### Round-trip rules
 
 - **The Mermaid part is the source of truth for what exists.** The comments only add geometry. A comment naming a node that no longer exists (after a hand edit, say) is dropped; a node with no comment gets an automatic position.
-- **Statements BlockLiner doesn't model are kept** verbatim and in order: `classDef`, `class`, `style` (except a shape's own), `click`, `linkStyle` (except one naming only modelled edges), other `%%` comments, whole `subgraph … end` blocks, and edges with other link styles (`-.->`, `==>`, `a & b --> c`, …). They are written after the nodes and edges. Nodes declared only inside them are *external*: positioned and drawn (with a lock badge), and movable and resizable, but not relabelled or deleted, because their declaration stays in the kept statement.
+- **Statements BlockLiner doesn't model are kept** verbatim and in order: `classDef`, `class`, `style` (except a shape's own), `click`, `linkStyle` (except one naming only modelled edges), other `%%` comments, whole `subgraph … end` blocks, and edges with other link styles (`==>`, `<-->`, `--o`, `a & b --> c`, …). Dotted edges (`-.->`, `-.-`, `-. text .->`) are modelled, as dotted connectors. They are written after the nodes and edges. Nodes declared only inside them are *external*: positioned and drawn (with a lock badge), and movable and resizable, but not relabelled or deleted, because their declaration stays in the kept statement.
 - **Writing is deterministic:** nodes in model order, then edges, then kept statements, then the layout block. Shapes are read back in `@shape` order, so a hand-written file is normalised by its first save and is byte-identical from then on. Opening a file writes nothing.
 - **Known limitation:** the first save moves modelled edges ahead of kept ones. A hand-written `linkStyle <index>` that names a kept edge (or mixes kept and modelled ones) may then point at a different edge. One naming only modelled edges is read as theirs and renumbered.
 

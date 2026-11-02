@@ -1,14 +1,15 @@
 //! The Properties pane, below the diagram list: what's selected, Change
 //! Shape (the selected shapes' kind) and Change Line (whether the selected
 //! lines have arrowheads), then Fill and Stroke (the current value, Default
-//! and the presets as swatches, a hex field), plus Reset Style.
+//! and the presets as swatches, a hex field), Stroke Style (solid, dashed or
+//! dotted), plus Reset Style.
 //!
 //! A row whose shapes don't all agree shows **Mixed**: a split swatch, an
 //! empty field with a "Mixed" placeholder, and no swatch ringed. Picking a
 //! swatch or entering a hex value sets it on all of them. Each row is judged
 //! on its own, so one can be shared while the other is Mixed.
 
-use blockliner_core::style::{Colour, Common, PRESETS};
+use blockliner_core::style::{Colour, Common, Dash, DashCommon, PRESETS};
 use blockliner_core::{ConnectorKind, Diagram, ShapeKind};
 use egui::{pos2, vec2, Align2, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
 use laankit_egui::dialog::{self, ButtonKind};
@@ -16,12 +17,15 @@ use laankit_egui::panes::HEADER_HEIGHT;
 use laankit_egui::{fonts, icons, theme};
 
 use crate::canvas::paint::{self, SwatchLook};
-use crate::canvas::{current_swatch, Agreed, SelectionKinds, SelectionStyle, Swatch, Tool};
+use crate::canvas::{
+    current_swatch, Agreed, SelectionKinds, SelectionStyle, Swatch, Tool, STROKE_STYLES,
+};
 use crate::overlays::colour::INVALID;
+use crate::views::Glyph;
 
 /// The pane's height when there's no saved one: room for everything with
 /// both Change Shape and Change Line showing (shapes and lines selected).
-pub const DEFAULT_HEIGHT: f32 = 500.0;
+pub const DEFAULT_HEIGHT: f32 = 560.0;
 /// Its smallest height, and the least the diagram list keeps above it.
 pub const MIN_HEIGHT: f32 = 120.0;
 
@@ -38,6 +42,8 @@ pub enum PropertiesAction {
     ChangeShape(ShapeKind),
     /// Change Line: arrowheads on (Arrow) or off (Line).
     SetArrowheads(bool),
+    /// Stroke Style: Solid (`None`), Dashed or Dotted.
+    StrokeStyle(Option<Dash>),
 }
 
 /// The pane's own state between frames: its two hex fields.
@@ -233,6 +239,10 @@ fn contents(
                     }
                     ui.add_space(10.0);
                 }
+                if let Some(dash) = dash_row(ui, &props.style.dash) {
+                    out = Some(PropertiesAction::StrokeStyle(dash));
+                }
+                ui.add_space(10.0);
                 if dialog::button(ui, "Reset Style", ButtonKind::Secondary, reason.is_none())
                     .clicked()
                 {
@@ -253,7 +263,10 @@ fn contents(
 fn shape_row(ui: &mut Ui, current: &Agreed<ShapeKind>) -> Option<ShapeKind> {
     dialog::field_label(ui, "Change Shape:");
     let shown = match current {
-        Agreed::Same(kind) => Some((Tool::for_shape(kind).unwrap_or(Tool::Rect), kind.name())),
+        Agreed::Same(kind) => Some((
+            Glyph::Tool(Tool::for_shape(kind).unwrap_or(Tool::Rect)),
+            kind.name(),
+        )),
         _ => None,
     };
     let mut picked = None;
@@ -278,7 +291,10 @@ fn line_row(ui: &mut Ui, current: &Agreed<ConnectorKind>) -> Option<bool> {
         ConnectorKind::Arrow => (Tool::Arrow, "Arrow"),
     };
     let shown = match current {
-        Agreed::Same(k) => Some(look(*k)),
+        Agreed::Same(k) => {
+            let (icon, name) = look(*k);
+            Some((Glyph::Tool(icon), name))
+        }
         _ => None,
     };
     let mut picked = None;
@@ -296,13 +312,37 @@ fn line_row(ui: &mut Ui, current: &Agreed<ConnectorKind>) -> Option<bool> {
         .map(|k| k == ConnectorKind::Arrow)
 }
 
+/// Stroke Style: Solid, Dashed or Dotted (or Mixed, or a hand-written
+/// Custom dash) for the selected shapes and lines. The style picked,
+/// unless they all already have it.
+fn dash_row(ui: &mut Ui, current: &DashCommon) -> Option<Option<Dash>> {
+    dialog::field_label(ui, "Stroke Style:");
+    let shown = match current {
+        DashCommon::Same(dash) => Some((Glyph::Dash(dash.clone()), Dash::name(dash.as_ref()))),
+        DashCommon::None => Some((Glyph::Dash(None), "Solid")),
+        DashCommon::Mixed => None,
+    };
+    let mut picked = None;
+    kind_select(ui, "Stroke Style", shown, |ui, width| {
+        for dash in STROKE_STYLES {
+            let active = *current == DashCommon::Same(dash.clone());
+            let name = Dash::name(dash.as_ref());
+            let glyph = Glyph::Dash(dash.clone());
+            if crate::views::icon_row(ui, glyph, name, None, active, width).clicked() {
+                picked = Some(dash);
+            }
+        }
+    });
+    picked.filter(|d| *current != DashCommon::Same(d.clone()))
+}
+
 /// A closed select like Settings' (`laankit_egui::settings::select`), but
 /// showing the current value's icon, or "Mixed" when there's no one value;
 /// `options` fills the list below it, given the row width.
 fn kind_select(
     ui: &mut Ui,
     label: &str,
-    current: Option<(Tool, &str)>,
+    current: Option<(Glyph, &str)>,
     options: impl FnOnce(&mut Ui, f32),
 ) {
     let p = theme::palette(ui.ctx());
@@ -331,9 +371,9 @@ fn kind_select(
     match current {
         Some((icon, name)) => {
             let ink = p.text_primary;
-            crate::views::paint_tool_icon(
+            crate::views::paint_glyph(
                 painter,
-                icon,
+                &icon,
                 pos2(rect.left() + 18.0, rect.center().y),
                 ink,
             );
@@ -548,6 +588,7 @@ mod tests {
             style: SelectionStyle {
                 fill: Common::None,
                 stroke: Common::None,
+                dash: DashCommon::None,
                 shapes,
                 lines,
                 external: external.iter().map(|s| s.to_string()).collect(),

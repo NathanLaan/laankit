@@ -460,6 +460,10 @@ impl BlockLinerApp {
             }
             Act::Fill(swatch) => self.style(swatch, false),
             Act::Stroke(swatch) => self.style(swatch, true),
+            Act::StrokeStyle(dash) => {
+                self.canvas
+                    .style_selection(&mut self.diagram, true, |s| s.set_dash(dash.clone()));
+            }
             Act::ResetStyle => self
                 .canvas
                 .style_selection(&mut self.diagram, true, Style::reset),
@@ -1297,6 +1301,7 @@ impl BlockLinerApp {
                     MenuAction::RouteStraight => Act::RouteStraight,
                     MenuAction::Fill(s) => Act::Fill(s),
                     MenuAction::Stroke(s) => Act::Stroke(s),
+                    MenuAction::StrokeStyle(d) => Act::StrokeStyle(d),
                     MenuAction::ResetStyle => Act::ResetStyle,
                     MenuAction::Delete => Act::Delete,
                     MenuAction::SelectAll => Act::SelectAll,
@@ -1310,6 +1315,7 @@ impl BlockLinerApp {
             Some(PropertiesAction::Stroke(s)) => self.apply(Act::Stroke(s)),
             Some(PropertiesAction::FillHex(c)) => self.apply_colour(Some(c), false),
             Some(PropertiesAction::StrokeHex(c)) => self.apply_colour(Some(c), true),
+            Some(PropertiesAction::StrokeStyle(d)) => self.apply(Act::StrokeStyle(d)),
             Some(PropertiesAction::ResetStyle) => self.apply(Act::ResetStyle),
             Some(PropertiesAction::ChangeShape(kind)) => self.apply(Act::ChangeShape(kind)),
             Some(PropertiesAction::SetArrowheads(true)) => self.apply(Act::AddArrowheads),

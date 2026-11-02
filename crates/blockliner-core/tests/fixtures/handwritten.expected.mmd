@@ -8,13 +8,14 @@ flowchart TD
   orders["orders"]
   bus[("Event Bus")]
   orders_db[("Orders DB")]
+  audit["audit"]
   note1["Retries are async"]:::bl_text
   web --> api
   api -->|"REST"| orders
   api -->|"events"| bus
   orders --- orders_db
-    %% Edge services
   orders -.-> audit
+    %% Edge services
     subgraph payments [Payments]
         pay[Payment Service] --> psp
     end

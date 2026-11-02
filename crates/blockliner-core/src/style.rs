@@ -273,11 +273,45 @@ impl Style {
         self.stroke = stroke;
     }
 
-    /// Back to the theme's colours. Other properties stay.
+    /// Back to the theme's look: the default colours and a solid stroke.
+    /// Other properties (`stroke-width`, …) stay.
     pub fn reset(&mut self) {
         self.fill = None;
         self.stroke = None;
         self.color = None;
+        self.set_dash(None);
+    }
+
+    /// The stroke's dash pattern (`None`: solid), from its
+    /// `stroke-dasharray`.
+    pub fn dash(&self) -> Option<Dash> {
+        self.extra
+            .iter()
+            .find(|(k, _)| k == DASH_KEY)
+            .and_then(|(_, v)| Dash::parse(v))
+    }
+
+    /// A new dash pattern (`None`: solid). It keeps its place among the
+    /// other properties when it had one, so a hand-written line's order
+    /// stays.
+    pub fn set_dash(&mut self, dash: Option<Dash>) {
+        let at = self.extra.iter().position(|(k, _)| k == DASH_KEY);
+        match (dash, at) {
+            (None, Some(i)) => {
+                self.extra.remove(i);
+            }
+            (None, None) => {}
+            (Some(d), Some(i)) => self.extra[i].1 = d.value().to_owned(),
+            (Some(d), None) => self.extra.push((DASH_KEY.to_owned(), d.value().to_owned())),
+        }
+    }
+
+    /// [`Style::props`] without the dash: for an edge whose dots are in its
+    /// link (`-.->`).
+    pub fn props_without_dash(&self) -> String {
+        let mut s = self.clone();
+        s.extra.retain(|(k, _)| k != DASH_KEY);
+        s.props()
     }
 
     /// The label colour to draw: the shape's own, else one that reads on
@@ -289,6 +323,99 @@ impl Style {
         let fill = self.fill.as_ref()?.rgba.filter(|f| f[3] > 0)?;
         contrast(fill).rgba
     }
+}
+
+/// The property that holds a dash pattern.
+pub const DASH_KEY: &str = "stroke-dasharray";
+
+/// A stroke's dash pattern. Solid is no pattern (`Option<Dash>::None`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Dash {
+    /// `6 4`: 6 px dashes, 4 px gaps.
+    Dashed,
+    /// `2 3`: round dots, 3 px apart.
+    Dotted,
+    /// Any other `stroke-dasharray`, kept exactly as written.
+    Custom(String),
+}
+
+impl Dash {
+    pub const DASHED: &'static str = "6 4";
+    pub const DOTTED: &'static str = "2 3";
+
+    /// A `stroke-dasharray` value. `None` for solid (`none`, `0`, empty).
+    pub fn parse(v: &str) -> Option<Self> {
+        let words: Vec<&str> = v.split_whitespace().collect();
+        let norm = words.join(" ");
+        match norm.as_str() {
+            "" | "none" | "0" => None,
+            Self::DASHED => Some(Self::Dashed),
+            Self::DOTTED => Some(Self::Dotted),
+            _ => Some(Self::Custom(v.trim().to_owned())),
+        }
+    }
+
+    /// As written in `stroke-dasharray`.
+    pub fn value(&self) -> &str {
+        match self {
+            Self::Dashed => Self::DASHED,
+            Self::Dotted => Self::DOTTED,
+            Self::Custom(v) => v,
+        }
+    }
+
+    /// The menu and pane name.
+    pub fn name(dash: Option<&Dash>) -> &'static str {
+        match dash {
+            None => "Solid",
+            Some(Self::Dashed) => "Dashed",
+            Some(Self::Dotted) => "Dotted",
+            Some(Self::Custom(_)) => "Custom",
+        }
+    }
+
+    /// The dash and gap lengths to draw at 100 %, from the first two
+    /// numbers (one number is both, as in SVG). `None` when they don't
+    /// parse or aren't positive: drawn solid.
+    pub fn pattern(&self) -> Option<(f32, f32)> {
+        let nums: Option<Vec<f32>> = self
+            .value()
+            .split(|c: char| c.is_whitespace() || c == ',')
+            .filter(|w| !w.is_empty())
+            .map(|w| w.trim_end_matches("px").parse::<f32>().ok())
+            .collect();
+        let nums = nums?;
+        let (dash, gap) = match nums.as_slice() {
+            [d] => (*d, *d),
+            [d, g, ..] => (*d, *g),
+            [] => return None,
+        };
+        (dash.is_finite() && gap.is_finite() && dash > 0.0 && gap > 0.0).then_some((dash, gap))
+    }
+}
+
+/// The dash across a selection, as [`common`] is for colours.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DashCommon {
+    /// Nothing to ask.
+    None,
+    /// They all have this pattern (`None`: all solid).
+    Same(Option<Dash>),
+    /// They differ.
+    Mixed,
+}
+
+pub fn common_dash(values: impl IntoIterator<Item = Option<Dash>>) -> DashCommon {
+    let mut values = values.into_iter();
+    let Some(first) = values.next() else {
+        return DashCommon::None;
+    };
+    for v in values {
+        if v != first {
+            return DashCommon::Mixed;
+        }
+    }
+    DashCommon::Same(first)
 }
 
 /// One property (a fill, a stroke) across a selection of shapes.
@@ -471,6 +598,49 @@ mod tests {
         assert_eq!(preset_index(&upper, false), Some(1));
         assert_eq!(preset_index(&c("#3b82f6"), true), Some(1));
         assert_eq!(preset_index(&c("#3b82f6"), false), None);
+    }
+
+    #[test]
+    fn dashes() {
+        assert_eq!(Dash::parse("6 4"), Some(Dash::Dashed));
+        assert_eq!(Dash::parse(" 6   4 "), Some(Dash::Dashed));
+        assert_eq!(Dash::parse("2 3"), Some(Dash::Dotted));
+        assert_eq!(Dash::parse("none"), None);
+        assert_eq!(Dash::parse("0"), None);
+        assert_eq!(Dash::parse("5 5"), Some(Dash::Custom("5 5".into())));
+        assert_eq!(Dash::Dashed.pattern(), Some((6.0, 4.0)));
+        assert_eq!(Dash::Custom("3".into()).pattern(), Some((3.0, 3.0)));
+        assert_eq!(Dash::Custom("8px 2px 1".into()).pattern(), Some((8.0, 2.0)));
+        assert_eq!(Dash::Custom("wavy".into()).pattern(), None);
+        assert_eq!(Dash::Custom("0 4".into()).pattern(), None);
+
+        // In place among the other properties, and gone when solid.
+        let mut s = Style::parse("stroke:#333,stroke-dasharray:5 5,stroke-width:2px").unwrap();
+        assert_eq!(s.dash(), Some(Dash::Custom("5 5".into())));
+        s.set_dash(Some(Dash::Dotted));
+        assert_eq!(
+            s.props(),
+            "stroke:#333,stroke-dasharray:2 3,stroke-width:2px"
+        );
+        assert_eq!(s.props_without_dash(), "stroke:#333,stroke-width:2px");
+        s.set_dash(None);
+        assert_eq!(s.props(), "stroke:#333,stroke-width:2px");
+        s.set_dash(Some(Dash::Dashed));
+        assert_eq!(
+            s.props(),
+            "stroke:#333,stroke-width:2px,stroke-dasharray:6 4"
+        );
+        // Reset Style: back to solid, other properties kept.
+        s.reset();
+        assert_eq!(s.props(), "stroke-width:2px");
+
+        assert_eq!(common_dash([]), DashCommon::None);
+        assert_eq!(common_dash([None, None]), DashCommon::Same(None));
+        assert_eq!(
+            common_dash([Some(Dash::Dotted), Some(Dash::Dotted)]),
+            DashCommon::Same(Some(Dash::Dotted))
+        );
+        assert_eq!(common_dash([Some(Dash::Dotted), None]), DashCommon::Mixed);
     }
 
     #[test]

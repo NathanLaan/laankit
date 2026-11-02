@@ -261,7 +261,7 @@ fn more_shapes_row(ui: &mut Ui, tool: Tool, active: bool) -> bool {
 /// ticked (in the accent) when `active`.
 pub(crate) fn icon_row(
     ui: &mut Ui,
-    icon: Tool,
+    icon: impl Into<Glyph>,
     name: &str,
     letter: Option<&str>,
     active: bool,
@@ -275,7 +275,7 @@ pub(crate) fn icon_row(
     }
     let ink = if active { p.accent } else { p.text_primary };
     let at = pos2(rect.left() + 18.0, rect.center().y);
-    paint_tool_icon(ui.painter(), icon, at, ink);
+    paint_glyph(ui.painter(), &icon.into(), at, ink);
     let font = FontId::proportional(theme::BODY_SIZE);
     ui.painter().text(
         pos2(rect.left() + 38.0, rect.center().y),
@@ -294,6 +294,44 @@ pub(crate) fn icon_row(
         );
     }
     resp
+}
+
+/// What a list row or select shows beside its name: a tool's icon, or a
+/// stroke style's sample.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Glyph {
+    Tool(Tool),
+    /// Solid (`None`), Dashed, Dotted or Custom.
+    Dash(Option<blockliner_core::style::Dash>),
+}
+
+impl From<Tool> for Glyph {
+    fn from(t: Tool) -> Self {
+        Glyph::Tool(t)
+    }
+}
+
+/// A glyph, centred on `c`.
+pub(crate) fn paint_glyph(painter: &egui::Painter, glyph: &Glyph, c: Pos2, ink: Color32) {
+    use blockliner_core::style::Dash;
+    match glyph {
+        Glyph::Tool(t) => paint_tool_icon(painter, *t, c, ink),
+        Glyph::Dash(dash) => {
+            let line = [c + vec2(-10.0, 0.0), c + vec2(10.0, 0.0)];
+            let stroke = Stroke::new(1.6, ink);
+            match dash {
+                None => {
+                    painter.line_segment(line, stroke);
+                }
+                Some(Dash::Dotted) => {
+                    painter.extend(egui::Shape::dotted_line(&line, ink, 4.0, 1.1));
+                }
+                Some(_) => {
+                    painter.extend(egui::Shape::dashed_line(&line, stroke, 5.0, 2.5));
+                }
+            }
+        }
+    }
 }
 
 /// A tool's toolbar icon, centred on `c`.
