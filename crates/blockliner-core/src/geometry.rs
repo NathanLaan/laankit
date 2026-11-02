@@ -258,6 +258,91 @@ pub fn cylinder(r: &Rect, cap: f32, steps: usize) -> (Vec<Point>, Vec<Point>) {
     (outline, half(top, 1.0))
 }
 
+/// A rounded rectangle's corner radius at 100 %.
+pub const CORNER_RADIUS: f32 = 12.0;
+
+/// A shape's outline as polylines, for drawing it dashed or dotted: the
+/// outline itself, closed (its last point is its first), then any inner
+/// lines in the same stroke (a database's lid, a subroutine's bars, a double
+/// circle's inner ring). `r` is the rectangle the stroke's middle runs
+/// along, and `scale` the zoom it is drawn at: corners, insets, caps and
+/// gaps scale with it as the solid shapes' do.
+pub fn outline_path(kind: &ShapeKind, r: &Rect, scale: f32) -> Vec<Vec<Point>> {
+    let closed = |mut points: Vec<Point>| {
+        if let Some(&first) = points.first() {
+            points.push(first);
+        }
+        points
+    };
+    let rounded = |radius: f32| closed(round_rect(r, radius.min(r.w / 2.0).min(r.h / 2.0)));
+    match kind {
+        ShapeKind::Rect | ShapeKind::Text | ShapeKind::Other { .. } => vec![rounded(0.0)],
+        ShapeKind::RoundRect => vec![rounded(CORNER_RADIUS * scale)],
+        ShapeKind::Stadium => vec![rounded(stadium_radius(r))],
+        ShapeKind::Subroutine => {
+            let k = (SUBROUTINE_INSET * scale).min(r.w / 4.0);
+            let bar = |x: f32| vec![Point::new(x, r.y), Point::new(x, r.bottom())];
+            vec![rounded(0.0), bar(r.x + k), bar(r.right() - k)]
+        }
+        ShapeKind::Circle => vec![closed(ellipse(r))],
+        ShapeKind::DoubleCircle => vec![
+            closed(ellipse(r)),
+            closed(ellipse(&inner_ring(r, DOUBLE_CIRCLE_GAP * scale))),
+        ],
+        ShapeKind::Database => {
+            let cap = (r.h / 5.0).min(12.0 * scale);
+            let (body, lid) = cylinder(r, cap, 24);
+            vec![closed(body), lid]
+        }
+        kind => vec![closed(polygon(kind, r).unwrap_or_default())],
+    }
+}
+
+/// Points around an ellipse filling `r`, clockwise from the left.
+fn ellipse(r: &Rect) -> Vec<Point> {
+    const STEPS: usize = 48;
+    let c = r.center();
+    (0..STEPS)
+        .map(|i| {
+            let a = std::f32::consts::TAU * i as f32 / STEPS as f32;
+            Point::new(c.x - r.w / 2.0 * a.cos(), c.y - r.h / 2.0 * a.sin())
+        })
+        .collect()
+}
+
+/// A rectangle's corners, each rounded by `radius` (0: square), clockwise
+/// from the top left.
+fn round_rect(r: &Rect, radius: f32) -> Vec<Point> {
+    if radius <= 0.0 {
+        return vec![
+            Point::new(r.x, r.y),
+            Point::new(r.right(), r.y),
+            Point::new(r.right(), r.bottom()),
+            Point::new(r.x, r.bottom()),
+        ];
+    }
+    const STEPS: usize = 6;
+    let corners = [
+        (r.x + radius, r.y + radius, std::f32::consts::PI),
+        (r.right() - radius, r.y + radius, 1.5 * std::f32::consts::PI),
+        (r.right() - radius, r.bottom() - radius, 0.0),
+        (
+            r.x + radius,
+            r.bottom() - radius,
+            0.5 * std::f32::consts::PI,
+        ),
+    ];
+    corners
+        .iter()
+        .flat_map(|&(cx, cy, start)| {
+            (0..=STEPS).map(move |i| {
+                let a = start + std::f32::consts::FRAC_PI_2 * i as f32 / STEPS as f32;
+                Point::new(cx + radius * a.cos(), cy + radius * a.sin())
+            })
+        })
+        .collect()
+}
+
 impl Shape {
     /// `p` is inside the shape's outline (edges included). A diamond, a
     /// hexagon, a parallelogram, a trapezoid, a circle or a stadium misses
@@ -427,6 +512,44 @@ impl Diagram {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn outline_paths() {
+        let r = Rect::new(10.0, 20.0, 100.0, 60.0);
+        let on_edge = |p: &Point| {
+            let near = |a: f32, b: f32| (a - b).abs() < 0.01;
+            near(p.x, r.x) || near(p.x, r.right()) || near(p.y, r.y) || near(p.y, r.bottom())
+        };
+        for kind in ShapeKind::CHANGEABLE {
+            let paths = outline_path(&kind, &r, 1.0);
+            let outline = &paths[0];
+            assert!(outline.len() >= 4, "{kind:?}");
+            assert_eq!(outline.first(), outline.last(), "{kind:?} is closed");
+            for p in outline {
+                let inside = Rect::new(r.x - 0.01, r.y - 0.01, r.w + 0.02, r.h + 0.02);
+                assert!(inside.contains(*p), "{kind:?}: {p:?}");
+            }
+            let extra = match kind {
+                ShapeKind::Subroutine => 2,
+                ShapeKind::Database | ShapeKind::DoubleCircle => 1,
+                _ => 0,
+            };
+            assert_eq!(paths.len(), 1 + extra, "{kind:?}");
+        }
+        // A box's corners are its rectangle's; a rounded one's sides touch it.
+        let rect = outline_path(&ShapeKind::Rect, &r, 1.0);
+        assert_eq!(rect[0][2], Point::new(110.0, 80.0));
+        assert!(
+            outline_path(&ShapeKind::RoundRect, &r, 1.0)[0]
+                .iter()
+                .filter(|p| on_edge(p))
+                .count()
+                >= 8
+        );
+        // The subroutine's bars scale with the zoom.
+        let bars = outline_path(&ShapeKind::Subroutine, &r, 2.0);
+        assert_eq!(bars[1][0], Point::new(10.0 + 2.0 * SUBROUTINE_INSET, 20.0));
+    }
 
     #[test]
     fn rects() {

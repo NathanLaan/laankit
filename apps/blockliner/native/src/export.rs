@@ -15,13 +15,17 @@ use anyhow::{anyhow, Context as _, Result};
 use blockliner_core::connect::path_midpoint;
 use blockliner_core::export::Scope;
 use blockliner_core::geometry::{self, SUBROUTINE_INSET};
+use blockliner_core::style::{Dash, Style};
 use blockliner_core::{ConnectorKind, Diagram, Point, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{Align, Color32};
+use laankit_egui::fonts;
 use resvg::usvg;
 
 use crate::canvas::grid::MAJOR;
-use crate::canvas::paint::{label_font, ARROW, CORNER, EDGE_LABEL_SIZE, LABEL_PAD, LABEL_SIZE};
+use crate::canvas::paint::{
+    face, ARROW, CORNER, DOT_PITCH, EDGE_LABEL_SIZE, LABEL_PAD, LABEL_SIZE,
+};
 
 const BACKGROUND: &str = "#ffffff";
 const FILL: &str = "#f7f8fa";
@@ -146,10 +150,17 @@ pub fn svg(ctx: &egui::Context, d: &Diagram, scope: &Scope, grid: bool) -> Strin
         };
         out.push_str("<g class=\"connector\">");
         let ink = paint(c.style.stroke.as_ref()).unwrap_or_else(|| format!("\"{INK}\""));
-        connector(&mut out, &path, c.kind, &ink);
+        let w = stroke_px(&c.style);
+        connector(
+            &mut out,
+            &path,
+            c.kind,
+            (&ink, w),
+            &dash_attrs(c.style.dash(), w),
+        );
         let label = c.label.as_deref().filter(|t| !t.is_empty());
         if let (Some(text), Some(at)) = (label, path_midpoint(&path)) {
-            edge_label(&mut out, ctx, (at.x, at.y), text);
+            edge_label(&mut out, ctx, (at.x, at.y), (text, face(&c.style)));
         }
         out.push_str("</g>\n");
     }
@@ -203,7 +214,8 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
     let _ = write!(out, r#"<g id="{}">"#, escape(&s.id));
     // The stroke sits inside the shape, as on the canvas. The shape's own
     // colours where it has them, else the export's.
-    let inset = STROKE / 2.0;
+    let w = stroke_px(&s.style);
+    let inset = w / 2.0;
     let fill = paint(s.style.fill.as_ref());
     let ink = paint(s.style.stroke.as_ref());
     let body = |out: &mut String, radius: f32, fill: &str, stroke: &str| {
@@ -212,19 +224,23 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
             r#"<rect x="{}" y="{}" width="{}" height="{}" rx="{}" fill={fill} stroke={stroke} stroke-width="{}"/>"#,
             num(r.x + inset),
             num(r.y + inset),
-            num(r.w - STROKE),
-            num(r.h - STROKE),
+            num(r.w - w),
+            num(r.h - w),
             num(radius),
-            num(STROKE)
+            num(w)
         );
     };
+    // A dash rides along with the stroke colour: every outline element
+    // writes `stroke={ink}`.
+    let dash = dash_attrs(s.style.dash(), w);
+    let ink = ink.map(|i| format!("{i}{dash}"));
     let (or_fill, or_ink) = (
         fill.clone().unwrap_or_else(|| format!("\"{FILL}\"")),
-        ink.clone().unwrap_or_else(|| format!("\"{INK}\"")),
+        ink.clone().unwrap_or_else(|| format!("\"{INK}\"{dash}")),
     );
     // The outline's rectangle, the stroke's middle inside the shape.
-    let inner = Rect::new(r.x + inset, r.y + inset, r.w - STROKE, r.h - STROKE);
-    let stroke = |ink: &str| format!(r#"stroke={ink} stroke-width="{}""#, num(STROKE));
+    let inner = Rect::new(r.x + inset, r.y + inset, r.w - w, r.h - w);
+    let stroke = |ink: &str| format!(r#"stroke={ink} stroke-width="{}""#, num(w));
     match s.kind {
         ShapeKind::Rect | ShapeKind::Other { .. } => body(out, 0.0, &or_fill, &or_ink),
         ShapeKind::Diamond
@@ -325,7 +341,7 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
     text(
         out,
         ctx,
-        &s.label,
+        (&s.label, face(&s.style)),
         area.center().x,
         area.center().y,
         LABEL_SIZE,
@@ -339,8 +355,16 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
 /// tip stays sharp (as `paint::connector`).
 /// A connector through `path`: a `<line>` when straight, a `<polyline>`
 /// with bends. An arrow's last segment stops at the head's base.
-/// `ink`: the stroke colour, quoted.
-fn connector(out: &mut String, path: &[Point], kind: ConnectorKind, ink: &str) {
+/// `ink`: the stroke colour, quoted; `dash`: its [`dash_attrs`], for the
+/// line and not the head.
+/// `w`: the stroke's width.
+fn connector(
+    out: &mut String,
+    path: &[Point],
+    kind: ConnectorKind,
+    (ink, w): (&str, f32),
+    dash: &str,
+) {
     let [.., a, b] = path else {
         return;
     };
@@ -362,12 +386,12 @@ fn connector(out: &mut String, path: &[Point], kind: ConnectorKind, ink: &str) {
     if let [(x1, y1), (x2, y2)] = points[..] {
         let _ = write!(
             out,
-            r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke={ink} stroke-width="{}"/>"#,
+            r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke={ink}{dash} stroke-width="{}"/>"#,
             num(x1),
             num(y1),
             num(x2),
             num(y2),
-            num(STROKE)
+            num(w)
         );
     } else {
         let list: Vec<String> = points
@@ -376,9 +400,9 @@ fn connector(out: &mut String, path: &[Point], kind: ConnectorKind, ink: &str) {
             .collect();
         let _ = write!(
             out,
-            r#"<polyline points="{}" fill="none" stroke={ink} stroke-width="{}"/>"#,
+            r#"<polyline points="{}" fill="none" stroke={ink}{dash} stroke-width="{}"/>"#,
             list.join(" "),
-            num(STROKE)
+            num(w)
         );
     }
     if arrow {
@@ -399,9 +423,37 @@ fn connector(out: &mut String, path: &[Point], kind: ConnectorKind, ink: &str) {
     }
 }
 
+/// A stroke's width: its own weight, else the default.
+fn stroke_px(style: &Style) -> f32 {
+    style.weight().and_then(|w| w.px()).unwrap_or(STROKE)
+}
+
+/// ` stroke-dasharray="6 4"`: a stroke's dash as SVG attributes, or nothing
+/// for solid. Dots are as on the canvas: a `w`-wide square every
+/// [`DOT_PITCH`], further apart on a heavy stroke. A Custom dash is written
+/// as it was written, if it parses.
+fn dash_attrs(dash: Option<Dash>, w: f32) -> String {
+    match dash {
+        None => String::new(),
+        Some(Dash::Dotted) => {
+            let pitch = DOT_PITCH.max(2.5 * w);
+            format!(r#" stroke-dasharray="{} {}""#, num(w), num(pitch - w))
+        }
+        Some(d) if d.pattern().is_some() => {
+            format!(r#" stroke-dasharray="{}""#, escape(d.value()))
+        }
+        Some(_) => String::new(),
+    }
+}
+
 /// An edge label on a patch of background at the midpoint.
-fn edge_label(out: &mut String, ctx: &egui::Context, at: (f32, f32), label: &str) {
-    let galley = layout(ctx, label, EDGE_LABEL_SIZE, None);
+fn edge_label(
+    out: &mut String,
+    ctx: &egui::Context,
+    at: (f32, f32),
+    (label, face): (&str, fonts::Style),
+) {
+    let galley = layout(ctx, (label, face), EDGE_LABEL_SIZE, None);
     let (w, h) = (galley.rect.width() + 6.0, galley.rect.height() + 6.0);
     let _ = write!(
         out,
@@ -411,16 +463,25 @@ fn edge_label(out: &mut String, ctx: &egui::Context, at: (f32, f32), label: &str
         num(w),
         num(h)
     );
-    text(out, ctx, label, at.0, at.1, EDGE_LABEL_SIZE, None, INK);
+    text(
+        out,
+        ctx,
+        (label, face),
+        at.0,
+        at.1,
+        EDGE_LABEL_SIZE,
+        None,
+        INK,
+    );
 }
 
 /// `label`, centred on (`cx`, `cy`) line by line, wrapped at `wrap` as the
-/// canvas wraps it: one `<tspan>` per line.
+/// canvas wraps it: one `<tspan>` per line, in its bundled `face`.
 #[allow(clippy::too_many_arguments)]
 fn text(
     out: &mut String,
     ctx: &egui::Context,
-    label: &str,
+    (label, face): (&str, fonts::Style),
     cx: f32,
     cy: f32,
     size: f32,
@@ -430,11 +491,21 @@ fn text(
     if label.is_empty() {
         return;
     }
-    let galley = layout(ctx, label, size, wrap);
+    let galley = layout(ctx, (label, face), size, wrap);
     let top = cy - galley.rect.height() / 2.0 - galley.rect.top();
+    let weight = if face.weight.is_some() {
+        r#" font-weight="bold""#
+    } else {
+        ""
+    };
+    let italic = if face.italic {
+        r#" font-style="italic""#
+    } else {
+        ""
+    };
     let _ = write!(
         out,
-        r#"<text x="{}" font-size="{}" fill="{fill}" text-anchor="middle" dominant-baseline="central">"#,
+        r#"<text x="{}" font-size="{}"{weight}{italic} fill="{fill}" text-anchor="middle" dominant-baseline="central">"#,
         num(cx),
         num(size)
     );
@@ -451,8 +522,13 @@ fn text(
     out.push_str("</text>");
 }
 
-fn layout(ctx: &egui::Context, text: &str, size: f32, wrap: Option<f32>) -> Arc<egui::Galley> {
-    let font = label_font(size / LABEL_SIZE);
+fn layout(
+    ctx: &egui::Context,
+    (text, face): (&str, fonts::Style),
+    size: f32,
+    wrap: Option<f32>,
+) -> Arc<egui::Galley> {
+    let font = face.font(size);
     let mut job = LayoutJob::simple(
         text.to_owned(),
         font,

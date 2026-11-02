@@ -1,7 +1,8 @@
 //! Tokenises one flowchart statement (`a["A"] --> b("B")`, `a -.-> b`,
-//! `a & b --> c`) into nodes and links. Links other than `---` and `-->` are
-//! still recognised, as `LinkKind::Other`, so the reader can keep the
-//! statement verbatim and still find the nodes it declares.
+//! `a & b --> c`) into nodes and links. Links other than `---`, `-->` and
+//! their dotted forms `-.-`, `-.->` are still recognised, as
+//! `LinkKind::Other`, so the reader can keep the statement verbatim and still
+//! find the nodes it declares.
 
 use super::label;
 use crate::model::ShapeKind;
@@ -18,6 +19,10 @@ pub(crate) struct NodeRef {
 pub(crate) enum LinkKind {
     Line,
     Arrow,
+    /// `-.-`
+    DottedLine,
+    /// `-.->`
+    DottedArrow,
     Other,
 }
 
@@ -264,6 +269,8 @@ fn classify(open: &str, close: Option<&str>) -> LinkKind {
     match (open, close) {
         ("-->", None) | ("--", Some("-->")) => LinkKind::Arrow,
         ("---", None) | ("--", Some("---")) => LinkKind::Line,
+        ("-.->", None) | ("-.", Some(".->")) => LinkKind::DottedArrow,
+        ("-.-", None) | ("-.", Some(".-")) => LinkKind::DottedLine,
         _ => LinkKind::Other,
     }
 }
@@ -421,13 +428,35 @@ mod tests {
                 node("b", None)
             ])
         );
+        assert_eq!(
+            tokenize("a -.-> b -.- c"),
+            Some(vec![
+                node("a", None),
+                link(DottedArrow, None),
+                node("b", None),
+                link(DottedLine, None),
+                node("c", None)
+            ])
+        );
+        assert_eq!(
+            tokenize("a -. maybe .-> b -.->|\"x\"| c -. \"or\" .- d"),
+            Some(vec![
+                node("a", None),
+                link(DottedArrow, Some("maybe")),
+                node("b", None),
+                link(DottedArrow, Some("x")),
+                node("c", None),
+                link(DottedLine, Some("or")),
+                node("d", None)
+            ])
+        );
         for other in [
-            "a -.-> b",
+            "a -..-> b",
             "a ==> b",
             "a --o b",
             "a <--> b",
+            "a <-.-> b",
             "a ----> b",
-            "a -. maybe .-> b",
         ] {
             let tokens = tokenize(other).unwrap();
             assert!(

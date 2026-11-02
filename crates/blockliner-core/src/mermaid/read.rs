@@ -12,7 +12,7 @@ use crate::model::{
     Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect, Route, Shape,
     ShapeKind,
 };
-use crate::style::{Colour, Style};
+use crate::style::{Colour, Dash, Style, Weight, DASH_KEY};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReadError {
@@ -167,6 +167,8 @@ struct Edge {
     from: String,
     to: String,
     kind: ConnectorKind,
+    /// `-.->` / `-.-`.
+    dotted: bool,
     label: Option<String>,
 }
 
@@ -239,8 +241,9 @@ impl Body {
                     let id = n.id.clone();
                     self.declare(n, false);
                     if let (Some(from), Some((kind, label))) = (prev.take(), link.take()) {
+                        let dotted = matches!(kind, LinkKind::DottedLine | LinkKind::DottedArrow);
                         let kind = match kind {
-                            LinkKind::Line => ConnectorKind::Line,
+                            LinkKind::Line | LinkKind::DottedLine => ConnectorKind::Line,
                             _ => ConnectorKind::Arrow,
                         };
                         if !self.uncounted {
@@ -250,6 +253,7 @@ impl Body {
                             from,
                             to: id.clone(),
                             kind,
+                            dotted,
                             label,
                         });
                     }
@@ -392,6 +396,7 @@ impl Body {
         }
 
         let mut seen: HashMap<(String, String), usize> = HashMap::new();
+        let mut dotted = Vec::new();
         for e in self.edges {
             let n = seen.entry((e.from.clone(), e.to.clone())).or_default();
             *n += 1;
@@ -400,6 +405,9 @@ impl Body {
                 .get(&edge_key(&e.from, &e.to, *n))
                 .copied()
                 .unwrap_or_default();
+            if e.dotted {
+                dotted.push(d.connectors.len());
+            }
             d.connectors.push(Connector {
                 kind: e.kind,
                 from: End::glued(e.from, a),
@@ -421,6 +429,14 @@ impl Body {
                     d.connectors[e].style.merge(style.clone());
                 }
                 absorbed.push(at);
+            }
+        }
+        // `-.->`: dotted, unless its `linkStyle` gave a dash (the more
+        // specific). Last among its properties, where the writer leaves it.
+        for i in dotted {
+            let style = &mut d.connectors[i].style;
+            if !style.extra.iter().any(|(k, _)| k == DASH_KEY) {
+                style.set_dash(Some(Dash::Dotted));
             }
         }
         let mut i = 0;
@@ -498,6 +514,18 @@ impl Layout {
                 if let (Some(kind), Some(from), Some(to)) = (kind, end("from"), end("to")) {
                     let mut line = Connector::new(kind, from, to).with_route(route(&fields));
                     line.style.stroke = fields.get("stroke").map(|c| Colour::parse(c));
+                    line.style
+                        .set_dash(fields.get("dash").and_then(|v| match *v {
+                            "dashed" => Some(Dash::Dashed),
+                            "dotted" => Some(Dash::Dotted),
+                            raw => Dash::parse(raw),
+                        }));
+                    line.style
+                        .set_weight(fields.get("weight").and_then(|v| Weight::parse(v)));
+                    let text = fields.get("text").copied().unwrap_or_default();
+                    line.style.set_bold(text.split('-').any(|w| w == "bold"));
+                    line.style
+                        .set_italic(text.split('-').any(|w| w == "italic"));
                     self.lines.push(line);
                 }
             }
@@ -624,6 +652,85 @@ mod tests {
     }
 
     #[test]
+    fn dotted_links_are_dotted_connectors() {
+        let d = read(
+            "flowchart LR\n  a -.-> b\n  b -. maybe .- c\n  a ==> c\n  c -.-> a\n  \
+             linkStyle 3 stroke:#f00,stroke-dasharray:5 5\n  linkStyle 1 stroke:#00f\n",
+        )
+        .unwrap();
+        let dashes: Vec<_> = d.connectors.iter().map(|c| c.style.dash()).collect();
+        assert_eq!(
+            dashes,
+            [
+                Some(Dash::Dotted),
+                Some(Dash::Dotted),
+                Some(Dash::Custom("5 5".into()))
+            ],
+            "the `linkStyle` wins over the link"
+        );
+        assert_eq!(d.connectors[1].kind, ConnectorKind::Line);
+        assert_eq!(d.connectors[1].label.as_deref(), Some("maybe"));
+        assert_eq!(d.passthrough, ["  a ==> c"]);
+        let out = crate::write(&d);
+        assert!(out.contains("  a -.-> b\n"), "{out}");
+        assert!(out.contains("  b -.-|\"maybe\"| c\n"), "{out}");
+        // Numbered as written: the kept `==>` edge is now last.
+        assert!(out.contains("  linkStyle 1 stroke:#00f\n"), "{out}");
+        assert!(
+            out.contains("  linkStyle 2 stroke:#f00,stroke-dasharray:5 5\n"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn free_line_weights_and_text() {
+        for (field, weight) in [
+            ("1", Some(Weight::Preset(10))),
+            ("2.5", Some(Weight::Preset(25))),
+            ("1.5", None),
+            ("6px", Some(Weight::Custom("6px".into()))),
+        ] {
+            let text = format!("flowchart LR\n%% @line line from=5,5 to=9,9 weight={field}\n");
+            let d = read(&text).unwrap();
+            assert_eq!(d.connectors[0].style.weight(), weight, "{field}");
+        }
+        for (field, bold, italic) in [
+            ("bold", true, false),
+            ("italic", false, true),
+            ("bold-italic", true, true),
+            ("wavy", false, false),
+        ] {
+            let text = format!("flowchart LR\n%% @line line from=5,5 to=9,9 text={field}\n");
+            let d = read(&text).unwrap();
+            let style = &d.connectors[0].style;
+            assert_eq!((style.bold(), style.italic()), (bold, italic), "{field}");
+        }
+        let line =
+            "%% @line arrow from=5,5 to=9,9 stroke=#f00 dash=dotted weight=2.5 text=bold-italic\n";
+        let d = read(&format!("flowchart LR\n{line}")).unwrap();
+        assert!(crate::write(&d).contains(line), "{}", crate::write(&d));
+    }
+
+    #[test]
+    fn free_line_dashes() {
+        for (field, dash) in [
+            ("dashed", Some(Dash::Dashed)),
+            ("dotted", Some(Dash::Dotted)),
+            ("9", Some(Dash::Custom("9".into()))),
+            ("none", None),
+        ] {
+            let text = format!("flowchart LR\n%% @line line from=5,5 to=9,9 dash={field}\n");
+            let d = read(&text).unwrap();
+            assert_eq!(d.connectors[0].style.dash(), dash, "{field}");
+        }
+        let d =
+            read("flowchart LR\n%% @line arrow from=5,5 to=9,9 stroke=#f00 dash=dotted\n").unwrap();
+        assert!(
+            crate::write(&d).contains("%% @line arrow from=5,5 to=9,9 stroke=#f00 dash=dotted\n")
+        );
+    }
+
+    #[test]
     fn implicit_nodes_and_chains() {
         let d = read("graph\n  a --> b --- c\n").unwrap();
         assert_eq!(d.direction, Direction::TB);
@@ -670,7 +777,7 @@ mod tests {
     #[test]
     fn verbatim_statements_declare_external_nodes() {
         let d = read(
-            "flowchart LR\n  a --> b\n  b -.-> c[(Store)]\n  subgraph s [Group]\n    d --> a\n  end\n",
+            "flowchart LR\n  a --> b\n  b ==> c[(Store)]\n  subgraph s [Group]\n    d --> a\n  end\n",
         )
         .unwrap();
         let ext: Vec<_> = d
@@ -684,7 +791,7 @@ mod tests {
         assert_eq!(
             d.passthrough,
             [
-                "  b -.-> c[(Store)]",
+                "  b ==> c[(Store)]",
                 "  subgraph s [Group]",
                 "    d --> a",
                 "  end"
@@ -697,7 +804,7 @@ mod tests {
         let d = read(
             "flowchart LR\n  a --> b\n  style a fill:#f9f,stroke-width:2px\n  classDef hot fill:red\n  \
              style a stroke:#333,stroke-width:4px\n  style a,b fill:#000\n  style c fill:#fff\n  \
-             b -.-> c\n  style b fill:rgb(1, 2, 3)\n  style  b  color:#123\n",
+             b ==> c\n  style b fill:rgb(1, 2, 3)\n  style  b  color:#123\n",
         )
         .unwrap();
         let a = &d.shape("a").unwrap().style;
@@ -714,7 +821,7 @@ mod tests {
                 "  classDef hot fill:red",
                 "  style a,b fill:#000",
                 "  style c fill:#fff",
-                "  b -.-> c",
+                "  b ==> c",
             ]
         );
         assert!(d.shape("c").unwrap().style.is_empty());

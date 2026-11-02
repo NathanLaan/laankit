@@ -27,7 +27,10 @@ pub mod view;
 
 use blockliner_core::geometry::Handle;
 use blockliner_core::snap::snap_point;
-use blockliner_core::style::{common, preset_index, Common, Style, PRESETS};
+use blockliner_core::style::{
+    agreement, common, common_dash, preset_index, Agreement, Common, Dash, DashCommon, Style,
+    Weight, PRESETS, WEIGHTS,
+};
 use blockliner_core::{
     Connector, ConnectorKind, Diagram, End, Point, Rect as ModelRect, ShapeKind,
 };
@@ -77,6 +80,14 @@ pub enum MenuAction {
     RouteStraight,
     Fill(Swatch),
     Stroke(Swatch),
+    /// Solid (`None`), Dashed or Dotted.
+    StrokeStyle(Option<Dash>),
+    /// A weight (`None`: the default, 1.5px).
+    StrokeWeight(Option<Weight>),
+    /// Bold (`true`) or Normal.
+    TextWeight(bool),
+    /// Italic (`true`) or Normal.
+    TextStyle(bool),
     ResetStyle,
     Delete,
     SelectAll,
@@ -135,6 +146,13 @@ impl SelectionKinds {
 pub struct SelectionStyle {
     pub fill: Common,
     pub stroke: Common,
+    /// The stroke's dash, across the same shapes and lines.
+    pub dash: DashCommon,
+    /// The stroke's weight (`Same(None)`: all the default)…
+    pub weight: Agreement<Option<Weight>>,
+    /// …and the labels' Bold and Italic.
+    pub bold: Agreement<bool>,
+    pub italic: Agreement<bool>,
     /// Selected shapes that can take colours…
     pub shapes: usize,
     /// …selected lines (a stroke only)…
@@ -212,13 +230,37 @@ impl Canvas {
         let shapes: Vec<&blockliner_core::Shape> =
             self.selection.iter().filter_map(|id| d.shape(id)).collect();
         let (own, external): (Vec<_>, Vec<_>) = shapes.into_iter().partition(|s| !s.external);
-        let lines = self.lines.iter().filter_map(|&i| d.connectors.get(i));
+        let lines: Vec<_> = self
+            .lines
+            .iter()
+            .filter_map(|&i| d.connectors.get(i))
+            .collect();
         SelectionStyle {
             fill: common(own.iter().map(|s| s.style.fill.as_ref())),
             stroke: common(
                 own.iter()
                     .map(|s| s.style.stroke.as_ref())
-                    .chain(lines.map(|c| c.style.stroke.as_ref())),
+                    .chain(lines.iter().map(|c| c.style.stroke.as_ref())),
+            ),
+            dash: common_dash(
+                own.iter()
+                    .map(|s| s.style.dash())
+                    .chain(lines.iter().map(|c| c.style.dash())),
+            ),
+            weight: agreement(
+                own.iter()
+                    .map(|s| s.style.weight())
+                    .chain(lines.iter().map(|c| c.style.weight())),
+            ),
+            bold: agreement(
+                own.iter()
+                    .map(|s| s.style.bold())
+                    .chain(lines.iter().map(|c| c.style.bold())),
+            ),
+            italic: agreement(
+                own.iter()
+                    .map(|s| s.style.italic())
+                    .chain(lines.iter().map(|c| c.style.italic())),
             ),
             shapes: own.len(),
             lines: self.lines.len(),
@@ -514,6 +556,56 @@ impl Canvas {
                         }
                     });
                 }
+                // Stroke Style ▸: Solid, Dashed, Dotted, the selection's own
+                // ticked (none for Mixed or Custom).
+                ui.menu_button("Stroke Style", |ui| {
+                    for dash in STROKE_STYLES {
+                        let active = style.dash == DashCommon::Same(dash.clone());
+                        let name = Dash::name(dash.as_ref());
+                        let glyph = crate::views::Glyph::Dash(dash.clone());
+                        if crate::views::icon_row(ui, glyph, name, None, active, 170.0).clicked() {
+                            picked = Some(MenuAction::StrokeStyle(dash));
+                            ui.close();
+                        }
+                    }
+                });
+                // Stroke Weight ▸: 1px … 4px, the default among them.
+                ui.menu_button("Stroke Weight", |ui| {
+                    for weight in WEIGHTS {
+                        let active = style.weight == Agreement::Same(weight.clone());
+                        let name = Weight::label(weight.as_ref());
+                        let glyph = crate::views::Glyph::Weight(weight.clone());
+                        if crate::views::icon_row(ui, glyph, &name, None, active, 190.0).clicked() {
+                            picked = Some(MenuAction::StrokeWeight(weight));
+                            ui.close();
+                        }
+                    }
+                });
+                // Text Weight ▸ and Text Style ▸: Normal or Bold, Normal or
+                // Italic.
+                for (title, on) in [("Text Weight", "Bold"), ("Text Style", "Italic")] {
+                    let bold = title == "Text Weight";
+                    let current = if bold { &style.bold } else { &style.italic };
+                    ui.menu_button(title, |ui| {
+                        for (name, value) in [("Normal", false), (on, true)] {
+                            let active = *current == Agreement::Same(value);
+                            let glyph = crate::views::Glyph::Text {
+                                bold: bold && value,
+                                italic: !bold && value,
+                            };
+                            if crate::views::icon_row(ui, glyph, name, None, active, 170.0)
+                                .clicked()
+                            {
+                                picked = Some(if bold {
+                                    MenuAction::TextWeight(value)
+                                } else {
+                                    MenuAction::TextStyle(value)
+                                });
+                                ui.close();
+                            }
+                        }
+                    });
+                }
                 if ui.button("Reset Style").clicked() {
                     picked = Some(MenuAction::ResetStyle);
                     ui.close();
@@ -590,6 +682,9 @@ fn resize_cursor(h: Handle) -> CursorIcon {
         Handle::E | Handle::W => CursorIcon::ResizeHorizontal,
     }
 }
+
+/// The stroke styles offered, in order: Solid, Dashed, Dotted.
+pub const STROKE_STYLES: [Option<Dash>; 3] = [None, Some(Dash::Dashed), Some(Dash::Dotted)];
 
 /// A menu row with its shortcut on the right; `true` when clicked.
 fn menu_item(ui: &mut Ui, text: &str, keys: &str, on: bool) -> bool {

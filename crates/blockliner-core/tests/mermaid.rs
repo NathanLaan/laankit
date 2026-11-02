@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use blockliner_core::style::{Colour, Style};
+use blockliner_core::style::{Colour, Dash, Style, Weight};
 
 use blockliner_core::{
     read, write, Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect,
@@ -92,7 +92,7 @@ fn hand_written_flowcharts_are_normalised_once() {
             ("orders", "orders", false),
             ("bus", "Event Bus", false),
             ("orders_db", "Orders DB", false),
-            ("audit", "audit", true),
+            ("audit", "audit", false),
             ("pay", "Payment Service", true),
             ("psp", "psp", true),
             ("a1", "a1", true),
@@ -119,8 +119,11 @@ fn hand_written_flowcharts_are_normalised_once() {
             ("api", "orders", ConnectorKind::Arrow, Some("REST")),
             ("api", "bus", ConnectorKind::Arrow, Some("events")),
             ("orders", "orders_db", ConnectorKind::Line, None),
+            ("orders", "audit", ConnectorKind::Arrow, None),
         ]
     );
+    // `-.->`: a dotted connector, written back the same way.
+    assert_eq!(d.connectors[4].style.dash(), Some(Dash::Dotted));
     // Every node got a position on the grid, and none overlap.
     for (i, a) in d.shapes.iter().enumerate() {
         assert_eq!(
@@ -206,13 +209,37 @@ impl Rng {
         s.fill = colour(self);
         s.stroke = colour(self);
         s.color = colour(self);
-        if self.chance(30) {
-            s.extra.push(("stroke-width".into(), "4px".into()));
-        }
-        if self.chance(20) {
-            s.extra.push(("stroke-dasharray".into(), "5 5".into()));
-        }
+        s.set_weight(self.weight());
+        s.set_bold(self.chance(25));
+        s.set_italic(self.chance(25));
+        // Last: a dotted edge's dash reads back as its last property.
+        s.set_dash(self.dash());
         s
+    }
+
+    fn weight(&mut self) -> Option<Weight> {
+        self.pick(&[
+            None,
+            None,
+            Some(Weight::Preset(10)),
+            Some(Weight::Preset(25)),
+            Some(Weight::Preset(40)),
+            Some(Weight::Custom("6px".into())),
+            Some(Weight::Custom("0.2 em".into())),
+        ])
+        .clone()
+    }
+
+    fn dash(&mut self) -> Option<Dash> {
+        self.pick(&[
+            None,
+            None,
+            Some(Dash::Dashed),
+            Some(Dash::Dotted),
+            Some(Dash::Custom("5 5".into())),
+            Some(Dash::Custom("9".into())),
+        ])
+        .clone()
     }
 
     fn route(&mut self) -> Route {
@@ -323,10 +350,17 @@ fn generate(rng: &mut Rng) -> Diagram {
         };
         let route = rng.route();
         let mut line = Connector::new(*rng.pick(&kinds), from, to).with_route(route);
-        // A free line keeps only its colour.
+        // A free line keeps only its colour, dash, weight and text (a
+        // Custom one only without spaces).
         if rng.chance(30) {
             line.style.stroke = rng.style().stroke;
         }
+        line.style
+            .set_dash(rng.dash().filter(|d| !d.value().contains(' ')));
+        line.style
+            .set_weight(rng.weight().filter(|w| !w.field().contains(' ')));
+        line.style.set_bold(rng.chance(25));
+        line.style.set_italic(rng.chance(25));
         d.connectors.push(line);
     }
     if rng.chance(20) {

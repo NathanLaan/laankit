@@ -195,7 +195,7 @@ fn shapes_from_kept_statements_are_not_editable() {
     let (_tmp, _paths, mut h) = harness();
     h.run_steps(2);
     *h.state_mut().diagram_mut() =
-        read("flowchart LR\n  a --> b\n  b -.-> c\n").expect("a flowchart");
+        read("flowchart LR\n  a --> b\n  b ==> c\n").expect("a flowchart");
     h.run_steps(2);
     let c = shape(&h, "c").rect;
     assert!(shape(&h, "c").external);
@@ -208,7 +208,7 @@ fn shapes_from_kept_statements_are_not_editable() {
     assert!(!h.state().editing_label());
 
     // Select everything and delete: `c` stays (its declaration is in the
-    // kept `-.->` statement), and the a → b edge went with its shapes.
+    // kept `==>` statement), and the a → b edge went with its shapes.
     drag(
         &mut h,
         PointerButton::Primary,

@@ -273,11 +273,113 @@ impl Style {
         self.stroke = stroke;
     }
 
-    /// Back to the theme's colours. Other properties stay.
+    /// Back to the theme's look: the default colours, a solid stroke of the
+    /// default weight, and Normal text. Other properties stay.
     pub fn reset(&mut self) {
         self.fill = None;
         self.stroke = None;
         self.color = None;
+        for key in [DASH_KEY, WEIGHT_KEY, FONT_WEIGHT_KEY, FONT_STYLE_KEY] {
+            self.set_extra(key, None);
+        }
+    }
+
+    fn get_extra(&self, key: &str) -> Option<&str> {
+        self.extra
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// Sets (or with `None` removes) a property in `extra`, keeping its
+    /// place among the others when it had one, so a hand-written line's
+    /// order stays.
+    fn set_extra(&mut self, key: &str, value: Option<String>) {
+        let at = self.extra.iter().position(|(k, _)| k == key);
+        match (value, at) {
+            (None, Some(i)) => {
+                self.extra.remove(i);
+            }
+            (None, None) => {}
+            (Some(v), Some(i)) => self.extra[i].1 = v,
+            (Some(v), None) => self.extra.push((key.to_owned(), v)),
+        }
+    }
+
+    /// The stroke's weight (`None`: the default, 1.5px), from its
+    /// `stroke-width`. A hand-written `1.5px` is the default too.
+    pub fn weight(&self) -> Option<Weight> {
+        self.get_extra(WEIGHT_KEY)
+            .and_then(Weight::parse)
+            .filter(|w| *w != Weight::Preset(Weight::DEFAULT))
+    }
+
+    /// A new weight (`None` or 1.5px: the default, not written).
+    pub fn set_weight(&mut self, weight: Option<Weight>) {
+        let weight = weight.filter(|w| *w != Weight::Preset(Weight::DEFAULT));
+        if weight.is_none() && self.weight().is_none() {
+            // Already the default: a hand-written `1.5px` stays as written.
+            if self.get_extra(WEIGHT_KEY).and_then(Weight::parse).is_some() {
+                return;
+            }
+        }
+        self.set_extra(WEIGHT_KEY, weight.map(|w| w.value()));
+    }
+
+    /// The label is bold: `font-weight` is `bold`, `bolder` or 600–900.
+    pub fn bold(&self) -> bool {
+        self.get_extra(FONT_WEIGHT_KEY).is_some_and(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            matches!(v.as_str(), "bold" | "bolder")
+                || v.parse::<f32>().is_ok_and(|n| (600.0..=900.0).contains(&n))
+        })
+    }
+
+    /// Bold (`font-weight:bold`) or Normal (removed). A hand-written value
+    /// that already reads as the one asked for stays as written.
+    pub fn set_bold(&mut self, bold: bool) {
+        if self.bold() != bold {
+            self.set_extra(FONT_WEIGHT_KEY, bold.then(|| "bold".to_owned()));
+        }
+    }
+
+    /// The label is italic: `font-style` is `italic` or `oblique …`.
+    pub fn italic(&self) -> bool {
+        self.get_extra(FONT_STYLE_KEY).is_some_and(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            v == "italic" || v.starts_with("oblique")
+        })
+    }
+
+    /// Italic (`font-style:italic`) or Normal (removed), as [`Style::set_bold`].
+    pub fn set_italic(&mut self, italic: bool) {
+        if self.italic() != italic {
+            self.set_extra(FONT_STYLE_KEY, italic.then(|| "italic".to_owned()));
+        }
+    }
+
+    /// The stroke's dash pattern (`None`: solid), from its
+    /// `stroke-dasharray`.
+    pub fn dash(&self) -> Option<Dash> {
+        self.extra
+            .iter()
+            .find(|(k, _)| k == DASH_KEY)
+            .and_then(|(_, v)| Dash::parse(v))
+    }
+
+    /// A new dash pattern (`None`: solid). It keeps its place among the
+    /// other properties when it had one, so a hand-written line's order
+    /// stays.
+    pub fn set_dash(&mut self, dash: Option<Dash>) {
+        self.set_extra(DASH_KEY, dash.map(|d| d.value().to_owned()));
+    }
+
+    /// [`Style::props`] without the dash: for an edge whose dots are in its
+    /// link (`-.->`).
+    pub fn props_without_dash(&self) -> String {
+        let mut s = self.clone();
+        s.extra.retain(|(k, _)| k != DASH_KEY);
+        s.props()
     }
 
     /// The label colour to draw: the shape's own, else one that reads on
@@ -289,6 +391,209 @@ impl Style {
         let fill = self.fill.as_ref()?.rgba.filter(|f| f[3] > 0)?;
         contrast(fill).rgba
     }
+}
+
+/// The property that holds a dash pattern.
+pub const DASH_KEY: &str = "stroke-dasharray";
+
+/// A stroke's dash pattern. Solid is no pattern (`Option<Dash>::None`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Dash {
+    /// `6 4`: 6 px dashes, 4 px gaps.
+    Dashed,
+    /// `2 3`: round dots, 3 px apart.
+    Dotted,
+    /// Any other `stroke-dasharray`, kept exactly as written.
+    Custom(String),
+}
+
+impl Dash {
+    pub const DASHED: &'static str = "6 4";
+    pub const DOTTED: &'static str = "2 3";
+
+    /// A `stroke-dasharray` value. `None` for solid (`none`, `0`, empty).
+    pub fn parse(v: &str) -> Option<Self> {
+        let words: Vec<&str> = v.split_whitespace().collect();
+        let norm = words.join(" ");
+        match norm.as_str() {
+            "" | "none" | "0" => None,
+            Self::DASHED => Some(Self::Dashed),
+            Self::DOTTED => Some(Self::Dotted),
+            _ => Some(Self::Custom(v.trim().to_owned())),
+        }
+    }
+
+    /// As written in `stroke-dasharray`.
+    pub fn value(&self) -> &str {
+        match self {
+            Self::Dashed => Self::DASHED,
+            Self::Dotted => Self::DOTTED,
+            Self::Custom(v) => v,
+        }
+    }
+
+    /// The menu and pane name.
+    pub fn name(dash: Option<&Dash>) -> &'static str {
+        match dash {
+            None => "Solid",
+            Some(Self::Dashed) => "Dashed",
+            Some(Self::Dotted) => "Dotted",
+            Some(Self::Custom(_)) => "Custom",
+        }
+    }
+
+    /// The dash and gap lengths to draw at 100 %, from the first two
+    /// numbers (one number is both, as in SVG). `None` when they don't
+    /// parse or aren't positive: drawn solid.
+    pub fn pattern(&self) -> Option<(f32, f32)> {
+        let nums: Option<Vec<f32>> = self
+            .value()
+            .split(|c: char| c.is_whitespace() || c == ',')
+            .filter(|w| !w.is_empty())
+            .map(|w| w.trim_end_matches("px").parse::<f32>().ok())
+            .collect();
+        let nums = nums?;
+        let (dash, gap) = match nums.as_slice() {
+            [d] => (*d, *d),
+            [d, g, ..] => (*d, *g),
+            [] => return None,
+        };
+        (dash.is_finite() && gap.is_finite() && dash > 0.0 && gap > 0.0).then_some((dash, gap))
+    }
+}
+
+/// The property that holds a stroke's weight.
+pub const WEIGHT_KEY: &str = "stroke-width";
+/// The label's weight (Bold)…
+pub const FONT_WEIGHT_KEY: &str = "font-weight";
+/// …and style (Italic).
+pub const FONT_STYLE_KEY: &str = "font-style";
+
+/// A stroke's weight. The default, 1.5px, is no weight
+/// (`Option<Weight>::None`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Weight {
+    /// One of [`Weight::PRESETS`], in tenths of a pixel.
+    Preset(u8),
+    /// Any other `stroke-width`, kept exactly as written.
+    Custom(String),
+}
+
+/// The weights offered, in order; `None` is the default, 1.5px.
+pub const WEIGHTS: [Option<Weight>; 6] = [
+    Some(Weight::Preset(10)),
+    None,
+    Some(Weight::Preset(20)),
+    Some(Weight::Preset(25)),
+    Some(Weight::Preset(30)),
+    Some(Weight::Preset(40)),
+];
+
+impl Weight {
+    /// The presets, in tenths of a pixel.
+    pub const PRESETS: [u8; 6] = [10, 15, 20, 25, 30, 40];
+    /// The default weight, 1.5px.
+    pub const DEFAULT: u8 = 15;
+
+    /// A `stroke-width` value (`2px`, `2.5`, `0.2em`). `None` when empty.
+    pub fn parse(v: &str) -> Option<Self> {
+        let t = v.trim();
+        if t.is_empty() {
+            return None;
+        }
+        let n = t.strip_suffix("px").unwrap_or(t).trim();
+        if let Ok(x) = n.parse::<f32>() {
+            let tenths = (x * 10.0).round();
+            if (x * 10.0 - tenths).abs() < 1e-3 && (0.0..=255.0).contains(&tenths) {
+                let tenths = tenths as u8;
+                if Self::PRESETS.contains(&tenths) {
+                    return Some(Self::Preset(tenths));
+                }
+            }
+        }
+        Some(Self::Custom(t.to_owned()))
+    }
+
+    /// The number of pixels, as written: `1`, `2.5`.
+    pub fn number_text(tenths: u8) -> String {
+        if tenths.is_multiple_of(10) {
+            format!("{}", tenths / 10)
+        } else {
+            format!("{}.{}", tenths / 10, tenths % 10)
+        }
+    }
+
+    /// As written in `stroke-width`: `2.5px`.
+    pub fn value(&self) -> String {
+        match self {
+            Self::Preset(t) => format!("{}px", Self::number_text(*t)),
+            Self::Custom(v) => v.clone(),
+        }
+    }
+
+    /// As written in a free line's `weight=` field: `2.5` (a Custom value
+    /// as written).
+    pub fn field(&self) -> String {
+        match self {
+            Self::Preset(t) => Self::number_text(*t),
+            Self::Custom(v) => v.clone(),
+        }
+    }
+
+    /// The menu and pane name: `2px`, `1.5px (Default)`, `Custom`.
+    pub fn label(weight: Option<&Weight>) -> String {
+        match weight {
+            None => format!("{}px (Default)", Self::number_text(Self::DEFAULT)),
+            Some(Self::Preset(t)) if *t == Self::DEFAULT => Self::label(None),
+            Some(w @ Self::Preset(_)) => w.value(),
+            Some(Self::Custom(_)) => "Custom".into(),
+        }
+    }
+
+    /// The width to draw at 100 %: a preset's, or a Custom value's when it
+    /// is a plain or `px` number from 0.5 to 8; else `None` (the default).
+    pub fn px(&self) -> Option<f32> {
+        match self {
+            Self::Preset(t) => Some(f32::from(*t) / 10.0),
+            Self::Custom(v) => {
+                let v = v.trim();
+                let n = v.strip_suffix("px").unwrap_or(v).trim();
+                n.parse::<f32>().ok().filter(|x| (0.5..=8.0).contains(x))
+            }
+        }
+    }
+}
+
+/// What a selection's shapes and lines have in common, as [`common`] is
+/// for colours.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Agreement<T> {
+    /// Nothing to ask.
+    None,
+    /// They all have this.
+    Same(T),
+    /// They differ.
+    Mixed,
+}
+
+pub fn agreement<T: PartialEq>(values: impl IntoIterator<Item = T>) -> Agreement<T> {
+    let mut values = values.into_iter();
+    let Some(first) = values.next() else {
+        return Agreement::None;
+    };
+    for v in values {
+        if v != first {
+            return Agreement::Mixed;
+        }
+    }
+    Agreement::Same(first)
+}
+
+/// The dash across a selection (`Same(None)`: all solid).
+pub type DashCommon = Agreement<Option<Dash>>;
+
+pub fn common_dash(values: impl IntoIterator<Item = Option<Dash>>) -> DashCommon {
+    agreement(values)
 }
 
 /// One property (a fill, a stroke) across a selection of shapes.
@@ -471,6 +776,129 @@ mod tests {
         assert_eq!(preset_index(&upper, false), Some(1));
         assert_eq!(preset_index(&c("#3b82f6"), true), Some(1));
         assert_eq!(preset_index(&c("#3b82f6"), false), None);
+    }
+
+    #[test]
+    fn weights() {
+        assert_eq!(Weight::parse("2px"), Some(Weight::Preset(20)));
+        assert_eq!(Weight::parse(" 2.5 "), Some(Weight::Preset(25)));
+        assert_eq!(Weight::parse("2.50px"), Some(Weight::Preset(25)));
+        assert_eq!(Weight::parse("4.0"), Some(Weight::Preset(40)));
+        assert_eq!(Weight::parse("1.5px"), Some(Weight::Preset(15)));
+        assert_eq!(Weight::parse("5px"), Some(Weight::Custom("5px".into())));
+        assert_eq!(Weight::parse("0.2em"), Some(Weight::Custom("0.2em".into())));
+        assert_eq!(Weight::parse("999"), Some(Weight::Custom("999".into())));
+        assert_eq!(Weight::parse(""), None);
+        assert_eq!(Weight::Preset(25).value(), "2.5px");
+        assert_eq!(Weight::Preset(10).field(), "1");
+        assert_eq!(Weight::label(None), "1.5px (Default)");
+        assert_eq!(Weight::label(Some(&Weight::Preset(30))), "3px");
+        assert_eq!(Weight::label(Some(&Weight::Custom("5px".into()))), "Custom");
+        assert_eq!(Weight::Preset(25).px(), Some(2.5));
+        assert_eq!(Weight::Custom("6px".into()).px(), Some(6.0));
+        assert_eq!(Weight::Custom("0.2em".into()).px(), None);
+        assert_eq!(Weight::Custom("12".into()).px(), None);
+        let labels: Vec<String> = WEIGHTS.iter().map(|w| Weight::label(w.as_ref())).collect();
+        assert_eq!(
+            labels,
+            ["1px", "1.5px (Default)", "2px", "2.5px", "3px", "4px"]
+        );
+
+        // In place, and the default never written.
+        let mut s = Style::parse("stroke:#333,stroke-width:5px,color:#fff").unwrap();
+        assert_eq!(s.weight(), Some(Weight::Custom("5px".into())));
+        s.set_weight(Some(Weight::Preset(25)));
+        assert_eq!(s.props(), "stroke:#333,color:#fff,stroke-width:2.5px");
+        s.set_weight(Some(Weight::Preset(15)));
+        assert_eq!(s.props(), "stroke:#333,color:#fff");
+        s.set_weight(Some(Weight::Preset(40)));
+        assert_eq!(s.props(), "stroke:#333,color:#fff,stroke-width:4px");
+
+        // A hand-written 1.5px is the default, and stays as written.
+        let mut s = Style::parse("stroke-width:1.5px").unwrap();
+        assert_eq!(s.weight(), None);
+        s.set_weight(None);
+        assert_eq!(s.props(), "stroke-width:1.5px");
+        // Reset Style removes it.
+        s.reset();
+        assert_eq!(s.props(), "");
+    }
+
+    #[test]
+    fn bold_and_italic() {
+        for (v, bold) in [
+            ("bold", true),
+            ("Bolder", true),
+            ("600", true),
+            ("900", true),
+            ("normal", false),
+            ("400", false),
+            ("lighter", false),
+        ] {
+            let s = Style::parse(&format!("font-weight:{v}")).unwrap();
+            assert_eq!(s.bold(), bold, "{v}");
+        }
+        for (v, italic) in [("italic", true), ("oblique 10deg", true), ("normal", false)] {
+            let s = Style::parse(&format!("font-style:{v}")).unwrap();
+            assert_eq!(s.italic(), italic, "{v}");
+        }
+        // A hand-written value that already reads right stays as written.
+        let mut s = Style::parse("font-weight:600,fill:#fff").unwrap();
+        s.set_bold(true);
+        assert_eq!(s.props(), "fill:#fff,font-weight:600");
+        s.set_bold(false);
+        assert_eq!(s.props(), "fill:#fff");
+        s.set_bold(true);
+        s.set_italic(true);
+        assert_eq!(s.props(), "fill:#fff,font-weight:bold,font-style:italic");
+        s.reset();
+        assert!(s.is_empty());
+        let mut s = Style::parse("font-weight:normal").unwrap();
+        s.reset();
+        assert!(s.is_empty());
+    }
+
+    #[test]
+    fn dashes() {
+        assert_eq!(Dash::parse("6 4"), Some(Dash::Dashed));
+        assert_eq!(Dash::parse(" 6   4 "), Some(Dash::Dashed));
+        assert_eq!(Dash::parse("2 3"), Some(Dash::Dotted));
+        assert_eq!(Dash::parse("none"), None);
+        assert_eq!(Dash::parse("0"), None);
+        assert_eq!(Dash::parse("5 5"), Some(Dash::Custom("5 5".into())));
+        assert_eq!(Dash::Dashed.pattern(), Some((6.0, 4.0)));
+        assert_eq!(Dash::Custom("3".into()).pattern(), Some((3.0, 3.0)));
+        assert_eq!(Dash::Custom("8px 2px 1".into()).pattern(), Some((8.0, 2.0)));
+        assert_eq!(Dash::Custom("wavy".into()).pattern(), None);
+        assert_eq!(Dash::Custom("0 4".into()).pattern(), None);
+
+        // In place among the other properties, and gone when solid.
+        let mut s = Style::parse("stroke:#333,stroke-dasharray:5 5,stroke-width:2px").unwrap();
+        assert_eq!(s.dash(), Some(Dash::Custom("5 5".into())));
+        s.set_dash(Some(Dash::Dotted));
+        assert_eq!(
+            s.props(),
+            "stroke:#333,stroke-dasharray:2 3,stroke-width:2px"
+        );
+        assert_eq!(s.props_without_dash(), "stroke:#333,stroke-width:2px");
+        s.set_dash(None);
+        assert_eq!(s.props(), "stroke:#333,stroke-width:2px");
+        s.set_dash(Some(Dash::Dashed));
+        assert_eq!(
+            s.props(),
+            "stroke:#333,stroke-width:2px,stroke-dasharray:6 4"
+        );
+        // Reset Style: back to solid and the default weight.
+        s.reset();
+        assert_eq!(s.props(), "");
+
+        assert_eq!(common_dash([]), DashCommon::None);
+        assert_eq!(common_dash([None, None]), DashCommon::Same(None));
+        assert_eq!(
+            common_dash([Some(Dash::Dotted), Some(Dash::Dotted)]),
+            DashCommon::Same(Some(Dash::Dotted))
+        );
+        assert_eq!(common_dash([Some(Dash::Dotted), None]), DashCommon::Mixed);
     }
 
     #[test]

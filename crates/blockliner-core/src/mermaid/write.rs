@@ -7,6 +7,7 @@ use std::fmt::Write;
 use super::label::encode;
 use super::{edge_key, FORMAT_VERSION, TEXT_CLASS};
 use crate::model::{Connector, ConnectorKind, Diagram, End, Mid, Route, Shape, ShapeKind};
+use crate::style::Dash;
 
 pub fn write(d: &Diagram) -> String {
     let mut out = String::new();
@@ -33,11 +34,14 @@ pub fn write(d: &Diagram) -> String {
     }
     // Numbered as Mermaid does: the edges above come first in the file.
     for (n, c) in d.connectors.iter().filter(|c| c.is_edge()).enumerate() {
-        if !c.style.is_empty() {
-            line(
-                &mut out,
-                format_args!("  linkStyle {n} {}", c.style.props()),
-            );
+        // A dotted edge's dots are in its link (`-.->`).
+        let props = if dotted(c) {
+            c.style.props_without_dash()
+        } else {
+            c.style.props()
+        };
+        if !props.is_empty() {
+            line(&mut out, format_args!("  linkStyle {n} {props}"));
         }
     }
     for p in &d.passthrough {
@@ -103,12 +107,15 @@ pub fn write(d: &Diagram) -> String {
         line(
             &mut out,
             format_args!(
-                "%% @line {} from={} to={}{}{}",
+                "%% @line {} from={} to={}{}{}{}{}{}",
                 kind(c.kind),
                 end(&c.from),
                 end(&c.to),
                 route(c.route),
-                line_stroke(c)
+                line_stroke(c),
+                line_dash(c),
+                line_weight(c),
+                line_text(c)
             ),
         );
     }
@@ -138,10 +145,16 @@ fn class(s: &Shape) -> String {
         .unwrap_or_default()
 }
 
+fn dotted(c: &Connector) -> bool {
+    c.style.dash() == Some(Dash::Dotted)
+}
+
 fn edge(c: &Connector) -> String {
-    let link = match c.kind {
-        ConnectorKind::Line => "---",
-        ConnectorKind::Arrow => "-->",
+    let link = match (c.kind, dotted(c)) {
+        (ConnectorKind::Line, false) => "---",
+        (ConnectorKind::Arrow, false) => "-->",
+        (ConnectorKind::Line, true) => "-.-",
+        (ConnectorKind::Arrow, true) => "-.->",
     };
     let label = c
         .label
@@ -164,6 +177,37 @@ fn line_stroke(c: &Connector) -> String {
         .filter(|s| !s.text.is_empty() && !s.text.contains(char::is_whitespace))
         .map(|s| format!(" stroke={}", s.text))
         .unwrap_or_default()
+}
+
+/// ` dash=dashed`: a free line's dash (a Custom one only without spaces,
+/// as for `stroke=`).
+fn line_dash(c: &Connector) -> String {
+    match c.style.dash() {
+        None => String::new(),
+        Some(Dash::Dashed) => " dash=dashed".into(),
+        Some(Dash::Dotted) => " dash=dotted".into(),
+        Some(Dash::Custom(v)) if !v.contains(char::is_whitespace) => format!(" dash={v}"),
+        Some(Dash::Custom(_)) => String::new(),
+    }
+}
+
+/// ` weight=2.5`: a free line's weight (a Custom one only without
+/// spaces).
+fn line_weight(c: &Connector) -> String {
+    match c.style.weight() {
+        Some(w) if !w.field().contains(char::is_whitespace) => format!(" weight={}", w.field()),
+        _ => String::new(),
+    }
+}
+
+/// ` text=bold-italic`: a free line's label weight and style.
+fn line_text(c: &Connector) -> String {
+    match (c.style.bold(), c.style.italic()) {
+        (false, false) => String::new(),
+        (true, false) => " text=bold".into(),
+        (false, true) => " text=italic".into(),
+        (true, true) => " text=bold-italic".into(),
+    }
 }
 
 fn kind(k: ConnectorKind) -> &'static str {
