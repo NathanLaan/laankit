@@ -2,7 +2,7 @@
 //! hints, marquee, the shape or line being created) in theme colours.
 
 use blockliner_core::connect::path_midpoint;
-use blockliner_core::geometry::{self, Handle, SUBROUTINE_INSET};
+use blockliner_core::geometry::{self, Handle, DOUBLE_CIRCLE_GAP, SUBROUTINE_INSET};
 use blockliner_core::route::middle_segment;
 use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
@@ -396,8 +396,8 @@ fn badge(painter: &Painter, r: egui::Rect, s: &Shape, p: &Palette) {
     painter.galley(at.center() - galley.size() / 2.0, galley, p.text_muted);
 }
 
-/// A diamond, hexagon, database or subroutine filling `r` (on screen), its
-/// stroke inside `r` as a box's is. `false` for the other kinds, which
+/// One of the drawn shapes (not a box, text or an unknown shape) filling
+/// `r` (on screen), its stroke inside `r` as a box's is. `false` for the other kinds, which
 /// draw themselves.
 pub fn outline(
     painter: &Painter,
@@ -416,9 +416,28 @@ pub fn outline(
         ShapeKind::Diamond
         | ShapeKind::Hexagon
         | ShapeKind::Parallelogram
-        | ShapeKind::Trapezoid => {
+        | ShapeKind::ReverseParallelogram
+        | ShapeKind::Trapezoid
+        | ShapeKind::InvertedTrapezoid => {
             let points = screen(geometry::polygon(kind, &m).unwrap_or_default());
             painter.add(egui::Shape::convex_polygon(points, fill, stroke));
+        }
+        // Not convex, so egui's polygon would fill the notch: a fan from the
+        // notch's point (which sees every corner), then the outline.
+        ShapeKind::Asymmetric => {
+            let points = screen(geometry::polygon(kind, &m).unwrap_or_default());
+            if let Some((&tip, corners)) = points.split_last() {
+                let mut mesh = egui::Mesh::default();
+                mesh.colored_vertex(tip, fill);
+                for &q in corners {
+                    mesh.colored_vertex(q, fill);
+                }
+                for i in 1..corners.len() as u32 {
+                    mesh.add_triangle(0, i, i + 1);
+                }
+                painter.add(mesh);
+            }
+            painter.add(egui::Shape::closed_line(points, stroke));
         }
         ShapeKind::Stadium => {
             let radius = (r.height().min(r.width()) / 2.0).min(255.0) as u8;
@@ -428,6 +447,16 @@ pub fn outline(
             let radius = inner.size() / 2.0;
             painter.add(egui::Shape::ellipse_filled(inner.center(), radius, fill));
             painter.add(egui::Shape::ellipse_stroke(inner.center(), radius, stroke));
+        }
+        ShapeKind::DoubleCircle => {
+            let radius = inner.size() / 2.0;
+            painter.add(egui::Shape::ellipse_filled(inner.center(), radius, fill));
+            painter.add(egui::Shape::ellipse_stroke(inner.center(), radius, stroke));
+            // The gap scales with the zoom, as the model's does.
+            let ring = geometry::inner_ring(&m, DOUBLE_CIRCLE_GAP * zoom);
+            let radius = vec2(ring.w, ring.h) / 2.0;
+            let centre = Pos2::new(ring.x + ring.w / 2.0, ring.y + ring.h / 2.0);
+            painter.add(egui::Shape::ellipse_stroke(centre, radius, stroke));
         }
         ShapeKind::Database => {
             // The cap scales with the zoom, as the model's does.

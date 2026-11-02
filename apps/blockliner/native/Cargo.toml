@@ -1,6 +1,6 @@
 [package]
 name = "blockliner-native"
-version = "2.3.1"
+version = "2.4.0"
 description = "BlockLiner: a Visio-style diagram editor for software architecture, saving Mermaid flowcharts. An egui UI over blockliner-core."
 edition.workspace = true
 license.workspace = true
@@ -24,6 +24,8 @@ log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+# Open Containing Folder: the OS file manager (as NoteLiner's).
+open = "5"
 # 0.15, as in the other apps: see apps/noteliner/native/Cargo.toml.
 rfd = "0.15"
 # PNG export: rasterises the SVG export (the version laankit-richtext uses).

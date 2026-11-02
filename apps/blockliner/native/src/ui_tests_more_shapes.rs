@@ -1,4 +1,4 @@
-//! The four more shapes, headlessly: the More Shapes button and its list
+//! The more shapes, headlessly: the More Shapes button and its list
 //! (from the corner or a right-click), the button keeping the last pick,
 //! their letters and default sizes, a click in a diamond's empty corner,
 //! and an arrow glued to a diamond's vertex.
@@ -227,4 +227,66 @@ fn the_later_four_come_from_the_list() {
     click(&mut h, at(364.0, 264.0));
     h.run_steps(2);
     assert!(h.state().selection().is_empty());
+}
+
+#[test]
+fn the_mirrored_four_come_from_the_list() {
+    let (_tmp, _paths, mut h) = harness();
+    h.run_steps(2);
+    for (name, x) in [
+        ("Double Circle", 200.0),
+        ("Reverse Parallelogram", 400.0),
+        ("Inverted Trapezoid", 600.0),
+        ("Asymmetric", 800.0),
+    ] {
+        h.get_by_label("Show More Shapes").click();
+        h.run_steps(3);
+        h.get_by_label(name).click();
+        h.run_steps(3);
+        assert_eq!(h.state().tool().name(), name);
+        h.get_by_label(&format!("More Shapes: {name}"));
+        click(&mut h, at(x, 300.0));
+        h.run_steps(2);
+        h.key_press(Key::Escape);
+        h.run_steps(2);
+    }
+    // A double circle is 5 × 5 cells; the others 8 × 3.
+    let (double, ring) = kind(&h, 0);
+    assert_eq!(
+        (double, ring.w, ring.h),
+        (ShapeKind::DoubleCircle, 100.0, 100.0)
+    );
+    assert_eq!(kind(&h, 1).0, ShapeKind::ReverseParallelogram);
+    assert_eq!(kind(&h, 2).0, ShapeKind::InvertedTrapezoid);
+    let (flag, r) = kind(&h, 3);
+    assert_eq!(flag, ShapeKind::Asymmetric);
+
+    // Saved with Mermaid's brackets, which read back as the same shapes.
+    let text = write(h.state().diagram());
+    let ids: Vec<String> = h
+        .state()
+        .diagram()
+        .shapes
+        .iter()
+        .map(|s| s.id.clone())
+        .collect();
+    for (id, open, close) in [
+        (&ids[0], "(((", ")))"),
+        (&ids[1], "[\\", "\\]"),
+        (&ids[2], "[\\", "/]"),
+        (&ids[3], ">", "]"),
+    ] {
+        let line = format!("  {id}{open}\"\"{close}\n");
+        assert!(text.contains(&line), "{line:?} in\n{text}");
+    }
+    let back = blockliner_core::read(&text).unwrap();
+    assert_eq!(back.shapes, h.state().diagram().shapes);
+
+    // A click in the asymmetric shape's notch misses it; beside it, hits.
+    click(&mut h, at(r.x + 4.0, r.y + r.h / 2.0));
+    h.run_steps(2);
+    assert!(h.state().selection().is_empty());
+    click(&mut h, at(r.x + 4.0, r.y + 2.0));
+    h.run_steps(2);
+    assert_eq!(h.state().selection(), [ids[3].clone()]);
 }

@@ -106,6 +106,29 @@ Pre-built packages for Linux, Windows and macOS are attached to each [GitHub rel
 
 `git` must be installed on the target machine for sync and history to work (not needed for BlockLiner).
 
+## Uninstall
+
+Each app is removed separately. The package names are `noteliner`, `threadliner`, `pageliner` and `blockliner`; the examples use NoteLiner.
+
+- **Linux**
+  - `.deb`: `sudo apt remove noteliner` (`sudo apt purge noteliner` also removes the package's own system files).
+  - `.rpm`: `sudo dnf remove noteliner`.
+  - AppImage: delete the `.AppImage` file. Nothing else was installed system-wide.
+  - Flatpak: `flatpak uninstall com.nathanlaan.noteliner` (add `--delete-data` to remove its sandboxed settings too).
+- **Windows** — **Settings → Apps → Installed apps**, find the app (e.g. BlockLiner), then **⋯ → Uninstall**. The installer was per-user, so no admin rights are needed.
+- **macOS** — quit the app, then drag it from `/Applications` to the Trash.
+- **Built from source** — the binaries in `target/release/` aren't installed anywhere; delete them, or run `cargo clean` to remove the whole build output.
+
+Uninstalling leaves your projects, diagrams and settings in place, so a reinstall picks up where you left off. To remove the settings as well, delete the app's folders:
+
+| | Folders to delete |
+|---|---|
+| Linux | `~/.config/<App>` (settings) and `~/.local/share/<app>` (window state), e.g. `~/.config/BlockLiner` and `~/.local/share/blockliner` |
+| Windows | `%APPDATA%\<App>` (settings and window state) |
+| macOS | `~/Library/Application Support/<App>` (settings and window state) |
+
+`<App>` is the product name (`NoteLiner`, `ThreadLiner`, `PageLiner`, `BlockLiner`) and `<app>` the lowercase binary name; on Windows and macOS, whose file systems ignore case by default, the two are one folder. Your project folders themselves are never touched by an uninstall; delete them yourself if you no longer want them.
+
 ## Tests and Linting
 
 ```bash

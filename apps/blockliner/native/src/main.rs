@@ -16,6 +16,8 @@ mod views;
 #[cfg(test)]
 mod ui_tests;
 #[cfg(test)]
+mod ui_tests_change_shape;
+#[cfg(test)]
 mod ui_tests_clipboard;
 #[cfg(test)]
 mod ui_tests_export;

@@ -34,8 +34,12 @@ pub enum Tool {
     Subroutine,
     Stadium,
     Circle,
+    DoubleCircle,
     Parallelogram,
+    ReverseParallelogram,
     Trapezoid,
+    InvertedTrapezoid,
+    Asymmetric,
     Line,
     Arrow,
     ElbowLine,
@@ -45,7 +49,7 @@ pub enum Tool {
 
 impl Tool {
     /// In toolbar order. The [`Tool::MORE`] shapes share one button.
-    pub const ALL: [Tool; 16] = [
+    pub const ALL: [Tool; 20] = [
         Tool::Select,
         Tool::Rect,
         Tool::RoundRect,
@@ -55,8 +59,12 @@ impl Tool {
         Tool::Subroutine,
         Tool::Stadium,
         Tool::Circle,
+        Tool::DoubleCircle,
         Tool::Parallelogram,
+        Tool::ReverseParallelogram,
         Tool::Trapezoid,
+        Tool::InvertedTrapezoid,
+        Tool::Asymmetric,
         Tool::Line,
         Tool::Arrow,
         Tool::ElbowLine,
@@ -65,15 +73,19 @@ impl Tool {
     ];
 
     /// Behind the toolbar's More Shapes button.
-    pub const MORE: [Tool; 8] = [
+    pub const MORE: [Tool; 12] = [
         Tool::Diamond,
         Tool::Hexagon,
         Tool::Database,
         Tool::Subroutine,
         Tool::Stadium,
         Tool::Circle,
+        Tool::DoubleCircle,
         Tool::Parallelogram,
+        Tool::ReverseParallelogram,
         Tool::Trapezoid,
+        Tool::InvertedTrapezoid,
+        Tool::Asymmetric,
     ];
 
     /// One of the [`Tool::MORE`] shapes.
@@ -84,7 +96,7 @@ impl Tool {
     /// Its place in the toolbar, from 0 (which the number keys follow).
     pub fn slot(self) -> usize {
         let i = Tool::ALL.iter().position(|&t| t == self).unwrap_or(0);
-        // The more shapes (3 to 10) are one button.
+        // The more shapes (3 to 14) are one button.
         let more = Tool::MORE.len();
         match i {
             0..=3 => i,
@@ -94,23 +106,16 @@ impl Tool {
     }
 
     pub fn name(self) -> &'static str {
+        if let Some(kind) = self.shape_kind() {
+            return kind.name();
+        }
         match self {
             Tool::Select => "Select",
-            Tool::Rect => "Rectangle",
-            Tool::RoundRect => "Rounded Rectangle",
-            Tool::Diamond => "Diamond",
-            Tool::Hexagon => "Hexagon",
-            Tool::Database => "Database",
-            Tool::Subroutine => "Subroutine",
-            Tool::Stadium => "Stadium",
-            Tool::Circle => "Circle",
-            Tool::Parallelogram => "Parallelogram",
-            Tool::Trapezoid => "Trapezoid",
             Tool::Line => "Line",
             Tool::Arrow => "Arrow",
             Tool::ElbowLine => "Right-Angle Line",
             Tool::ElbowArrow => "Right-Angle Arrow",
-            Tool::Text => "Text",
+            _ => unreachable!("a shape tool"),
         }
     }
 
@@ -125,11 +130,22 @@ impl Tool {
             Tool::Subroutine => Some(ShapeKind::Subroutine),
             Tool::Stadium => Some(ShapeKind::Stadium),
             Tool::Circle => Some(ShapeKind::Circle),
+            Tool::DoubleCircle => Some(ShapeKind::DoubleCircle),
             Tool::Parallelogram => Some(ShapeKind::Parallelogram),
+            Tool::ReverseParallelogram => Some(ShapeKind::ReverseParallelogram),
             Tool::Trapezoid => Some(ShapeKind::Trapezoid),
+            Tool::InvertedTrapezoid => Some(ShapeKind::InvertedTrapezoid),
+            Tool::Asymmetric => Some(ShapeKind::Asymmetric),
             Tool::Text => Some(ShapeKind::Text),
             _ => None,
         }
+    }
+
+    /// The tool that draws `kind` (whose icon stands for it), if any.
+    pub fn for_shape(kind: &ShapeKind) -> Option<Tool> {
+        Tool::ALL
+            .into_iter()
+            .find(|t| t.shape_kind().as_ref() == Some(kind))
     }
 
     /// The connector a line tool makes.
