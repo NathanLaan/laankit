@@ -243,3 +243,46 @@ fn the_export_dialog_writes_the_selection_as_svg() {
     let image = image::open(&png).unwrap();
     assert_eq!((image.width(), image.height()), (540, 340));
 }
+
+#[test]
+fn the_mirrored_shapes_export_as_themselves() {
+    let ctx = context();
+    let mut d = Diagram::new();
+    for (id, kind, x, w, h) in [
+        ("ring", ShapeKind::DoubleCircle, 40.0, 100.0, 100.0),
+        ("out", ShapeKind::ReverseParallelogram, 160.0, 160.0, 60.0),
+        ("manual", ShapeKind::InvertedTrapezoid, 340.0, 160.0, 60.0),
+        ("flag", ShapeKind::Asymmetric, 520.0, 160.0, 60.0),
+    ] {
+        d.shapes
+            .push(Shape::new(id, kind, id, Rect::new(x, 40.0, w, h)));
+    }
+    let s = scope(&d, Objects::All).unwrap();
+    let svg = export::svg(&ctx, &d, &s, false);
+    // Two rings, the inner one unfilled and 5 in.
+    assert!(
+        svg.contains(r#"<ellipse cx="90" cy="90" rx="49.25" ry="49.25""#),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(r#"<ellipse cx="90" cy="90" rx="44.25" ry="44.25" fill="none""#),
+        "{svg}"
+    );
+    // Polygons with the stroke inside: leaning left, wider at the top, and
+    // notched on the left.
+    assert!(
+        svg.contains(r#"<polygon points="160.75,40.75 299.75,40.75 319.25,99.25 180.25,99.25""#),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(r#"<polygon points="340.75,40.75 499.25,40.75 479.75,99.25 360.25,99.25""#),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"<polygon points="520.75,40.75 679.25,40.75 679.25,99.25 520.75,99.25 550,70""#
+        ),
+        "{svg}"
+    );
+    export::png(&svg, 1.0).expect("resvg reads it");
+}

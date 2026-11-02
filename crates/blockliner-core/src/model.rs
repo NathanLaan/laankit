@@ -94,27 +94,38 @@ pub enum ShapeKind {
     Stadium,
     /// `id(("label"))`, an ellipse when its box isn't square.
     Circle,
+    /// A circle inside a circle: `id((("label")))`.
+    DoubleCircle,
     /// Leaning right: `id[/"label"/]`.
     Parallelogram,
+    /// Leaning left: `id[\"label"\]`.
+    ReverseParallelogram,
     /// Wider at the bottom: `id[/"label"\]`.
     Trapezoid,
-    /// Any other Mermaid node shape (`((( )))`, `>]`, the mirrored
-    /// parallelogram and trapezoid, …), kept with its delimiters so it is
-    /// written back unchanged. Drawn as a rectangle.
+    /// Wider at the top: `id[\"label"/]`.
+    InvertedTrapezoid,
+    /// A flag notched on the left: `id>"label"]`.
+    Asymmetric,
+    /// Any other pair of Mermaid brackets, kept as written so it is written
+    /// back unchanged. Drawn as a rectangle.
     Other { open: String, close: String },
 }
 
 impl ShapeKind {
     /// The shapes behind the toolbar's More Shapes button.
-    pub const MORE: [ShapeKind; 8] = [
+    pub const MORE: [ShapeKind; 12] = [
         ShapeKind::Diamond,
         ShapeKind::Hexagon,
         ShapeKind::Database,
         ShapeKind::Subroutine,
         ShapeKind::Stadium,
         ShapeKind::Circle,
+        ShapeKind::DoubleCircle,
         ShapeKind::Parallelogram,
+        ShapeKind::ReverseParallelogram,
         ShapeKind::Trapezoid,
+        ShapeKind::InvertedTrapezoid,
+        ShapeKind::Asymmetric,
     ];
 
     /// The Mermaid brackets around the label.
@@ -128,8 +139,12 @@ impl ShapeKind {
             ShapeKind::Subroutine => ("[[", "]]"),
             ShapeKind::Stadium => ("([", "])"),
             ShapeKind::Circle => ("((", "))"),
+            ShapeKind::DoubleCircle => ("(((", ")))"),
             ShapeKind::Parallelogram => ("[/", "/]"),
+            ShapeKind::ReverseParallelogram => ("[\\", "\\]"),
             ShapeKind::Trapezoid => ("[/", "\\]"),
+            ShapeKind::InvertedTrapezoid => ("[\\", "/]"),
+            ShapeKind::Asymmetric => (">", "]"),
             ShapeKind::Other { open, close } => (open, close),
         }
     }
@@ -145,8 +160,12 @@ impl ShapeKind {
             ("[[", _) => ShapeKind::Subroutine,
             ("([", _) => ShapeKind::Stadium,
             ("((", _) => ShapeKind::Circle,
+            ("(((", _) => ShapeKind::DoubleCircle,
             ("[/", "/]") => ShapeKind::Parallelogram,
+            ("[\\", "\\]") => ShapeKind::ReverseParallelogram,
             ("[/", "\\]") => ShapeKind::Trapezoid,
+            ("[\\", "/]") => ShapeKind::InvertedTrapezoid,
+            (">", _) => ShapeKind::Asymmetric,
             _ => ShapeKind::Other {
                 open: open.into(),
                 close: close.into(),
@@ -193,13 +212,15 @@ impl Shape {
 
     /// A new shape's size, in grid cells: 8 × 3 for boxes, 10 × 2 for text,
     /// 8 × 4 for a diamond (its label sits in the middle half), 6 × 4
-    /// for a database and 4 × 4 for a circle.
+    /// for a database, 4 × 4 for a circle and 5 × 5 for a double circle
+    /// (its label sits inside the inner ring).
     pub fn default_size(kind: &ShapeKind, grid: f32) -> (f32, f32) {
         let (w, h) = match kind {
             ShapeKind::Text => (10.0, 2.0),
             ShapeKind::Diamond => (8.0, 4.0),
             ShapeKind::Database => (6.0, 4.0),
             ShapeKind::Circle => (4.0, 4.0),
+            ShapeKind::DoubleCircle => (5.0, 5.0),
             _ => (8.0, 3.0),
         };
         (w * grid, h * grid)

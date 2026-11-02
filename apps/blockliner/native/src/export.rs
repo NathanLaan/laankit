@@ -230,7 +230,10 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
         ShapeKind::Diamond
         | ShapeKind::Hexagon
         | ShapeKind::Parallelogram
-        | ShapeKind::Trapezoid => {
+        | ShapeKind::ReverseParallelogram
+        | ShapeKind::Trapezoid
+        | ShapeKind::InvertedTrapezoid
+        | ShapeKind::Asymmetric => {
             let points: Vec<String> = geometry::polygon(&s.kind, &inner)
                 .unwrap_or_default()
                 .iter()
@@ -275,16 +278,23 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
             }
         }
         ShapeKind::Stadium => body(out, geometry::stadium_radius(&r) - inset, &or_fill, &or_ink),
-        ShapeKind::Circle => {
-            let _ = write!(
-                out,
-                r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill={or_fill} {}/>"#,
-                num(inner.x + inner.w / 2.0),
-                num(inner.y + inner.h / 2.0),
-                num(inner.w / 2.0),
-                num(inner.h / 2.0),
-                stroke(&or_ink)
-            );
+        ShapeKind::Circle | ShapeKind::DoubleCircle => {
+            let ellipse = |out: &mut String, e: &Rect, fill: &str| {
+                let _ = write!(
+                    out,
+                    r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill={fill} {}/>"#,
+                    num(e.x + e.w / 2.0),
+                    num(e.y + e.h / 2.0),
+                    num(e.w / 2.0),
+                    num(e.h / 2.0),
+                    stroke(&or_ink)
+                );
+            };
+            ellipse(out, &inner, &or_fill);
+            if s.kind == ShapeKind::DoubleCircle {
+                let ring = geometry::inner_ring(&inner, geometry::DOUBLE_CIRCLE_GAP);
+                ellipse(out, &ring, "\"none\"");
+            }
         }
         ShapeKind::RoundRect => body(
             out,

@@ -333,12 +333,16 @@ fn paint_tool_icon(painter: &egui::Painter, tool: Tool, c: Pos2, ink: Color32) {
         | Tool::Subroutine
         | Tool::Stadium
         | Tool::Circle
+        | Tool::DoubleCircle
         | Tool::Parallelogram
-        | Tool::Trapezoid => {
+        | Tool::ReverseParallelogram
+        | Tool::Trapezoid
+        | Tool::InvertedTrapezoid
+        | Tool::Asymmetric => {
             let size = match tool {
                 Tool::Diamond => vec2(20.0, 14.0),
                 Tool::Database => vec2(14.0, 16.0),
-                Tool::Circle => vec2(15.0, 15.0),
+                Tool::Circle | Tool::DoubleCircle => vec2(15.0, 15.0),
                 _ => vec2(18.0, 12.0),
             };
             if let Some(kind) = tool.shape_kind() {

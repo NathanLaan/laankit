@@ -155,11 +155,18 @@ pub fn tool_key(tool: Tool) -> Option<(Key, &'static str)> {
         Tool::ElbowLine => (Key::J, "J"),
         Tool::ElbowArrow => (Key::E, "E"),
         Tool::Text => (Key::T, "T"),
-        Tool::Stadium | Tool::Circle | Tool::Parallelogram | Tool::Trapezoid => return None,
+        Tool::Stadium
+        | Tool::Circle
+        | Tool::DoubleCircle
+        | Tool::Parallelogram
+        | Tool::ReverseParallelogram
+        | Tool::Trapezoid
+        | Tool::InvertedTrapezoid
+        | Tool::Asymmetric => return None,
     })
 }
 
-/// A tool's number: its toolbar button ([`Tool::slot`]), so the four more
+/// A tool's number: its toolbar button ([`Tool::slot`]), so the more
 /// shapes share 4, which picks the last one used. Bound to the physical
 /// key, so the number row works on layouts that put the digits behind
 /// Shift.

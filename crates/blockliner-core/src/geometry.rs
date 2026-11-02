@@ -138,14 +138,30 @@ pub fn slant(r: &Rect) -> f32 {
     (r.h / 3.0).min(r.w / 4.0)
 }
 
+/// How far an asymmetric shape's notch reaches in from its left side.
+pub fn notch(r: &Rect) -> f32 {
+    (r.h / 2.0).min(r.w / 4.0)
+}
+
+/// The gap between a double circle's two rings.
+pub const DOUBLE_CIRCLE_GAP: f32 = 5.0;
+
+/// A double circle's inner ring, `gap` in from `r` (or at its centre, if
+/// `r` is too small for one).
+pub fn inner_ring(r: &Rect, gap: f32) -> Rect {
+    let gap = gap.min(r.w / 4.0).min(r.h / 4.0).max(0.0);
+    Rect::new(r.x + gap, r.y + gap, r.w - 2.0 * gap, r.h - 2.0 * gap)
+}
+
 /// A stadium's corner radius: half its height (or width, if narrower).
 pub fn stadium_radius(r: &Rect) -> f32 {
     r.h.min(r.w) / 2.0
 }
 
-/// The outline of a shape drawn as a polygon (diamond, hexagon,
-/// parallelogram, trapezoid), clockwise from the top left; `None` for the
-/// others.
+/// The outline of a shape drawn as a polygon (diamond, hexagon, the
+/// parallelograms and trapezoids, asymmetric), clockwise from the top left;
+/// `None` for the others. All are convex but the asymmetric shape, whose
+/// notch (its last point) is the one point that sees all the others.
 pub fn polygon(kind: &ShapeKind, r: &Rect) -> Option<Vec<Point>> {
     let c = r.center();
     match kind {
@@ -158,6 +174,15 @@ pub fn polygon(kind: &ShapeKind, r: &Rect) -> Option<Vec<Point>> {
                 Point::new(r.x, r.bottom()),
             ])
         }
+        ShapeKind::ReverseParallelogram => {
+            let k = slant(r);
+            Some(vec![
+                Point::new(r.x, r.y),
+                Point::new(r.right() - k, r.y),
+                Point::new(r.right(), r.bottom()),
+                Point::new(r.x + k, r.bottom()),
+            ])
+        }
         ShapeKind::Trapezoid => {
             let k = slant(r);
             Some(vec![
@@ -165,6 +190,25 @@ pub fn polygon(kind: &ShapeKind, r: &Rect) -> Option<Vec<Point>> {
                 Point::new(r.right() - k, r.y),
                 Point::new(r.right(), r.bottom()),
                 Point::new(r.x, r.bottom()),
+            ])
+        }
+        ShapeKind::InvertedTrapezoid => {
+            let k = slant(r);
+            Some(vec![
+                Point::new(r.x, r.y),
+                Point::new(r.right(), r.y),
+                Point::new(r.right() - k, r.bottom()),
+                Point::new(r.x + k, r.bottom()),
+            ])
+        }
+        ShapeKind::Asymmetric => {
+            let k = notch(r);
+            Some(vec![
+                Point::new(r.x, r.y),
+                Point::new(r.right(), r.y),
+                Point::new(r.right(), r.bottom()),
+                Point::new(r.x, r.bottom()),
+                Point::new(r.x + k, c.y),
             ])
         }
         ShapeKind::Diamond => Some(vec![
@@ -217,7 +261,8 @@ pub fn cylinder(r: &Rect, cap: f32, steps: usize) -> (Vec<Point>, Vec<Point>) {
 impl Shape {
     /// `p` is inside the shape's outline (edges included). A diamond, a
     /// hexagon, a parallelogram, a trapezoid, a circle or a stadium misses
-    /// in its empty corners; the others are their rectangle.
+    /// in its empty corners, an asymmetric shape in its notch; the others
+    /// are their rectangle.
     pub fn contains(&self, p: Point) -> bool {
         let r = &self.rect;
         if !r.contains(p) {
@@ -245,18 +290,27 @@ impl Shape {
                 let k = hexagon_inset(r) * off_middle(r.h / 2.0);
                 p.x >= r.x + k - 1e-4 && p.x <= r.right() - k + 1e-4
             }
-            ShapeKind::Parallelogram | ShapeKind::Trapezoid => {
+            ShapeKind::Parallelogram
+            | ShapeKind::ReverseParallelogram
+            | ShapeKind::Trapezoid
+            | ShapeKind::InvertedTrapezoid => {
                 // 0 at the top, 1 at the bottom.
                 let down = if r.h > 0.0 { (p.y - r.y) / r.h } else { 0.0 };
                 let k = slant(r);
-                let (left, right) = if self.kind == ShapeKind::Parallelogram {
-                    (r.x + k * (1.0 - down), r.right() - k * down)
-                } else {
-                    (r.x + k * (1.0 - down), r.right() - k * (1.0 - down))
+                let up = 1.0 - down;
+                let (left, right) = match self.kind {
+                    ShapeKind::Parallelogram => (k * up, k * down),
+                    ShapeKind::ReverseParallelogram => (k * down, k * up),
+                    ShapeKind::Trapezoid => (k * up, k * up),
+                    _ => (k * down, k * down),
                 };
-                p.x >= left - 1e-4 && p.x <= right + 1e-4
+                p.x >= r.x + left - 1e-4 && p.x <= r.right() - right + 1e-4
             }
-            ShapeKind::Circle => {
+            ShapeKind::Asymmetric => {
+                let k = notch(r) * (1.0 - off_middle(r.h / 2.0));
+                p.x >= r.x + k - 1e-4
+            }
+            ShapeKind::Circle | ShapeKind::DoubleCircle => {
                 let (rx, ry) = (r.w / 2.0, r.h / 2.0);
                 if rx <= 0.0 || ry <= 0.0 {
                     return true;
@@ -284,15 +338,21 @@ impl Shape {
 
     /// Where a connector glued to `a` meets the shape: the side's midpoint,
     /// except on a parallelogram's or trapezoid's slanted sides, whose
-    /// midpoints are half the slant in.
+    /// midpoints are half the slant in, and at an asymmetric shape's notch.
     pub fn anchor(&self, a: Anchor) -> Point {
         let p = anchor_point(&self.rect, a);
-        match (&self.kind, a) {
-            (ShapeKind::Parallelogram | ShapeKind::Trapezoid, Anchor::E) => {
-                Point::new(p.x - slant(&self.rect) / 2.0, p.y)
-            }
-            (ShapeKind::Parallelogram | ShapeKind::Trapezoid, Anchor::W) => {
-                Point::new(p.x + slant(&self.rect) / 2.0, p.y)
+        let slanted = matches!(
+            self.kind,
+            ShapeKind::Parallelogram
+                | ShapeKind::ReverseParallelogram
+                | ShapeKind::Trapezoid
+                | ShapeKind::InvertedTrapezoid
+        );
+        match a {
+            Anchor::E if slanted => Point::new(p.x - slant(&self.rect) / 2.0, p.y),
+            Anchor::W if slanted => Point::new(p.x + slant(&self.rect) / 2.0, p.y),
+            Anchor::W if self.kind == ShapeKind::Asymmetric => {
+                Point::new(p.x + notch(&self.rect), p.y)
             }
             _ => p,
         }
@@ -317,16 +377,28 @@ impl Shape {
                 let k = SUBROUTINE_INSET.min(r.w / 4.0);
                 Rect::new(r.x + k, r.y, r.w - 2.0 * k, r.h)
             }
-            ShapeKind::Parallelogram | ShapeKind::Trapezoid => {
+            ShapeKind::Parallelogram
+            | ShapeKind::ReverseParallelogram
+            | ShapeKind::Trapezoid
+            | ShapeKind::InvertedTrapezoid => {
                 let k = slant(&r);
                 Rect::new(r.x + k, r.y, r.w - 2.0 * k, r.h)
+            }
+            ShapeKind::Asymmetric => {
+                let k = notch(&r);
+                Rect::new(r.x + k, r.y, r.w - k, r.h)
             }
             ShapeKind::Stadium => {
                 let k = stadium_radius(&r) / 2.0;
                 Rect::new(r.x + k, r.y, r.w - 2.0 * k, r.h)
             }
-            // The rectangle inside the ellipse.
-            ShapeKind::Circle => {
+            // The rectangle inside the (inner) ellipse.
+            ShapeKind::Circle | ShapeKind::DoubleCircle => {
+                let r = if self.kind == ShapeKind::DoubleCircle {
+                    inner_ring(&r, DOUBLE_CIRCLE_GAP)
+                } else {
+                    r
+                };
                 let (w, h) = (
                     r.w / std::f32::consts::SQRT_2,
                     r.h / std::f32::consts::SQRT_2,
@@ -549,5 +621,71 @@ mod tests {
         assert_eq!(trap.anchor(Anchor::E), p(150.0, 30.0));
         assert_eq!(para.anchor(Anchor::N), p(80.0, 0.0));
         assert_eq!(stadium.anchor(Anchor::E), p(160.0, 30.0));
+    }
+
+    #[test]
+    fn the_mirrored_shapes_asymmetric_and_double_circle() {
+        let p = Point::new;
+        let r = Rect::new(0.0, 0.0, 160.0, 60.0);
+        let s = |kind| Shape::new("s", kind, "", r);
+        assert_eq!(
+            polygon(&ShapeKind::ReverseParallelogram, &r).unwrap(),
+            [p(0.0, 0.0), p(140.0, 0.0), p(160.0, 60.0), p(20.0, 60.0)]
+        );
+        assert_eq!(
+            polygon(&ShapeKind::InvertedTrapezoid, &r).unwrap(),
+            [p(0.0, 0.0), p(160.0, 0.0), p(140.0, 60.0), p(20.0, 60.0)]
+        );
+        // A notch of 30 (half the height), its point last.
+        assert_eq!(
+            polygon(&ShapeKind::Asymmetric, &r).unwrap(),
+            [
+                p(0.0, 0.0),
+                p(160.0, 0.0),
+                p(160.0, 60.0),
+                p(0.0, 60.0),
+                p(30.0, 30.0)
+            ]
+        );
+
+        // The empty corners and the notch miss.
+        let rev = s(ShapeKind::ReverseParallelogram);
+        assert!(rev.contains(p(2.0, 2.0)));
+        assert!(!rev.contains(p(158.0, 2.0)));
+        assert!(rev.contains(p(158.0, 58.0)));
+        assert!(!rev.contains(p(2.0, 58.0)));
+        let inv = s(ShapeKind::InvertedTrapezoid);
+        assert!(inv.contains(p(2.0, 2.0)));
+        assert!(inv.contains(p(158.0, 2.0)));
+        assert!(!inv.contains(p(2.0, 58.0)));
+        assert!(!inv.contains(p(158.0, 58.0)));
+        let flag = s(ShapeKind::Asymmetric);
+        assert!(flag.contains(p(2.0, 2.0)));
+        assert!(!flag.contains(p(20.0, 30.0)));
+        assert!(flag.contains(p(31.0, 30.0)));
+        assert!(flag.contains(p(158.0, 30.0)));
+        let ring = Shape::new(
+            "c",
+            ShapeKind::DoubleCircle,
+            "",
+            Rect::new(0.0, 0.0, 80.0, 80.0),
+        );
+        assert!(!ring.contains(p(6.0, 6.0)));
+        assert!(ring.contains(p(40.0, 1.0)));
+
+        // Labels inside, anchors on the outline.
+        assert_eq!(rev.label_rect(), Rect::new(20.0, 0.0, 120.0, 60.0));
+        assert_eq!(flag.label_rect(), Rect::new(30.0, 0.0, 130.0, 60.0));
+        let inner = ring.label_rect();
+        assert!((inner.w - 49.50).abs() < 0.01 && (inner.x - 15.25).abs() < 0.01);
+        assert_eq!(rev.anchor(Anchor::E), p(150.0, 30.0));
+        assert_eq!(inv.anchor(Anchor::W), p(10.0, 30.0));
+        assert_eq!(flag.anchor(Anchor::W), p(30.0, 30.0));
+        assert_eq!(flag.anchor(Anchor::E), p(160.0, 30.0));
+        assert_eq!(ring.anchor(Anchor::N), p(40.0, 0.0));
+
+        // A double circle too small for its gap keeps a ring.
+        let tiny = inner_ring(&Rect::new(0.0, 0.0, 8.0, 8.0), DOUBLE_CIRCLE_GAP);
+        assert_eq!(tiny, Rect::new(2.0, 2.0, 4.0, 4.0));
     }
 }

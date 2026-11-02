@@ -121,8 +121,12 @@ pub fn summary(d: &Diagram, selection: &[String], lines: usize) -> String {
                     ShapeKind::Subroutine => "Subroutine",
                     ShapeKind::Stadium => "Stadium",
                     ShapeKind::Circle => "Circle",
+                    ShapeKind::DoubleCircle => "Double Circle",
                     ShapeKind::Parallelogram => "Parallelogram",
+                    ShapeKind::ReverseParallelogram => "Reverse Parallelogram",
                     ShapeKind::Trapezoid => "Trapezoid",
+                    ShapeKind::InvertedTrapezoid => "Inverted Trapezoid",
+                    ShapeKind::Asymmetric => "Asymmetric",
                     ShapeKind::Other { .. } => "Shape",
                 };
                 let label = s.label.lines().next().unwrap_or("").trim();
