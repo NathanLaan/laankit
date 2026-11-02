@@ -1,6 +1,7 @@
 //! The folder of diagrams, headlessly: opening the last folder and diagram,
 //! the autosave (once a change is finished, debounced, flushed when
 //! switching), new/rename/delete from the keyboard, sidebar and dialogs,
+//! the sidebar's Open Containing Folder,
 //! and outside changes (reloaded as an undoable step; a deleted file closes
 //! the diagram).
 
@@ -360,4 +361,27 @@ fn close_folder_stays_open_when_the_save_fails() {
     assert_eq!(h.state().doc_name(), Some("Diagram"));
     assert_eq!(project(&paths), folder);
     h.get_by_label_contains("Couldn't save");
+}
+
+#[test]
+fn a_diagrams_menu_opens_its_containing_folder() {
+    let (_tmp, paths, mut h) = harness();
+    let folder = project(&paths);
+    fs::write(folder.join("Second.mmd"), "flowchart TD\n").unwrap();
+    h.run_steps(2);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::E);
+    h.run_steps(2);
+    next_scan(&mut h);
+
+    // Right-click a row that isn't open: its folder, and it stays closed.
+    h.get_by_label("Second").click_secondary();
+    h.run_steps(3);
+    h.get_by_label("Open Containing Folder…").click();
+    h.run_steps(3);
+    assert_eq!(h.state().opened_folders(), [folder]);
+    assert_eq!(h.state().doc_name(), Some("Diagram"));
+    assert!(
+        h.query_by_label("Open Containing Folder…").is_none(),
+        "closed"
+    );
 }

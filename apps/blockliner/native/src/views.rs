@@ -395,10 +395,13 @@ pub enum SidebarAction {
     New,
     Rename(String),
     Delete(String),
+    /// Show the diagram's folder in the OS file manager.
+    OpenContainingFolder(String),
 }
 
 /// The open folder's diagrams: a header with the folder's name and a New
-/// button, then a row per diagram (right-click to rename or delete).
+/// button, then a row per diagram (right-click to rename, delete or open
+/// its folder).
 pub fn sidebar(
     ui: &mut Ui,
     folder: &str,
@@ -475,6 +478,11 @@ pub fn sidebar(
                     }
                     if ui.button("Delete…").clicked() {
                         out.push(SidebarAction::Delete(name.clone()));
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Open Containing Folder…").clicked() {
+                        out.push(SidebarAction::OpenContainingFolder(name.clone()));
                         ui.close();
                     }
                 });

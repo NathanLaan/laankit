@@ -716,6 +716,7 @@ dependencies = [
  "laankit-core",
  "laankit-egui",
  "log",
+ "open",
  "resvg 0.45.1",
  "rfd",
  "serde",
