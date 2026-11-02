@@ -197,10 +197,10 @@ fn a_mixed_selection_takes_one_style() {
     assert_eq!(line_dash(&h, 0), None);
 
     // Every row is showing (Change Shape, Change Line, Fill, Stroke, Stroke
-    // Style), and Reset Style still fits the pane's default height.
+    // Style, Stroke Weight, Text Weight and Style), and Reset Style is still
+    // reachable.
     select_all(&mut h);
-    h.get_by_label("Reset Style").click();
-    h.run_steps(2);
+    crate::ui_tests::pane_reset_style(&mut h);
     assert_eq!(dash_of(&h, "a"), None);
 }
 
@@ -226,11 +226,10 @@ fn a_custom_dash_stays_until_replaced_and_reset_style_clears_it() {
 
     palette(&mut h, "Stroke Style: Dashed");
     assert_eq!(dash_of(&h, "a"), Some(Dash::Dashed));
-    // Reset Style: solid again, the colours gone, the width kept.
+    // Reset Style: solid again, the colours and the weight gone.
     palette(&mut h, "Reset Style");
     assert_eq!(dash_of(&h, "a"), None);
-    let style = &h.state().diagram().shape("a").unwrap().style;
-    assert_eq!(style.props(), "stroke-width:2px");
+    assert!(h.state().diagram().shape("a").unwrap().style.is_empty());
 }
 
 #[test]

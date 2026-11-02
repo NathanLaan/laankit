@@ -224,8 +224,10 @@ impl Diagram {
     pub fn connector_at(&self, p: Point, tolerance: f32) -> Option<usize> {
         self.connectors.iter().enumerate().rev().find_map(|(i, c)| {
             let path = self.connector_path(c)?;
+            // A line with its own weight reaches half of it further.
+            let reach = tolerance + c.style.weight().and_then(|w| w.px()).unwrap_or(0.0) / 2.0;
             path.windows(2)
-                .any(|w| distance_to_segment(p, w[0], w[1]) <= tolerance)
+                .any(|w| distance_to_segment(p, w[0], w[1]) <= reach)
                 .then_some(i)
         })
     }

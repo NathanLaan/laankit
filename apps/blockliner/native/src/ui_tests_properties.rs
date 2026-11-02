@@ -156,7 +156,6 @@ fn lines_alone_take_a_stroke() {
     assert!(
         blockliner_core::write(h.state().diagram()).contains("\n  linkStyle 0 stroke:#ef4444\n")
     );
-    h.get_by_label("Reset Style").click();
-    h.run_steps(2);
+    crate::ui_tests::pane_reset_style(&mut h);
     assert!(h.state().diagram().connectors[0].style.is_empty());
 }

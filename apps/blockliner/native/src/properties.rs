@@ -2,14 +2,17 @@
 //! Shape (the selected shapes' kind) and Change Line (whether the selected
 //! lines have arrowheads), then Fill and Stroke (the current value, Default
 //! and the presets as swatches, a hex field), Stroke Style (solid, dashed or
-//! dotted), plus Reset Style.
+//! dotted), Stroke Weight (1px … 4px), Text Weight (Normal or Bold) and Text
+//! Style (Normal or Italic), plus Reset Style.
 //!
 //! A row whose shapes don't all agree shows **Mixed**: a split swatch, an
 //! empty field with a "Mixed" placeholder, and no swatch ringed. Picking a
 //! swatch or entering a hex value sets it on all of them. Each row is judged
 //! on its own, so one can be shared while the other is Mixed.
 
-use blockliner_core::style::{Colour, Common, Dash, DashCommon, PRESETS};
+use blockliner_core::style::{
+    Agreement, Colour, Common, Dash, DashCommon, Weight, PRESETS, WEIGHTS,
+};
 use blockliner_core::{ConnectorKind, Diagram, ShapeKind};
 use egui::{pos2, vec2, Align2, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
 use laankit_egui::dialog::{self, ButtonKind};
@@ -25,7 +28,7 @@ use crate::views::Glyph;
 
 /// The pane's height when there's no saved one: room for everything with
 /// both Change Shape and Change Line showing (shapes and lines selected).
-pub const DEFAULT_HEIGHT: f32 = 560.0;
+pub const DEFAULT_HEIGHT: f32 = 680.0;
 /// Its smallest height, and the least the diagram list keeps above it.
 pub const MIN_HEIGHT: f32 = 120.0;
 
@@ -44,6 +47,12 @@ pub enum PropertiesAction {
     SetArrowheads(bool),
     /// Stroke Style: Solid (`None`), Dashed or Dotted.
     StrokeStyle(Option<Dash>),
+    /// Stroke Weight (`None`: the default, 1.5px).
+    StrokeWeight(Option<Weight>),
+    /// Text Weight: Bold (`true`) or Normal.
+    TextWeight(bool),
+    /// Text Style: Italic (`true`) or Normal.
+    TextStyle(bool),
 }
 
 /// The pane's own state between frames: its two hex fields.
@@ -238,6 +247,20 @@ fn contents(
                     out = Some(PropertiesAction::StrokeStyle(dash));
                 }
                 ui.add_space(10.0);
+                if let Some(weight) = weight_row(ui, &props.style.weight) {
+                    out = Some(PropertiesAction::StrokeWeight(weight));
+                }
+                ui.add_space(10.0);
+                // Text Weight and Text Style side by side: both are short.
+                ui.columns(2, |cols| {
+                    if let Some(bold) = text_row(&mut cols[0], true, &props.style.bold) {
+                        out = Some(PropertiesAction::TextWeight(bold));
+                    }
+                    if let Some(italic) = text_row(&mut cols[1], false, &props.style.italic) {
+                        out = Some(PropertiesAction::TextStyle(italic));
+                    }
+                });
+                ui.add_space(10.0);
                 if dialog::button(ui, "Reset Style", ButtonKind::Secondary, reason.is_none())
                     .clicked()
                 {
@@ -329,6 +352,77 @@ fn dash_row(ui: &mut Ui, current: &DashCommon) -> Option<Option<Dash>> {
         }
     });
     picked.filter(|d| *current != DashCommon::Same(d.clone()))
+}
+
+/// Stroke Weight: 1px … 4px, with 1.5px the default (or Mixed, or a
+/// hand-written Custom weight). The weight picked, unless they all already
+/// have it.
+fn weight_row(ui: &mut Ui, current: &Agreement<Option<Weight>>) -> Option<Option<Weight>> {
+    dialog::field_label(ui, "Stroke Weight:");
+    let name = match current {
+        Agreement::Same(w) => Some(Weight::label(w.as_ref())),
+        Agreement::None => Some(Weight::label(None)),
+        Agreement::Mixed => None,
+    };
+    let shown = match current {
+        Agreement::Same(w) => Some(Glyph::Weight(w.clone())),
+        Agreement::None => Some(Glyph::Weight(None)),
+        Agreement::Mixed => None,
+    };
+    let mut picked = None;
+    kind_select(
+        ui,
+        "Stroke Weight",
+        shown.zip(name.as_deref()),
+        |ui, width| {
+            for weight in WEIGHTS {
+                let active = *current == Agreement::Same(weight.clone());
+                let name = Weight::label(weight.as_ref());
+                let glyph = Glyph::Weight(weight.clone());
+                if crate::views::icon_row(ui, glyph, &name, None, active, width).clicked() {
+                    picked = Some(weight);
+                }
+            }
+        },
+    );
+    picked.filter(|w| *current != Agreement::Same(w.clone()))
+}
+
+/// Text Weight (`bold`: Normal or Bold) or Text Style (Normal or Italic)
+/// for the selected labels. `true` for Bold or Italic, unless they all
+/// already are.
+fn text_row(ui: &mut Ui, bold: bool, current: &Agreement<bool>) -> Option<bool> {
+    let (label, on) = if bold {
+        ("Text Weight", "Bold")
+    } else {
+        ("Text Style", "Italic")
+    };
+    dialog::field_label(ui, &format!("{label}:"));
+    let look = |value: bool| {
+        (
+            Glyph::Text {
+                bold: bold && value,
+                italic: !bold && value,
+            },
+            if value { on } else { "Normal" },
+        )
+    };
+    let shown = match current {
+        Agreement::Same(v) => Some(look(*v)),
+        Agreement::None => Some(look(false)),
+        Agreement::Mixed => None,
+    };
+    let mut picked = None;
+    kind_select(ui, label, shown, |ui, width| {
+        for value in [false, true] {
+            let (glyph, name) = look(value);
+            let active = *current == Agreement::Same(value);
+            if crate::views::icon_row(ui, glyph, name, None, active, width).clicked() {
+                picked = Some(value);
+            }
+        }
+    });
+    picked.filter(|v| *current != Agreement::Same(*v))
 }
 
 /// A closed select like Settings' (`laankit_egui::settings::select`), but
@@ -584,6 +678,9 @@ mod tests {
                 fill: Common::None,
                 stroke: Common::None,
                 dash: DashCommon::None,
+                weight: Agreement::None,
+                bold: Agreement::None,
+                italic: Agreement::None,
                 shapes,
                 lines,
                 external: external.iter().map(|s| s.to_string()).collect(),

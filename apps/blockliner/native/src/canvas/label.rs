@@ -142,7 +142,6 @@ impl Canvas {
     /// Each labelled connector's label patch in model units, topmost first,
     /// for hit-testing (clicking a label picks its connector).
     pub(super) fn edge_labels(ui: &Ui, d: &Diagram) -> Vec<(usize, ModelRect)> {
-        let font = paint::edge_label_font(1.0);
         ui.ctx().fonts_mut(|f| {
             d.connectors
                 .iter()
@@ -150,6 +149,7 @@ impl Canvas {
                 .rev()
                 .filter_map(|(i, c)| {
                     let text = c.label.as_deref().filter(|t| !t.is_empty())?;
+                    let font = paint::edge_label_font(1.0, &c.style);
                     let at = path_midpoint(&d.connector_path(c)?)?;
                     let size = f
                         .layout_no_wrap(text.to_owned(), font.clone(), egui::Color32::WHITE)
@@ -188,19 +188,24 @@ impl Canvas {
                     .label_rgba()
                     .map(|[r, g, b, a]| egui::Color32::from_rgba_unmultiplied(r, g, b, a))
                     .unwrap_or(p.text_primary);
-                (screen, paint::label_font(view.zoom), ink, false)
+                (
+                    screen,
+                    paint::label_font(view.zoom, &shape.style),
+                    ink,
+                    false,
+                )
             }
             Target::Line(i) => {
-                let at = d
-                    .connectors
-                    .get(*i)
-                    .and_then(|c| d.connector_path(c))
-                    .and_then(|path| path_midpoint(&path));
+                let Some(c) = d.connectors.get(*i) else {
+                    self.label = None;
+                    return;
+                };
+                let at = d.connector_path(c).and_then(|path| path_midpoint(&path));
                 let Some(at) = at else {
                     self.label = None;
                     return;
                 };
-                let font = paint::edge_label_font(view.zoom);
+                let font = paint::edge_label_font(view.zoom, &c.style);
                 let width = ui
                     .ctx()
                     .fonts_mut(|f| {

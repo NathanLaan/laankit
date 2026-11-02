@@ -107,13 +107,15 @@ pub fn write(d: &Diagram) -> String {
         line(
             &mut out,
             format_args!(
-                "%% @line {} from={} to={}{}{}{}",
+                "%% @line {} from={} to={}{}{}{}{}{}",
                 kind(c.kind),
                 end(&c.from),
                 end(&c.to),
                 route(c.route),
                 line_stroke(c),
-                line_dash(c)
+                line_dash(c),
+                line_weight(c),
+                line_text(c)
             ),
         );
     }
@@ -186,6 +188,25 @@ fn line_dash(c: &Connector) -> String {
         Some(Dash::Dotted) => " dash=dotted".into(),
         Some(Dash::Custom(v)) if !v.contains(char::is_whitespace) => format!(" dash={v}"),
         Some(Dash::Custom(_)) => String::new(),
+    }
+}
+
+/// ` weight=2.5`: a free line's weight (a Custom one only without
+/// spaces).
+fn line_weight(c: &Connector) -> String {
+    match c.style.weight() {
+        Some(w) if !w.field().contains(char::is_whitespace) => format!(" weight={}", w.field()),
+        _ => String::new(),
+    }
+}
+
+/// ` text=bold-italic`: a free line's label weight and style.
+fn line_text(c: &Connector) -> String {
+    match (c.style.bold(), c.style.italic()) {
+        (false, false) => String::new(),
+        (true, false) => " text=bold".into(),
+        (false, true) => " text=italic".into(),
+        (true, true) => " text=bold-italic".into(),
     }
 }
 

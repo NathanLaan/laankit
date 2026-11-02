@@ -330,3 +330,63 @@ fn dashed_and_dotted_strokes_export_with_a_dasharray() {
     assert_eq!(svg.matches("stroke-dasharray").count(), 2, "{svg}");
     export::png(&svg, 1.0).expect("resvg reads it");
 }
+
+#[test]
+fn weights_and_bold_italic_labels_export() {
+    use blockliner_core::style::{Dash, Weight};
+    let ctx = context();
+    let mut d = Diagram::new();
+    let mut a = Shape::new(
+        "a",
+        ShapeKind::Rect,
+        "Heavy",
+        Rect::new(40.0, 40.0, 160.0, 60.0),
+    );
+    a.style.set_weight(Some(Weight::Preset(40)));
+    a.style.set_bold(true);
+    a.style.set_italic(true);
+    let mut b = Shape::new(
+        "b",
+        ShapeKind::Rect,
+        "Light",
+        Rect::new(300.0, 40.0, 160.0, 60.0),
+    );
+    b.style.set_weight(Some(Weight::Preset(10)));
+    d.shapes.extend([a, b]);
+    let mut edge = Connector::new(
+        ConnectorKind::Arrow,
+        End::glued("a", Some(Anchor::E)),
+        End::glued("b", Some(Anchor::W)),
+    );
+    edge.style.set_weight(Some(Weight::Preset(25)));
+    edge.style.set_dash(Some(Dash::Dotted));
+    edge.style.set_bold(true);
+    edge.label = Some("calls".into());
+    d.connectors.push(edge);
+    let s = scope(&d, Objects::All).unwrap();
+    let svg = export::svg(&ctx, &d, &s, false);
+    // Inset by half the weight, so the outline stays inside the shape.
+    assert!(
+        svg.contains(r##"<rect x="42" y="42" width="156" height="56" rx="0" fill="#f7f8fa" stroke="#4b5563" stroke-width="4"/>"##),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(r##"<rect x="300.5" y="40.5" width="159" height="59" rx="0" fill="#f7f8fa" stroke="#4b5563" stroke-width="1"/>"##),
+        "{svg}"
+    );
+    // 2.5-wide dots, spaced out so they stay apart.
+    assert!(
+        svg.contains(r##"stroke-dasharray="2.5 3.75" stroke-width="2.5"/><polygon"##),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(r#"font-size="14" font-weight="bold" font-style="italic""#),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(r#"font-size="12" font-weight="bold" fill"#),
+        "{svg}"
+    );
+    assert_eq!(svg.matches("font-weight").count(), 2, "{svg}");
+    export::png(&svg, 1.0).expect("resvg reads it");
+}

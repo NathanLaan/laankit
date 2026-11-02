@@ -24,8 +24,8 @@
 //!   not dynamic, and its route when right-angle. Keyed by endpoints, not
 //!   position, so a hand-inserted edge doesn't shift the others.
 //! - `@line <line|arrow> from=<end> to=<end> [route=elbow [mid=…]]
-//!   [stroke=<colour>] [dash=dashed|dotted|<dasharray>]`: a connector with a
-//!   free end, which Mermaid can't express. An end is `x,y` or
+//!   [stroke=<colour>] [dash=dashed|dotted|<dasharray>] [weight=<px>]
+//!   [text=bold|italic|bold-italic]`: a connector with a free end, which Mermaid can't express. An end is `x,y` or
 //!   `id[:anchor]`.
 //!
 //! Right-angle routes live only here: Mermaid draws its own curve for the
@@ -35,7 +35,9 @@
 //! edges ([`crate::style`]); other `style` lines are kept as written. A
 //! dashed or dotted stroke is a `stroke-dasharray` there (`6 4`, `2 3`), or
 //! in an edge's `linkStyle`, except that a dotted edge is written with
-//! Mermaid's own dotted link, `-.->` / `-.-`.
+//! Mermaid's own dotted link, `-.->` / `-.-`. A stroke's weight is a
+//! `stroke-width` (`1px` … `4px`; the default, 1.5px, isn't written), and a
+//! label's `font-weight:bold` / `font-style:italic`, in the same places.
 
 mod label;
 mod lex;

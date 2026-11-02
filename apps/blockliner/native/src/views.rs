@@ -303,6 +303,13 @@ pub(crate) enum Glyph {
     Tool(Tool),
     /// Solid (`None`), Dashed, Dotted or Custom.
     Dash(Option<blockliner_core::style::Dash>),
+    /// A stroke weight (`None`: the default), as a line that thick.
+    Weight(Option<blockliner_core::style::Weight>),
+    /// "Aa" in Bold and/or Italic.
+    Text {
+        bold: bool,
+        italic: bool,
+    },
 }
 
 impl From<Tool> for Glyph {
@@ -330,6 +337,25 @@ pub(crate) fn paint_glyph(painter: &egui::Painter, glyph: &Glyph, c: Pos2, ink: 
                     painter.extend(egui::Shape::dashed_line(&line, stroke, 5.0, 2.5));
                 }
             }
+        }
+        Glyph::Weight(weight) => {
+            let width = weight.as_ref().and_then(|w| w.px()).unwrap_or(1.5);
+            let line = [c + vec2(-10.0, 0.0), c + vec2(10.0, 0.0)];
+            painter.line_segment(line, Stroke::new(width.min(6.0), ink));
+        }
+        Glyph::Text { bold, italic } => {
+            let face = laankit_egui::fonts::Style {
+                weight: bold.then_some(laankit_egui::fonts::BOLD),
+                italic: *italic,
+                mono: false,
+            };
+            painter.text(
+                c,
+                Align2::CENTER_CENTER,
+                "Aa",
+                face.font(theme::BODY_SIZE),
+                ink,
+            );
         }
     }
 }

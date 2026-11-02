@@ -4,12 +4,12 @@
 use blockliner_core::connect::path_midpoint;
 use blockliner_core::geometry::{self, Handle, DOUBLE_CIRCLE_GAP, SUBROUTINE_INSET};
 use blockliner_core::route::middle_segment;
-use blockliner_core::style::Dash;
+use blockliner_core::style::{Dash, Style};
 use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{vec2, Align, Color32, CornerRadius, FontId, Painter, Pos2, Stroke, StrokeKind};
-use laankit_egui::icons;
 use laankit_egui::theme::Palette;
+use laankit_egui::{fonts, icons};
 
 use super::view::View;
 use super::{pos, tools::Hit};
@@ -36,12 +36,22 @@ const DOT: f32 = 4.5;
 /// The limitation badge's text size, in screen points at any zoom.
 const BADGE_SIZE: f32 = 10.0;
 
-pub fn label_font(zoom: f32) -> FontId {
-    FontId::proportional(LABEL_SIZE * zoom)
+/// The bundled face for a style's label: Bold and/or Italic, else
+/// regular.
+pub fn face(style: &Style) -> fonts::Style {
+    fonts::Style {
+        weight: style.bold().then_some(fonts::BOLD),
+        italic: style.italic(),
+        mono: false,
+    }
 }
 
-pub fn edge_label_font(zoom: f32) -> FontId {
-    FontId::proportional(EDGE_LABEL_SIZE * zoom)
+pub fn label_font(zoom: f32, style: &Style) -> FontId {
+    face(style).font(LABEL_SIZE * zoom)
+}
+
+pub fn edge_label_font(zoom: f32, style: &Style) -> FontId {
+    face(style).font(EDGE_LABEL_SIZE * zoom)
 }
 
 pub fn screen_rect(view: View, origin: Pos2, r: &Rect) -> egui::Rect {
@@ -51,7 +61,16 @@ pub fn screen_rect(view: View, origin: Pos2, r: &Rect) -> egui::Rect {
     )
 }
 
-fn stroke_width(zoom: f32) -> f32 {
+/// A stroke's width on screen: its own weight scaled to the zoom, or the
+/// default's (1.5 at 100 %, kept between 1 and 4).
+pub fn stroke_width(style: &Style, zoom: f32) -> f32 {
+    match style.weight().and_then(|w| w.px()) {
+        Some(w) => (w * zoom).max(1.0),
+        None => default_width(zoom),
+    }
+}
+
+fn default_width(zoom: f32) -> f32 {
     (1.5 * zoom).clamp(1.0, 4.0)
 }
 
@@ -65,13 +84,14 @@ pub enum Pattern {
 }
 
 impl Pattern {
-    /// A style's dash at `zoom`. A Custom dash draws with its first two
-    /// numbers, or solid when they don't parse.
-    pub fn of(dash: Option<&Dash>, zoom: f32) -> Self {
+    /// A style's dash at `zoom`, for a stroke `width` wide on screen. A
+    /// Custom dash draws with its first two numbers, or solid when they
+    /// don't parse. Dots space out on a heavy stroke so they stay apart.
+    pub fn of(dash: Option<&Dash>, zoom: f32, width: f32) -> Self {
         match dash {
             None => Self::Solid,
             Some(Dash::Dotted) => Self::Dotted {
-                spacing: (DOT_PITCH * zoom).max(2.0),
+                spacing: (DOT_PITCH * zoom).max(2.5 * width).max(2.0),
             },
             Some(d) => match d.pattern() {
                 Some((dash, gap)) => Self::Dashed {
@@ -143,8 +163,8 @@ pub fn diagram(
         }
     }
 
-    let width = stroke_width(view.zoom);
     for (i, c) in d.connectors.iter().enumerate() {
+        let width = stroke_width(&c.style, view.zoom);
         let Some(path) = d.connector_path(c) else {
             continue;
         };
@@ -169,7 +189,7 @@ pub fn diagram(
             (true, None) => p.accent,
             (false, None) => p.text_secondary,
         };
-        let pattern = Pattern::of(c.style.dash().as_ref(), view.zoom);
+        let pattern = Pattern::of(c.style.dash().as_ref(), view.zoom, width);
         connector(
             painter,
             &points,
@@ -180,7 +200,7 @@ pub fn diagram(
         if let (Some(text), Some(at), false) =
             (&c.label, path_midpoint(&path), o.editing_line == Some(i))
         {
-            edge_label(painter, to_screen(at.x, at.y), text, view.zoom, p);
+            edge_label(painter, to_screen(at.x, at.y), text, &c.style, view.zoom, p);
         }
     }
 
@@ -375,11 +395,14 @@ fn shape(
     // The shape's own colours where it has them, else the theme's.
     let fill = colour(s.style.fill.as_ref());
     let ink = colour(s.style.stroke.as_ref());
-    let stroke = Stroke::new(stroke_width(zoom), ink.unwrap_or(p.text_secondary));
+    let stroke = Stroke::new(
+        stroke_width(&s.style, zoom),
+        ink.unwrap_or(p.text_secondary),
+    );
     let body = fill.unwrap_or(p.bg_surface);
     // A dashed or dotted shape is drawn without its stroke, then its
     // outline drawn over it in the pattern.
-    let pattern = Pattern::of(s.style.dash().as_ref(), zoom);
+    let pattern = Pattern::of(s.style.dash().as_ref(), zoom, stroke.width);
     let solid = if pattern == Pattern::Solid {
         stroke
     } else {
@@ -432,7 +455,13 @@ fn shape(
             .label_rgba()
             .map(|[r, g, b, a]| Color32::from_rgba_unmultiplied(r, g, b, a))
             .unwrap_or(p.text_primary);
-        label(painter, r, area, &s.label, zoom, text);
+        label(
+            painter,
+            (r, area),
+            &s.label,
+            label_font(zoom, &s.style),
+            text,
+        );
     }
     badge(painter, r, s, p);
 }
@@ -603,14 +632,14 @@ fn connector(
 }
 
 /// An edge label, on a patch of background at the midpoint.
-fn edge_label(painter: &Painter, at: Pos2, text: &str, zoom: f32, p: &Palette) {
+fn edge_label(painter: &Painter, at: Pos2, text: &str, style: &Style, zoom: f32, p: &Palette) {
     if text.is_empty() || EDGE_LABEL_SIZE * zoom < 4.0 {
         return;
     }
     // Each line centred, as in the editor and the export.
     let mut job = LayoutJob::simple(
         text.to_owned(),
-        edge_label_font(zoom),
+        edge_label_font(zoom, style),
         p.text_secondary,
         f32::INFINITY,
     );
@@ -626,18 +655,17 @@ fn edge_label(painter: &Painter, at: Pos2, text: &str, zoom: f32, p: &Palette) {
 /// clipped to the shape `r`.
 fn label(
     painter: &Painter,
-    r: egui::Rect,
-    area: egui::Rect,
+    (r, area): (egui::Rect, egui::Rect),
     text: &str,
-    zoom: f32,
+    font: FontId,
     color: Color32,
 ) {
-    let size = LABEL_SIZE * zoom;
-    if text.is_empty() || size < 4.0 {
+    let zoom = font.size / LABEL_SIZE;
+    if text.is_empty() || font.size < 4.0 {
         return;
     }
     let wrap = (area.width() - 2.0 * LABEL_PAD * zoom).max(1.0);
-    let mut job = LayoutJob::simple(text.to_owned(), label_font(zoom), color, wrap);
+    let mut job = LayoutJob::simple(text.to_owned(), font, color, wrap);
     job.halign = Align::Center;
     let galley = painter.layout_job(job);
     let at = area.center() - galley.rect.center().to_vec2();
@@ -694,7 +722,7 @@ pub fn line_preview(
         painter,
         points,
         kind,
-        (Stroke::new(stroke_width(zoom), p.accent), Pattern::Solid),
+        (Stroke::new(default_width(zoom), p.accent), Pattern::Solid),
         zoom,
     );
 }

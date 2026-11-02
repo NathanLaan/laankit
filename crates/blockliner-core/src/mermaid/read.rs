@@ -12,7 +12,7 @@ use crate::model::{
     Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect, Route, Shape,
     ShapeKind,
 };
-use crate::style::{Colour, Dash, Style, DASH_KEY};
+use crate::style::{Colour, Dash, Style, Weight, DASH_KEY};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReadError {
@@ -520,6 +520,12 @@ impl Layout {
                             "dotted" => Some(Dash::Dotted),
                             raw => Dash::parse(raw),
                         }));
+                    line.style
+                        .set_weight(fields.get("weight").and_then(|v| Weight::parse(v)));
+                    let text = fields.get("text").copied().unwrap_or_default();
+                    line.style.set_bold(text.split('-').any(|w| w == "bold"));
+                    line.style
+                        .set_italic(text.split('-').any(|w| w == "italic"));
                     self.lines.push(line);
                 }
             }
@@ -674,6 +680,35 @@ mod tests {
             out.contains("  linkStyle 2 stroke:#f00,stroke-dasharray:5 5\n"),
             "{out}"
         );
+    }
+
+    #[test]
+    fn free_line_weights_and_text() {
+        for (field, weight) in [
+            ("1", Some(Weight::Preset(10))),
+            ("2.5", Some(Weight::Preset(25))),
+            ("1.5", None),
+            ("6px", Some(Weight::Custom("6px".into()))),
+        ] {
+            let text = format!("flowchart LR\n%% @line line from=5,5 to=9,9 weight={field}\n");
+            let d = read(&text).unwrap();
+            assert_eq!(d.connectors[0].style.weight(), weight, "{field}");
+        }
+        for (field, bold, italic) in [
+            ("bold", true, false),
+            ("italic", false, true),
+            ("bold-italic", true, true),
+            ("wavy", false, false),
+        ] {
+            let text = format!("flowchart LR\n%% @line line from=5,5 to=9,9 text={field}\n");
+            let d = read(&text).unwrap();
+            let style = &d.connectors[0].style;
+            assert_eq!((style.bold(), style.italic()), (bold, italic), "{field}");
+        }
+        let line =
+            "%% @line arrow from=5,5 to=9,9 stroke=#f00 dash=dotted weight=2.5 text=bold-italic\n";
+        let d = read(&format!("flowchart LR\n{line}")).unwrap();
+        assert!(crate::write(&d).contains(line), "{}", crate::write(&d));
     }
 
     #[test]

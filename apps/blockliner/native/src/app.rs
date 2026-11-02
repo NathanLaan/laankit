@@ -464,6 +464,25 @@ impl BlockLinerApp {
                 self.canvas
                     .style_selection(&mut self.diagram, true, |s| s.set_dash(dash.clone()));
             }
+            Act::StrokeWeight(weight) => {
+                self.canvas
+                    .style_selection(&mut self.diagram, true, |s| s.set_weight(weight.clone()));
+            }
+            Act::TextWeight(bold) => {
+                self.canvas
+                    .style_selection(&mut self.diagram, true, |s| s.set_bold(bold));
+            }
+            Act::TextStyle(italic) => {
+                self.canvas
+                    .style_selection(&mut self.diagram, true, |s| s.set_italic(italic));
+            }
+            // Normal when everything is Bold, else all Bold.
+            Act::ToggleBold => {
+                let all = self.canvas.selected_style(&self.diagram).bold
+                    == blockliner_core::style::Agreement::Same(true);
+                self.canvas
+                    .style_selection(&mut self.diagram, true, |s| s.set_bold(!all));
+            }
             Act::ResetStyle => self
                 .canvas
                 .style_selection(&mut self.diagram, true, Style::reset),
@@ -1302,6 +1321,9 @@ impl BlockLinerApp {
                     MenuAction::Fill(s) => Act::Fill(s),
                     MenuAction::Stroke(s) => Act::Stroke(s),
                     MenuAction::StrokeStyle(d) => Act::StrokeStyle(d),
+                    MenuAction::StrokeWeight(w) => Act::StrokeWeight(w),
+                    MenuAction::TextWeight(b) => Act::TextWeight(b),
+                    MenuAction::TextStyle(i) => Act::TextStyle(i),
                     MenuAction::ResetStyle => Act::ResetStyle,
                     MenuAction::Delete => Act::Delete,
                     MenuAction::SelectAll => Act::SelectAll,
@@ -1316,6 +1338,9 @@ impl BlockLinerApp {
             Some(PropertiesAction::FillHex(c)) => self.apply_colour(Some(c), false),
             Some(PropertiesAction::StrokeHex(c)) => self.apply_colour(Some(c), true),
             Some(PropertiesAction::StrokeStyle(d)) => self.apply(Act::StrokeStyle(d)),
+            Some(PropertiesAction::StrokeWeight(w)) => self.apply(Act::StrokeWeight(w)),
+            Some(PropertiesAction::TextWeight(b)) => self.apply(Act::TextWeight(b)),
+            Some(PropertiesAction::TextStyle(i)) => self.apply(Act::TextStyle(i)),
             Some(PropertiesAction::ResetStyle) => self.apply(Act::ResetStyle),
             Some(PropertiesAction::ChangeShape(kind)) => self.apply(Act::ChangeShape(kind)),
             Some(PropertiesAction::SetArrowheads(true)) => self.apply(Act::AddArrowheads),

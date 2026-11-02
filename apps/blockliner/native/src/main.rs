@@ -42,7 +42,11 @@ mod ui_tests_shapes;
 #[cfg(test)]
 mod ui_tests_stroke_styles;
 #[cfg(test)]
+mod ui_tests_stroke_weight;
+#[cfg(test)]
 mod ui_tests_styles;
+#[cfg(test)]
+mod ui_tests_text_weight;
 
 use config::Paths;
 

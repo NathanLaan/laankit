@@ -8,7 +8,7 @@
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
 
-use blockliner_core::style::{Dash, PRESETS};
+use blockliner_core::style::{Dash, Weight, PRESETS, WEIGHTS};
 use blockliner_core::ShapeKind;
 
 use crate::canvas::{Swatch, Tool};
@@ -55,6 +55,14 @@ pub enum Act {
     /// Both back to the theme's.
     /// Solid (`None`), Dashed or Dotted.
     StrokeStyle(Option<Dash>),
+    /// A weight (`None`: the default, 1.5px).
+    StrokeWeight(Option<Weight>),
+    /// Bold (`true`) or Normal…
+    TextWeight(bool),
+    /// …Italic or Normal…
+    TextStyle(bool),
+    /// …and Ctrl+B: Normal when all are Bold, else all Bold.
+    ToggleBold,
     ResetStyle,
     /// Move the selection by this many grid steps (the arrow keys go
     /// through `App::nudge_keys`, which also reads Shift and Alt).
@@ -428,6 +436,51 @@ pub fn registry() -> Registry<Act, View> {
             .when(stylable),
         );
     }
+    for weight in WEIGHTS {
+        let id = match &weight {
+            Some(w) => w.field().replace('.', "_"),
+            None => Weight::number_text(Weight::DEFAULT).replace('.', "_"),
+        };
+        r.register(
+            add(
+                &format!("style.strokeWeight.{id}"),
+                &format!("Stroke Weight: {}", Weight::label(weight.as_ref())),
+                "Style",
+                Act::StrokeWeight(weight),
+            )
+            .when(stylable),
+        );
+    }
+    for (id, label, act) in [
+        (
+            "style.textWeight.normal",
+            "Text Weight: Normal",
+            Act::TextWeight(false),
+        ),
+        (
+            "style.textWeight.bold",
+            "Text Weight: Bold",
+            Act::TextWeight(true),
+        ),
+        (
+            "style.textStyle.normal",
+            "Text Style: Normal",
+            Act::TextStyle(false),
+        ),
+        (
+            "style.textStyle.italic",
+            "Text Style: Italic",
+            Act::TextStyle(true),
+        ),
+    ] {
+        r.register(add(id, label, "Style", act).when(stylable));
+    }
+    r.register(
+        add("style.toggleBold", "Toggle Bold", "Style", Act::ToggleBold)
+            .key(Binding::logical(cmd, Key::B))
+            .shortcut("Ctrl+B")
+            .when(stylable),
+    );
     r.register(add("style.reset", "Reset Style", "Style", Act::ResetStyle).when(stylable));
     r.register(
         add("edit.label", "Edit Label", "Edit", Act::EditLabel)

@@ -1,6 +1,6 @@
 # BlockLiner: Stroke Weight — Plan
 
-Status: **Proposed (2026-11-02), decisions agreed, ready to implement.** Lets the user set how thick a shape's outline or a line is: 1px, 1.5px (the default), 2px, 2.5px, 3px or 4px. It is set from the Properties pane, the right-click menu or the command palette, and saved as plain Mermaid. It follows the stroke-styles work (2.5.0) and reuses its pattern throughout.
+Status: **Implemented (2026-11-02), BlockLiner 2.6.1.** See "Changes during implementation" at the end.
 
 ## Today
 
@@ -124,9 +124,91 @@ Status: **Proposed (2026-11-02), decisions agreed, ready to implement.** Lets th
 - **Tooltip and docs updated:** "Removes colours, stroke style and weight."
 - **Existing test changed:** `a_custom_dash_stays_until_replaced_and_reset_style_clears_it` now asserts that `stroke-width` is removed.
 
+### Text weight and style (Bold, Italic, Ctrl+B) — released as 2.6.1
+
+**Today:**
+- Every label is drawn in Inter Regular: on the canvas, in the label editor and in the SVG/PNG export.
+- A hand-written `font-weight` is kept in `Style.extra` but ignored.
+- Inter Bold is already bundled. `laankit_egui::fonts::BOLD_FAMILY` gives it to egui, and `bundled_faces()` gives it to resvg, so no new font files are needed.
+
+**The options:**
+
+| Row in the list | Saved as | Drawn as |
+|---|---|---|
+| **Normal** | nothing: the property is removed | Inter Regular, as today |
+| **Bold** | `font-weight:bold` | Inter Bold |
+
+- **Normal is the default.** It is never written, so a diagram that doesn't use Bold saves exactly as today.
+- **Reading back:**
+  - `bold`, `bolder` and the numbers 600–900 read as Bold.
+  - Everything else (`normal`, `400`, `lighter`) reads as Normal.
+  - A hand-written value is kept as written until the user picks Normal or Bold.
+  - There is no "Custom" here, because every value falls on one side or the other.
+- **What it applies to:**
+  - **Shape labels**, every kind including Text boxes. Saved on the shape's `style` line.
+  - **Edge labels:**
+    - **A Mermaid edge:** saved on its `linkStyle` line (`linkStyle 0 font-weight:bold`), merged with its colour, dash and stroke width.
+    - **A free line:** a ` text=bold` field on its `%% @line` comment, next to ` weight=`. An older build ignores the field.
+  - It is set even when a shape or line has no label yet, so the label is bold once typed.
+- **Mermaid check during implementation:**
+  - Confirm that Mermaid renders `font-weight` from `style` on a node's label and from `linkStyle` on an edge's label.
+  - If a version ignores it for edge labels, BlockLiner still saves and draws it. The README notes the difference.
+
+**Italic:**
+- A second drop-down, **"Text Style:"**, with rows **Normal** and **Italic**. It goes under Text Weight.
+  - **Saved as:** `font-style:italic` for shapes and Mermaid edges. Normal is never written.
+  - **Reading back:** `italic` and `oblique` read as Italic, and everything else as Normal. A hand-written value is kept until the user picks a row.
+- **Faces:** Bold and Italic combine, using the bundled Inter Italic and Inter Bold Italic faces. `laankit_egui::fonts::Style::font` picks the face.
+- **Free lines:** the `text=` field takes `bold`, `italic` or `bold-italic`.
+- **Command palette:** "Text Style: Normal" and "Text Style: Italic".
+- **Right-click menu:** a "Text Style ▸" submenu after Text Weight ▸.
+- **Reset Style:** returns the label to Normal.
+- **No shortcut:** Ctrl+I already toggles the Properties pane, so Italic has no key.
+
+**Ctrl+B (toggle Bold):**
+- **Behaviour:** if every selected shape and line is Bold, Ctrl+B makes them Normal; otherwise it makes them all Bold. It is one undo step.
+- **Registration:**
+  - It is registered as "Toggle Bold" in the Style section, so it appears in the palette and in Settings → Keyboard Shortcuts.
+  - It is enabled when the selection can be styled.
+- **While editing a label:** Ctrl+B doesn't reach the canvas, because the label's text field has focus.
+
+**Model:**
+- `FONT_WEIGHT_KEY = "font-weight"` and `FONT_STYLE_KEY = "font-style"`.
+- `Style::italic` / `set_italic`, alongside `bold`.
+- `Style::bold() -> bool` and `Style::set_bold(bool)`, which keep the property's position as `set_dash` does.
+- `SelectionStyle.bold: Agreed<bool>`, either via the generic type from the stroke-weight refactor or a small `BoldCommon`.
+- `Style::reset` clears it, so Reset Style returns the label to Normal along with the colours, dash and stroke weight.
+
+**Drawing:**
+- **Canvas:** `paint::label_font(zoom)` and `edge_label_font(zoom)` take `bold: bool` and pick `FontFamily::Name(BOLD_FAMILY)` for Bold. This covers:
+  - `paint::label` (the wrapped shape label);
+  - `paint::edge_label`;
+  - the label editor in `canvas/label.rs`, so editing a bold label shows it bold;
+  - the edge-label hit boxes (`Canvas::edge_labels`), which measure with the same font so clicking a bold label still selects it.
+- **Export:**
+  - `<text>` gets `font-weight="bold"`.
+  - The galleys used to size edge-label backgrounds and wrap shape labels are laid out in the bold face.
+  - resvg picks Inter Bold from the bundled faces, so PNGs match.
+- **Unchanged:** shapes don't resize. Bold text wraps within the same label area, and may wrap one word earlier.
+
+**Properties pane:**
+- **A "Text Weight:" drop-down** goes under Stroke Weight and before Reset Style.
+  - Its rows are **Normal** and **Bold**, each with a sample "Aa" in that weight.
+  - The closed box shows the current row, or "Mixed".
+- **Enabled:** under the same rule as the other style rows.
+- **`DEFAULT_HEIGHT`:** re-measured again, to about 640, with every row showing.
+
+**Right-click menu:** a **"Text Weight ▸"** submenu after Stroke Weight ▸, with the current weight ticked.
+
+**Command palette:** "Text Weight: Normal" and "Text Weight: Bold" (`style.textWeight.normal` / `.bold`), in group Style.
+
+**Actions:** `Act::TextWeight(bool)`, plus `MenuAction` and `PropertiesAction` variants. All are applied through `Canvas::style_selection(d, true, |s| s.set_bold(…))`.
+
 ## Phases
 
-### Phase 1: Model and file format (~½ day)
+Stroke weight ships first as **2.6.0** (Phases 1–5). Text weight follows as **2.6.1** (Phases 6–7). Each release is tested and bumped on its own.
+
+### Phase 1: Stroke weight — model and file format (~½ day)
 
 - **Model:** `Weight`, `WEIGHT_KEY`, `WEIGHTS`, `Style::weight` / `set_weight`, `common_weight`, and `reset` clearing it.
   - Unit tests are modelled on `dashes`.
@@ -138,13 +220,13 @@ Status: **Proposed (2026-11-02), decisions agreed, ready to implement.** Lets th
   - A Custom value that comes back byte-for-byte.
   - Random weights added to the generated round-trip cases in `tests/mermaid.rs`.
 
-### Phase 2: Drawing (~1 day)
+### Phase 2: Stroke weight — drawing (~1 day)
 
 - **Canvas:** `stroke_width(style, zoom)` for shapes and connectors, the dot pitch, and the line hit reach. Arrowheads are unchanged.
 - **Export:** `stroke-width` and the inset per shape and line, and the dotted dasharray scaled with the weight.
 - **Tests:** an export test for a 1px and a 4px shape and a 2.5px dotted line. Rebless `export.svg` only if default output changes, which it shouldn't.
 
-### Phase 3: Commands, menu and pane (~½ day)
+### Phase 3: Stroke weight — commands, menu and pane (~½ day)
 
 - **Actions:** `Act::StrokeWeight(Option<Weight>)`, plus `MenuAction` and `PropertiesAction` variants.
   - All are applied through `Canvas::style_selection(d, true, |s| s.set_weight(…))`.
@@ -153,9 +235,9 @@ Status: **Proposed (2026-11-02), decisions agreed, ready to implement.** Lets th
   - `SelectionStyle.weight`.
   - `Glyph::Weight`.
   - The palette entries, the submenu and the pane drop-down (`weight_row`, next to `dash_row`).
-  - `DEFAULT_HEIGHT` re-measured.
+  - `DEFAULT_HEIGHT` re-measured (about 600).
 
-### Phase 4: UI tests and docs (~½ day)
+### Phase 4: Stroke weight — UI tests and docs (~½ day)
 
 - **`ui_tests_stroke_weight.rs`:**
   - **Shape from the pane:** set to 3px, which saves `style a stroke-width:3px`, and undo restores it in one step.
@@ -176,7 +258,7 @@ Status: **Proposed (2026-11-02), decisions agreed, ready to implement.** Lets th
   - `apps/blockliner/native/README.md`: the menu row.
   - The format comment in `blockliner-core/src/mermaid/mod.rs`.
 
-### Phase 5: Version bump (~¼ hour)
+### Phase 5: Version bump to 2.6.0 (~¼ hour)
 
 - Bump BlockLiner only, **2.5.0 → 2.6.0**, in:
   - `apps/blockliner/native/Cargo.toml`
@@ -184,13 +266,58 @@ Status: **Proposed (2026-11-02), decisions agreed, ready to implement.** Lets th
   - `Cargo.lock`
 - Re-run fmt, clippy (`-D warnings`) and the BlockLiner tests.
 
-**Total: about 2½ days.**
+### Phase 6: Text weight and style — Bold, Italic, Ctrl+B (~1½ days)
+
+- **Model:**
+  - `FONT_WEIGHT_KEY`, `FONT_STYLE_KEY`, `Style::bold` / `set_bold`, `Style::italic` / `set_italic`, `SelectionStyle.bold` / `.italic`, and `reset` clearing them.
+  - Unit tests for each `font-weight` value that reads as Bold or Normal.
+- **File format:**
+  - The `@line … text=bold` field.
+  - `font-weight` merged into `linkStyle`.
+  - Random bold added to the generated round-trip cases.
+- **Drawing:**
+  - The bold face in `label_font` / `edge_label_font`, the label editor and the edge-label hit boxes.
+  - `font-weight="bold"` in the SVG export.
+  - Check the Mermaid rendering of node and edge labels.
+- **UI:**
+  - `Act::TextWeight(bool)`, `Act::TextStyle(bool)` and `Act::ToggleBold` (Ctrl+B).
+  - The palette entries, the Text Weight ▸ and Text Style ▸ submenus, and the two pane rows.
+  - `DEFAULT_HEIGHT` re-measured (about 680).
+- **Tests:**
+  - An export test with a bold shape label and edge label.
+  - **`ui_tests_text_weight.rs`:**
+    - **A shape label from the pane:** made Bold, which saves `style a font-weight:bold`, and one undo returns it to Normal.
+    - **A Mermaid edge label from the menu:** made Bold, which saves `linkStyle 0 font-weight:bold`.
+    - **A free line from the palette:** made Bold, which saves `text=bold`.
+    - **Hand-written values:** `font-weight:600` shows Bold and is kept as written.
+    - **Mixed selection:** shows "Mixed".
+    - **Reset Style:** returns the label to Normal.
+    - **Edge labels stay clickable:** clicking a bold edge label still selects it.
+    - **Italic:** a label made Italic saves `font-style:italic`, and Bold together with Italic saves both. A free line saves `text=bold-italic`.
+    - **Ctrl+B:** it toggles a selection to Bold and back, and a mixed selection becomes all Bold.
+    - **Reset Style fits:** it is still clickable with every row showing.
+- **Docs:**
+  - `apps/blockliner/README.md`: a Text weight bullet, the `@line text=bold` row, a `font-weight` file-format row, and the Reset Style wording.
+  - The native README's menu row.
+  - The format comment in `mermaid/mod.rs`.
+
+### Phase 7: Version bump to 2.6.1 (~¼ hour)
+
+- Bump BlockLiner only, **2.6.0 → 2.6.1**, in:
+  - `Cargo.toml`
+  - a dated `<release>` in the metainfo
+  - `Cargo.lock`
+- Re-run fmt, clippy (`-D warnings`) and the BlockLiner tests.
+
+**Total: about 2½ days for 2.6.0, then about 1½ days for 2.6.1.**
 
 ## Out of scope (possible follow-ups)
 
 - **Thick links (`==>`).** These stay kept statements, drawn as a plain edge. Mermaid draws them at 3.5px, which isn't one of the six weights.
 - **Free-form weights** typed in by the user.
 - **Label size following the weight.**
+- **Other text styling:** semibold, font size, and inline `<b>` markup inside a label. Today `<b>` is kept as literal text.
+- **A shortcut for Italic.** Ctrl+I is taken by Toggle Properties.
 
 ## Decisions
 
@@ -202,4 +329,26 @@ Status: **Proposed (2026-11-02), decisions agreed, ready to implement.** Lets th
 2. **Reset Style clears the weight.**
 3. **Arrowheads follow Mermaid:** they stay a fixed size at every weight.
 4. **The free-line field is `weight=`.**
-5. **Version:** a BlockLiner-only bump to 2.6.0 as the last phase.
+5. **Version:** BlockLiner-only bumps.
+   - Stroke weight is 2.6.0.
+   - Text weight follows as 2.6.1.
+6. **Text weight:**
+   - There are two options, Normal (the default, never written) and Bold (`font-weight:bold`).
+   - It applies to shape and edge labels.
+   - Reset Style clears it too.
+7. **Italic and Ctrl+B:**
+   - Italic is a "Text Style:" drop-down (Normal / Italic), saved as `font-style:italic`.
+   - Ctrl+B toggles Bold.
+   - Italic has no shortcut, because Ctrl+I is taken.
+
+## Changes during implementation
+
+- **Phases 1–6 shipped together.** Text weight and style (Phase 6) went in alongside stroke weight, so the 2.6.0 build already has Bold, Italic and Ctrl+B. Phase 7 then bumped BlockLiner to 2.6.1.
+- **Shared selection type:** `style::Agreement<T>` / `agreement` is the generic selection summary. `DashCommon` is now an alias of it.
+- **Pane layout:**
+  - Text Weight and Text Style sit side by side in one row, to save height.
+  - `DEFAULT_HEIGHT` is 680, measured with every row showing.
+  - In windows shorter than about 860 px the pane is capped below that and scrolls to Reset Style. The UI tests scroll it into view with the mouse wheel (`ui_tests::pane_reset_style`).
+- **Hit reach:** only a line with its own weight reaches further, by half that weight. Default-weight lines keep today's reach exactly, so nothing else moves.
+- **Reset Style:** removes `stroke-width`, `font-weight` and `font-style` outright, including a hand-written `stroke-width:1.5px` or `font-weight:normal`. Picking a row that matches a hand-written value leaves the value as written.
+- **Not verified:** whether Mermaid itself renders `font-weight` / `font-style` from `linkStyle` on edge labels. BlockLiner saves and draws them either way.

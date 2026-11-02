@@ -110,6 +110,23 @@ pub(crate) fn click(h: &mut H, p: Pos2) {
 }
 
 /// `a` at (100, 100) and `b` at (400, 300), both 160 × 60.
+/// Clicks the Properties pane's Reset Style, scrolled into view first (with
+/// the wheel over the pane): in the 800-high test window the pane is
+/// shorter than its rows.
+pub(crate) fn pane_reset_style(h: &mut H) {
+    h.event(egui::Event::PointerMoved(egui::pos2(100.0, 600.0)));
+    h.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -400.0),
+        modifiers: egui::Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Unknown,
+    });
+    h.run_steps(4);
+    h.get_by_label("Reset Style").click();
+    h.run_steps(2);
+}
+
 pub(crate) fn two_shapes(h: &mut H) {
     let d = h.state_mut().diagram_mut();
     d.shapes.push(Shape::new(
