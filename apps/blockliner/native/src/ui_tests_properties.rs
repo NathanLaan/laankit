@@ -144,7 +144,7 @@ fn lines_alone_take_a_stroke() {
     assert_eq!(h.state().selected_lines(), [0]);
     show_pane(&mut h);
     h.get_by_label("1 line");
-    h.get_by_label("Lines take a stroke colour only.");
+    assert!(h.query_by_label_contains("stroke colour only").is_none());
     // Fill is off; Stroke colours the line.
     h.get_by_label("Fill: Blue").click();
     h.run_steps(2);

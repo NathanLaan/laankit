@@ -106,15 +106,10 @@ impl PropertiesProps {
         if self.reason().is_some() {
             return None;
         }
-        let kept = match self.style.external.len() {
+        match self.style.external.len() {
             0 => None,
             1 => Some("1 kept-statement shape not affected.".to_owned()),
             n => Some(format!("{n} kept-statement shapes not affected.")),
-        };
-        let lines = (!self.fills()).then(|| "Lines take a stroke colour only.".to_owned());
-        match (lines, kept) {
-            (Some(a), Some(b)) => Some(format!("{a} {b}")),
-            (a, b) => a.or(b),
         }
     }
 }
@@ -603,10 +598,7 @@ mod tests {
             "Select shapes or lines to change their colours."
         );
         assert_eq!(props(0, 2, &[]).reason(), None);
-        assert_eq!(
-            props(0, 2, &[]).note().unwrap(),
-            "Lines take a stroke colour only."
-        );
+        assert_eq!(props(0, 2, &[]).note(), None);
         assert_eq!(
             props(0, 0, &["c"]).reason().unwrap(),
             "“c” is declared in a kept Mermaid statement."
@@ -620,7 +612,7 @@ mod tests {
         );
         assert_eq!(
             props(0, 1, &["c", "d"]).note().unwrap(),
-            "Lines take a stroke colour only. 2 kept-statement shapes not affected."
+            "2 kept-statement shapes not affected."
         );
     }
 }
