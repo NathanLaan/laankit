@@ -28,6 +28,12 @@ pub enum Act {
     Undo,
     Redo,
     SelectAll,
+    /// Every shape but the text boxes…
+    SelectShapes,
+    /// …every connector…
+    SelectLines,
+    /// …or every text box.
+    SelectText,
     /// The selection to the clipboard, as Mermaid…
     Copy,
     /// …and deleted…
@@ -320,6 +326,38 @@ pub fn registry() -> Registry<Act, View> {
             .shortcut("Ctrl+A")
             .when(ready),
     );
+    // Physical keys, as for the other Shift and Alt shortcuts.
+    let alt = cmd | Modifiers::ALT;
+    for (id, label, binding, keys, act) in [
+        (
+            "edit.selectShapes",
+            "Select All Shapes",
+            Binding::physical(shift, Key::A),
+            "Ctrl+Shift+A",
+            Act::SelectShapes,
+        ),
+        (
+            "edit.selectLines",
+            "Select All Lines",
+            Binding::physical(alt, Key::A),
+            "Ctrl+Alt+A",
+            Act::SelectLines,
+        ),
+        (
+            "edit.selectText",
+            "Select All Text",
+            Binding::physical(shift, Key::T),
+            "Ctrl+Shift+T",
+            Act::SelectText,
+        ),
+    ] {
+        r.register(
+            add(id, label, "Edit", act)
+                .key(binding)
+                .shortcut(keys)
+                .when(ready),
+        );
+    }
     // No key bindings: egui turns the platform's copy, cut and paste keys
     // into its clipboard events, which `App::clipboard_events` reads.
     for (id, label, keys, act, when) in [

@@ -91,6 +91,9 @@ pub enum MenuAction {
     ResetStyle,
     Delete,
     SelectAll,
+    SelectShapes,
+    SelectLines,
+    SelectText,
 }
 
 /// One kind (a shape's, a line's) across a selection.
@@ -634,6 +637,27 @@ impl Canvas {
             }
             item(ui, "Delete", "Delete", any, MenuAction::Delete);
             item(ui, "Select All", "Ctrl+A", true, MenuAction::SelectAll);
+            item(
+                ui,
+                "Select All Shapes",
+                "Ctrl+Shift+A",
+                true,
+                MenuAction::SelectShapes,
+            );
+            item(
+                ui,
+                "Select All Lines",
+                "Ctrl+Alt+A",
+                true,
+                MenuAction::SelectLines,
+            );
+            item(
+                ui,
+                "Select All Text",
+                "Ctrl+Shift+T",
+                true,
+                MenuAction::SelectText,
+            );
         });
         picked
     }

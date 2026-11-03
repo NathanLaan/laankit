@@ -422,6 +422,9 @@ impl BlockLinerApp {
                 }
             }
             Act::SelectAll => self.canvas.select_all(&self.diagram),
+            Act::SelectShapes => self.canvas.select_shapes(&self.diagram, false),
+            Act::SelectLines => self.canvas.select_lines(&self.diagram),
+            Act::SelectText => self.canvas.select_shapes(&self.diagram, true),
             Act::Nudge(dx, dy) => {
                 let g = self.diagram.grid;
                 self.canvas
@@ -1327,6 +1330,9 @@ impl BlockLinerApp {
                     MenuAction::ResetStyle => Act::ResetStyle,
                     MenuAction::Delete => Act::Delete,
                     MenuAction::SelectAll => Act::SelectAll,
+                    MenuAction::SelectShapes => Act::SelectShapes,
+                    MenuAction::SelectLines => Act::SelectLines,
+                    MenuAction::SelectText => Act::SelectText,
                 }));
             });
         for act in acts {

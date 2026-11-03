@@ -24,7 +24,7 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | V, R, O, L, A, J, E, T, or 1–9 | Select, Rectangle, Rounded Rectangle, Line, Arrow, Right-Angle Line, Right-Angle Arrow, Text tool (Shift: keep the tool after each shape). The numbers follow the toolbar and show in each tool button's corner; they're physical keys, so the number row works on any layout |
 | D, H, C, S, or 4 | Diamond, Hexagon, Database (cylinder), Subroutine. They share the More Shapes button with Stadium, Circle, Double Circle, Parallelogram, Reverse Parallelogram, Trapezoid, Inverted Trapezoid and Asymmetric (no letters; the list or the palette): 4 (or a click) picks the one it shows, the last used; its corner triangle or a right-click lists all twelve |
 | Drag a right-angle line's middle handle | Moves its middle segment across (double-click the handle: automatic again) |
-| Right-click | Selects what's under it, then a menu: Edit Label, Cut, Copy, Paste, Change Shape ▸ (shapes), Fill ▸ (shapes) and Stroke ▸ (shapes and lines; eight presets, Default, Custom…), Stroke Style ▸ (Solid, Dashed, Dotted), Stroke Weight ▸ (1px … 4px), Text Weight ▸ (Normal, Bold), Text Style ▸ (Normal, Italic) and Reset Style, Right-Angle / Straight and Add / Remove Arrowhead for lines, Delete, Select All. On a diagram in the sidebar: Rename…, Delete…, Open Containing Folder… (the system file manager) |
+| Right-click | Selects what's under it, then a menu: Edit Label, Cut, Copy, Paste, Change Shape ▸ (shapes), Fill ▸ (shapes) and Stroke ▸ (shapes and lines; eight presets, Default, Custom…), Stroke Style ▸ (Solid, Dashed, Dotted), Stroke Weight ▸ (1px … 4px), Text Weight ▸ (Normal, Bold), Text Style ▸ (Normal, Italic) and Reset Style, Right-Angle / Straight and Add / Remove Arrowhead for lines, Delete, Select All, Select All Shapes, Select All Lines, Select All Text. On a diagram in the sidebar: Rename…, Delete…, Open Containing Folder… (the system file manager) |
 | Drag / click (shape tool) | Draws a shape (click: the default size, 8 × 3 cells; 8 × 4 for a diamond, 6 × 4 for a database, 4 × 4 for a circle, 5 × 5 for a double circle) |
 | Double-click a shape | Edits its label (Enter commits, Shift+Enter adds a line, Esc cancels) |
 | Double-click a connector or its label, or Enter | Edits the edge label (`a -->\|"HTTPS"\| b`); empty removes it. Enter edits the single selected shape's or connector's label. A free line has no Mermaid edge to keep a label on |
@@ -32,6 +32,7 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | Alt while dragging | No snapping |
 | Delete / Backspace, Esc | Delete the selection; cancel the gesture or clear the selection |
 | Ctrl+A, Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y | Select all, undo, redo |
+| Ctrl+Shift+A, Ctrl+Alt+A, Ctrl+Shift+T | Select all shapes (not text boxes), all lines, all text boxes |
 | Ctrl+C, Ctrl+X, Ctrl+V | Copy, cut, paste. The clipboard holds the selection as Mermaid; a paste lands two cells down and right (further each time), or in the middle of the view if that's off screen. Plain text pastes as a text box |
 | Ctrl+N, F2, Ctrl+O | New diagram, rename it, open a folder |
 | Ctrl+Shift+E | Export (PNG or SVG) |

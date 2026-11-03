@@ -801,6 +801,23 @@ impl Canvas {
         self.lines = (0..d.connectors.len()).collect();
     }
 
+    /// Selects only the shapes that are (`text`) or aren't text boxes.
+    pub fn select_shapes(&mut self, d: &Diagram, text: bool) {
+        self.selection = d
+            .shapes
+            .iter()
+            .filter(|s| (s.kind == ShapeKind::Text) == text)
+            .map(|s| s.id.clone())
+            .collect();
+        self.lines.clear();
+    }
+
+    /// Selects only the connectors.
+    pub fn select_lines(&mut self, d: &Diagram) {
+        self.selection.clear();
+        self.lines = (0..d.connectors.len()).collect();
+    }
+
     /// Deletes the selected lines and shapes (and the connectors glued to
     /// those shapes). Shapes declared in kept Mermaid statements stay: their
     /// declaration isn't BlockLiner's to remove. Returns how many things

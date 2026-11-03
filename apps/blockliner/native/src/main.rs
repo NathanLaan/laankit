@@ -38,6 +38,8 @@ mod ui_tests_properties;
 #[cfg(test)]
 mod ui_tests_routes;
 #[cfg(test)]
+mod ui_tests_select;
+#[cfg(test)]
 mod ui_tests_shapes;
 #[cfg(test)]
 mod ui_tests_stroke_styles;
