@@ -704,7 +704,7 @@ version = "0.1.0"
 
 [[package]]
 name = "blockliner-native"
-version = "2.6.1"
+version = "2.6.3"
 dependencies = [
  "anyhow",
  "blockliner-core",
