@@ -70,7 +70,7 @@ The app (`apps/blockliner/native`):
 | `commands` | The laankit-egui command registry: shortcuts, palette and the Settings shortcut list         |
 | `canvas`   | The grid, painting, pan and zoom, the tools and their gestures, the label editor            |
 | `views`    | The toolbar, the diagram sidebar, empty states and the status bar                           |
-| `properties` | The Properties pane below the diagram list: Change Shape and Change Line lists, the selection's Fill and Stroke (Mixed when they differ), hex fields, the Stroke Style, Stroke Weight, Text Weight and Text Style lists, Reset Style |
+| `properties` | The Properties pane below the diagram list: Change Shape and Change Line (Line, Arrow, Right-Angle Line, Right-Angle Arrow) lists, the selection's Fill and Stroke (Mixed when they differ), hex fields, the Stroke Style, Stroke Weight, Text Weight and Text Style lists, Reset Style |
 | `overlays` | Settings, About, Export, New/Rename Diagram, delete confirmation, Custom colour              |
 | `export`   | The SVG writer (labels wrapped by egui, as on the canvas) and PNG through `resvg`            |
 | `ui_tests*`| egui_kittest flows, headless (below)                                                        |

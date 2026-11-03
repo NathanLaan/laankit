@@ -1,14 +1,17 @@
-//! Change Shape and arrowheads, headlessly: the Properties pane's Change
-//! Shape and Change Line lists, the right-click menu's Change Shape ▸ and
-//! Add / Remove Arrowhead, the palette's commands, Mixed selections,
-//! kept-statement shapes left alone, and one undo step per change.
+//! Change Shape and Change Line, headlessly: the Properties pane's Change
+//! Shape and Change Line lists (Line, Arrow, Right-Angle Line, Right-Angle
+//! Arrow), the right-click menu's Change Shape ▸ and Add / Remove Arrowhead,
+//! the palette's commands, Mixed selections, kept-statement shapes left
+//! alone, and one undo step per change.
 
-use blockliner_core::{write, Anchor, Connector, ConnectorKind, End, Point, Rect, ShapeKind};
+use blockliner_core::{
+    write, Anchor, Connector, ConnectorKind, End, Point, Rect, Route, ShapeKind,
+};
 use egui::accesskit::Role;
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::kittest::{NodeT, Queryable};
 
-use crate::canvas::{Agreed, SelectionKinds};
+use crate::canvas::{Agreed, SelectionKinds, Tool};
 use crate::ui_tests::{at, click, harness, two_shapes, H};
 
 fn kind(h: &H, id: &str) -> ShapeKind {
@@ -258,4 +261,97 @@ fn lines_gain_and_lose_arrowheads() {
     h.get_by_label("Remove Arrowhead").click();
     h.run_steps(3);
     assert_eq!(line_kinds(&h), [ConnectorKind::Line, ConnectorKind::Line]);
+}
+
+fn line_tools(h: &H) -> Vec<Tool> {
+    h.state()
+        .diagram()
+        .connectors
+        .iter()
+        .map(Tool::for_line)
+        .collect()
+}
+
+#[test]
+fn the_pane_changes_a_line_to_each_line_type() {
+    let (_tmp, _paths, mut h) = harness();
+    h.run_steps(2);
+    two_shapes(&mut h);
+    let mut edge = Connector::new(
+        ConnectorKind::Line,
+        End::glued("a", Some(Anchor::E)),
+        End::glued("b", Some(Anchor::W)),
+    );
+    edge.label = Some("SQL".into());
+    h.state_mut().diagram_mut().connectors.push(edge);
+    h.run_steps(2);
+    select_all(&mut h);
+    show_pane(&mut h);
+    assert_eq!(kinds(&h).line_tool, Agreed::Same(Tool::Line));
+
+    // Arrowhead and route in one pick, and one undo step.
+    open_list(&mut h, "Change Line");
+    pick(&mut h, "Right-Angle Arrow");
+    assert_eq!(line_tools(&h), [Tool::ElbowArrow]);
+    let text = write(h.state().diagram());
+    assert!(text.contains("  a -->|\"SQL\"| b\n"), "{text}");
+    assert!(text.contains("route=elbow"), "{text}");
+    assert_eq!(kinds(&h).line_tool, Agreed::Same(Tool::ElbowArrow));
+    undo(&mut h);
+    assert_eq!(line_tools(&h), [Tool::Line]);
+
+    for (name, tool) in [
+        ("Right-Angle Line", Tool::ElbowLine),
+        ("Arrow", Tool::Arrow),
+        ("Right-Angle Arrow", Tool::ElbowArrow),
+        ("Line", Tool::Line),
+    ] {
+        select_all(&mut h);
+        open_list(&mut h, "Change Line");
+        pick(&mut h, name);
+        assert_eq!(line_tools(&h), [tool], "{name}");
+    }
+    assert_eq!(
+        h.state().diagram().connectors[0].label.as_deref(),
+        Some("SQL")
+    );
+    assert!(!write(h.state().diagram()).contains("route=elbow"));
+}
+
+#[test]
+fn a_mixed_selection_becomes_one_line_type_keeping_pinned_middles() {
+    let (_tmp, _paths, mut h) = harness();
+    h.run_steps(2);
+    let d = h.state_mut().diagram_mut();
+    d.connectors.push(Connector::new(
+        ConnectorKind::Line,
+        End::Free(Point::new(600.0, 100.0)),
+        End::Free(Point::new(700.0, 100.0)),
+    ));
+    let mut elbow = Connector::new(
+        ConnectorKind::Line,
+        End::Free(Point::new(600.0, 300.0)),
+        End::Free(Point::new(700.0, 400.0)),
+    );
+    let pinned = Route::Elbow {
+        mid: Some(blockliner_core::Mid::X(640.0)),
+    };
+    elbow.route = pinned;
+    d.connectors.push(elbow);
+    h.run_steps(2);
+    select_all(&mut h);
+    show_pane(&mut h);
+    assert_eq!(kinds(&h).line_tool, Agreed::Mixed);
+
+    open_list(&mut h, "Change Line");
+    pick(&mut h, "Right-Angle Arrow");
+    assert_eq!(line_tools(&h), [Tool::ElbowArrow, Tool::ElbowArrow]);
+    assert_eq!(h.state().diagram().connectors[1].route, pinned);
+    undo(&mut h);
+    assert_eq!(line_tools(&h), [Tool::Line, Tool::ElbowLine]);
+
+    // The palette, too.
+    select_all(&mut h);
+    palette(&mut h, "Change Line: Arrow");
+    assert_eq!(line_tools(&h), [Tool::Arrow, Tool::Arrow]);
 }

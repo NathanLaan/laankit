@@ -127,6 +127,9 @@ impl<T: PartialEq> Agreed<T> {
 pub struct SelectionKinds {
     pub shape: Agreed<ShapeKind>,
     pub line: Agreed<ConnectorKind>,
+    /// The lines' kind and route together, as the line tool that draws
+    /// them (Change Line).
+    pub line_tool: Agreed<Tool>,
 }
 
 impl SelectionKinds {
@@ -305,6 +308,12 @@ impl Canvas {
                     .filter_map(|&i| d.connectors.get(i))
                     .map(|c| c.kind),
             ),
+            line_tool: Agreed::of(
+                self.lines
+                    .iter()
+                    .filter_map(|&i| d.connectors.get(i))
+                    .map(Tool::for_line),
+            ),
         }
     }
 
@@ -326,6 +335,19 @@ impl Canvas {
             ConnectorKind::Line
         };
         d.set_connector_kind(&self.lines, kind) > 0
+    }
+
+    /// Makes the selected lines what the line tool `tool` draws: its
+    /// arrowhead and its route, together. A right-angle line keeps its
+    /// pinned middle. `false` if none changed.
+    pub fn change_line(&mut self, d: &mut Diagram, tool: Tool) -> bool {
+        let Some(kind) = tool.connector_kind() else {
+            return false;
+        };
+        self.commit_label(d);
+        let kinds = d.set_connector_kind(&self.lines, kind) > 0;
+        let routes = self.set_route(d, tool.route().is_elbow());
+        kinds || routes
     }
 
     /// The canvas's top-left corner on screen (model origin at 100 % and no

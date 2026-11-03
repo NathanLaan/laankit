@@ -50,6 +50,8 @@ pub enum Act {
     RouteStraight,
     /// The selected shapes become this kind (Change Shape).
     ChangeShape(ShapeKind),
+    /// The selected lines become what this line tool draws (Change Line).
+    ChangeLine(Tool),
     /// The selected lines get an arrowhead…
     AddArrowheads,
     /// …or lose it.
@@ -159,6 +161,10 @@ fn labellable(v: &View) -> bool {
 
 fn changeable(v: &View) -> bool {
     ready(v) && v.changeable
+}
+
+fn has_line(v: &View) -> bool {
+    ready(v) && (v.straight_selected || v.elbow_selected)
 }
 
 fn has_plain_line(v: &View) -> bool {
@@ -424,6 +430,23 @@ pub fn registry() -> Registry<Act, View> {
                 Act::ChangeShape(kind),
             )
             .when(changeable),
+        );
+    }
+    for tool in Tool::LINES {
+        let id: String = tool
+            .name()
+            .to_lowercase()
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect();
+        r.register(
+            add(
+                &format!("edit.changeLine.{id}"),
+                &format!("Change Line: {}", tool.name()),
+                "Edit",
+                Act::ChangeLine(tool),
+            )
+            .when(has_line),
         );
     }
     r.register(

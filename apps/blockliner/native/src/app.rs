@@ -455,6 +455,9 @@ impl BlockLinerApp {
             Act::ChangeShape(kind) => {
                 self.canvas.change_shape(&mut self.diagram, &kind);
             }
+            Act::ChangeLine(tool) => {
+                self.canvas.change_line(&mut self.diagram, tool);
+            }
             Act::AddArrowheads => {
                 self.canvas.set_arrowheads(&mut self.diagram, true);
             }
@@ -1349,8 +1352,7 @@ impl BlockLinerApp {
             Some(PropertiesAction::TextStyle(i)) => self.apply(Act::TextStyle(i)),
             Some(PropertiesAction::ResetStyle) => self.apply(Act::ResetStyle),
             Some(PropertiesAction::ChangeShape(kind)) => self.apply(Act::ChangeShape(kind)),
-            Some(PropertiesAction::SetArrowheads(true)) => self.apply(Act::AddArrowheads),
-            Some(PropertiesAction::SetArrowheads(false)) => self.apply(Act::RemoveArrowheads),
+            Some(PropertiesAction::ChangeLine(tool)) => self.apply(Act::ChangeLine(tool)),
             None => {}
         }
         for action in side {

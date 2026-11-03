@@ -157,6 +157,19 @@ impl Tool {
         }
     }
 
+    /// The line tools, in the Change Line list's order.
+    pub const LINES: [Tool; 4] = [Tool::Line, Tool::Arrow, Tool::ElbowLine, Tool::ElbowArrow];
+
+    /// The line tool that draws a connector like `c`.
+    pub fn for_line(c: &Connector) -> Tool {
+        match (c.kind, c.route.is_elbow()) {
+            (ConnectorKind::Line, false) => Tool::Line,
+            (ConnectorKind::Arrow, false) => Tool::Arrow,
+            (ConnectorKind::Line, true) => Tool::ElbowLine,
+            (ConnectorKind::Arrow, true) => Tool::ElbowArrow,
+        }
+    }
+
     /// How a line tool's connectors run.
     pub fn route(self) -> Route {
         match self {
