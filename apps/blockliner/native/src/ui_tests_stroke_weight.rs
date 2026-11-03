@@ -1,4 +1,4 @@
-//! Stroke weights, headlessly: 1px … 4px (1.5px the default, never
+//! Stroke weights, headlessly: 1px … 4px (1px the default, as in Mermaid, never
 //! written) from the Properties pane's Stroke Weight list, the right-click
 //! menu's Stroke Weight ▸ and the palette, for shapes, Mermaid edges (dotted
 //! ones too) and free lines; Mixed selections, hand-written values, Reset
@@ -116,7 +116,7 @@ fn the_pane_sets_a_shapes_weight_and_the_default_is_not_written() {
     assert_eq!(weight_of(&h, "a"), Some(Weight::Preset(30)));
 
     // Back to the default: nothing written.
-    pane_pick(&mut h, "1.5px (Default)");
+    pane_pick(&mut h, "1px (Default)");
     assert_eq!(weight_of(&h, "a"), None);
     assert!(!write(h.state().diagram()).contains("style a"));
 }
@@ -184,7 +184,7 @@ fn a_free_line_keeps_its_weight_in_its_layout_comment() {
     h.run_steps(2);
     assert_eq!(h.state().selected_lines(), [0]);
 
-    palette(&mut h, "Stroke Weight: 1.5px (Default)");
+    palette(&mut h, "Stroke Weight: 1px (Default)");
     assert_eq!(line_weight(&h, 0), None);
     assert!(write(h.state().diagram()).contains("%% @line line from=600,100 to=700,100\n"));
 }
@@ -198,7 +198,7 @@ fn a_mixed_selection_takes_one_weight() {
     d.shape_mut("a")
         .unwrap()
         .style
-        .set_weight(Some(Weight::Preset(10)));
+        .set_weight(Some(Weight::Preset(15)));
     d.connectors.push(Connector::new(
         ConnectorKind::Line,
         End::glued("a", Some(Anchor::E)),
@@ -218,7 +218,7 @@ fn a_mixed_selection_takes_one_weight() {
     assert_eq!(line_weight(&h, 0), Some(Weight::Preset(20)));
     // All three in one step.
     undo(&mut h);
-    assert_eq!(weight_of(&h, "a"), Some(Weight::Preset(10)));
+    assert_eq!(weight_of(&h, "a"), Some(Weight::Preset(15)));
     assert_eq!(weight_of(&h, "b"), None);
     assert_eq!(line_weight(&h, 0), None);
 
@@ -235,7 +235,7 @@ fn hand_written_weights_stay_as_written() {
     h.run_steps(2);
     *h.state_mut().diagram_mut() = read(
         "flowchart LR\n  a[\"A\"]\n  b[\"B\"]\n  style a stroke:#333,stroke-width:5px\n  \
-         style b stroke-width:1.5px\n\
+         style b stroke-width:1px\n\
          %% blockliner 1 grid=20\n%% @shape a x=100 y=100 w=160 h=60\n\
          %% @shape b x=400 y=300 w=160 h=60\n",
     )
@@ -251,12 +251,12 @@ fn hand_written_weights_stay_as_written() {
     assert_eq!(weight_of(&h, "a"), custom);
     assert!(write(h.state().diagram()).contains("stroke-width:5px"));
 
-    // A hand-written 1.5px is the default, and kept.
+    // A hand-written 1px is the default, and kept.
     click(&mut h, at(480.0, 330.0));
     h.run_steps(2);
     assert_eq!(selected_weight(&h), Agreement::Same(None));
-    palette(&mut h, "Stroke Weight: 1.5px (Default)");
-    assert!(write(h.state().diagram()).contains("  style b stroke-width:1.5px\n"));
+    palette(&mut h, "Stroke Weight: 1px (Default)");
+    assert!(write(h.state().diagram()).contains("  style b stroke-width:1px\n"));
 }
 
 #[test]

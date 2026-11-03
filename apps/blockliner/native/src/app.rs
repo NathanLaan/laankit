@@ -422,6 +422,9 @@ impl BlockLinerApp {
                 }
             }
             Act::SelectAll => self.canvas.select_all(&self.diagram),
+            Act::SelectShapes => self.canvas.select_shapes(&self.diagram, false),
+            Act::SelectLines => self.canvas.select_lines(&self.diagram),
+            Act::SelectText => self.canvas.select_shapes(&self.diagram, true),
             Act::Nudge(dx, dy) => {
                 let g = self.diagram.grid;
                 self.canvas
@@ -451,6 +454,9 @@ impl BlockLinerApp {
             }
             Act::ChangeShape(kind) => {
                 self.canvas.change_shape(&mut self.diagram, &kind);
+            }
+            Act::ChangeLine(tool) => {
+                self.canvas.change_line(&mut self.diagram, tool);
             }
             Act::AddArrowheads => {
                 self.canvas.set_arrowheads(&mut self.diagram, true);
@@ -1327,6 +1333,9 @@ impl BlockLinerApp {
                     MenuAction::ResetStyle => Act::ResetStyle,
                     MenuAction::Delete => Act::Delete,
                     MenuAction::SelectAll => Act::SelectAll,
+                    MenuAction::SelectShapes => Act::SelectShapes,
+                    MenuAction::SelectLines => Act::SelectLines,
+                    MenuAction::SelectText => Act::SelectText,
                 }));
             });
         for act in acts {
@@ -1343,8 +1352,7 @@ impl BlockLinerApp {
             Some(PropertiesAction::TextStyle(i)) => self.apply(Act::TextStyle(i)),
             Some(PropertiesAction::ResetStyle) => self.apply(Act::ResetStyle),
             Some(PropertiesAction::ChangeShape(kind)) => self.apply(Act::ChangeShape(kind)),
-            Some(PropertiesAction::SetArrowheads(true)) => self.apply(Act::AddArrowheads),
-            Some(PropertiesAction::SetArrowheads(false)) => self.apply(Act::RemoveArrowheads),
+            Some(PropertiesAction::ChangeLine(tool)) => self.apply(Act::ChangeLine(tool)),
             None => {}
         }
         for action in side {

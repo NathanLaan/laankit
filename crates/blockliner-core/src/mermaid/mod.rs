@@ -36,7 +36,8 @@
 //! dashed or dotted stroke is a `stroke-dasharray` there (`6 4`, `2 3`), or
 //! in an edge's `linkStyle`, except that a dotted edge is written with
 //! Mermaid's own dotted link, `-.->` / `-.-`. A stroke's weight is a
-//! `stroke-width` (`1px` … `4px`; the default, 1.5px, isn't written), and a
+//! `stroke-width` (`1.5px` … `4px`; the default, 1px as in Mermaid, isn't
+//! written), and a
 //! label's `font-weight:bold` / `font-style:italic`, in the same places.
 
 mod label;

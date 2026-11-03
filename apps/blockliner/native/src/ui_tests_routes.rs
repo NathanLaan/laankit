@@ -191,7 +191,7 @@ fn switch_between_straight_and_right_angle() {
     // there, Select All isn't.
     right_click(&mut h, at(700.0, 600.0));
     assert!(h.state().selected_lines().is_empty());
-    h.get_by_label_contains("Select All").click();
+    h.get_by_label("Select All Ctrl+A").click();
     h.run_steps(3);
     assert_eq!(h.state().selected_lines(), [0]);
 }

@@ -320,7 +320,7 @@ impl From<Tool> for Glyph {
 
 /// A glyph, centred on `c`.
 pub(crate) fn paint_glyph(painter: &egui::Painter, glyph: &Glyph, c: Pos2, ink: Color32) {
-    use blockliner_core::style::Dash;
+    use blockliner_core::style::{Dash, Weight};
     match glyph {
         Glyph::Tool(t) => paint_tool_icon(painter, *t, c, ink),
         Glyph::Dash(dash) => {
@@ -339,7 +339,10 @@ pub(crate) fn paint_glyph(painter: &egui::Painter, glyph: &Glyph, c: Pos2, ink: 
             }
         }
         Glyph::Weight(weight) => {
-            let width = weight.as_ref().and_then(|w| w.px()).unwrap_or(1.5);
+            let width = weight
+                .as_ref()
+                .and_then(|w| w.px())
+                .unwrap_or(Weight::DEFAULT_PX);
             let line = [c + vec2(-10.0, 0.0), c + vec2(10.0, 0.0)];
             painter.line_segment(line, Stroke::new(width.min(6.0), ink));
         }

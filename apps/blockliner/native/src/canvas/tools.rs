@@ -157,6 +157,19 @@ impl Tool {
         }
     }
 
+    /// The line tools, in the Change Line list's order.
+    pub const LINES: [Tool; 4] = [Tool::Line, Tool::Arrow, Tool::ElbowLine, Tool::ElbowArrow];
+
+    /// The line tool that draws a connector like `c`.
+    pub fn for_line(c: &Connector) -> Tool {
+        match (c.kind, c.route.is_elbow()) {
+            (ConnectorKind::Line, false) => Tool::Line,
+            (ConnectorKind::Arrow, false) => Tool::Arrow,
+            (ConnectorKind::Line, true) => Tool::ElbowLine,
+            (ConnectorKind::Arrow, true) => Tool::ElbowArrow,
+        }
+    }
+
     /// How a line tool's connectors run.
     pub fn route(self) -> Route {
         match self {
@@ -798,6 +811,23 @@ impl Canvas {
 
     pub fn select_all(&mut self, d: &Diagram) {
         self.selection = d.shapes.iter().map(|s| s.id.clone()).collect();
+        self.lines = (0..d.connectors.len()).collect();
+    }
+
+    /// Selects only the shapes that are (`text`) or aren't text boxes.
+    pub fn select_shapes(&mut self, d: &Diagram, text: bool) {
+        self.selection = d
+            .shapes
+            .iter()
+            .filter(|s| (s.kind == ShapeKind::Text) == text)
+            .map(|s| s.id.clone())
+            .collect();
+        self.lines.clear();
+    }
+
+    /// Selects only the connectors.
+    pub fn select_lines(&mut self, d: &Diagram) {
+        self.selection.clear();
         self.lines = (0..d.connectors.len()).collect();
     }
 

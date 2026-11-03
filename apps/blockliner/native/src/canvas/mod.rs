@@ -82,7 +82,7 @@ pub enum MenuAction {
     Stroke(Swatch),
     /// Solid (`None`), Dashed or Dotted.
     StrokeStyle(Option<Dash>),
-    /// A weight (`None`: the default, 1.5px).
+    /// A weight (`None`: the default, 1px).
     StrokeWeight(Option<Weight>),
     /// Bold (`true`) or Normal.
     TextWeight(bool),
@@ -91,6 +91,9 @@ pub enum MenuAction {
     ResetStyle,
     Delete,
     SelectAll,
+    SelectShapes,
+    SelectLines,
+    SelectText,
 }
 
 /// One kind (a shape's, a line's) across a selection.
@@ -124,6 +127,9 @@ impl<T: PartialEq> Agreed<T> {
 pub struct SelectionKinds {
     pub shape: Agreed<ShapeKind>,
     pub line: Agreed<ConnectorKind>,
+    /// The lines' kind and route together, as the line tool that draws
+    /// them (Change Line).
+    pub line_tool: Agreed<Tool>,
 }
 
 impl SelectionKinds {
@@ -302,6 +308,12 @@ impl Canvas {
                     .filter_map(|&i| d.connectors.get(i))
                     .map(|c| c.kind),
             ),
+            line_tool: Agreed::of(
+                self.lines
+                    .iter()
+                    .filter_map(|&i| d.connectors.get(i))
+                    .map(Tool::for_line),
+            ),
         }
     }
 
@@ -323,6 +335,19 @@ impl Canvas {
             ConnectorKind::Line
         };
         d.set_connector_kind(&self.lines, kind) > 0
+    }
+
+    /// Makes the selected lines what the line tool `tool` draws: its
+    /// arrowhead and its route, together. A right-angle line keeps its
+    /// pinned middle. `false` if none changed.
+    pub fn change_line(&mut self, d: &mut Diagram, tool: Tool) -> bool {
+        let Some(kind) = tool.connector_kind() else {
+            return false;
+        };
+        self.commit_label(d);
+        let kinds = d.set_connector_kind(&self.lines, kind) > 0;
+        let routes = self.set_route(d, tool.route().is_elbow());
+        kinds || routes
     }
 
     /// The canvas's top-left corner on screen (model origin at 100 % and no
@@ -634,6 +659,27 @@ impl Canvas {
             }
             item(ui, "Delete", "Delete", any, MenuAction::Delete);
             item(ui, "Select All", "Ctrl+A", true, MenuAction::SelectAll);
+            item(
+                ui,
+                "Select All Shapes",
+                "Ctrl+Shift+A",
+                true,
+                MenuAction::SelectShapes,
+            );
+            item(
+                ui,
+                "Select All Lines",
+                "Ctrl+Alt+A",
+                true,
+                MenuAction::SelectLines,
+            );
+            item(
+                ui,
+                "Select All Text",
+                "Ctrl+Shift+T",
+                true,
+                MenuAction::SelectText,
+            );
         });
         picked
     }

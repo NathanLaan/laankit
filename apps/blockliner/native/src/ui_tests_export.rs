@@ -143,12 +143,12 @@ fn the_svg_matches_its_golden_file() {
         "{svg}"
     );
     assert!(
-        svg.contains(r#"<ellipse cx="280" cy="380" rx="39.25" ry="39.25""#),
+        svg.contains(r#"<ellipse cx="280" cy="380" rx="39.5" ry="39.5""#),
         "{svg}"
     );
     // A diamond is its four side midpoints, the stroke inside the shape.
     assert!(
-        svg.contains(r#"<polygon points="120,220.75 199.25,260 120,299.25 40.75,260""#),
+        svg.contains(r#"<polygon points="120,220.5 199.5,260 120,299.5 40.5,260""#),
         "{svg}"
     );
     assert!(export::svg(&ctx, &d, &s, true).contains("class=\"grid\""));
@@ -261,27 +261,25 @@ fn the_mirrored_shapes_export_as_themselves() {
     let svg = export::svg(&ctx, &d, &s, false);
     // Two rings, the inner one unfilled and 5 in.
     assert!(
-        svg.contains(r#"<ellipse cx="90" cy="90" rx="49.25" ry="49.25""#),
+        svg.contains(r#"<ellipse cx="90" cy="90" rx="49.5" ry="49.5""#),
         "{svg}"
     );
     assert!(
-        svg.contains(r#"<ellipse cx="90" cy="90" rx="44.25" ry="44.25" fill="none""#),
+        svg.contains(r#"<ellipse cx="90" cy="90" rx="44.5" ry="44.5" fill="none""#),
         "{svg}"
     );
     // Polygons with the stroke inside: leaning left, wider at the top, and
     // notched on the left.
     assert!(
-        svg.contains(r#"<polygon points="160.75,40.75 299.75,40.75 319.25,99.25 180.25,99.25""#),
+        svg.contains(r#"<polygon points="160.5,40.5 299.83,40.5 319.5,99.5 180.17,99.5""#),
         "{svg}"
     );
     assert!(
-        svg.contains(r#"<polygon points="340.75,40.75 499.25,40.75 479.75,99.25 360.25,99.25""#),
+        svg.contains(r#"<polygon points="340.5,40.5 499.5,40.5 479.83,99.5 360.17,99.5""#),
         "{svg}"
     );
     assert!(
-        svg.contains(
-            r#"<polygon points="520.75,40.75 679.25,40.75 679.25,99.25 520.75,99.25 550,70""#
-        ),
+        svg.contains(r#"<polygon points="520.5,40.5 679.5,40.5 679.5,99.5 520.5,99.5 550,70""#),
         "{svg}"
     );
     export::png(&svg, 1.0).expect("resvg reads it");
@@ -317,14 +315,12 @@ fn dashed_and_dotted_strokes_export_with_a_dasharray() {
     let s = scope(&d, Objects::All).unwrap();
     let svg = export::svg(&ctx, &d, &s, false);
     assert!(
-        svg.contains(r##"<rect x="40.75" y="40.75" width="158.5" height="58.5" rx="0" fill="#f7f8fa" stroke="#4b5563" stroke-dasharray="6 4""##),
+        svg.contains(r##"<rect x="40.5" y="40.5" width="159" height="59" rx="0" fill="#f7f8fa" stroke="#4b5563" stroke-dasharray="6 4""##),
         "{svg}"
     );
     // Dots as on the canvas; the arrowhead stays solid.
     assert!(
-        svg.contains(
-            r##"stroke="#4b5563" stroke-dasharray="1.5 3.5" stroke-width="1.5"/><polygon"##
-        ),
+        svg.contains(r##"stroke="#4b5563" stroke-dasharray="1 4" stroke-width="1"/><polygon"##),
         "{svg}"
     );
     assert_eq!(svg.matches("stroke-dasharray").count(), 2, "{svg}");

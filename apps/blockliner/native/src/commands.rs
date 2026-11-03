@@ -28,6 +28,12 @@ pub enum Act {
     Undo,
     Redo,
     SelectAll,
+    /// Every shape but the text boxes…
+    SelectShapes,
+    /// …every connector…
+    SelectLines,
+    /// …or every text box.
+    SelectText,
     /// The selection to the clipboard, as Mermaid…
     Copy,
     /// …and deleted…
@@ -44,6 +50,8 @@ pub enum Act {
     RouteStraight,
     /// The selected shapes become this kind (Change Shape).
     ChangeShape(ShapeKind),
+    /// The selected lines become what this line tool draws (Change Line).
+    ChangeLine(Tool),
     /// The selected lines get an arrowhead…
     AddArrowheads,
     /// …or lose it.
@@ -55,7 +63,7 @@ pub enum Act {
     /// Both back to the theme's.
     /// Solid (`None`), Dashed or Dotted.
     StrokeStyle(Option<Dash>),
-    /// A weight (`None`: the default, 1.5px).
+    /// A weight (`None`: the default, 1px).
     StrokeWeight(Option<Weight>),
     /// Bold (`true`) or Normal…
     TextWeight(bool),
@@ -153,6 +161,10 @@ fn labellable(v: &View) -> bool {
 
 fn changeable(v: &View) -> bool {
     ready(v) && v.changeable
+}
+
+fn has_line(v: &View) -> bool {
+    ready(v) && (v.straight_selected || v.elbow_selected)
 }
 
 fn has_plain_line(v: &View) -> bool {
@@ -320,6 +332,38 @@ pub fn registry() -> Registry<Act, View> {
             .shortcut("Ctrl+A")
             .when(ready),
     );
+    // Physical keys, as for the other Shift and Alt shortcuts.
+    let alt = cmd | Modifiers::ALT;
+    for (id, label, binding, keys, act) in [
+        (
+            "edit.selectShapes",
+            "Select All Shapes",
+            Binding::physical(shift, Key::A),
+            "Ctrl+Shift+A",
+            Act::SelectShapes,
+        ),
+        (
+            "edit.selectLines",
+            "Select All Lines",
+            Binding::physical(alt, Key::A),
+            "Ctrl+Alt+A",
+            Act::SelectLines,
+        ),
+        (
+            "edit.selectText",
+            "Select All Text",
+            Binding::physical(shift, Key::T),
+            "Ctrl+Shift+T",
+            Act::SelectText,
+        ),
+    ] {
+        r.register(
+            add(id, label, "Edit", act)
+                .key(binding)
+                .shortcut(keys)
+                .when(ready),
+        );
+    }
     // No key bindings: egui turns the platform's copy, cut and paste keys
     // into its clipboard events, which `App::clipboard_events` reads.
     for (id, label, keys, act, when) in [
@@ -386,6 +430,23 @@ pub fn registry() -> Registry<Act, View> {
                 Act::ChangeShape(kind),
             )
             .when(changeable),
+        );
+    }
+    for tool in Tool::LINES {
+        let id: String = tool
+            .name()
+            .to_lowercase()
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect();
+        r.register(
+            add(
+                &format!("edit.changeLine.{id}"),
+                &format!("Change Line: {}", tool.name()),
+                "Edit",
+                Act::ChangeLine(tool),
+            )
+            .when(has_line),
         );
     }
     r.register(

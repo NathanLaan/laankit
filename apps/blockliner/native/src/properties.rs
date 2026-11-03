@@ -13,7 +13,7 @@
 use blockliner_core::style::{
     Agreement, Colour, Common, Dash, DashCommon, Weight, PRESETS, WEIGHTS,
 };
-use blockliner_core::{ConnectorKind, Diagram, ShapeKind};
+use blockliner_core::{Diagram, ShapeKind};
 use egui::{pos2, vec2, Align2, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
 use laankit_egui::dialog::{self, ButtonKind};
 use laankit_egui::panes::HEADER_HEIGHT;
@@ -43,11 +43,12 @@ pub enum PropertiesAction {
     ResetStyle,
     /// Change Shape: the selected shapes become this kind.
     ChangeShape(ShapeKind),
-    /// Change Line: arrowheads on (Arrow) or off (Line).
-    SetArrowheads(bool),
+    /// Change Line: the selected lines become what this line tool draws
+    /// (Line, Arrow, Right-Angle Line or Right-Angle Arrow).
+    ChangeLine(Tool),
     /// Stroke Style: Solid (`None`), Dashed or Dotted.
     StrokeStyle(Option<Dash>),
-    /// Stroke Weight (`None`: the default, 1.5px).
+    /// Stroke Weight (`None`: the default, 1px).
     StrokeWeight(Option<Weight>),
     /// Text Weight: Bold (`true`) or Normal.
     TextWeight(bool),
@@ -217,8 +218,8 @@ fn contents(
                 ui.add_space(10.0);
             }
             if props.style.lines > 0 {
-                if let Some(on) = line_row(ui, &props.kinds.line) {
-                    out = Some(PropertiesAction::SetArrowheads(on));
+                if let Some(tool) = line_row(ui, &props.kinds.line_tool) {
+                    out = Some(PropertiesAction::ChangeLine(tool));
                 }
                 ui.add_space(10.0);
             }
@@ -300,34 +301,25 @@ fn shape_row(ui: &mut Ui, current: &Agreed<ShapeKind>) -> Option<ShapeKind> {
     picked.filter(|k| *current != Agreed::Same(k.clone()))
 }
 
-/// Change Line: Line or Arrow (or Mixed) for the selected lines. `true`
-/// for arrowheads on, unless they all already have them.
-fn line_row(ui: &mut Ui, current: &Agreed<ConnectorKind>) -> Option<bool> {
+/// Change Line: Line, Arrow, Right-Angle Line or Right-Angle Arrow (or
+/// Mixed) for the selected lines, named and drawn as their tools. The one
+/// picked, unless they all already are it.
+fn line_row(ui: &mut Ui, current: &Agreed<Tool>) -> Option<Tool> {
     dialog::field_label(ui, "Change Line:");
-    let look = |k: ConnectorKind| match k {
-        ConnectorKind::Line => (Tool::Line, "Line"),
-        ConnectorKind::Arrow => (Tool::Arrow, "Arrow"),
-    };
     let shown = match current {
-        Agreed::Same(k) => {
-            let (icon, name) = look(*k);
-            Some((Glyph::Tool(icon), name))
-        }
+        Agreed::Same(tool) => Some((Glyph::Tool(*tool), tool.name())),
         _ => None,
     };
     let mut picked = None;
     kind_select(ui, "Change Line", shown, |ui, width| {
-        for kind in [ConnectorKind::Line, ConnectorKind::Arrow] {
-            let (icon, name) = look(kind);
-            let active = *current == Agreed::Same(kind);
-            if crate::views::icon_row(ui, icon, name, None, active, width).clicked() {
-                picked = Some(kind);
+        for tool in Tool::LINES {
+            let active = *current == Agreed::Same(tool);
+            if crate::views::icon_row(ui, tool, tool.name(), None, active, width).clicked() {
+                picked = Some(tool);
             }
         }
     });
-    picked
-        .filter(|k| *current != Agreed::Same(*k))
-        .map(|k| k == ConnectorKind::Arrow)
+    picked.filter(|t| *current != Agreed::Same(*t))
 }
 
 /// Stroke Style: Solid, Dashed or Dotted (or Mixed, or a hand-written
@@ -354,7 +346,7 @@ fn dash_row(ui: &mut Ui, current: &DashCommon) -> Option<Option<Dash>> {
     picked.filter(|d| *current != DashCommon::Same(d.clone()))
 }
 
-/// Stroke Weight: 1px … 4px, with 1.5px the default (or Mixed, or a
+/// Stroke Weight: 1px … 4px, with 1px the default (or Mixed, or a
 /// hand-written Custom weight). The weight picked, unless they all already
 /// have it.
 fn weight_row(ui: &mut Ui, current: &Agreement<Option<Weight>>) -> Option<Option<Weight>> {
@@ -688,6 +680,7 @@ mod tests {
             kinds: crate::canvas::SelectionKinds {
                 shape: Agreed::None,
                 line: Agreed::None,
+                line_tool: Agreed::None,
             },
         };
         assert_eq!(
