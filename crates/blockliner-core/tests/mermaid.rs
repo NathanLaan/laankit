@@ -221,7 +221,7 @@ impl Rng {
         self.pick(&[
             None,
             None,
-            Some(Weight::Preset(10)),
+            Some(Weight::Preset(15)),
             Some(Weight::Preset(25)),
             Some(Weight::Preset(40)),
             Some(Weight::Custom("6px".into())),

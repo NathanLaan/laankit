@@ -48,7 +48,7 @@ pub enum PropertiesAction {
     ChangeLine(Tool),
     /// Stroke Style: Solid (`None`), Dashed or Dotted.
     StrokeStyle(Option<Dash>),
-    /// Stroke Weight (`None`: the default, 1.5px).
+    /// Stroke Weight (`None`: the default, 1px).
     StrokeWeight(Option<Weight>),
     /// Text Weight: Bold (`true`) or Normal.
     TextWeight(bool),
@@ -346,7 +346,7 @@ fn dash_row(ui: &mut Ui, current: &DashCommon) -> Option<Option<Dash>> {
     picked.filter(|d| *current != DashCommon::Same(d.clone()))
 }
 
-/// Stroke Weight: 1px … 4px, with 1.5px the default (or Mixed, or a
+/// Stroke Weight: 1px … 4px, with 1px the default (or Mixed, or a
 /// hand-written Custom weight). The weight picked, unless they all already
 /// have it.
 fn weight_row(ui: &mut Ui, current: &Agreement<Option<Weight>>) -> Option<Option<Weight>> {

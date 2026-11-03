@@ -306,19 +306,19 @@ impl Style {
         }
     }
 
-    /// The stroke's weight (`None`: the default, 1.5px), from its
-    /// `stroke-width`. A hand-written `1.5px` is the default too.
+    /// The stroke's weight (`None`: the default, 1px), from its
+    /// `stroke-width`. A hand-written `1px` is the default too.
     pub fn weight(&self) -> Option<Weight> {
         self.get_extra(WEIGHT_KEY)
             .and_then(Weight::parse)
             .filter(|w| *w != Weight::Preset(Weight::DEFAULT))
     }
 
-    /// A new weight (`None` or 1.5px: the default, not written).
+    /// A new weight (`None` or 1px: the default, not written).
     pub fn set_weight(&mut self, weight: Option<Weight>) {
         let weight = weight.filter(|w| *w != Weight::Preset(Weight::DEFAULT));
         if weight.is_none() && self.weight().is_none() {
-            // Already the default: a hand-written `1.5px` stays as written.
+            // Already the default: a hand-written `1px` stays as written.
             if self.get_extra(WEIGHT_KEY).and_then(Weight::parse).is_some() {
                 return;
             }
@@ -469,7 +469,8 @@ pub const FONT_WEIGHT_KEY: &str = "font-weight";
 /// …and style (Italic).
 pub const FONT_STYLE_KEY: &str = "font-style";
 
-/// A stroke's weight. The default, 1.5px, is no weight
+/// A stroke's weight. The default, 1px as in Mermaid's default theme (its
+/// `strokeWidth`, for node outlines and edges alike), is no weight
 /// (`Option<Weight>::None`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Weight {
@@ -479,10 +480,10 @@ pub enum Weight {
     Custom(String),
 }
 
-/// The weights offered, in order; `None` is the default, 1.5px.
+/// The weights offered, in order; `None` is the default, 1px.
 pub const WEIGHTS: [Option<Weight>; 6] = [
-    Some(Weight::Preset(10)),
     None,
+    Some(Weight::Preset(15)),
     Some(Weight::Preset(20)),
     Some(Weight::Preset(25)),
     Some(Weight::Preset(30)),
@@ -492,8 +493,10 @@ pub const WEIGHTS: [Option<Weight>; 6] = [
 impl Weight {
     /// The presets, in tenths of a pixel.
     pub const PRESETS: [u8; 6] = [10, 15, 20, 25, 30, 40];
-    /// The default weight, 1.5px.
-    pub const DEFAULT: u8 = 15;
+    /// The default weight, 1px: Mermaid's.
+    pub const DEFAULT: u8 = 10;
+    /// [`Weight::DEFAULT`] in pixels.
+    pub const DEFAULT_PX: f32 = Self::DEFAULT as f32 / 10.0;
 
     /// A `stroke-width` value (`2px`, `2.5`, `0.2em`). `None` when empty.
     pub fn parse(v: &str) -> Option<Self> {
@@ -791,7 +794,8 @@ mod tests {
         assert_eq!(Weight::parse(""), None);
         assert_eq!(Weight::Preset(25).value(), "2.5px");
         assert_eq!(Weight::Preset(10).field(), "1");
-        assert_eq!(Weight::label(None), "1.5px (Default)");
+        assert_eq!(Weight::label(None), "1px (Default)");
+        assert_eq!(Weight::DEFAULT_PX, 1.0);
         assert_eq!(Weight::label(Some(&Weight::Preset(30))), "3px");
         assert_eq!(Weight::label(Some(&Weight::Custom("5px".into()))), "Custom");
         assert_eq!(Weight::Preset(25).px(), Some(2.5));
@@ -801,7 +805,7 @@ mod tests {
         let labels: Vec<String> = WEIGHTS.iter().map(|w| Weight::label(w.as_ref())).collect();
         assert_eq!(
             labels,
-            ["1px", "1.5px (Default)", "2px", "2.5px", "3px", "4px"]
+            ["1px (Default)", "1.5px", "2px", "2.5px", "3px", "4px"]
         );
 
         // In place, and the default never written.
@@ -809,16 +813,19 @@ mod tests {
         assert_eq!(s.weight(), Some(Weight::Custom("5px".into())));
         s.set_weight(Some(Weight::Preset(25)));
         assert_eq!(s.props(), "stroke:#333,color:#fff,stroke-width:2.5px");
-        s.set_weight(Some(Weight::Preset(15)));
+        s.set_weight(Some(Weight::Preset(10)));
         assert_eq!(s.props(), "stroke:#333,color:#fff");
         s.set_weight(Some(Weight::Preset(40)));
         assert_eq!(s.props(), "stroke:#333,color:#fff,stroke-width:4px");
 
-        // A hand-written 1.5px is the default, and stays as written.
-        let mut s = Style::parse("stroke-width:1.5px").unwrap();
+        // 1.5px is a weight like any other.
+        let s = Style::parse("stroke-width:1.5px").unwrap();
+        assert_eq!(s.weight(), Some(Weight::Preset(15)));
+        // A hand-written 1px is the default, and stays as written.
+        let mut s = Style::parse("stroke-width:1px").unwrap();
         assert_eq!(s.weight(), None);
         s.set_weight(None);
-        assert_eq!(s.props(), "stroke-width:1.5px");
+        assert_eq!(s.props(), "stroke-width:1px");
         // Reset Style removes it.
         s.reset();
         assert_eq!(s.props(), "");

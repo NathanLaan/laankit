@@ -15,7 +15,7 @@ use anyhow::{anyhow, Context as _, Result};
 use blockliner_core::connect::path_midpoint;
 use blockliner_core::export::Scope;
 use blockliner_core::geometry::{self, SUBROUTINE_INSET};
-use blockliner_core::style::{Dash, Style};
+use blockliner_core::style::{Dash, Style, Weight};
 use blockliner_core::{ConnectorKind, Diagram, Point, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{Align, Color32};
@@ -33,8 +33,8 @@ const INK: &str = "#4b5563";
 const TEXT: &str = "#1f2937";
 const GRID_MINOR: &str = "#eef0f3";
 const GRID_MAJOR: &str = "#d9dde3";
-/// The canvas's stroke width at 100 %.
-const STROKE: f32 = 1.5;
+/// The default stroke width: the canvas's at 100 %, and Mermaid's.
+const STROKE: f32 = Weight::DEFAULT_PX;
 /// The UI font, as the bundled file names its family.
 const FONT: &str = "Inter, sans-serif";
 

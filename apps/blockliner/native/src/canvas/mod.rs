@@ -82,7 +82,7 @@ pub enum MenuAction {
     Stroke(Swatch),
     /// Solid (`None`), Dashed or Dotted.
     StrokeStyle(Option<Dash>),
-    /// A weight (`None`: the default, 1.5px).
+    /// A weight (`None`: the default, 1px).
     StrokeWeight(Option<Weight>),
     /// Bold (`true`) or Normal.
     TextWeight(bool),

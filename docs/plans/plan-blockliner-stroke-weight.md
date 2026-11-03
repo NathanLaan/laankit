@@ -352,3 +352,11 @@ Stroke weight ships first as **2.6.0** (Phases 1–5). Text weight follows as **
 - **Hit reach:** only a line with its own weight reaches further, by half that weight. Default-weight lines keep today's reach exactly, so nothing else moves.
 - **Reset Style:** removes `stroke-width`, `font-weight` and `font-style` outright, including a hand-written `stroke-width:1.5px` or `font-weight:normal`. Picking a row that matches a hand-written value leaves the value as written.
 - **Not verified:** whether Mermaid itself renders `font-weight` / `font-style` from `linkStyle` on edge labels. BlockLiner saves and draws them either way.
+
+## Later change: 1px default (BlockLiner 2.6.5)
+
+- The default weight is now **1px**, to match Mermaid. In Mermaid 11's default theme `strokeWidth` is 1, and both node outlines (`.node path`) and edges (`.edge-thickness-normal`) use it. The 2px `.edgePaths .path` rule doesn't match edge paths, which don't carry a `path` class.
+- The list is now "1px (Default)", 1.5px, 2px, 2.5px, 3px, 4px. `Weight::DEFAULT` is 10, and `Weight::DEFAULT_PX` feeds the canvas, the export and the list's glyphs.
+- 1.5px is now an ordinary weight and is written as `stroke-width:1.5px`. A hand-written `1px` counts as the default and is kept as written.
+- Diagrams saved earlier with default strokes now draw and export at 1px. Weights that were picked explicitly are unchanged, except an explicit `1px`, which now reads as the default.
+- The dotted SVG pattern at the default is now `1 4` (it was `1.5 3.5`). The golden `export.svg` was updated for the thinner strokes and their 0.5 px insets.

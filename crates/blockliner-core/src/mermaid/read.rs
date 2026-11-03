@@ -685,9 +685,9 @@ mod tests {
     #[test]
     fn free_line_weights_and_text() {
         for (field, weight) in [
-            ("1", Some(Weight::Preset(10))),
+            ("1", None),
             ("2.5", Some(Weight::Preset(25))),
-            ("1.5", None),
+            ("1.5", Some(Weight::Preset(15))),
             ("6px", Some(Weight::Custom("6px".into()))),
         ] {
             let text = format!("flowchart LR\n%% @line line from=5,5 to=9,9 weight={field}\n");

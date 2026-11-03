@@ -4,7 +4,7 @@
 use blockliner_core::connect::path_midpoint;
 use blockliner_core::geometry::{self, Handle, DOUBLE_CIRCLE_GAP, SUBROUTINE_INSET};
 use blockliner_core::route::middle_segment;
-use blockliner_core::style::{Dash, Style};
+use blockliner_core::style::{Dash, Style, Weight};
 use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{vec2, Align, Color32, CornerRadius, FontId, Painter, Pos2, Stroke, StrokeKind};
@@ -62,7 +62,7 @@ pub fn screen_rect(view: View, origin: Pos2, r: &Rect) -> egui::Rect {
 }
 
 /// A stroke's width on screen: its own weight scaled to the zoom, or the
-/// default's (1.5 at 100 %, kept between 1 and 4).
+/// default's (1px at 100 %, as in Mermaid, kept between 1 and 4).
 pub fn stroke_width(style: &Style, zoom: f32) -> f32 {
     match style.weight().and_then(|w| w.px()) {
         Some(w) => (w * zoom).max(1.0),
@@ -71,7 +71,7 @@ pub fn stroke_width(style: &Style, zoom: f32) -> f32 {
 }
 
 fn default_width(zoom: f32) -> f32 {
-    (1.5 * zoom).clamp(1.0, 4.0)
+    (Weight::DEFAULT_PX * zoom).clamp(1.0, 4.0)
 }
 
 /// How a stroke is drawn on screen: solid, or dashes or dots scaled to the

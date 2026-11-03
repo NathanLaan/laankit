@@ -63,7 +63,7 @@ pub enum Act {
     /// Both back to the theme's.
     /// Solid (`None`), Dashed or Dotted.
     StrokeStyle(Option<Dash>),
-    /// A weight (`None`: the default, 1.5px).
+    /// A weight (`None`: the default, 1px).
     StrokeWeight(Option<Weight>),
     /// Bold (`true`) or Normal…
     TextWeight(bool),
