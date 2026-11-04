@@ -1,6 +1,6 @@
 # ThreadLiner Native
 
-ThreadLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `threadliner-core`, with no webview and no JavaScript. It runs on Linux, Windows and macOS.
+ThreadLiner in pure Rust: an [egui](https://github.com/emilk/egui) UI over `threadliner-core`, with no webview and no JavaScript. It runs on Linux, Windows, and macOS.
 
 It reads and writes exactly what the Electron and Tauri builds do: the same `~/.config/ThreadLiner` (`config.json`, `ui-preferences.json`) and the same git-synced data folder (`data/feeds.json`, `data/tags.json`, `data/feeds/<id>/entries.json`, `configuration/settings.json`), through the same `threadliner-core` store and sync engine. You can switch between the builds at any time.
 
@@ -13,9 +13,9 @@ cargo test -p threadliner-native              # needs `git` on the PATH, like th
 
 The package is `threadliner-native`; its binary is `threadliner`, the one the release packages install as `/usr/bin/threadliner` (the native build replaced the Tauri and Electron ones; see [`docs/packaging.md`](../../../docs/packaging.md)).
 
-- **First run** shows the setup dialog: pick (or create) the data folder and optionally a git remote.
-- **Window chrome.** Settings → UI → Custom Window Titlebar switches between the system frame and LaanKit's title bar (shared with the Tauri build's `ui-preferences.json`; takes a restart).
-- **Command palette.** Ctrl+Shift+P: every command, plus the feeds by name.
+- First run shows the setup dialog: pick (or create) the data folder and optionally a git remote.
+- Window chrome. Settings → UI → Custom Window Titlebar switches between the system frame and LaanKit's title bar (shared with the Tauri build's `ui-preferences.json`; takes a restart).
+- Command palette. Ctrl+Shift+P: every command, plus the feeds by name.
 
 ### Trying it without touching your setup
 
@@ -33,10 +33,10 @@ cargo run -p threadliner-native --release
 | Module      | What it does                                                                                    |
 |-------------|-------------------------------------------------------------------------------------------------|
 | `main`      | The eframe window (1200 × 800, at least 800 × 500), icon, undecorated when the custom titlebar is on |
-| `app`       | Owns everything; routes backend events, commands, pane actions and dialog results (`App.svelte` + `stores/*`) |
+| `app`       | Owns everything; routes backend events, commands, pane actions, and dialog results (`App.svelte` + `stores/*`) |
 | `backend`   | A tokio runtime around `threadliner-core`: the Tauri host's channels, the poller, notifications; results come back as `Event`s |
 | `config`    | `config.json` and `ui-preferences.json` in `~/.config/ThreadLiner`                              |
-| `model`     | Typed feeds, entries and tags from the store's rows; the Svelte date formats                     |
+| `model`     | Typed feeds, entries, and tags from the store's rows; the Svelte date formats                     |
 | `commands`  | The shortcuts of `handleGlobalKeydown`, as laankit-egui commands (shortcuts, palette, Settings list) |
 | `views`     | Sidebar, entry list (virtualized), article viewer (laankit-richtext), setup dialog, loading screen |
 | `overlays`  | Add/Edit Feed, Remove Feed, Tags (+ Add/Edit/Delete Tag), Settings, Remote Sync, Help, About      |
@@ -50,7 +50,7 @@ Every IPC channel of `src/main/preload.js` (as the Tauri host implements them) a
 
 | Channel or feature                                         | Status          | Notes                                                                 |
 |------------------------------------------------------------|-----------------|-----------------------------------------------------------------------|
-| `setup:isComplete`, `setup:init`                           | Done            | Init, clone or adopt a repo, as the Tauri host                        |
+| `setup:isComplete`, `setup:init`                           | Done            | Init, clone, or adopt a repo, as the Tauri host                        |
 | `setup:openFolderDialog`                                   | Done            | `rfd` (XDG portal on Linux, native dialogs on Windows/macOS)          |
 | `feed:getAll`, `feed:add`, `feed:edit`, `feed:remove`      | Done            | Remove asks first, with the Svelte wording                            |
 | `feed:refresh`                                             | Done            | F5, toolbar, title bar                                                |
@@ -63,7 +63,7 @@ Every IPC channel of `src/main/preload.js` (as the Tauri host implements them) a
 | `sync:getStatus`, `sync:getLog`                            | Done            | Polled every 2 s; the Sync button tints while a push is queued; Settings → Sync shows the log |
 | `sync:forcePush`, `sync:forcePull`                         | Done            | "Sync Now" / "Pull from Remote" in the palette (the Svelte UI never calls them) |
 | `sync:getConfig`                                           | Not needed      | The Svelte Sync modal loads it but never shows it                     |
-| `git:getRemoteUrl` / `setRemoteUrl` / `removeRemote` / `getBranch` / `getSyncStatus` | Done | Remote Sync dialog: connect, disconnect, status dot and text |
+| `git:getRemoteUrl` / `setRemoteUrl` / `removeRemote` / `getBranch` / `getSyncStatus` | Done | Remote Sync dialog: connect, disconnect, and the status dot and text |
 | `git:pull` / `pullRebase` / `push` / `pushUpstream` / `resetToRemote` | Done | With the Svelte confirmations; the store reloads after pulls and resets |
 | `help:open`                                                | Partial         | Same content, as an in-app dialog rather than a second window         |
 | About and `update:*`                                       | Done            | `laankit_core::updates`; ThreadLiner publishes no release repo, so it reports "latest", as the Tauri build does |
@@ -72,7 +72,7 @@ Every IPC channel of `src/main/preload.js` (as the Tauri host implements them) a
 | Keyboard shortcuts                                         | Done            | All of `handleGlobalKeydown`, ignored while typing; zoom also works with a dialog open |
 | Command palette                                            | Native addition | Ctrl+Shift+P; commands plus feeds                                    |
 | Resizable sidebar and entry list                           | Done            | 180–500 and 220–600 px, as the Svelte limits                          |
-| Article view                                               | Partial         | laankit-richtext with ThreadLiner's DOMPurify allow-list. The header stays above the scrolling body; selection is per paragraph; inline SVG, iframes and embeds are dropped (see `crates/laankit-richtext/README.md`) |
+| Article view                                               | Partial         | laankit-richtext with ThreadLiner's DOMPurify allow-list. The header stays above the scrolling body; selection is per paragraph; inline SVG, iframes, and embeds are dropped (see `crates/laankit-richtext/README.md`) |
 | Window size and position                                   | Partial         | Remembered by eframe in its own storage, not the Tauri window-state file |
 | Single instance                                            | Not yet         | A second launch opens a second window                                 |
 | Error toasts                                               | Done            | laankit-egui toasts, red for errors                                    |
@@ -84,7 +84,7 @@ Every IPC channel of `src/main/preload.js` (as the Tauri host implements them) a
 | `LAANKIT_SCREENSHOT=<png>`      | Saves a screenshot once the window has settled (`LAANKIT_SCREENSHOT_EXIT=1` closes afterwards) |
 | `LAANKIT_THEME`, `LAANKIT_SCALE` | Override the theme (`light`, `dark`, `midnight`) and scale          |
 | `LAANKIT_FEED=<n>`, `LAANKIT_ENTRY=<n>` | Select the nth feed and entry once loaded                    |
-| `LAANKIT_OPEN=<dialog>`         | `add`, `tags`, `settings[:ui\|feeds\|sync\|shortcuts]`, `sync`, `about`, `help` or `palette` |
+| `LAANKIT_OPEN=<dialog>`         | `add`, `tags`, `settings[:ui\|feeds\|sync\|shortcuts]`, `sync`, `about`, `help`, or `palette` |
 
 On GNOME Wayland the compositor stops painting while the session is locked, so screenshots never fire; use `WAYLAND_DISPLAY=` (XWayland) or an unlocked session.
 
@@ -92,4 +92,4 @@ On GNOME Wayland the compositor stops painting while the session is locked, so s
 
 - Windows and macOS: folder dialog, notifications, undecorated window chrome, keyboard shortcuts on non-US layouts.
 - Linux: notifications under GNOME/KDE, the folder dialog without an XDG portal (minimal window managers).
-- Connect, pull, push and reset against a real remote (the tests cover a local repo only).
+- Connect, pull, push, and reset against a real remote (the tests cover a local repo only).
