@@ -1,15 +1,15 @@
 # LaanKit
 
-LaanKit is a set of desktop apps that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), and stores its data as plain files you control: a git repository for the notes, feed, and library apps, amd any folder for BlockLiner.
+LaanKit is a set of desktop apps that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), and stores its data as plain files you control: a git repository for the notes, feed, and library apps, and any folder for BlockLiner.
 
 ## Apps
 
 | App | Binary | What it is |
 |-----|--------|------------|
-| **NoteLiner**   | `noteliner`   | Outliner-style Markdown notes: a tree of notes with editor, preview, tags, wikilinks, backlinks, slides, PDF export and an optional MCP server for AI clients. |
-| **ThreadLiner** | `threadliner` | RSS reader (RSS 2.0, Atom, JSON Feed) with git-synced JSON. |
-| **PageLiner**   | `pageliner`   | EPUB/PDF e-reader and document library with bookmarks, highlights and reading-position persistence. |
-| **BlockLiner**  | `blockliner`  | Visio-style diagram editor for software components and architecture, saved as Mermaid flowcharts, with PNG/SVG export. |
+| NoteLiner   | `noteliner`   | Outliner-style Markdown notes: a tree of notes with editor, preview, tags, wikilinks, backlinks, slides, PDF export, and an optional MCP server for AI clients. |
+| ThreadLiner | `threadliner` | RSS reader (RSS 2.0, Atom, JSON Feed) with git-synced JSON. |
+| PageLiner   | `pageliner`   | EPUB/PDF e-reader and document library with bookmarks, highlights, and reading-position persistence. |
+| BlockLiner  | `blockliner`  | Visio-style diagram editor for software components and architecture, saved as Mermaid flowcharts, with PNG/SVG export. |
 
 Each lives in `apps/<app>/native/` and is a Cargo package named `<app>-native`. See the per-app README (`apps/<app>/README.md`) and its detailed `apps/<app>/native/README.md`.
 
@@ -35,9 +35,9 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how these fit together, and [`SECUR
 
 ## Prerequisites
 
-- **Rust 1.92+** (install with [`rustup`](https://rustup.rs)).
-- **`git`** on the `PATH` at runtime — NoteLiner, ThreadLiner and PageLiner shell out to it for sync and history. BlockLiner doesn't use git.
-- **Linux build libraries:**
+- Rust 1.92+ (install with [`rustup`](https://rustup.rs)).
+- `git` on the `PATH` at runtime. NoteLiner, ThreadLiner, and PageLiner shell out to it for sync and history. BlockLiner doesn't use git.
+- Linux build libraries:
 
   ```bash
   sudo apt install build-essential pkg-config \
@@ -59,7 +59,7 @@ For an optimized run without the slow full-LTO release build (good for benchmark
 cargo run -p noteliner-native --profile fast-release
 ```
 
-Diagnostics shared by every app (open a project, take a screenshot, force a theme or scale) are documented in each app's `native/README.md`.
+Diagnostics shared by every app (open a project, take a screenshot, or force a theme or scale) are documented in each app's `native/README.md`.
 
 ## Build Release Package
 
@@ -91,35 +91,35 @@ scripts/package-native.sh noteliner
 FORMATS="deb appimage" scripts/package-native.sh
 ```
 
-Output goes to `target/packages/<app>/`. Host defaults are `deb rpm appimage` on Linux, `nsis` on Windows (run from Git Bash), `app dmg` on macOS. The full format table, CI release workflow, versioning (`scripts/set-version.sh`), runtime dependencies, Flatpak and code-signing status are in [`docs/packaging.md`](docs/packaging.md).
+Output goes to `target/packages/<app>/`. Host defaults are `deb rpm appimage` on Linux, `nsis` on Windows (run from Git Bash), and `app dmg` on macOS. The full format table, CI release workflow, versioning (`scripts/set-version.sh`), runtime dependencies, Flatpak, and code-signing status are in [`docs/packaging.md`](docs/packaging.md).
 
 ## Release Installation
 
-Pre-built packages for Linux, Windows and macOS are attached to each [GitHub release](https://github.com/NathanLaan/laankit/releases).
+Pre-built packages for Linux, Windows, and macOS are attached to each [GitHub release](https://github.com/NathanLaan/laankit/releases).
 
-- **Linux**
+- Linux
   - `.deb`: `sudo apt install ./noteliner_<ver>-1_amd64.deb`
   - `.rpm`: `sudo dnf install ./noteliner-<ver>-1.x86_64.rpm`
   - AppImage: `chmod +x noteliner_<ver>_x86_64.AppImage && ./noteliner_<ver>_x86_64.AppImage`
-- **Windows** — run the `_x64-setup.exe` installer (per-user, no admin). Current builds are unsigned, so SmartScreen warns on first run: **More info → Run anyway**.
-- **macOS** — open the `.dmg` and drag the app to `/Applications`. Current builds are unsigned, so the first launch is blocked: right-click → **Open → Open**, or `xattr -d com.apple.quarantine /Applications/<App>.app`.
+- Windows: run the `_x64-setup.exe` installer (per-user, no admin). Current builds are unsigned, so SmartScreen warns on first run: More info → Run anyway.
+- macOS: open the `.dmg` and drag the app to `/Applications`. Current builds are unsigned, so the first launch is blocked: right-click → Open → Open, or `xattr -d com.apple.quarantine /Applications/<App>.app`.
 
 `git` must be installed on the target machine for sync and history to work (not needed for BlockLiner).
 
 ## Uninstall
 
-Each app is removed separately. The package names are `noteliner`, `threadliner`, `pageliner` and `blockliner`; the examples use NoteLiner.
+Each app is removed separately. The package names are `noteliner`, `threadliner`, `pageliner`, and `blockliner`; the examples use NoteLiner.
 
-- **Linux**
+- Linux
   - `.deb`: `sudo apt remove noteliner` (`sudo apt purge noteliner` also removes the package's own system files).
   - `.rpm`: `sudo dnf remove noteliner`.
   - AppImage: delete the `.AppImage` file. Nothing else was installed system-wide.
   - Flatpak: `flatpak uninstall com.nathanlaan.noteliner` (add `--delete-data` to remove its sandboxed settings too).
-- **Windows** — **Settings → Apps → Installed apps**, find the app (e.g. BlockLiner), then **⋯ → Uninstall**. The installer was per-user, so no admin rights are needed.
-- **macOS** — quit the app, then drag it from `/Applications` to the Trash.
-- **Built from source** — the binaries in `target/release/` aren't installed anywhere; delete them, or run `cargo clean` to remove the whole build output.
+- Windows: Settings → Apps → Installed apps, find the app (e.g. BlockLiner), then ⋯ → Uninstall. The installer was per-user, so no admin rights are needed.
+- macOS: quit the app, then drag it from `/Applications` to the Trash.
+- Built from source: the binaries in `target/release/` aren't installed anywhere; delete them, or run `cargo clean` to remove the whole build output.
 
-Uninstalling leaves your projects, diagrams and settings in place, so a reinstall picks up where you left off. To remove the settings as well, delete the app's folders:
+Uninstalling leaves your projects, diagrams, and settings in place, so a reinstall picks up where you left off. To remove the settings as well, delete the app's folders:
 
 | | Folders to delete |
 |---|---|
