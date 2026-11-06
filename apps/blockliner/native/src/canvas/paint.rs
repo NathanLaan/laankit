@@ -392,17 +392,15 @@ fn shape(
     p: &Palette,
     editing: bool,
 ) {
+    let style = s.drawn_style();
     // The shape's own colours where it has them, else the theme's.
-    let fill = colour(s.style.fill.as_ref());
-    let ink = colour(s.style.stroke.as_ref());
-    let stroke = Stroke::new(
-        stroke_width(&s.style, zoom),
-        ink.unwrap_or(p.text_secondary),
-    );
+    let fill = colour(style.fill.as_ref());
+    let ink = colour(style.stroke.as_ref());
+    let stroke = Stroke::new(stroke_width(&style, zoom), ink.unwrap_or(p.text_secondary));
     let body = fill.unwrap_or(p.bg_surface);
     // A dashed or dotted shape is drawn without its stroke, then its
     // outline drawn over it in the pattern.
-    let pattern = Pattern::of(s.style.dash().as_ref(), zoom, stroke.width);
+    let pattern = Pattern::of(style.dash().as_ref(), zoom, stroke.width);
     let solid = if pattern == Pattern::Solid {
         stroke
     } else {
@@ -450,18 +448,11 @@ fn shape(
         }
     }
     if !editing {
-        let text = s
-            .style
+        let text = style
             .label_rgba()
             .map(|[r, g, b, a]| Color32::from_rgba_unmultiplied(r, g, b, a))
             .unwrap_or(p.text_primary);
-        label(
-            painter,
-            (r, area),
-            &s.label,
-            label_font(zoom, &s.style),
-            text,
-        );
+        label(painter, (r, area), &s.label, label_font(zoom, &style), text);
     }
     badge(painter, r, s, p);
 }
@@ -573,6 +564,14 @@ pub fn outline(
             let (body, lid) = geometry::cylinder(&m, cap, 24);
             painter.add(egui::Shape::convex_polygon(screen(body), fill, stroke));
             painter.add(egui::Shape::line(screen(lid), stroke));
+        }
+        // The fold scales with the zoom, as the model's does.
+        ShapeKind::Note => {
+            let (body, fold) = geometry::note(&m, geometry::note_fold(&m, zoom));
+            painter.add(egui::Shape::convex_polygon(screen(body), fill, stroke));
+            let [r, g, b, a] = blockliner_core::style::fold_shade(fill.to_srgba_unmultiplied());
+            let shade = Color32::from_rgba_unmultiplied(r, g, b, a);
+            painter.add(egui::Shape::convex_polygon(screen(fold), shade, stroke));
         }
         ShapeKind::Subroutine => {
             painter.rect(r, 0.0, fill, stroke, StrokeKind::Inside);

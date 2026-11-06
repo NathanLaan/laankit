@@ -122,6 +122,33 @@ pub fn resize(start: Rect, handle: Handle, dx: f32, dy: f32, grid: f32, snapping
 /// How far a subroutine's inner lines sit in from its sides.
 pub const SUBROUTINE_INSET: f32 = 8.0;
 
+/// A note's folded corner at 100 %, across and down.
+pub const NOTE_FOLD: f32 = 16.0;
+
+/// A note's fold drawn at `scale`, at most a quarter of its width and height.
+pub fn note_fold(r: &Rect, scale: f32) -> f32 {
+    (NOTE_FOLD * scale).min(r.w / 4.0).min(r.h / 4.0)
+}
+
+/// A note's outline with a fold `k` across: its rectangle with the top
+/// right corner cut (convex, clockwise from the top left), then the fold,
+/// the triangle under the cut.
+pub fn note(r: &Rect, k: f32) -> (Vec<Point>, Vec<Point>) {
+    let body = vec![
+        Point::new(r.x, r.y),
+        Point::new(r.right() - k, r.y),
+        Point::new(r.right(), r.y + k),
+        Point::new(r.right(), r.bottom()),
+        Point::new(r.x, r.bottom()),
+    ];
+    let fold = vec![
+        Point::new(r.right() - k, r.y),
+        Point::new(r.right() - k, r.y + k),
+        Point::new(r.right(), r.y + k),
+    ];
+    (body, fold)
+}
+
 /// The height of each of a database's elliptical ends.
 pub fn cap_height(r: &Rect) -> f32 {
     (r.h / 5.0).min(12.0)
@@ -264,7 +291,7 @@ pub const CORNER_RADIUS: f32 = 12.0;
 /// A shape's outline as polylines, for drawing it dashed or dotted: the
 /// outline itself, closed (its last point is its first), then any inner
 /// lines in the same stroke (a database's lid, a subroutine's bars, a double
-/// circle's inner ring). `r` is the rectangle the stroke's middle runs
+/// circle's inner ring, a note's fold). `r` is the rectangle the stroke's middle runs
 /// along, and `scale` the zoom it is drawn at: corners, insets, caps and
 /// gaps scale with it as the solid shapes' do.
 pub fn outline_path(kind: &ShapeKind, r: &Rect, scale: f32) -> Vec<Vec<Point>> {
@@ -293,6 +320,10 @@ pub fn outline_path(kind: &ShapeKind, r: &Rect, scale: f32) -> Vec<Vec<Point>> {
             let cap = (r.h / 5.0).min(12.0 * scale);
             let (body, lid) = cylinder(r, cap, 24);
             vec![closed(body), lid]
+        }
+        ShapeKind::Note => {
+            let (body, fold) = note(r, note_fold(r, scale));
+            vec![closed(body), fold]
         }
         kind => vec![closed(polygon(kind, r).unwrap_or_default())],
     }
@@ -445,7 +476,8 @@ impl Shape {
 
     /// Where the label goes, inside the outline: a diamond's middle half,
     /// between a hexagon's points, below a database's lid, between a
-    /// subroutine's inner lines, else the whole rectangle.
+    /// subroutine's inner lines, clear of a note's fold above and below
+    /// (so a centred label stays centred), else the whole rectangle.
     pub fn label_rect(&self) -> Rect {
         let r = self.rect;
         match self.kind {
@@ -461,6 +493,10 @@ impl Shape {
             ShapeKind::Subroutine => {
                 let k = SUBROUTINE_INSET.min(r.w / 4.0);
                 Rect::new(r.x + k, r.y, r.w - 2.0 * k, r.h)
+            }
+            ShapeKind::Note => {
+                let k = note_fold(&r, 1.0);
+                Rect::new(r.x, r.y + k, r.w, r.h - 2.0 * k)
             }
             ShapeKind::Parallelogram
             | ShapeKind::ReverseParallelogram
@@ -531,7 +567,7 @@ mod tests {
             }
             let extra = match kind {
                 ShapeKind::Subroutine => 2,
-                ShapeKind::Database | ShapeKind::DoubleCircle => 1,
+                ShapeKind::Database | ShapeKind::DoubleCircle | ShapeKind::Note => 1,
                 _ => 0,
             };
             assert_eq!(paths.len(), 1 + extra, "{kind:?}");
@@ -810,5 +846,39 @@ mod tests {
         // A double circle too small for its gap keeps a ring.
         let tiny = inner_ring(&Rect::new(0.0, 0.0, 8.0, 8.0), DOUBLE_CIRCLE_GAP);
         assert_eq!(tiny, Rect::new(2.0, 2.0, 4.0, 4.0));
+    }
+
+    #[test]
+    fn notes() {
+        let r = Rect::new(0.0, 0.0, 160.0, 80.0);
+        let p = |x, y| Point::new(x, y);
+        // 16 px at 100 %, doubled at 200 %, at most a quarter of the height.
+        assert_eq!(note_fold(&r, 1.0), 16.0);
+        assert_eq!(note_fold(&r, 2.0), 20.0);
+        assert_eq!(note_fold(&Rect::new(0.0, 0.0, 40.0, 200.0), 1.0), 10.0);
+        let (body, fold) = note(&r, 16.0);
+        assert_eq!(
+            body,
+            [
+                p(0.0, 0.0),
+                p(144.0, 0.0),
+                p(160.0, 16.0),
+                p(160.0, 80.0),
+                p(0.0, 80.0)
+            ]
+        );
+        assert_eq!(fold, [p(144.0, 0.0), p(144.0, 16.0), p(160.0, 16.0)]);
+        // Dashed: the closed outline, then the fold's inner edges.
+        let paths = outline_path(&ShapeKind::Note, &r, 1.0);
+        assert_eq!(paths.len(), 2);
+        assert_eq!(paths[0].first(), paths[0].last());
+        assert_eq!(paths[1], fold);
+        // Anchors and hits are its rectangle's; the label clears the fold
+        // above and below.
+        let s = shape(ShapeKind::Note);
+        assert_eq!(s.anchor(Anchor::N), p(80.0, 0.0));
+        assert_eq!(s.anchor(Anchor::E), p(160.0, 40.0));
+        assert!(s.contains(p(159.0, 1.0)));
+        assert_eq!(s.label_rect(), Rect::new(0.0, 16.0, 160.0, 48.0));
     }
 }

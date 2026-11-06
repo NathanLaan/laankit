@@ -202,6 +202,7 @@ pub fn tool_key(tool: Tool) -> Option<(Key, &'static str)> {
         Tool::ElbowLine => (Key::J, "J"),
         Tool::ElbowArrow => (Key::E, "E"),
         Tool::Text => (Key::T, "T"),
+        Tool::Note => (Key::N, "N"),
         Tool::Stadium
         | Tool::Circle
         | Tool::DoubleCircle
@@ -214,11 +215,12 @@ pub fn tool_key(tool: Tool) -> Option<(Key, &'static str)> {
 }
 
 /// A tool's number: its toolbar button ([`Tool::slot`]), so the more
-/// shapes share 4, which picks the last one used. Bound to the physical
+/// shapes share 4, which picks the last one used, and the tenth button
+/// (Note) is 0. Bound to the physical
 /// key, so the number row works on layouts that put the digits behind
 /// Shift.
 pub fn tool_digit(tool: Tool) -> (Key, &'static str) {
-    const DIGITS: [(Key, &str); 9] = [
+    const DIGITS: [(Key, &str); 10] = [
         (Key::Num1, "1"),
         (Key::Num2, "2"),
         (Key::Num3, "3"),
@@ -228,6 +230,7 @@ pub fn tool_digit(tool: Tool) -> (Key, &'static str) {
         (Key::Num7, "7"),
         (Key::Num8, "8"),
         (Key::Num9, "9"),
+        (Key::Num0, "0"),
     ];
     DIGITS[tool.slot()]
 }

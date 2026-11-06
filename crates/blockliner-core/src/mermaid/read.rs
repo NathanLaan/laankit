@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use super::lex::{self, LinkKind, NodeRef, Token};
-use super::{edge_key, TEXT_CLASS};
+use super::{edge_key, NOTE_CLASS, TEXT_CLASS};
 use crate::layout;
 use crate::model::{
     Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect, Route, Shape,
@@ -199,8 +199,13 @@ struct Body {
 impl Body {
     fn statement(&mut self, stmt: &str) {
         let word = stmt.split_whitespace().next().unwrap_or("");
-        if word == "classDef" && stmt.split_whitespace().nth(1) == Some(TEXT_CLASS) {
-            return; // The writer adds it back when a text box needs it.
+        if word == "classDef"
+            && matches!(
+                stmt.split_whitespace().nth(1),
+                Some(TEXT_CLASS | NOTE_CLASS)
+            )
+        {
+            return; // The writer adds it back when a text box or note needs it.
         }
         if KEYWORDS.contains(&word) {
             if word == "linkStyle" {
@@ -363,9 +368,12 @@ impl Body {
         self.nodes.sort_by_key(rank);
         let mut unplaced = Vec::new();
         for (i, n) in self.nodes.into_iter().enumerate() {
-            let text = n.class.as_deref() == Some(TEXT_CLASS);
             let (kind, label) = n.shape.unwrap_or_else(|| (ShapeKind::Rect, n.id.clone()));
-            let kind = if text { ShapeKind::Text } else { kind };
+            let kind = match n.class.as_deref() {
+                Some(TEXT_CLASS) => ShapeKind::Text,
+                Some(NOTE_CLASS) => ShapeKind::Note,
+                _ => kind,
+            };
             let rect = layout
                 .shapes
                 .get(&n.id)
@@ -379,7 +387,7 @@ impl Body {
                 kind,
                 label,
                 rect,
-                class: n.class.filter(|_| !text),
+                class: n.class.filter(|c| c != TEXT_CLASS && c != NOTE_CLASS),
                 external: n.external,
                 style: Style::default(),
             });

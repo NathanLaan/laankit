@@ -167,6 +167,7 @@ fn tools_from_the_toolbar_and_the_keyboard() {
         (Key::H, Tool::Hexagon),
         (Key::C, Tool::Database),
         (Key::S, Tool::Subroutine),
+        (Key::N, Tool::Note),
         (Key::V, Tool::Select),
     ] {
         h.key_press(key);
@@ -185,6 +186,7 @@ fn tools_from_the_toolbar_and_the_keyboard() {
         (Key::Num7, Tool::ElbowLine),
         (Key::Num8, Tool::ElbowArrow),
         (Key::Num9, Tool::Text),
+        (Key::Num0, Tool::Note),
         (Key::Num1, Tool::Select),
     ] {
         h.key_press(key);

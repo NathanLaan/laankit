@@ -408,7 +408,8 @@ pub(crate) fn paint_tool_icon(painter: &egui::Painter, tool: Tool, c: Pos2, ink:
             ));
         }
         // The canvas's own outlines, small.
-        Tool::Diamond
+        Tool::Note
+        | Tool::Diamond
         | Tool::Hexagon
         | Tool::Database
         | Tool::Subroutine

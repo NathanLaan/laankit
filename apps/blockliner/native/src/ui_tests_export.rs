@@ -18,7 +18,7 @@ use crate::ui_tests::{at, click, harness, two_shapes};
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/export.svg");
 
 /// A context with the app's fonts, ready to lay out text.
-fn context() -> egui::Context {
+pub(crate) fn context() -> egui::Context {
     let ctx = egui::Context::default();
     laankit_egui::fonts::install(&ctx);
     let mut out = ctx.run_ui(egui::RawInput::default(), |_| {});

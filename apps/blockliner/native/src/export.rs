@@ -214,10 +214,11 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
     let _ = write!(out, r#"<g id="{}">"#, escape(&s.id));
     // The stroke sits inside the shape, as on the canvas. The shape's own
     // colours where it has them, else the export's.
-    let w = stroke_px(&s.style);
+    let style = s.drawn_style();
+    let w = stroke_px(&style);
     let inset = w / 2.0;
-    let fill = paint(s.style.fill.as_ref());
-    let ink = paint(s.style.stroke.as_ref());
+    let fill = paint(style.fill.as_ref());
+    let ink = paint(style.stroke.as_ref());
     let body = |out: &mut String, radius: f32, fill: &str, stroke: &str| {
         let _ = write!(
             out,
@@ -232,7 +233,7 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
     };
     // A dash rides along with the stroke colour: every outline element
     // writes `stroke={ink}`.
-    let dash = dash_attrs(s.style.dash(), w);
+    let dash = dash_attrs(style.dash(), w);
     let ink = ink.map(|i| format!("{i}{dash}"));
     let (or_fill, or_ink) = (
         fill.clone().unwrap_or_else(|| format!("\"{FILL}\"")),
@@ -293,6 +294,35 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
                 );
             }
         }
+        // The body, then the fold in a darker shade of the fill.
+        ShapeKind::Note => {
+            let (outline, fold) = geometry::note(&inner, geometry::note_fold(&inner, 1.0));
+            let points = |ps: &[blockliner_core::Point]| {
+                ps.iter()
+                    .map(|p| format!("{},{}", num(p.x), num(p.y)))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+            let shade = style
+                .fill
+                .as_ref()
+                .and_then(|c| c.rgba)
+                .filter(|c| c[3] == 255)
+                .map(|c| format!("\"{}\"", rgb_hex(blockliner_core::style::fold_shade(c))))
+                .unwrap_or_else(|| or_fill.clone());
+            let _ = write!(
+                out,
+                r#"<polygon points="{}" fill={or_fill} {}/>"#,
+                points(&outline),
+                stroke(&or_ink)
+            );
+            let _ = write!(
+                out,
+                r#"<polygon points="{}" fill={shade} {}/>"#,
+                points(&fold),
+                stroke(&or_ink)
+            );
+        }
         ShapeKind::Stadium => body(out, geometry::stadium_radius(&r) - inset, &or_fill, &or_ink),
         ShapeKind::Circle | ShapeKind::DoubleCircle => {
             let ellipse = |out: &mut String, e: &Rect, fill: &str| {
@@ -330,8 +360,7 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
         }
         ShapeKind::Text => {}
     }
-    let label_ink = s
-        .style
+    let label_ink = style
         .label_rgba()
         .map(rgb_hex)
         .unwrap_or_else(|| TEXT.to_owned());
@@ -341,7 +370,7 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
     text(
         out,
         ctx,
-        (&s.label, face(&s.style)),
+        (&s.label, face(&style)),
         area.center().x,
         area.center().y,
         LABEL_SIZE,
