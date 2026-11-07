@@ -1,0 +1,38 @@
+{
+  "total": 4,
+  "hits": [
+    {
+      "id": 123456789,
+      "designId": 0,
+      "modelId": "",
+      "title": "Cable clips",
+      "cover": "https://example.invalid/cover/123456789.png",
+      "status": 2,
+      "feedbackStatus": 0,
+      "startTime": "2026-11-05T14:00:00Z",
+      "endTime": "2026-11-05T15:00:00Z",
+      "weight": 12.5,
+      "length": 4100,
+      "costTime": 3600,
+      "profileId": 0,
+      "plateIndex": 1,
+      "deviceId": "00M00A000000001",
+      "deviceModel": "X1C",
+      "deviceName": "Lab X1C",
+      "isPublicProfile": false,
+      "mode": "cloud_file"
+    },
+    {
+      "id": "abc-2",
+      "title": "Bracket",
+      "status": "Failed",
+      "startTime": 1762437600000,
+      "endTime": "1762441200000",
+      "weight": "30.2",
+      "costTime": "1800",
+      "deviceId": "00M00A000000001"
+    },
+    { "title": "No id", "status": "completed" },
+    { "id": "t-4", "title": "No times", "status": "completed", "startTime": "", "endTime": null }
+  ]
+}

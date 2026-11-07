@@ -1,0 +1,28 @@
+{
+  "message": "success",
+  "code": null,
+  "error": null,
+  "devices": [
+    {
+      "dev_id": "00M00A000000001",
+      "name": "Lab X1C",
+      "online": true,
+      "print_status": "RUNNING",
+      "dev_model_name": "BL-P001",
+      "dev_product_name": "X1 Carbon",
+      "dev_access_code": "00000000",
+      "nozzle_diameter": 0.4,
+      "dev_structure": "CoreXY"
+    },
+    {
+      "dev_id": "01P00A000000002",
+      "name": "",
+      "online": 0,
+      "print_status": "IDLE",
+      "dev_model_name": "C12",
+      "dev_product_name": "P1S",
+      "dev_access_code": "00000000"
+    },
+    { "name": "No serial" }
+  ]
+}

@@ -1,6 +1,6 @@
 # Architecture
 
-LaanKit is a set of four desktop apps, NoteLiner, ThreadLiner, PageLiner, and BlockLiner, that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), with no webview and no JavaScript. Each app stores its data as plain files you control: a git repository for NoteLiner, ThreadLiner, and PageLiner, and any folder of Mermaid files for BlockLiner.
+LaanKit is a set of five desktop apps, NoteLiner, ThreadLiner, PageLiner, BlockLiner, and PrintLiner, that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), with no webview and no JavaScript. Each app stores its data as plain files you control: a git repository for NoteLiner, ThreadLiner, and PageLiner, any folder of Mermaid files for BlockLiner, and the app's own folders for PrintLiner.
 
 This document explains how the pieces fit together. For packaging and releases, see [`docs/packaging.md`](docs/packaging.md). For the security model, see [`SECURITY.md`](SECURITY.md).
 
@@ -25,7 +25,7 @@ Dependencies only point down. The UI crates never reach into an app's backend, a
 
 ### `laankit-core`
 
-The backend shared by the apps, with no UI framework. BlockLiner uses `paths`, `json`, and `debounce`, but not `git`.
+The backend shared by the apps, with no UI framework. BlockLiner uses `paths`, `json`, and `debounce`, and PrintLiner `paths` and `json`; neither uses `git`.
 
 | Module | What it does |
 |--------|--------------|
@@ -37,7 +37,7 @@ The backend shared by the apps, with no UI framework. BlockLiner uses `paths`, `
 
 ### App cores
 
-Each app has its own backend crate: `noteliner-core`, `threadliner-core`, `pageliner-core`, and `blockliner-core`. A core owns the files on disk (the index, the notes, feeds, or books, and the attachments) and the operations on them, and knows nothing about egui. A few supporting crates sit alongside:
+Each app has its own backend crate: `noteliner-core`, `threadliner-core`, `pageliner-core`, `blockliner-core`, and `printliner-core`. A core owns the files on disk (the index, the notes, feeds, or books, and the attachments) and the operations on them, and knows nothing about egui. A few supporting crates sit alongside:
 
 | Crate | What it does |
 |-------|--------------|
@@ -46,6 +46,8 @@ Each app has its own backend crate: `noteliner-core`, `threadliner-core`, `pagel
 | `pageliner-epub`   | EPUB parsing and reading state. |
 
 `blockliner-core` is the diagram model and its file format. A diagram is a Mermaid flowchart that says what exists, with the layout in `%%` comments that Mermaid ignores, so a diagram renders anywhere Mermaid does. It can also lay out plain Mermaid that has no positions, and it keeps any statements it doesn't model exactly as written. BlockLiner has no index file and no sync. The `.mmd` files in the open folder are the diagrams, saved through the atomic writes and debouncer in `laankit-core`.
+
+`printliner-core` talks to the Bambu Lab cloud. Its REST client signs in (with the emailed code when the account asks for one), lists the printers on the account, and reads task history and cover images. One MQTT session for the account subscribes to every printer's reports and asks each for a full report on connect; the only message PrintLiner publishes is that request, so it only ever reads status. Reports are merged into each printer's full state and read into a typed status, with HMS codes and AMS trays decoded. The access token is kept in the OS keychain (or, when you agree, a file only you can read), and the password is never stored. A sample of each printer every minute goes to a JSON Lines file per printer per month, for the trends view.
 
 ## The UI layer
 

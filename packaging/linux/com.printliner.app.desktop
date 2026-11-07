@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=PrintLiner
+GenericName=3D Printer Dashboard
+Comment=Live status of your Bambu Lab 3D printers
+Exec=printliner
+Icon=com.printliner.app
+Terminal=false
+Categories=Utility;Monitor;
+Keywords=3d;printer;bambu;dashboard;status;
+StartupNotify=true
+StartupWMClass=com.printliner.app

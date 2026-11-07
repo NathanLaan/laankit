@@ -1,6 +1,6 @@
 # Security Policy
 
-LaanKit is a set of four local-first desktop apps: NoteLiner, ThreadLiner, PageLiner, and BlockLiner. This document describes what is supported, how to report a vulnerability, and the security model you can reason about.
+LaanKit is a set of five local-first desktop apps: NoteLiner, ThreadLiner, PageLiner, BlockLiner, and PrintLiner. This document describes what is supported, how to report a vulnerability, and the security model you can reason about.
 
 ## Supported versions
 
@@ -35,6 +35,7 @@ Network access is limited and user-initiated:
 - Git sync: push/pull to the remote you configure (NoteLiner, ThreadLiner, and PageLiner).
 - Feed fetching: ThreadLiner retrieves the RSS/Atom/JSON feeds you subscribe to.
 - Update check: a check for new releases at launch.
+- Bambu Lab cloud: PrintLiner signs in to your Bambu Lab account and reads your printers' status from Bambu Lab's servers (REST over HTTPS, and MQTT over TLS with Mozilla's root certificates). It only reads status; the one message it publishes asks a printer for its full report.
 
 No app opens a listening network port for inbound connections.
 
@@ -52,6 +53,13 @@ NoteLiner can expose the open project to local AI assistants over the Model Cont
 - Every MCP call is logged in the app's Log panel.
 
 The MCP server is not available on Windows yet (it requires a Unix socket).
+
+### PrintLiner's Bambu Lab sign-in
+
+- Your password is sent only to Bambu Lab, for the sign-in request, and is never written anywhere.
+- The access token Bambu Lab returns is kept in the OS keychain (Secret Service on Linux, Credential Manager on Windows, Keychain on macOS). On a machine with no keychain, PrintLiner asks before keeping it in `token.json` in its config folder, readable only by your user (`0600` on Unix), and the status bar says so. Otherwise it keeps the token in memory until it closes.
+- Signing out deletes the stored token. A token that Bambu Lab refuses is never retried; PrintLiner asks you to sign in again.
+- Anyone with your user account can read a token stored in a file, so on a shared machine use the keychain or a dedicated user account.
 
 ### Distribution and integrity
 
