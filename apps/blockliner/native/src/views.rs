@@ -686,12 +686,13 @@ pub struct StatusProps<'a> {
     /// With its icon.
     pub limitation: Option<(&'static str, String)>,
     pub grid: f32,
+    pub unit: crate::units::Unit,
     pub zoom: f32,
     /// The UI scale id (`100`, `125`, …).
     pub scale: &'a str,
 }
 
-/// Tool on the left; pointer position (in grid cells), grid, canvas zoom and
+/// Tool on the left; pointer position (in grid cells), grid and its unit, canvas zoom and
 /// UI scale on the right. The zoom is a button back to 100 %:
 /// `Some(Act::ZoomReset)` when clicked.
 pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
@@ -756,7 +757,7 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
         let cell = |v: f32| (v / props.grid).floor() as i64;
         parts.push(format!("{}, {}", cell(at.x), cell(at.y)));
     }
-    parts.push(format!("Grid {} px", props.grid));
+    parts.push(format!("Grid {} px = 1 {}", props.grid, props.unit.id()));
     let zoom = format!("Zoom {:.0}%", props.zoom * 100.0);
     parts.push(zoom.clone());
     parts.push(format!("UI {}%", props.scale));

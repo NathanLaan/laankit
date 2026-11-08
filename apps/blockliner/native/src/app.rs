@@ -163,7 +163,7 @@ impl BlockLinerApp {
             title: String::new(),
             history: History::new(&diagram),
             diagram,
-            canvas: Canvas::new(prefs.show_grid),
+            canvas: Canvas::new(prefs.show_grid, prefs.show_dimensions, prefs.grid_unit),
             tool: Tool::default(),
             more_shape: Tool::MORE[0],
             clip: None,
@@ -497,6 +497,7 @@ impl BlockLinerApp {
             Act::ZoomOut => self.canvas.zoom_step(-1),
             Act::ZoomReset => self.canvas.zoom_reset(),
             Act::ToggleGrid => self.set_show_grid(!self.canvas.show_grid),
+            Act::ToggleDimensions => self.set_show_dimensions(!self.canvas.show_dimensions),
             Act::ToggleStatusBar => {
                 self.status_bar_visible = !self.status_bar_visible;
                 self.set_prefs(json!({ "statusBarVisible": self.status_bar_visible }));
@@ -605,6 +606,11 @@ impl BlockLinerApp {
         self.set_prefs(json!({ "showGrid": on }));
     }
 
+    fn set_show_dimensions(&mut self, on: bool) {
+        self.canvas.show_dimensions = on;
+        self.set_prefs(json!({ "showDimensions": on }));
+    }
+
     fn open_settings(&mut self) {
         let prefs = self.paths.prefs();
         self.overlay = Some(Overlay::Settings(SettingsState::new(
@@ -613,6 +619,8 @@ impl BlockLinerApp {
             self.custom_titlebar,
             self.canvas.show_grid,
             self.diagram.grid,
+            self.canvas.unit,
+            self.canvas.show_dimensions,
         )));
     }
 
@@ -1230,6 +1238,7 @@ impl BlockLinerApp {
                 free_lines: self.diagram.has_free_lines(),
                 limitation: self.canvas.limitation(&self.diagram),
                 grid: self.diagram.grid,
+                unit: self.canvas.unit,
                 zoom: self.canvas.view.zoom,
                 scale: &self.theme.scale,
             };
@@ -1398,6 +1407,11 @@ impl BlockLinerApp {
                             self.diagram.grid = g;
                             self.set_prefs(json!({ "gridSize": g as i64 }));
                         }
+                        SettingsAction::SetGridUnit(u) => {
+                            self.canvas.unit = u;
+                            self.set_prefs(json!({ "gridUnit": u.id() }));
+                        }
+                        SettingsAction::SetShowDimensions(on) => self.set_show_dimensions(on),
                     }
                 }
             }

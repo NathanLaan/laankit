@@ -81,6 +81,7 @@ pub enum Act {
     ZoomOut,
     ZoomReset,
     ToggleGrid,
+    ToggleDimensions,
     ToggleSidebar,
     ToggleProperties,
     ToggleStatusBar,
@@ -589,6 +590,17 @@ pub fn registry() -> Registry<Act, View> {
             .key(Binding::logical(cmd, Key::Quote))
             .shortcut("Ctrl+'")
             .when(ready),
+    );
+    r.register(
+        add(
+            "view.toggleDimensions",
+            "Toggle Dimension Lines",
+            "View",
+            Act::ToggleDimensions,
+        )
+        .key(Binding::physical(shift, Key::D))
+        .shortcut("Ctrl+Shift+D")
+        .when(ready),
     );
     r.register(
         add(

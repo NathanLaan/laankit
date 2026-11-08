@@ -39,6 +39,7 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | Wheel, middle drag, Space + drag | Pan |
 | Ctrl + wheel, pinch, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom (Ctrl+0, or a click on the status bar's "Zoom" readout: back to 100 %) |
 | Ctrl+', Ctrl+E, Ctrl+I, Ctrl+J | Toggle the grid, the sidebar, the Properties pane (Change Shape and Change Line, then fill, stroke, stroke style, stroke weight, and text weight and style of the selection; a line's stroke is its colour), the status bar |
+| Ctrl+Shift+D | Toggle dimension lines (each shape's width and height, in the unit Settings picks for one grid mark) |
 | Ctrl+B | Toggle Bold for the selection's labels (all Bold, or all Normal when they already are) |
 | Ctrl+K, Ctrl+,, Ctrl+Shift+I | Command palette, Settings, About |
 
@@ -68,7 +69,8 @@ The app (`apps/blockliner/native`):
 | `backend`  | The folder on disk: list, read, create, rename, delete; the debounced atomic autosave; outside changes |
 | `config`   | `ui-preferences.json` in `~/.config/BlockLiner` (the platform equivalent elsewhere)           |
 | `commands` | The laankit-egui command registry: shortcuts, palette, and the Settings shortcut list         |
-| `canvas`   | The grid, painting, pan and zoom, the tools and their gestures, and the label editor            |
+| `canvas`   | The grid, painting, dimension lines, pan and zoom, the tools and their gestures, and the label editor |
+| `units`    | What one grid mark measures (mm, cm, m, in, ft) and how a length reads in it                 |
 | `views`    | The toolbar, the diagram sidebar, empty states, and the status bar                           |
 | `properties` | The Properties pane below the diagram list: Change Shape and Change Line (Line, Arrow, Right-Angle Line, Right-Angle Arrow) lists, the selection's Fill and Stroke (Mixed when they differ), hex fields, the Stroke Style, Stroke Weight, Text Weight, and Text Style lists, Reset Style |
 | `overlays` | Settings, About, Export, New/Rename Diagram, delete confirmation, Custom colour              |

@@ -19,6 +19,7 @@
 //! | Copy / Cut / Paste (egui's events)      | Handled by the app (`App::clipboard_events`) |
 //! | Alt while dragging                      | No snapping                              |
 
+mod dimensions;
 pub mod grid;
 mod label;
 pub mod paint;
@@ -36,6 +37,8 @@ use blockliner_core::{
 };
 use egui::{CursorIcon, Key, PointerButton, Pos2, Rect, Sense, Ui, Vec2};
 use laankit_egui::theme;
+
+use crate::units::Unit;
 
 pub use tools::Tool;
 use tools::{Gesture, Hit, Mods};
@@ -181,6 +184,9 @@ pub enum Swatch {
 pub struct Canvas {
     pub view: View,
     pub show_grid: bool,
+    pub show_dimensions: bool,
+    /// What one grid mark measures, for the dimension lines.
+    pub unit: Unit,
     /// The pointer in model coordinates, while it is over the canvas.
     pub pointer: Option<Pos2>,
     /// Selected shape ids, in the order they were selected.
@@ -199,10 +205,12 @@ pub struct Canvas {
 }
 
 impl Canvas {
-    pub fn new(show_grid: bool) -> Self {
+    pub fn new(show_grid: bool, show_dimensions: bool, unit: Unit) -> Self {
         Self {
             view: View::default(),
             show_grid,
+            show_dimensions,
+            unit,
             pointer: None,
             selection: Vec::new(),
             lines: Vec::new(),
@@ -479,6 +487,9 @@ impl Canvas {
             editing_line: self.editing_line(),
         };
         paint::diagram(&painter, self.view, rect.min, d, &p, &overlays);
+        if self.show_dimensions {
+            dimensions::paint(&painter, self.view, rect.min, d, self.unit, p.text_muted);
+        }
         match &self.gesture {
             Gesture::Marquee { start, now, .. } => {
                 let r = ModelRect::from_corners(*start, *now);

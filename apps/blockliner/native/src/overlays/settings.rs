@@ -5,6 +5,7 @@ use laankit_egui::settings::{self, SettingsShell, Tab};
 use laankit_egui::theme::ThemeState;
 
 use crate::config::GRID_SIZES;
+use crate::units::Unit;
 
 const TABS: [Tab<'static>; 2] = [
     Tab {
@@ -25,6 +26,8 @@ pub struct SettingsState {
     pub custom_titlebar_initial: bool,
     pub show_grid: bool,
     pub grid_size: f32,
+    pub grid_unit: Unit,
+    pub show_dimensions: bool,
 }
 
 impl SettingsState {
@@ -34,6 +37,8 @@ impl SettingsState {
         built_with: bool,
         show_grid: bool,
         grid_size: f32,
+        grid_unit: Unit,
+        show_dimensions: bool,
     ) -> Self {
         Self {
             tab: tab.to_string(),
@@ -41,6 +46,8 @@ impl SettingsState {
             custom_titlebar_initial: built_with,
             show_grid,
             grid_size,
+            grid_unit,
+            show_dimensions,
         }
     }
 }
@@ -54,6 +61,8 @@ pub enum SettingsAction {
     Restart,
     SetShowGrid(bool),
     SetGridSize(f32),
+    SetGridUnit(Unit),
+    SetShowDimensions(bool),
 }
 
 pub fn show(
@@ -122,6 +131,28 @@ fn ui_tab(
         }
         ui.add_space(4.0);
         dialog::muted_text(ui, "Applies to the open diagram and to new ones.");
+        ui.add_space(8.0);
+        dialog::field_label(ui, "Units / Grid Mark");
+        let units: Vec<(&str, &str)> = Unit::ALL.iter().map(|u| (u.id(), u.label())).collect();
+        if let Some(u) = settings::select(ui, "Units / Grid Mark", &units, state.grid_unit.id())
+            .and_then(|v| Unit::parse(&v))
+        {
+            state.grid_unit = u;
+            out.push(SettingsAction::SetGridUnit(u));
+        }
+        ui.add_space(4.0);
+        dialog::muted_text(ui, "One grid mark measures one of this unit.");
+        ui.add_space(8.0);
+        if settings::toggle_option(ui, "Show Dimension Lines", &mut state.show_dimensions, true)
+            .changed()
+        {
+            out.push(SettingsAction::SetShowDimensions(state.show_dimensions));
+        }
+        ui.add_space(4.0);
+        dialog::muted_text(
+            ui,
+            "Each shape's width and height, beside it. Toggle with Ctrl+Shift+D.",
+        );
     });
     settings::setting_group(ui, "Window", None, |ui| {
         if settings::toggle_option(

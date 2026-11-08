@@ -1,6 +1,7 @@
 //! Drives the app headlessly (egui_kittest) against a temp config folder
 //! and project folder: picking tools from the toolbar and the keyboard, zooming and panning the
-//! canvas, and the grid settings reaching `ui-preferences.json`.
+//! canvas, and the grid, unit, and dimension-line settings reaching
+//! `ui-preferences.json`.
 
 use blockliner_core::{Diagram, Rect, Shape, ShapeKind};
 use egui::{pos2, Event, Key, Modifiers, PointerButton, Pos2};
@@ -11,6 +12,7 @@ use serde_json::Value;
 use crate::app::BlockLinerApp;
 use crate::canvas::Tool;
 use crate::config::Paths;
+use crate::units::Unit;
 
 pub(crate) type H = Harness<'static, BlockLinerApp>;
 
@@ -293,6 +295,36 @@ fn grid_settings_are_saved() {
     h.run_steps(2);
     assert!(h.state().canvas().show_grid);
     assert_eq!(prefs(&paths)["showGrid"], true);
+}
+
+#[test]
+fn units_and_dimension_lines_are_saved() {
+    let (_tmp, paths, mut h) = harness();
+    h.run_steps(2);
+    assert!(!h.state().canvas().show_dimensions);
+    assert_eq!(h.state().canvas().unit, Unit::Cm);
+
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::D);
+    h.run_steps(2);
+    assert!(h.state().canvas().show_dimensions);
+    assert_eq!(prefs(&paths)["showDimensions"], true);
+    // Shapes to measure.
+    two_shapes(&mut h);
+    h.run_steps(2);
+
+    // Inches, and the lines off again, from Settings.
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    h.get_by_label("Units / Grid Mark").click();
+    h.run_steps(2);
+    h.get_by_label("Inches (in)").click();
+    h.run_steps(2);
+    assert_eq!(h.state().canvas().unit, Unit::In);
+    assert_eq!(prefs(&paths)["gridUnit"], "in");
+    h.get_by_label("Show Dimension Lines").click();
+    h.run_steps(2);
+    assert!(!h.state().canvas().show_dimensions);
+    assert_eq!(prefs(&paths)["showDimensions"], false);
 }
 
 #[test]

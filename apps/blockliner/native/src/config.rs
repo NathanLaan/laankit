@@ -5,6 +5,7 @@
 //! |-----------------------|--------------------------------------------------------------------------|
 //! | `ui-preferences.json` | `customTitlebar`, `sidebarVisible`, `propertiesVisible`, `statusBarVisible`, `showGrid`, |
 //! |                       | `gridSize`, `lastProject` (a folder path; empty after Close Folder), `lastDiagram` (a name in it), |
+//! |                       | `gridUnit` (`mm`, `cm`, `m`, `in` or `ft`: what one grid mark measures), `showDimensions`, |
 //! |                       | `exportFormat` (`png`/`svg`), `exportGrid`, `exportScale` (1, 2 or 3)    |
 //!
 //! Diagrams live in the folder the user opens, not here.
@@ -14,6 +15,7 @@ use std::path::PathBuf;
 use blockliner_core::model::DEFAULT_GRID;
 
 use crate::export::{self, Format};
+use crate::units::Unit;
 use serde_json::{json, Map, Value};
 
 /// Names the user-data folder.
@@ -37,6 +39,10 @@ pub struct Prefs {
     pub show_grid: bool,
     /// The grid for new diagrams; one of [`GRID_SIZES`].
     pub grid_size: f32,
+    /// What one grid mark measures.
+    pub grid_unit: Unit,
+    /// Each shape's width and height, drawn beside it.
+    pub show_dimensions: bool,
     /// The folder open when BlockLiner last closed.
     pub last_project: Option<PathBuf>,
     /// The diagram open in it.
@@ -88,6 +94,10 @@ impl Paths {
             status_bar_visible: flag("statusBarVisible"),
             show_grid: flag("showGrid"),
             grid_size,
+            grid_unit: text("gridUnit")
+                .and_then(|u| Unit::parse(&u))
+                .unwrap_or_default(),
+            show_dimensions: flag("showDimensions"),
             last_project: text("lastProject").map(PathBuf::from),
             last_diagram: text("lastDiagram"),
             export: export::Options {
@@ -123,6 +133,8 @@ fn defaults() -> Map<String, Value> {
         "showGrid": true,
         // Whole numbers, so the file says `20`, not `20.0`.
         "gridSize": DEFAULT_GRID as i64,
+        "gridUnit": "cm",
+        "showDimensions": false,
         "lastProject": null,
         "lastDiagram": null,
         "exportFormat": "png",
@@ -167,6 +179,8 @@ mod tests {
                 status_bar_visible: true,
                 show_grid: true,
                 grid_size: 20.0,
+                grid_unit: Unit::Cm,
+                show_dimensions: false,
                 last_project: None,
                 last_diagram: None,
                 export: export::Options {
@@ -190,7 +204,7 @@ mod tests {
         let raw = std::fs::read_to_string(paths.ui_prefs()).unwrap();
         assert_eq!(
             raw,
-            "{\n  \"customTitlebar\": false,\n  \"sidebarVisible\": true,\n  \"propertiesVisible\": true,\n  \"statusBarVisible\": true,\n  \"showGrid\": false,\n  \"gridSize\": 40,\n  \"lastProject\": null,\n  \"lastDiagram\": null,\n  \"exportFormat\": \"png\",\n  \"exportGrid\": false,\n  \"exportScale\": 2,\n  \"future\": 1\n}"
+            "{\n  \"customTitlebar\": false,\n  \"sidebarVisible\": true,\n  \"propertiesVisible\": true,\n  \"statusBarVisible\": true,\n  \"showGrid\": false,\n  \"gridSize\": 40,\n  \"gridUnit\": \"cm\",\n  \"showDimensions\": false,\n  \"lastProject\": null,\n  \"lastDiagram\": null,\n  \"exportFormat\": \"png\",\n  \"exportGrid\": false,\n  \"exportScale\": 2,\n  \"future\": 1\n}"
         );
         let prefs = paths.prefs();
         assert!(!prefs.show_grid);
@@ -202,5 +216,18 @@ mod tests {
         let (_tmp, paths) = paths();
         paths.set_prefs(&json!({ "gridSize": 13 })).unwrap();
         assert_eq!(paths.prefs().grid_size, 20.0);
+    }
+
+    #[test]
+    fn grid_unit_and_dimensions() {
+        let (_tmp, paths) = paths();
+        paths
+            .set_prefs(&json!({ "gridUnit": "in", "showDimensions": true }))
+            .unwrap();
+        let prefs = paths.prefs();
+        assert_eq!(prefs.grid_unit, Unit::In);
+        assert!(prefs.show_dimensions);
+        paths.set_prefs(&json!({ "gridUnit": "yd" })).unwrap();
+        assert_eq!(paths.prefs().grid_unit, Unit::Cm);
     }
 }
