@@ -22,7 +22,8 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - Reset Style: returns the selection to the theme's colours, a solid 1px stroke, and Normal text.
 - Copy and paste: Ctrl+C, Ctrl+X, and Ctrl+V, within a diagram, between diagrams, and between windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out; other text pastes as a text box.
 - Editing: box select, nudge with the arrow keys, undo and redo, single-key tools (V, R, O, D, H, C, S, L, A, J, E, T, N, or 1–9 and 0 in toolbar order), a right-click menu, and a command palette (Ctrl+K).
-- A folder of diagrams: open any folder; its `.mmd` files are the sidebar's diagrams. Right-click one to rename it, delete it, or open its containing folder in the system file manager. Changes autosave, and edits made elsewhere (an editor, `git pull`) reload as an undoable step. Close Folder saves and goes back to no folder.
+- A folder of diagrams: open any folder; its `.mmd` files are the Project pane's diagrams. Right-click one to rename it, delete it, or open its containing folder in the system file manager. Changes autosave, and edits made elsewhere (an editor, `git pull`) reload as an undoable step. Close Folder saves, closes the folder's own files, and goes back to no folder.
+- Files and tabs: the sidebar's Files pane lists every open file, from the project folder or from anywhere else (Open File, Ctrl+Shift+O). Each open file can have a tab above the canvas, with its own undo history, pan, and zoom. Closing a tab (its close button, a middle-click, or Ctrl+W) keeps the file in the Files pane; Close in a file's right-click menu removes it and closes its tab. Ctrl+Tab and Ctrl+Shift+Tab switch tabs. The files and tabs come back at the next start.
 - Plain Mermaid in: a flowchart without BlockLiner's layout (pasted from a README, say) is laid out automatically when opened. What BlockLiner doesn't model (subgraphs, styles, other arrow types) is kept as written.
 - Units and dimension lines: Settings picks what one grid mark measures (mm, cm, m, in, or ft; cm by default). Dimension lines show each shape's width above it and its height to its right in that unit; turn them on and off with Ctrl+Shift+D or in Settings. They show on the canvas only, not in exports.
 - Export: PNG (1×, 2×, or 3×) or SVG, all objects or only the selected ones, with or without the grid (Ctrl+Shift+E).
@@ -37,7 +38,7 @@ A diagram is one Mermaid file (`.mmd`). The folder holds nothing else:
 └── System context.mmd
 ```
 
-There is no index file and no git integration: the folder is yours to sync however you like. The app's own settings (`ui-preferences.json`: the last folder and diagram, the grid and its unit, dimension lines, export options) live in the platform config folder, `~/.config/BlockLiner` on Linux.
+There is no index file and no git integration: the folder is yours to sync however you like. The app's own settings (`ui-preferences.json`: the last folder, the open files and tabs, the grid and its unit, dimension lines, export options) live in the platform config folder, `~/.config/BlockLiner` on Linux.
 
 ## File format
 

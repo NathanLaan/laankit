@@ -4,7 +4,8 @@
 //! | Path                  | Holds                                                                    |
 //! |-----------------------|--------------------------------------------------------------------------|
 //! | `ui-preferences.json` | `customTitlebar`, `sidebarVisible`, `propertiesVisible`, `statusBarVisible`, `showGrid`, |
-//! |                       | `gridSize`, `lastProject` (a folder path; empty after Close Folder), `lastDiagram` (a name in it), |
+//! |                       | `gridSize`, `lastProject` (a folder path; empty after Close Folder), `filesVisible`, |
+//! |                       | `openFiles` (the Files pane: paths), `openTabs` (paths, in tab order), `activeFile` (a path or empty), |
 //! |                       | `gridUnit` (`mm`, `cm`, `m`, `in` or `ft`: what one grid mark measures), `showDimensions`, |
 //! |                       | `exportFormat` (`png`/`svg`), `exportGrid`, `exportScale` (1, 2 or 3)    |
 //!
@@ -45,7 +46,17 @@ pub struct Prefs {
     pub show_dimensions: bool,
     /// The folder open when BlockLiner last closed.
     pub last_project: Option<PathBuf>,
-    /// The diagram open in it.
+    /// The Files pane is showing.
+    pub files_visible: bool,
+    /// The Files pane's paths, in order. `None` before BlockLiner first
+    /// wrote them.
+    pub open_files: Option<Vec<PathBuf>>,
+    /// The files with tabs, in tab order.
+    pub open_tabs: Vec<PathBuf>,
+    /// The active tab.
+    pub active_file: Option<PathBuf>,
+    /// The diagram open in `last_project`, as BlockLiner 2.7 saved it:
+    /// read once, when there's no `openFiles` yet, then cleared.
     pub last_diagram: Option<String>,
     /// The Export dialog's last choices.
     pub export: export::Options,
@@ -99,6 +110,17 @@ impl Paths {
                 .unwrap_or_default(),
             show_dimensions: flag("showDimensions"),
             last_project: text("lastProject").map(PathBuf::from),
+            files_visible: flag("filesVisible"),
+            open_files: m
+                .get("openFiles")
+                .and_then(Value::as_array)
+                .map(|a| paths_of(a)),
+            open_tabs: m
+                .get("openTabs")
+                .and_then(Value::as_array)
+                .map(|a| paths_of(a))
+                .unwrap_or_default(),
+            active_file: text("activeFile").map(PathBuf::from),
             last_diagram: text("lastDiagram"),
             export: export::Options {
                 format: text("exportFormat")
@@ -136,12 +158,21 @@ fn defaults() -> Map<String, Value> {
         "gridUnit": "cm",
         "showDimensions": false,
         "lastProject": null,
-        "lastDiagram": null,
+        "filesVisible": true,
         "exportFormat": "png",
         "exportGrid": false,
         "exportScale": 2,
     });
     v.as_object().cloned().unwrap_or_default()
+}
+
+/// The non-empty strings of `a`, as paths.
+fn paths_of(a: &[Value]) -> Vec<PathBuf> {
+    a.iter()
+        .filter_map(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .collect()
 }
 
 /// JavaScript truthiness, as the other apps read their prefs.
@@ -182,6 +213,10 @@ mod tests {
                 grid_unit: Unit::Cm,
                 show_dimensions: false,
                 last_project: None,
+                files_visible: true,
+                open_files: None,
+                open_tabs: Vec::new(),
+                active_file: None,
                 last_diagram: None,
                 export: export::Options {
                     format: Format::Png,
@@ -204,7 +239,7 @@ mod tests {
         let raw = std::fs::read_to_string(paths.ui_prefs()).unwrap();
         assert_eq!(
             raw,
-            "{\n  \"customTitlebar\": false,\n  \"sidebarVisible\": true,\n  \"propertiesVisible\": true,\n  \"statusBarVisible\": true,\n  \"showGrid\": false,\n  \"gridSize\": 40,\n  \"gridUnit\": \"cm\",\n  \"showDimensions\": false,\n  \"lastProject\": null,\n  \"lastDiagram\": null,\n  \"exportFormat\": \"png\",\n  \"exportGrid\": false,\n  \"exportScale\": 2,\n  \"future\": 1\n}"
+            "{\n  \"customTitlebar\": false,\n  \"sidebarVisible\": true,\n  \"propertiesVisible\": true,\n  \"statusBarVisible\": true,\n  \"showGrid\": false,\n  \"gridSize\": 40,\n  \"gridUnit\": \"cm\",\n  \"showDimensions\": false,\n  \"lastProject\": null,\n  \"filesVisible\": true,\n  \"exportFormat\": \"png\",\n  \"exportGrid\": false,\n  \"exportScale\": 2,\n  \"future\": 1\n}"
         );
         let prefs = paths.prefs();
         assert!(!prefs.show_grid);
@@ -216,6 +251,28 @@ mod tests {
         let (_tmp, paths) = paths();
         paths.set_prefs(&json!({ "gridSize": 13 })).unwrap();
         assert_eq!(paths.prefs().grid_size, 20.0);
+    }
+
+    #[test]
+    fn open_files_and_tabs() {
+        let (_tmp, paths) = paths();
+        assert_eq!(paths.prefs().open_files, None);
+        paths
+            .set_prefs(&json!({
+                "openFiles": ["/d/a.mmd", "/e/b.mmd", ""],
+                "openTabs": ["/e/b.mmd"],
+                "activeFile": "/e/b.mmd",
+                "lastDiagram": "a",
+            }))
+            .unwrap();
+        let prefs = paths.prefs();
+        assert_eq!(
+            prefs.open_files,
+            Some(vec![PathBuf::from("/d/a.mmd"), PathBuf::from("/e/b.mmd")])
+        );
+        assert_eq!(prefs.open_tabs, [PathBuf::from("/e/b.mmd")]);
+        assert_eq!(prefs.active_file, Some(PathBuf::from("/e/b.mmd")));
+        assert_eq!(prefs.last_diagram.as_deref(), Some("a"));
     }
 
     #[test]

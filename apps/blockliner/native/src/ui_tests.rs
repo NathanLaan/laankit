@@ -17,7 +17,8 @@ use crate::units::Unit;
 pub(crate) type H = Harness<'static, BlockLinerApp>;
 
 /// The app with the diagram `Diagram` open from `<tmp>/project`, the
-/// sidebar hidden (so the canvas starts just right of the toolbar).
+/// sidebar hidden (so the canvas starts just right of the toolbar) and the
+/// Files pane off.
 pub(crate) fn harness() -> (tempfile::TempDir, Paths, Harness<'static, BlockLinerApp>) {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("project");
@@ -34,6 +35,9 @@ pub(crate) fn harness() -> (tempfile::TempDir, Paths, Harness<'static, BlockLine
         .set_prefs(&serde_json::json!({
             "lastProject": project,
             "sidebarVisible": false,
+            // So the Properties pane has the room it had before the Files
+            // pane; `ui_tests_tabs` shows it.
+            "filesVisible": false,
         }))
         .unwrap();
     app_harness(paths.clone(), tmp)
@@ -90,11 +94,12 @@ pub(crate) fn drag(
 const KITTEST_MARGIN: f32 = 8.0;
 
 /// The canvas starts at 100 % with the model origin at its top-left corner,
-/// just right of the 48 px toolbar, so `at(x, y)` is model (x, y).
+/// just right of the 48 px toolbar and below the tab strip, so `at(x, y)` is
+/// model (x, y).
 pub(crate) fn at(x: f32, y: f32) -> Pos2 {
     pos2(
         KITTEST_MARGIN + laankit_egui::toolbar::WIDTH + x,
-        KITTEST_MARGIN + y,
+        KITTEST_MARGIN + crate::views::TAB_HEIGHT + y,
     )
 }
 

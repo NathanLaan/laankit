@@ -21,6 +21,15 @@ pub enum Act {
     DeleteDiagram,
     OpenFolder,
     CloseFolder,
+    /// Open one or more `.mmd` files from anywhere.
+    OpenFile,
+    /// Close the active tab; the file stays in the Files pane…
+    CloseTab,
+    /// …or close the active file: its tab and its Files row.
+    CloseFile,
+    NextTab,
+    PreviousTab,
+    ToggleFiles,
     Export,
     Tool(Tool),
     /// The More Shapes button's shape: the last of [`Tool::MORE`] used.
@@ -96,6 +105,10 @@ pub struct View {
     pub project_open: bool,
     /// A diagram is open on the canvas.
     pub doc_open: bool,
+    /// …and it's one of the project folder's diagrams.
+    pub doc_in_project: bool,
+    /// How many tabs are open.
+    pub tabs: usize,
     /// The open diagram has something to export.
     pub has_content: bool,
     pub has_selection: bool,
@@ -130,6 +143,14 @@ fn in_project(v: &View) -> bool {
 
 fn editing(v: &View) -> bool {
     ready(v) && v.doc_open
+}
+
+fn project_doc(v: &View) -> bool {
+    editing(v) && v.doc_in_project
+}
+
+fn several_tabs(v: &View) -> bool {
+    ready(v) && v.tabs > 1
 }
 
 fn exportable(v: &View) -> bool {
@@ -252,9 +273,9 @@ pub fn registry() -> Registry<Act, View> {
         add("file.rename", "Rename Diagram", "File", Act::RenameDiagram)
             .key(Binding::logical(Modifiers::NONE, Key::F2))
             .shortcut("F2")
-            .when(editing),
+            .when(project_doc),
     );
-    r.register(add("file.delete", "Delete Diagram", "File", Act::DeleteDiagram).when(editing));
+    r.register(add("file.delete", "Delete Diagram", "File", Act::DeleteDiagram).when(project_doc));
     r.register(
         add("file.openFolder", "Open Folder", "File", Act::OpenFolder)
             .key(Binding::logical(cmd, Key::O))
@@ -268,6 +289,42 @@ pub fn registry() -> Registry<Act, View> {
             .when(exportable),
     );
     r.register(add("file.closeFolder", "Close Folder", "File", Act::CloseFolder).when(in_project));
+    r.register(
+        add("file.openFile", "Open File", "File", Act::OpenFile)
+            .key(Binding::physical(shift, Key::O))
+            .shortcut("Ctrl+Shift+O")
+            .when(ready),
+    );
+    r.register(
+        add("file.closeTab", "Close Tab", "File", Act::CloseTab)
+            .key(Binding::logical(cmd, Key::W))
+            .shortcut("Ctrl+W")
+            .when(editing),
+    );
+    r.register(add("file.closeFile", "Close File", "File", Act::CloseFile).when(editing));
+    r.register(
+        add("view.nextTab", "Next Tab", "View", Act::NextTab)
+            .key(Binding::logical(cmd, Key::Tab))
+            .key(Binding::logical(cmd, Key::PageDown))
+            .shortcut("Ctrl+Tab")
+            .when(several_tabs),
+    );
+    r.register(
+        add("view.previousTab", "Previous Tab", "View", Act::PreviousTab)
+            .key(Binding::logical(shift, Key::Tab))
+            .key(Binding::logical(cmd, Key::PageUp))
+            .shortcut("Ctrl+Shift+Tab")
+            .when(several_tabs),
+    );
+    r.register(
+        add(
+            "view.toggleFiles",
+            "Toggle Files Pane",
+            "View",
+            Act::ToggleFiles,
+        )
+        .when(ready),
+    );
     for tool in Tool::ALL {
         let letter = tool_key(tool);
         let (digit, number) = tool_digit(tool);
@@ -672,6 +729,8 @@ mod tests {
             modal_open: false,
             project_open: true,
             doc_open: true,
+            doc_in_project: true,
+            tabs: 2,
             has_content: true,
             has_selection: true,
             straight_selected: true,
@@ -698,6 +757,8 @@ mod tests {
                 modal_open: true,
                 project_open: true,
                 doc_open: true,
+                doc_in_project: true,
+                tabs: 2,
                 has_content: true,
                 has_selection: true,
                 straight_selected: true,

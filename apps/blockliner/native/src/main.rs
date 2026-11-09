@@ -9,6 +9,7 @@ mod canvas;
 mod commands;
 mod config;
 mod export;
+mod files;
 mod overlays;
 mod properties;
 mod units;
@@ -50,6 +51,8 @@ mod ui_tests_stroke_styles;
 mod ui_tests_stroke_weight;
 #[cfg(test)]
 mod ui_tests_styles;
+#[cfg(test)]
+mod ui_tests_tabs;
 #[cfg(test)]
 mod ui_tests_text_weight;
 

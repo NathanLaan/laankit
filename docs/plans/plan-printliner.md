@@ -192,7 +192,7 @@ The UI repaints when the backend sends an event (`ctx.request_repaint`), not on 
 | Europe | `https://api.bambulab.com` | `eu.mqtt.bambulab.com:8883` |
 | China | `https://api.bambulab.cn` | `cn.mqtt.bambulab.com:8883` |
 
-The region is chosen on the sign-in dialog. P0 checks that a global account works on the EU broker before it is offered.
+The region is chosen on the sign-in dialog. The lab account is in North America, so it uses Global. P0 checks that a global account works on the EU broker before it is offered; the lab doesn't depend on it.
 
 Requests send `User-Agent: PrintLiner/<version>` and use a 20-second timeout.
 
@@ -357,7 +357,7 @@ The phases are in three parts: the dashboard, a decision phase, and the kiosk. E
 
 | Phase | Scope | Done when |
 |---|---|---|
-| P0: Cloud status spike | Against a real account and the lab printers: email code and authenticator sign-in, token lifetime, the account's region and the EU broker, one MQTT connection for several printers, and `pushall` and the report fields per model. Record anonymised fixtures. | A short findings section added to this plan, and D1 confirmed. Q1 answered. |
+| P0: Cloud status spike | Against a real account and the lab printers: emailed code sign-in (the lab account uses it; authenticator sign-in waits for an account that has one), token lifetime, the account's region and the EU broker, one MQTT connection for several printers, and `pushall` and the report fields per model. Record anonymised fixtures. | A short findings section added to this plan, and D1 confirmed. |
 | P1: Scaffold | `printliner-core` and `printliner-native` skeletons, the window on the `laankit-egui` shell, settings, an icon, packaging files, CI lists. | `cargo run -p printliner-native` opens an empty dashboard; clippy and tests pass; `scripts/package-native.sh printliner` builds. |
 | P2: Account | `cloud` module, sign-in and email code dialogs, keychain storage, device list, sign-in-needed handling, demo mode. | You can sign in and see your printers listed (offline status); a revoked token shows the banner. |
 | P3: Live status | `mqtt`, `status`, `hms`, `ams`, history samples. | Every printer's live state reaches the UI within seconds; reconnect after a network drop works; the broker integration test passes. |
@@ -406,11 +406,11 @@ P0 runs before or beside P1. P2 needs P1, P3 needs P2, and P4 needs P3. P5 needs
 
 ## Open questions
 
-Q1 is answered in P0, because the dashboard can't sign in without it. The rest are asked again in the decision phase (P5), once the dashboard has been in use.
+Q1 is answered: the lab account is in North America and signs in with an emailed code. The rest are asked again in the decision phase (P5), once the dashboard has been in use.
 
 | # | Question | Asked in | Decides |
 |---|---|---|---|
-| Q1 | Which region is the lab account in, and does it use an email code or an authenticator app? | P0 | The sign-in flow and MQTT broker the dashboard needs. |
+| Q1 | Which region is the lab account in, and does it use an email code or an authenticator app? Answered: North America, emailed code. The account was created with Google, so it has no password and signs in with the code alone. | P0 | The sign-in flow and MQTT broker the dashboard needs: Global (`api.bambulab.com`, `us.mqtt.bambulab.com`) and the emailed code. |
 | Q2 | Is Bambu Connect acceptable on the kiosk machine, and which operating system will the kiosk run? | P5 | Hand-off option A or B (D2). |
 | Q3 | Are pause and stop needed from PrintLiner at all? If the cloud refuses them, the only way to offer them is through Bambu's own apps. | P5 | D3, and whether the detail view gets controls. |
 | Q4 | Is a separate kiosk mode with an admin PIN still wanted, or is the dashboard on a shared screen enough? | P5 | D4, and whether P8 is built. |

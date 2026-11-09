@@ -24,11 +24,11 @@ flowchart TD
 #[test]
 fn a_hand_written_file_is_laid_out_in_ranks() {
     let (_tmp, paths, mut h) = harness();
-    let folder = paths.prefs().last_project.unwrap();
-    let path = folder.join("Diagram.mmd");
+    let path = paths.prefs().last_project.unwrap().join("Diagram.mmd");
     fs::write(&path, HANDWRITTEN).unwrap();
-    // Reopen the folder to read it.
-    h.state_mut().open_project(folder, None);
+    // Close its tab and open it again, to read it.
+    h.state_mut().run(crate::commands::Act::CloseTab);
+    h.state_mut().open_path(&path);
     h.run_steps(2);
 
     let d = h.state().diagram();
