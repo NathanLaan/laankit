@@ -1,6 +1,6 @@
 # Security Policy
 
-LaanKit is a set of five local-first desktop apps: NoteLiner, ThreadLiner, PageLiner, BlockLiner, and PrintLiner. This document describes what is supported, how to report a vulnerability, and the security model you can reason about.
+LaanKit is a set of six local-first desktop apps: NoteLiner, ThreadLiner, PageLiner, BlockLiner, PrintLiner, and MediaLiner. This document describes what is supported, how to report a vulnerability, and the security model you can reason about.
 
 ## Supported versions
 
@@ -25,7 +25,7 @@ Understanding how LaanKit handles data and the network makes it clearer what is 
 
 ### Local-first by design
 
-- Your data lives on your own machine, in files you control: a git repository for NoteLiner, ThreadLiner, and PageLiner, and any folder of Mermaid files for BlockLiner. If you configure a git remote, syncing pushes to your remote with your credentials. LaanKit operates no servers and has no accounts.
+- Your data lives on your own machine, in files you control: a git repository for NoteLiner, ThreadLiner, and PageLiner, any folder of Mermaid files for BlockLiner, and your own photo folders for MediaLiner. If you configure a git remote, syncing pushes to your remote with your credentials. LaanKit operates no servers and has no accounts.
 - LaanKit shells out to the system `git` CLI, so it uses your existing SSH keys and git configuration. It does not store or manage credentials itself.
 
 ### Network use
@@ -60,6 +60,14 @@ The MCP server is not available on Windows yet (it requires a Unix socket).
 - The access token Bambu Lab returns is kept in the OS keychain (Secret Service on Linux, Credential Manager on Windows, Keychain on macOS). On a machine with no keychain, PrintLiner asks before keeping it in `token.json` in its config folder, readable only by your user (`0600` on Unix), and the status bar says so. Otherwise it keeps the token in memory until it closes.
 - Signing out deletes the stored token. A token that Bambu Lab refuses is never retried; PrintLiner asks you to sign in again.
 - Anyone with your user account can read a token stored in a file, so on a shared machine use the keychain or a dedicated user account.
+
+### MediaLiner and your photo folders
+
+- MediaLiner reads the folders you add and never changes a photo's contents. It writes nothing into your folders except what a merge moves there and a merge's `.medialiner-duplicates` folder.
+- Merging a folder is the only operation that moves your files. It never overwrites a file, writes each move to a journal (in MediaLiner's data folder) before making it, and across drives deletes an original only after its copy is complete and the same size. Undo moves the files back from the journal.
+- Photos are untrusted input: they're decoded by the pure-Rust `image` and `kamadak-exif` crates. A photo that crashes or hangs the decoder is in scope.
+- A photo's EXIF location is hidden in the Info pane until you choose to show it. Thumbnails are cached in your user's cache folder; Settings → Storage clears them.
+- Open in Folder runs `explorer.exe` on Windows, and `gdbus` or `dbus-send` on Linux, with the file's path as an argument, never through a shell.
 
 ### Distribution and integrity
 

@@ -1,6 +1,6 @@
 # Packaging the native apps
 
-How ThreadLiner, PageLiner, NoteLiner, BlockLiner, and PrintLiner (the pure-Rust egui apps in `apps/*/native`) are packaged for Linux, Windows, and macOS, and how releases are built in CI.
+How ThreadLiner, PageLiner, NoteLiner, BlockLiner, PrintLiner, and MediaLiner (the pure-Rust egui apps in `apps/*/native`) are packaged for Linux, Windows, and macOS, and how releases are built in CI.
 
 ## Package identity
 
@@ -10,11 +10,11 @@ Per app, the packaged artifacts are named as follows:
 |---|---|
 | Cargo package | `<app>-native` (so `cargo run -p <app>-native` works) |
 | Installed binary | `<app>` (`[[bin]]` in `apps/<app>/native/Cargo.toml`), installed as `/usr/bin/<app>` |
-| App id (Wayland app id / X11 WM class, bundle id) | `com.threadline.app`, `com.pageliner.app`, `com.nathanlaan.noteliner`, `com.blockliner.app`, `com.printliner.app` |
-| Linux package | `threadliner`, `pageliner`, `noteliner`, `blockliner`, `printliner` |
+| App id (Wayland app id / X11 WM class, bundle id) | `com.threadline.app`, `com.pageliner.app`, `com.nathanlaan.noteliner`, `com.blockliner.app`, `com.printliner.app`, `com.medialiner.app` |
+| Linux package | `threadliner`, `pageliner`, `noteliner`, `blockliner`, `printliner`, `medialiner` |
 | Desktop entry | `<app id>.desktop`, named "ThreadLiner" etc., `StartupWMClass=<app id>` |
 
-For users upgrading from older LaanKit builds, each native package conflicts with, replaces, and provides the former Tauri packages `thread-liner`, `page-liner`, and `note-liner` (Debian: `Conflicts`/`Replaces`/`Provides`; RPM: `Conflicts`/`Obsoletes`/`Provides`), so installing one removes the older build. The former Electron packages were already named `threadliner` etc., so the native package upgrades them in place. BlockLiner and PrintLiner had no earlier builds, so their packages declare none of these.
+For users upgrading from older LaanKit builds, each native package conflicts with, replaces, and provides the former Tauri packages `thread-liner`, `page-liner`, and `note-liner` (Debian: `Conflicts`/`Replaces`/`Provides`; RPM: `Conflicts`/`Obsoletes`/`Provides`), so installing one removes the older build. The former Electron packages were already named `threadliner` etc., so the native package upgrades them in place. BlockLiner, PrintLiner, and MediaLiner had no earlier builds, so their packages declare none of these.
 
 - Settings and data live in the platform config/data folders (`laankit_core::paths`) shared by every build LaanKit has shipped, so projects open unchanged.
 - eframe's own state (theme, window, panes: `app.ron`) lives under `~/.local/share/<app>/`; each `main.rs` points `persistence_path` there via `STORAGE_ID`.
@@ -83,7 +83,7 @@ On a machine without FUSE (containers, CI), set `APPIMAGE_EXTRACT_AND_RUN=1` for
 
 The binaries link only against glibc; winit, glutin, and fontconfig `dlopen` the rest, so the packages declare them explicitly:
 
-- `git` (sync, history; NoteLiner, ThreadLiner, and PageLiner shell out to it; BlockLiner's and PrintLiner's packages don't depend on it)
+- `git` (sync, history; NoteLiner, ThreadLiner, and PageLiner shell out to it; BlockLiner's, PrintLiner's, and MediaLiner's packages don't depend on it)
 - EGL/GL (`libegl1`, `libgl1`), `libxkbcommon0`, `libfontconfig1`
 - Wayland: `libwayland-client0`, `libwayland-egl1`
 - X11: `libx11-6`, `libx11-xcb1`, `libxcursor1`, `libxi6`, `libxrender1`, `libxkbcommon-x11-0`

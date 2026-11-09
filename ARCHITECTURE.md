@@ -1,6 +1,6 @@
 # Architecture
 
-LaanKit is a set of five desktop apps, NoteLiner, ThreadLiner, PageLiner, BlockLiner, and PrintLiner, that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), with no webview and no JavaScript. Each app stores its data as plain files you control: a git repository for NoteLiner, ThreadLiner, and PageLiner, any folder of Mermaid files for BlockLiner, and the app's own folders for PrintLiner.
+LaanKit is a set of six desktop apps, NoteLiner, ThreadLiner, PageLiner, BlockLiner, PrintLiner, and MediaLiner, that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), with no webview and no JavaScript. Each app stores its data as plain files you control: a git repository for NoteLiner, ThreadLiner, and PageLiner, any folder of Mermaid files for BlockLiner, the app's own folders for PrintLiner, and your photo folders, where they are, for MediaLiner.
 
 This document explains how the pieces fit together. For packaging and releases, see [`docs/packaging.md`](docs/packaging.md). For the security model, see [`SECURITY.md`](SECURITY.md).
 
@@ -25,11 +25,11 @@ Dependencies only point down. The UI crates never reach into an app's backend, a
 
 ### `laankit-core`
 
-The backend shared by the apps, with no UI framework. BlockLiner uses `paths`, `json`, and `debounce`, and PrintLiner `paths` and `json`; neither uses `git`.
+The backend shared by the apps, with no UI framework. BlockLiner uses `paths`, `json`, and `debounce`, and PrintLiner and MediaLiner `paths` and `json`; none of them uses `git`.
 
 | Module | What it does |
 |--------|--------------|
-| `paths`    | The config and data folders for each platform: `~/.config/<App>` and `~/.local/share/<app>` on Linux, and the platform equivalents elsewhere. |
+| `paths`    | The config, data, and cache folders for each platform: `~/.config/<App>`, `~/.local/share/<app>`, and `~/.cache/<app>` on Linux, and the platform equivalents elsewhere. |
 | `git`      | A thin wrapper over the system `git` CLI for init, commit, pull, push, remotes, branch, and history. LaanKit runs `git` instead of linking a git library, so it uses your existing credentials and SSH config. |
 | `json`     | Atomic, order-preserving JSON stores for each app's index file. |
 | `debounce` | The timers behind "commit on change, push after a quiet period". |
@@ -37,7 +37,7 @@ The backend shared by the apps, with no UI framework. BlockLiner uses `paths`, `
 
 ### App cores
 
-Each app has its own backend crate: `noteliner-core`, `threadliner-core`, `pageliner-core`, `blockliner-core`, and `printliner-core`. A core owns the files on disk (the index, the notes, feeds, or books, and the attachments) and the operations on them, and knows nothing about egui. A few supporting crates sit alongside:
+Each app has its own backend crate: `noteliner-core`, `threadliner-core`, `pageliner-core`, `blockliner-core`, `printliner-core`, and `medialiner-core`. A core owns the files on disk (the index, the notes, feeds, or books, and the attachments) and the operations on them, and knows nothing about egui. A few supporting crates sit alongside:
 
 | Crate | What it does |
 |-------|--------------|
@@ -49,11 +49,13 @@ Each app has its own backend crate: `noteliner-core`, `threadliner-core`, `pagel
 
 `printliner-core` talks to the Bambu Lab cloud. Its REST client signs in (with the emailed code when the account asks for one), lists the printers on the account, and reads task history and cover images. One MQTT session for the account subscribes to every printer's reports and asks each for a full report on connect; the only message PrintLiner publishes is that request, so it only ever reads status. Reports are merged into each printer's full state and read into a typed status, with HMS codes and AMS trays decoded. The access token is kept in the OS keychain (or, when you agree, a file only you can read), and the password is never stored. A sample of each printer every minute goes to a JSON Lines file per printer per month, for the trends view.
 
+`medialiner-core` works on the photo folders you add, in place. It keeps the folder list (with the rules for adding a folder inside or around a listed one), reads a folder's subfolders and files without hidden ones, decodes photos the right way up by their EXIF orientation, and makes thumbnails, cached on disk under a hash of each photo's path, size, and modification time. It reads file details and EXIF data for the Info pane. Merging one folder into another is the only thing that changes your files: `merge` plans every move first, never overwrites (a clash is renamed, an identical file set aside), writes each move to a journal before making it, copies and checks before deleting across drives, and undoes from the journal.
+
 ## The UI layer
 
 ### `laankit-egui`
 
-The shared egui shell: themes and fonts, the window chrome and optional custom title bar, the command palette, the settings dialog, panes, and toolbars. Run `cargo run -p laankit-egui --example gallery` to see the widgets on their own.
+The shared egui shell: themes and fonts, the window chrome and optional custom title bar, the command palette, the settings dialog, panes, a tree widget, and toolbars. Run `cargo run -p laankit-egui --example gallery` to see the widgets on their own.
 
 #### Why glow and not wgpu
 
@@ -92,6 +94,6 @@ Every app stores its data in the `laankit-core` paths, so settings and projects 
 
 Unit and integration tests live with each crate. The UI tests use [`egui_kittest`](https://github.com/emilk/egui/tree/master/crates/egui_kittest) and run headless. They drive the real app through AccessKit and check the widgets and the files on disk, without opening a window or comparing pixels.
 
-Each app's `ui_tests*` modules cover the main flows: create, edit, autosave, rename, move, and delete, plus the panes and the editor. NoteLiner's also cover slides and PDF export. BlockLiner's cover drawing, styles, undo, import, and export, including a golden SVG file.
+Each app's `ui_tests*` modules cover the main flows: create, edit, autosave, rename, move, and delete, plus the panes and the editor. NoteLiner's also cover slides and PDF export. BlockLiner's cover drawing, styles, undo, import, and export, including a golden SVG file. MediaLiner's cover browsing folders, the grid, the preview, the Info pane, outside changes, and a merge with its undo.
 
 Run every test with `cargo test --workspace`.

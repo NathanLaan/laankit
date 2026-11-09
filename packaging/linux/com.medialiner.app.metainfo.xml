@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.medialiner.app</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>MediaLiner</name>
+  <summary>Browse and organize the photos in your folders</summary>
+  <developer id="com.nathanlaan">
+    <name>Nathan Laan</name>
+  </developer>
+  <description>
+    <p>
+      MediaLiner shows the photos in the folders you choose, where they are.
+      There's no import and no database, and it never changes a photo.
+    </p>
+    <ul>
+      <li>A tree of your folders and their subfolders</li>
+      <li>A grid of thumbnails, cached so folders open quickly</li>
+      <li>A preview with zoom, and stepping through a folder's photos</li>
+      <li>File details and EXIF data, with the location hidden until you ask</li>
+      <li>Merging one folder into another, never overwriting, with undo</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.medialiner.app.desktop</launchable>
+  <provides>
+    <binary>medialiner</binary>
+  </provides>
+  <url type="homepage">https://github.com/NathanLaan/laankit</url>
+  <url type="bugtracker">https://github.com/NathanLaan/laankit/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-09"/>
+  </releases>
+</component>

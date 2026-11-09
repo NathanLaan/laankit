@@ -1,6 +1,6 @@
 # LaanKit
 
-LaanKit is a set of desktop apps that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), and stores its data as plain files you control: a git repository for the notes, feed, and library apps, any folder for BlockLiner, and the app's own folders for PrintLiner.
+LaanKit is a set of desktop apps that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), and stores its data as plain files you control: a git repository for the notes, feed, and library apps, any folder for BlockLiner, the app's own folders for PrintLiner, and your photo folders, where they are, for MediaLiner.
 
 ## Apps
 
@@ -11,6 +11,7 @@ LaanKit is a set of desktop apps that share one UI and backend foundation. Every
 | PageLiner   | `pageliner`   | EPUB/PDF e-reader and document library with bookmarks, highlights, and reading-position persistence. |
 | BlockLiner  | `blockliner`  | Visio-style diagram editor for software components and architecture, saved as Mermaid flowcharts, with PNG/SVG export. |
 | PrintLiner  | `printliner`  | Dashboard for the Bambu Lab 3D printers on your Bambu account: live status, temperatures, AMS trays, HMS alerts, task history, and trends, through the Bambu Lab cloud. |
+| MediaLiner  | `medialiner`  | Photo browser for the folders you choose: a folder tree, a thumbnail grid, a preview, file and EXIF details, and merging one folder into another, with undo. |
 
 Each lives in `apps/<app>/native/` and is a Cargo package named `<app>-native`. See the per-app README (`apps/<app>/README.md`) and its detailed `apps/<app>/native/README.md`.
 
@@ -18,7 +19,7 @@ Each lives in `apps/<app>/native/` and is a Cargo package named `<app>-native`. 
 
 | Path | What it is |
 |------|------------|
-| `apps/<app>/native/`         | The five apps (egui UIs over the crates below). |
+| `apps/<app>/native/`         | The six apps (egui UIs over the crates below). |
 | `crates/laankit-core/`       | Shared backend: git sync, JSON stores, XDG paths, debouncing. |
 | `crates/laankit-egui/`       | Shared egui shell: themes, fonts, window chrome, command palette, settings, panes. |
 | `crates/laankit-editor/`     | The Markdown editor widget (own text engine, highlighting, spell check). |
@@ -29,6 +30,7 @@ Each lives in `apps/<app>/native/` and is a Cargo package named `<app>-native`. 
 | `crates/pageliner-epub/`     | EPUB parsing/state. |
 | `crates/blockliner-core/`    | The diagram model, Mermaid read/write, layout. |
 | `crates/printliner-core/`    | The Bambu Lab cloud client, the MQTT status session, and printer status. |
+| `crates/medialiner-core/`    | The folder list, scanning, thumbnails, EXIF details, and merging folders. |
 | `packaging/`                 | Linux desktop/metainfo files and Flatpak manifests. |
 | `scripts/`, `xtask/`         | Packaging helpers and the icon pipeline. |
 | `docs/`                      | Packaging guide and open plans. |
@@ -38,7 +40,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how these fit together, and [`SECUR
 ## Prerequisites
 
 - Rust 1.92+ (install with [`rustup`](https://rustup.rs)).
-- `git` on the `PATH` at runtime. NoteLiner, ThreadLiner, and PageLiner shell out to it for sync and history. BlockLiner doesn't use git.
+- `git` on the `PATH` at runtime. NoteLiner, ThreadLiner, and PageLiner shell out to it for sync and history. BlockLiner, PrintLiner, and MediaLiner don't use git.
 - Linux build libraries:
 
   ```bash
@@ -52,7 +54,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how these fit together, and [`SECUR
 ## Development
 
 ```bash
-cargo run -p noteliner-native       # or pageliner-native / threadliner-native / blockliner-native / printliner-native
+cargo run -p noteliner-native       # or pageliner-native / threadliner-native / blockliner-native / printliner-native / medialiner-native
 ```
 
 For an optimized run without the slow full-LTO release build (good for benchmarking or daily use from source):
@@ -68,7 +70,7 @@ Diagnostics shared by every app (open a project, take a screenshot, or force a t
 ```bash
 # Build an optimized NoteLiner binary at target/release/noteliner.
 # For another app, swap in its package: threadliner-native, pageliner-native,
-# blockliner-native or printliner-native (each binary is named after its app, e.g. target/release/pageliner).
+# blockliner-native, printliner-native or medialiner-native (each binary is named after its app, e.g. target/release/pageliner).
 cargo build --release -p noteliner-native
 ```
 
@@ -106,11 +108,11 @@ Pre-built packages for Linux, Windows, and macOS are attached to each [GitHub re
 - Windows: run the `_x64-setup.exe` installer (per-user, no admin). Current builds are unsigned, so SmartScreen warns on first run: More info → Run anyway.
 - macOS: open the `.dmg` and drag the app to `/Applications`. Current builds are unsigned, so the first launch is blocked: right-click → Open → Open, or `xattr -d com.apple.quarantine /Applications/<App>.app`.
 
-`git` must be installed on the target machine for sync and history to work (not needed for BlockLiner or PrintLiner).
+`git` must be installed on the target machine for sync and history to work (not needed for BlockLiner, PrintLiner, or MediaLiner).
 
 ## Uninstall
 
-Each app is removed separately. The package names are `noteliner`, `threadliner`, `pageliner`, `blockliner`, and `printliner`; the examples use NoteLiner.
+Each app is removed separately. The package names are `noteliner`, `threadliner`, `pageliner`, `blockliner`, `printliner`, and `medialiner`; the examples use NoteLiner.
 
 - Linux
   - `.deb`: `sudo apt remove noteliner` (`sudo apt purge noteliner` also removes the package's own system files).
@@ -129,7 +131,7 @@ Uninstalling leaves your projects, diagrams, and settings in place, so a reinsta
 | Windows | `%APPDATA%\<App>` (settings and window state) |
 | macOS | `~/Library/Application Support/<App>` (settings and window state) |
 
-`<App>` is the product name (`NoteLiner`, `ThreadLiner`, `PageLiner`, `BlockLiner`, `PrintLiner`) and `<app>` the lowercase binary name; on Windows and macOS, whose file systems ignore case by default, the two are one folder. Your project folders themselves are never touched by an uninstall; delete them yourself if you no longer want them.
+`<App>` is the product name (`NoteLiner`, `ThreadLiner`, `PageLiner`, `BlockLiner`, `PrintLiner`, `MediaLiner`) and `<app>` the lowercase binary name; on Windows and macOS, whose file systems ignore case by default, the two are one folder. MediaLiner also keeps a thumbnail cache, in `~/.cache/medialiner` on Linux and `%LOCALAPPDATA%\medialiner` on Windows. Your project folders themselves are never touched by an uninstall; delete them yourself if you no longer want them.
 
 ## Tests and Linting
 
