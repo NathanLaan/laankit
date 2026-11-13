@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 use egui::accesskit::Role;
 use egui::{Key, Modifiers};
 use egui_kittest::kittest::Queryable;
-use egui_kittest::Node;
 use egui_kittest::Harness;
+use egui_kittest::Node;
 
 use crate::app::{Launch, MediaLinerApp};
 use crate::commands::{Act, Focus};
@@ -76,7 +76,9 @@ fn with_folder() -> (tempfile::TempDir, PathBuf, H) {
     let mut h = harness(Paths::under(tmp.path()));
     h.run_steps(2);
     h.state_mut().add_folder_for_test(root.clone());
-    wait_for(&mut h, "the listing", |a| a.listing_done() && a.photo_count() == 2);
+    wait_for(&mut h, "the listing", |a| {
+        a.listing_done() && a.photo_count() == 2
+    });
     (tmp, root, h)
 }
 
@@ -169,7 +171,9 @@ fn show_info_from_the_right_click_menu() {
 
     // The Info pane follows the selection.
     cell(&h, "b.png").click();
-    wait_for(&mut h, "b's info", |a| a.info().is_some_and(|i| i.dimensions == Some((32, 32))));
+    wait_for(&mut h, "b's info", |a| {
+        a.info().is_some_and(|i| i.dimensions == Some((32, 32)))
+    });
     h.get_by_label("Close Info").click();
     h.run_steps(2);
     assert!(!h.state().info_visible());
@@ -180,7 +184,10 @@ fn include_subfolders_and_outside_changes() {
     let (_tmp, root, mut h) = with_folder();
     h.get_by_label("Include Subfolders (Off)").click();
     wait_for(&mut h, "the deep listing", |a| a.photo_count() == 3);
-    assert_eq!(h.state().file_names(), ["a.png", "b.png", "notes.txt", "c.png"]);
+    assert_eq!(
+        h.state().file_names(),
+        ["a.png", "b.png", "notes.txt", "c.png"]
+    );
     let ctx = h.ctx.clone();
     h.state_mut().run(&ctx, Act::ToggleSubfolders);
     wait_for(&mut h, "the shallow listing", |a| a.photo_count() == 2);
@@ -228,7 +235,10 @@ fn merging_a_folder_moves_its_files_and_undoes() {
     assert!(!trip.exists());
     assert!(best.join("x.png").exists());
     assert!(best.join("clash (2).png").exists());
-    assert_eq!(image::image_dimensions(best.join("clash.png")).unwrap(), (10, 10));
+    assert_eq!(
+        image::image_dimensions(best.join("clash.png")).unwrap(),
+        (10, 10)
+    );
     assert_eq!(h.state().folder(), Some(best.as_path()));
     assert!(h.state().can_undo_merge());
     assert_eq!(h.state().journals().len(), 1);
@@ -237,7 +247,10 @@ fn merging_a_folder_moves_its_files_and_undoes() {
     h.run_steps(2);
     wait_for(&mut h, "the undo", |a| !a.merging());
     assert!(trip.join("x.png").exists());
-    assert_eq!(image::image_dimensions(trip.join("clash.png")).unwrap(), (9, 9));
+    assert_eq!(
+        image::image_dimensions(trip.join("clash.png")).unwrap(),
+        (9, 9)
+    );
     assert!(!best.join("x.png").exists());
     assert!(!h.state().can_undo_merge());
     assert!(h.state().journals()[0].undone);
@@ -246,7 +259,8 @@ fn merging_a_folder_moves_its_files_and_undoes() {
 #[test]
 fn removing_a_folder_from_the_list_leaves_it_on_disk() {
     let (_tmp, root, mut h) = with_folder();
-    h.get_by_role_and_label(Role::TreeItem, "Photos").click_secondary();
+    h.get_by_role_and_label(Role::TreeItem, "Photos")
+        .click_secondary();
     h.run_steps(2);
     h.get_by_label("Remove from List").click();
     h.run_steps(2);

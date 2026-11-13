@@ -204,11 +204,16 @@ mod tests {
         let raw = laankit_core::json::read_object(&paths.settings_file());
         assert_eq!(raw["future"], 1);
 
-        paths.set_prefs(&json!({ "thumbSize": 9999, "infoVisible": true })).unwrap();
+        paths
+            .set_prefs(&json!({ "thumbSize": 9999, "infoVisible": true }))
+            .unwrap();
         let p = paths.prefs();
         assert_eq!(p.thumb_size, THUMB_MAX);
         assert!(p.info_visible);
         assert!(shares_name(Path::new("/a/x"), &["/b/x".into()]));
-        assert!(!shares_name(Path::new("/a/x"), &["/a/x".into(), "/b/y".into()]));
+        assert!(!shares_name(
+            Path::new("/a/x"),
+            &["/a/x".into(), "/b/y".into()]
+        ));
     }
 }

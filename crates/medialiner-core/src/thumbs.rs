@@ -124,7 +124,12 @@ impl Cache {
     }
 
     /// The photo's thumbnail: from the cache, or made and cached.
-    pub fn thumbnail(&self, path: &Path, size: u64, modified: Option<SystemTime>) -> Result<RgbaImage> {
+    pub fn thumbnail(
+        &self,
+        path: &Path,
+        size: u64,
+        modified: Option<SystemTime>,
+    ) -> Result<RgbaImage> {
         let key = key(path, size, modified);
         if let Some(img) = self.load(&key) {
             return Ok(img);
@@ -142,7 +147,9 @@ impl Cache {
             return out;
         };
         for d in dirs.flatten() {
-            let Ok(files) = fs::read_dir(d.path()) else { continue };
+            let Ok(files) = fs::read_dir(d.path()) else {
+                continue;
+            };
             for f in files.flatten() {
                 if let Ok(m) = f.metadata() {
                     if m.is_file() {

@@ -62,10 +62,12 @@ pub fn read(path: &Path) -> io::Result<FileInfo> {
         .and_then(|e| e.get_field(Tag::Orientation, In::PRIMARY))
         .and_then(|f| f.value.get_uint(0));
     let dimensions = if MediaKind::of(path).is_photo() {
-        image::image_dimensions(path).ok().map(|(w, h)| match orientation {
-            Some(5..=8) => (h, w),
-            _ => (w, h),
-        })
+        image::image_dimensions(path)
+            .ok()
+            .map(|(w, h)| match orientation {
+                Some(5..=8) => (h, w),
+                _ => (w, h),
+            })
     } else {
         None
     };
@@ -96,7 +98,12 @@ fn text(exif: &Exif, tag: Tag) -> Option<String> {
         Value::Ascii(parts) => {
             let s = parts
                 .iter()
-                .map(|p| String::from_utf8_lossy(p).trim_matches(char::from(0)).trim().to_string())
+                .map(|p| {
+                    String::from_utf8_lossy(p)
+                        .trim_matches(char::from(0))
+                        .trim()
+                        .to_string()
+                })
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
                 .join(" ");
@@ -206,7 +213,11 @@ pub fn map_url((lat, lon): (f64, f64)) -> String {
 pub fn human_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["bytes", "KB", "MB", "GB", "TB"];
     if bytes < 1000 {
-        return if bytes == 1 { "1 byte".into() } else { format!("{bytes} bytes") };
+        return if bytes == 1 {
+            "1 byte".into()
+        } else {
+            format!("{bytes} bytes")
+        };
     }
     let mut v = bytes as f64;
     let mut unit = 0;
@@ -252,21 +263,53 @@ pub(crate) mod tests {
         use exif::experimental::Writer;
         use exif::{Field, Rational};
         let fields = [
-            Field { tag: Tag::Orientation, ifd_num: In::PRIMARY, value: Value::Short(vec![orientation]) },
-            Field { tag: Tag::Make, ifd_num: In::PRIMARY, value: Value::Ascii(vec![b"Canon".to_vec()]) },
-            Field { tag: Tag::Model, ifd_num: In::PRIMARY, value: Value::Ascii(vec![b"Canon EOS R6".to_vec()]) },
-            Field { tag: Tag::PhotographicSensitivity, ifd_num: In::PRIMARY, value: Value::Short(vec![400]) },
-            Field { tag: Tag::GPSLatitudeRef, ifd_num: In::PRIMARY, value: Value::Ascii(vec![b"N".to_vec()]) },
+            Field {
+                tag: Tag::Orientation,
+                ifd_num: In::PRIMARY,
+                value: Value::Short(vec![orientation]),
+            },
+            Field {
+                tag: Tag::Make,
+                ifd_num: In::PRIMARY,
+                value: Value::Ascii(vec![b"Canon".to_vec()]),
+            },
+            Field {
+                tag: Tag::Model,
+                ifd_num: In::PRIMARY,
+                value: Value::Ascii(vec![b"Canon EOS R6".to_vec()]),
+            },
+            Field {
+                tag: Tag::PhotographicSensitivity,
+                ifd_num: In::PRIMARY,
+                value: Value::Short(vec![400]),
+            },
+            Field {
+                tag: Tag::GPSLatitudeRef,
+                ifd_num: In::PRIMARY,
+                value: Value::Ascii(vec![b"N".to_vec()]),
+            },
             Field {
                 tag: Tag::GPSLatitude,
                 ifd_num: In::PRIMARY,
-                value: Value::Rational(vec![Rational::from((49, 1)), Rational::from((15, 1)), Rational::from((0, 1))]),
+                value: Value::Rational(vec![
+                    Rational::from((49, 1)),
+                    Rational::from((15, 1)),
+                    Rational::from((0, 1)),
+                ]),
             },
-            Field { tag: Tag::GPSLongitudeRef, ifd_num: In::PRIMARY, value: Value::Ascii(vec![b"W".to_vec()]) },
+            Field {
+                tag: Tag::GPSLongitudeRef,
+                ifd_num: In::PRIMARY,
+                value: Value::Ascii(vec![b"W".to_vec()]),
+            },
             Field {
                 tag: Tag::GPSLongitude,
                 ifd_num: In::PRIMARY,
-                value: Value::Rational(vec![Rational::from((123, 1)), Rational::from((6, 1)), Rational::from((0, 1))]),
+                value: Value::Rational(vec![
+                    Rational::from((123, 1)),
+                    Rational::from((6, 1)),
+                    Rational::from((0, 1)),
+                ]),
             },
         ];
         let mut w = Writer::new();

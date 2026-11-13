@@ -24,7 +24,10 @@ const TABS: [Tab<'static>; 5] = [
         id: "storage",
         label: "Storage",
     },
-    Tab { id: "ui", label: "UI" },
+    Tab {
+        id: "ui",
+        label: "UI",
+    },
     Tab {
         id: "shortcuts",
         label: "Keyboard Shortcuts",
@@ -84,15 +87,16 @@ pub fn show(
 ) -> Vec<SettingsAction> {
     let mut out = Vec::new();
     let mut tab = std::mem::take(&mut state.tab);
-    let close = SettingsShell::new(&TABS)
-        .top_inset(top_inset)
-        .show(ctx, &mut tab, |ui, id| match id {
-            "folders" => folders_tab(ui, props, &mut out),
-            "merges" => merges_tab(ui, state, props, &mut out),
-            "storage" => storage_tab(ui, state, props, &mut out),
-            "ui" => ui_tab(ui, state, theme_state, &mut out),
-            _ => settings::shortcuts_list(ui, &crate::commands::shortcut_list(), None),
-        });
+    let close =
+        SettingsShell::new(&TABS)
+            .top_inset(top_inset)
+            .show(ctx, &mut tab, |ui, id| match id {
+                "folders" => folders_tab(ui, props, &mut out),
+                "merges" => merges_tab(ui, state, props, &mut out),
+                "storage" => storage_tab(ui, state, props, &mut out),
+                "ui" => ui_tab(ui, state, theme_state, &mut out),
+                _ => settings::shortcuts_list(ui, &crate::commands::shortcut_list(), None),
+            });
     state.tab = tab;
     if close {
         out.push(SettingsAction::Close);
@@ -244,11 +248,20 @@ fn ui_tab(
         }
     });
     settings::setting_group(ui, "Window", None, |ui| {
-        if settings::toggle_option(ui, "Show Status Bar", &mut state.status_bar_visible, true).changed() {
+        if settings::toggle_option(ui, "Show Status Bar", &mut state.status_bar_visible, true)
+            .changed()
+        {
             out.push(SettingsAction::SetStatusBar(state.status_bar_visible));
         }
         ui.add_space(8.0);
-        if settings::toggle_option(ui, "Custom Window Titlebar", &mut state.custom_titlebar, true).changed() {
+        if settings::toggle_option(
+            ui,
+            "Custom Window Titlebar",
+            &mut state.custom_titlebar,
+            true,
+        )
+        .changed()
+        {
             out.push(SettingsAction::SetCustomTitlebar(state.custom_titlebar));
         }
         if state.custom_titlebar != state.custom_titlebar_initial

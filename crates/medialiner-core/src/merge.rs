@@ -137,9 +137,10 @@ fn unique(dir: &Path, name: &str, reserved: &HashSet<PathBuf>) -> PathBuf {
     }
     let p = Path::new(name);
     let (stem, ext) = match (p.file_stem(), p.extension()) {
-        (Some(s), Some(e)) if !name.starts_with('.') || s != name => {
-            (s.to_string_lossy().into_owned(), format!(".{}", e.to_string_lossy()))
-        }
+        (Some(s), Some(e)) if !name.starts_with('.') || s != name => (
+            s.to_string_lossy().into_owned(),
+            format!(".{}", e.to_string_lossy()),
+        ),
         _ => (name.to_owned(), String::new()),
     };
     (2..)
@@ -185,13 +186,28 @@ fn walk(
         }
         let target = dst.join(&name);
         let mv = if !taken(&target, reserved) {
-            Move { from, to: target, duplicate: false, renamed: false }
+            Move {
+                from,
+                to: target,
+                duplicate: false,
+                renamed: false,
+            }
         } else if meta.is_file() && same_contents(&from, &target) {
             plan.duplicates += 1;
-            Move { to: unique(dup, &name, reserved), from, duplicate: true, renamed: false }
+            Move {
+                to: unique(dup, &name, reserved),
+                from,
+                duplicate: true,
+                renamed: false,
+            }
         } else {
             plan.clashes += 1;
-            Move { to: unique(dst, &name, reserved), from, duplicate: false, renamed: true }
+            Move {
+                to: unique(dst, &name, reserved),
+                from,
+                duplicate: false,
+                renamed: true,
+            }
         };
         reserved.insert(mv.to.clone());
         plan.moves.push(mv);
@@ -231,7 +247,10 @@ fn same_contents(a: &Path, b: &Path) -> bool {
 /// the original's modification time.
 pub fn move_file(from: &Path, to: &Path, force_copy: bool) -> io::Result<()> {
     if fs::symlink_metadata(to).is_ok() {
-        return Err(io::Error::new(io::ErrorKind::AlreadyExists, "a file with that name is already there"));
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "a file with that name is already there",
+        ));
     }
     if !force_copy {
         match fs::rename(from, to) {
@@ -251,7 +270,9 @@ pub fn move_file(from: &Path, to: &Path, force_copy: bool) -> io::Result<()> {
     let copied = fs::metadata(to)?.len();
     if copied != meta.len() {
         let _ = fs::remove_file(to);
-        return Err(io::Error::other("the copy isn't the same size as the original"));
+        return Err(io::Error::other(
+            "the copy isn't the same size as the original",
+        ));
     }
     if let (Ok(m), Ok(f)) = (meta.modified(), File::options().write(true).open(to)) {
         let _ = f.set_modified(m);
@@ -311,7 +332,9 @@ pub fn run(
 ) -> Result<Outcome> {
     fs::create_dir_all(journal_dir)?;
     let path = journal_path(journal_dir);
-    let mut journal = JournalWriter { file: File::create(&path)? };
+    let mut journal = JournalWriter {
+        file: File::create(&path)?,
+    };
     journal.line(json!({
         "kind": "start",
         "source": plan.source,
@@ -319,7 +342,10 @@ pub fn run(
         "time": chrono::Local::now().to_rfc3339(),
         "files": plan.moves.len(),
     }))?;
-    let mut out = Outcome { journal: path, ..Default::default() };
+    let mut out = Outcome {
+        journal: path,
+        ..Default::default()
+    };
     let total = plan.moves.len();
     let mut reserved = HashSet::new();
     for (i, mv) in plan.moves.iter().enumerate() {
@@ -431,12 +457,18 @@ pub fn read_journal(path: &Path) -> Result<Journal> {
     let p = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(PathBuf::from);
     for line in BufReader::new(file).lines() {
         // A line cut short by a crash ends the journal.
-        let Ok(v) = serde_json::from_str::<Value>(&line?) else { break };
+        let Ok(v) = serde_json::from_str::<Value>(&line?) else {
+            break;
+        };
         match v.get("kind").and_then(Value::as_str) {
             Some("start") => {
                 j.source = p(&v, "source").unwrap_or_default();
                 j.dest = p(&v, "dest").unwrap_or_default();
-                j.time = v.get("time").and_then(Value::as_str).unwrap_or_default().to_owned();
+                j.time = v
+                    .get("time")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
             }
             Some("move") => {
                 if let (Some(from), Some(to)) = (p(&v, "from"), p(&v, "to")) {
@@ -458,7 +490,9 @@ pub fn read_journal(path: &Path) -> Result<Journal> {
 
 /// The journals in `dir`, newest first.
 pub fn journals(dir: &Path) -> Vec<Journal> {
-    let Ok(rd) = fs::read_dir(dir) else { return Vec::new() };
+    let Ok(rd) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
     let mut paths: Vec<PathBuf> = rd
         .flatten()
         .map(|e| e.path())
@@ -478,11 +512,18 @@ pub fn prune(dir: &Path, keep: usize) {
 
 /// Moves a merge's files back. A file that has been moved or deleted
 /// since, or whose old place is taken, is skipped; the rest go back.
-pub fn undo(journal: &Journal, force_copy: bool, mut progress: impl FnMut(usize, usize)) -> Result<Outcome> {
+pub fn undo(
+    journal: &Journal,
+    force_copy: bool,
+    mut progress: impl FnMut(usize, usize),
+) -> Result<Outcome> {
     if journal.undone {
         bail!("That merge has already been undone.");
     }
-    let mut out = Outcome { journal: journal.path.clone(), ..Default::default() };
+    let mut out = Outcome {
+        journal: journal.path.clone(),
+        ..Default::default()
+    };
     for dir in journal.removed_dirs.iter().rev() {
         let _ = fs::create_dir_all(dir);
     }
@@ -563,9 +604,18 @@ mod tests {
     fn refuses_itself_inside_and_parent() {
         let s = setup();
         assert_eq!(check(&s.src, &s.src), Err(Refusal::Same));
-        assert_eq!(check(&s.src, &s.src.join("Day 1")), Err(Refusal::IntoInside));
-        assert_eq!(check(&s.src.join("Day 1"), &s.src), Err(Refusal::IntoParent));
-        assert_eq!(check(&s.src, &s.root.join("nope")), Err(Refusal::DestMissing));
+        assert_eq!(
+            check(&s.src, &s.src.join("Day 1")),
+            Err(Refusal::IntoInside)
+        );
+        assert_eq!(
+            check(&s.src.join("Day 1"), &s.src),
+            Err(Refusal::IntoParent)
+        );
+        assert_eq!(
+            check(&s.src, &s.root.join("nope")),
+            Err(Refusal::DestMissing)
+        );
         assert_eq!(check(&s.src, &s.dst), Ok(()));
     }
 
@@ -576,7 +626,12 @@ mod tests {
         assert_eq!((p.photos, p.others, p.folders), (5, 1, 1));
         assert_eq!((p.clashes, p.duplicates), (2, 1));
         let to = |name: &str| {
-            p.moves.iter().find(|m| m.from.ends_with(name)).unwrap().to.clone()
+            p.moves
+                .iter()
+                .find(|m| m.from.ends_with(name))
+                .unwrap()
+                .to
+                .clone()
         };
         assert_eq!(to("clash.jpg"), s.dst.join("clash (2).jpg"));
         assert_eq!(to("same.jpg"), s.dups.join("Trip/same.jpg"));
@@ -587,7 +642,15 @@ mod tests {
     fn merge(s: &Setup, remove: bool, force_copy: bool) -> Outcome {
         let p = plan(&s.src, &s.dst, &s.dups).unwrap();
         let mut seen = 0;
-        let out = run(&p, remove, &s.journals, &AtomicBool::new(false), force_copy, |d, _| seen = d).unwrap();
+        let out = run(
+            &p,
+            remove,
+            &s.journals,
+            &AtomicBool::new(false),
+            force_copy,
+            |d, _| seen = d,
+        )
+        .unwrap();
         assert_eq!(seen, 6);
         out
     }
@@ -627,13 +690,22 @@ mod tests {
     #[test]
     fn across_drives_by_copying_and_keeps_the_source_when_asked() {
         let s = setup();
-        let before = fs::metadata(s.src.join("a.jpg")).unwrap().modified().unwrap();
+        let before = fs::metadata(s.src.join("a.jpg"))
+            .unwrap()
+            .modified()
+            .unwrap();
         let out = merge(&s, false, true);
         assert!(!out.source_removed);
         assert!(s.src.is_dir());
-        assert!(!s.src.join("Day 1").exists(), "empty subfolders are removed");
+        assert!(
+            !s.src.join("Day 1").exists(),
+            "empty subfolders are removed"
+        );
         check_merged(&s);
-        let after = fs::metadata(s.dst.join("a.jpg")).unwrap().modified().unwrap();
+        let after = fs::metadata(s.dst.join("a.jpg"))
+            .unwrap()
+            .modified()
+            .unwrap();
         assert_eq!(before, after);
     }
 
@@ -657,7 +729,15 @@ mod tests {
         // A planned file that's gone by the time it runs is skipped.
         let p = plan(&s.src, &s.dst, &s.dups).unwrap();
         fs::remove_file(s.src.join("a.jpg")).unwrap();
-        let out = run(&p, true, &s.journals, &AtomicBool::new(false), false, |_, _| {}).unwrap();
+        let out = run(
+            &p,
+            true,
+            &s.journals,
+            &AtomicBool::new(false),
+            false,
+            |_, _| {},
+        )
+        .unwrap();
         assert_eq!(out.skipped.len(), 1);
         assert!(s.src.exists());
     }

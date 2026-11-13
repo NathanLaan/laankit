@@ -172,7 +172,10 @@ pub fn show(
         let mut drop_hover = false;
         if row.accepts_drop {
             let ours = |d: &Dragged| d.tree == tree && d.row != i;
-            if resp.dnd_hover_payload::<Dragged>().is_some_and(|d| ours(&d)) {
+            if resp
+                .dnd_hover_payload::<Dragged>()
+                .is_some_and(|d| ours(&d))
+            {
                 drop_hover = true;
             }
             if let Some(d) = resp.dnd_release_payload::<Dragged>() {
@@ -221,7 +224,11 @@ fn paint_row(
         );
     } else if row.selected {
         painter.rect_filled(rect, 0.0, p.bg_selected);
-        painter.vline(rect.left() + 1.0, rect.y_range(), Stroke::new(2.0, p.accent));
+        painter.vline(
+            rect.left() + 1.0,
+            rect.y_range(),
+            Stroke::new(2.0, p.accent),
+        );
     } else if hovered {
         painter.rect_filled(rect, 0.0, p.bg_item_hover);
     }

@@ -48,7 +48,9 @@ impl Textures {
     pub fn begin_frame(&mut self, ctx: &egui::Context) {
         self.frame += 1;
         for _ in 0..UPLOADS_PER_FRAME {
-            let Some(u) = self.uploads.pop_front() else { break };
+            let Some(u) = self.uploads.pop_front() else {
+                break;
+            };
             // A quick thumbnail never replaces the real one.
             if u.quick && self.thumbs.get(&u.path).is_some_and(|e| e.key == u.key) {
                 continue;
@@ -75,8 +77,11 @@ impl Textures {
             ctx.request_repaint();
         }
         if self.thumbs.len() > THUMB_TEXTURES {
-            let mut by_age: Vec<(u64, PathBuf)> =
-                self.thumbs.iter().map(|(p, e)| (e.used, p.clone())).collect();
+            let mut by_age: Vec<(u64, PathBuf)> = self
+                .thumbs
+                .iter()
+                .map(|(p, e)| (e.used, p.clone()))
+                .collect();
             by_age.sort();
             for (_, p) in by_age.into_iter().take(self.thumbs.len() - THUMB_TEXTURES) {
                 self.thumbs.remove(&p);
@@ -84,7 +89,13 @@ impl Textures {
         }
     }
 
-    pub fn push_thumb(&mut self, path: PathBuf, key: String, image: Option<ColorImage>, quick: bool) {
+    pub fn push_thumb(
+        &mut self,
+        path: PathBuf,
+        key: String,
+        image: Option<ColorImage>,
+        quick: bool,
+    ) {
         self.uploads.push_back(Upload {
             path,
             key,
@@ -107,12 +118,23 @@ impl Textures {
             .thumbs
             .get(path)
             .is_some_and(|e| e.key == key && !e.quick);
-        let coming = self.uploads.iter().any(|u| u.path == path && u.key == key && !u.quick)
-            || self.thumbs.get(path).is_some_and(|e| e.key == key && e.quick);
+        let coming = self
+            .uploads
+            .iter()
+            .any(|u| u.path == path && u.key == key && !u.quick)
+            || self
+                .thumbs
+                .get(path)
+                .is_some_and(|e| e.key == key && e.quick);
         !have && !coming
     }
 
-    pub fn set_preview(&mut self, ctx: &egui::Context, path: PathBuf, image: Result<ColorImage, String>) {
+    pub fn set_preview(
+        &mut self,
+        ctx: &egui::Context,
+        path: PathBuf,
+        image: Result<ColorImage, String>,
+    ) {
         let tex = image.map(|img| {
             ctx.load_texture(
                 format!("preview:{}", path.display()),
@@ -128,7 +150,10 @@ impl Textures {
     }
 
     pub fn preview(&self, path: &Path) -> Option<&Result<TextureHandle, String>> {
-        self.previews.iter().find(|(p, _)| p == path).map(|(_, t)| t)
+        self.previews
+            .iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, t)| t)
     }
 
     /// Keeps only the previews of `keep`.

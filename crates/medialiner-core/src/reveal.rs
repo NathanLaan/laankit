@@ -112,7 +112,10 @@ mod tests {
     #[test]
     fn uris_and_commands() {
         let p = Path::new("/home/me/My Photos/été #1.jpg");
-        assert_eq!(file_uri(p), "file:///home/me/My%20Photos/%C3%A9t%C3%A9%20%231.jpg");
+        assert_eq!(
+            file_uri(p),
+            "file:///home/me/My%20Photos/%C3%A9t%C3%A9%20%231.jpg"
+        );
         let plans = dbus_plans(p);
         assert_eq!(plans[0].program, "gdbus");
         assert!(plans[0].args.contains(&format!("['{}']", file_uri(p))));

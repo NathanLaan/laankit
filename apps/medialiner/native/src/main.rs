@@ -31,7 +31,9 @@ fn main() -> eframe::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("Usage: medialiner [folder]\n\n  folder  Add this folder to the list, and select it.");
+        println!(
+            "Usage: medialiner [folder]\n\n  folder  Add this folder to the list, and select it."
+        );
         return Ok(());
     }
     let launch = Launch {

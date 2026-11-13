@@ -50,7 +50,8 @@ impl Library {
             Some(first) => {
                 let at = self.roots.iter().position(|r| r == first).unwrap_or(0);
                 self.roots.retain(|r| !r.starts_with(folder));
-                self.roots.insert(at.min(self.roots.len()), folder.to_owned());
+                self.roots
+                    .insert(at.min(self.roots.len()), folder.to_owned());
                 Added::Replaced(inside)
             }
         }

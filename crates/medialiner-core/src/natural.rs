@@ -55,7 +55,10 @@ mod tests {
     fn numbers_in_order_and_case_ignored() {
         let mut v = vec!["Day 10", "day 2", "Day 1", "IMG_0010", "img_009", "b", "A"];
         v.sort_by(|a, b| compare(a, b));
-        assert_eq!(v, ["A", "b", "Day 1", "day 2", "Day 10", "img_009", "IMG_0010"]);
+        assert_eq!(
+            v,
+            ["A", "b", "Day 1", "day 2", "Day 10", "img_009", "IMG_0010"]
+        );
         assert_eq!(compare("a", "a"), Ordering::Equal);
         assert_ne!(compare("a", "A"), Ordering::Equal);
     }

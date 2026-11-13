@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 
 use egui::RichText;
 use laankit_egui::dialog::{self, ButtonKind, Dialog};
+use laankit_egui::icons;
 use laankit_egui::settings;
 use laankit_egui::theme;
 use laankit_egui::tree::{self, TreeRow};
-use laankit_egui::icons;
 use medialiner_core::info::human_size;
 use medialiner_core::merge::{self as core_merge, MergePlan};
 use medialiner_core::scan::{self, file_name};
@@ -48,7 +48,11 @@ impl MergeState {
     /// The tree opens down to the source, so its neighbours are at hand.
     pub fn new(source: PathBuf, roots: Vec<PathBuf>) -> Self {
         let mut expanded = HashSet::new();
-        if let Some(root) = roots.iter().filter(|r| source.starts_with(r)).max_by_key(|r| r.components().count()) {
+        if let Some(root) = roots
+            .iter()
+            .filter(|r| source.starts_with(r))
+            .max_by_key(|r| r.components().count())
+        {
             let mut at = source.parent();
             while let Some(dir) = at {
                 if dir.starts_with(root) {
@@ -153,7 +157,12 @@ pub fn show(ctx: &egui::Context, state: &mut MergeState) -> Vec<MergeAction> {
     let running = matches!(state.phase, Phase::Running { .. });
     let resp = Dialog::compact("medialiner-merge", &title).show(ctx, |ui| {
         let p = theme::palette(ui.ctx());
-        if let Phase::Running { done, total, cancelling } = state.phase {
+        if let Phase::Running {
+            done,
+            total,
+            cancelling,
+        } = state.phase
+        {
             let text = if cancelling {
                 "Stopping after the current file…".to_string()
             } else {
@@ -161,7 +170,11 @@ pub fn show(ctx: &egui::Context, state: &mut MergeState) -> Vec<MergeAction> {
             };
             ui.label(RichText::new(text).color(p.text_primary));
             ui.add_space(6.0);
-            let frac = if total == 0 { 1.0 } else { done as f32 / total as f32 };
+            let frac = if total == 0 {
+                1.0
+            } else {
+                done as f32 / total as f32
+            };
             ui.add(egui::ProgressBar::new(frac).desired_width(ui.available_width()));
             ui.add_space(10.0);
             dialog::actions(ui, |ui| {
@@ -240,7 +253,10 @@ pub fn show(ctx: &egui::Context, state: &mut MergeState) -> Vec<MergeAction> {
                 let label = format!("Remove “{}” once it's empty", file_name(&state.source));
                 settings::toggle_option(ui, &label, &mut state.remove_source, true);
                 ui.add_space(2.0);
-                dialog::muted_text(ui, "Nothing is overwritten, and you can undo the merge afterwards.");
+                dialog::muted_text(
+                    ui,
+                    "Nothing is overwritten, and you can undo the merge afterwards.",
+                );
             }
         }
         ui.add_space(10.0);
@@ -279,7 +295,10 @@ mod tests {
             duplicates: 1,
         };
         let s = summary(&plan);
-        assert_eq!(s[0], "Moves 214 photos, 1 other file, and 3 subfolders (2.1 GB).");
+        assert_eq!(
+            s[0],
+            "Moves 214 photos, 1 other file, and 3 subfolders (2.1 GB)."
+        );
         assert!(s[1].starts_with("4 files have"));
         assert!(s[2].starts_with("1 file is"));
     }

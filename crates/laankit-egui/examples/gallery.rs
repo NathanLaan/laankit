@@ -165,6 +165,7 @@ impl Gallery {
                 gallery.update = UpdateStatus::Available {
                     version: "2.1.0".into(),
                     notes: Some("<p>Native builds.</p>".into()),
+                    url: "https://github.com/NathanLaan/laankit/releases".into(),
                 };
             }
             _ => {}

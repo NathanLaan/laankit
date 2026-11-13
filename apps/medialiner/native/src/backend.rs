@@ -102,9 +102,16 @@ pub enum Event {
 }
 
 enum Job {
-    List { dir: PathBuf, deep: bool },
+    List {
+        dir: PathBuf,
+        deep: bool,
+    },
     Info(PathBuf),
-    PlanMerge { source: PathBuf, dest: PathBuf, duplicates: PathBuf },
+    PlanMerge {
+        source: PathBuf,
+        dest: PathBuf,
+        duplicates: PathBuf,
+    },
     CacheUsage,
     ClearCache,
     Journals,
@@ -346,7 +353,13 @@ impl Drop for Backend {
     }
 }
 
-fn files_thread(jobs: Receiver<Job>, tx: Sender<Event>, shared: Arc<Shared>, cache: Cache, merges: PathBuf) {
+fn files_thread(
+    jobs: Receiver<Job>,
+    tx: Sender<Event>,
+    shared: Arc<Shared>,
+    cache: Cache,
+    merges: PathBuf,
+) {
     for job in jobs {
         let event = match job {
             Job::List { dir, deep } => {

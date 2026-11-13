@@ -403,10 +403,17 @@ impl Backend {
             } else {
                 match UPDATE_REPO {
                     None => UpdateStatus::Unavailable { dev: false },
-                    Some(repo) => match updates::check(repo, env!("CARGO_PKG_VERSION")).await {
+                    Some(repo) => match updates::check(
+                        repo,
+                        updates::NATIVE_TAG_PREFIX,
+                        env!("CARGO_PKG_VERSION"),
+                    )
+                    .await
+                    {
                         Ok(UpdateCheck::Available(rel)) => UpdateStatus::Available {
                             version: rel.version,
                             notes: rel.notes,
+                            url: rel.url,
                         },
                         Ok(UpdateCheck::UpToDate { .. }) => {
                             UpdateStatus::Unavailable { dev: false }

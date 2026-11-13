@@ -153,7 +153,15 @@ mod tests {
     fn lists_folders_and_files_without_hidden_ones() {
         let tmp = tempfile::tempdir().unwrap();
         let d = tmp.path();
-        for f in ["Day 10/a.jpg", "Day 2/b.png", ".cache/c.jpg", "img10.jpg", "img9.jpg", ".hidden.jpg", "notes.txt"] {
+        for f in [
+            "Day 10/a.jpg",
+            "Day 2/b.png",
+            ".cache/c.jpg",
+            "img10.jpg",
+            "img9.jpg",
+            ".hidden.jpg",
+            "notes.txt",
+        ] {
             touch(&d.join(f));
         }
         let names = |v: Vec<PathBuf>| v.iter().map(|p| file_name(p)).collect::<Vec<_>>();
@@ -165,6 +173,9 @@ mod tests {
         assert!(has_subfolders(d));
         assert!(!has_subfolders(&d.join("Day 2")));
         let deep: Vec<String> = files_deep(d).unwrap().into_iter().map(|f| f.name).collect();
-        assert_eq!(deep, ["img9.jpg", "img10.jpg", "notes.txt", "b.png", "a.jpg"]);
+        assert_eq!(
+            deep,
+            ["img9.jpg", "img10.jpg", "notes.txt", "b.png", "a.jpg"]
+        );
     }
 }

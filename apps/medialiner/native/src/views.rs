@@ -45,7 +45,10 @@ pub enum ViewAction {
     ToggleFolder(PathBuf),
     MergeFolder(PathBuf),
     /// Dragged onto another folder: merge it there.
-    DropFolder { source: PathBuf, dest: PathBuf },
+    DropFolder {
+        source: PathBuf,
+        dest: PathBuf,
+    },
     OpenFolderInFileManager(PathBuf),
     RefreshFolder(PathBuf),
     RemoveFolder(PathBuf),
@@ -112,7 +115,8 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
     toolbar::show(
         ui,
         |ui| {
-            let add = ToolbarButton::new(icons::FOLDER_PLUS, "Add Folder (Ctrl+O)").label("Add Folder");
+            let add =
+                ToolbarButton::new(icons::FOLDER_PLUS, "Add Folder (Ctrl+O)").label("Add Folder");
             if toolbar::button(ui, add).clicked() {
                 out.push(Act::AddFolder);
             }
@@ -166,7 +170,13 @@ pub fn status_bar(ui: &mut Ui, parts: &[String], busy: Option<&str>) {
     let y = rect.center().y;
     let mut x = rect.left() + 12.0;
     for part in parts {
-        let r = painter.text(pos2(x, y), Align2::LEFT_CENTER, part, font.clone(), p.text_secondary);
+        let r = painter.text(
+            pos2(x, y),
+            Align2::LEFT_CENTER,
+            part,
+            font.clone(),
+            p.text_secondary,
+        );
         x = r.right() + 16.0;
     }
     if let Some(busy) = busy {
@@ -185,9 +195,16 @@ pub fn status_bar(ui: &mut Ui, parts: &[String], busy: Option<&str>) {
 /// A pane's header: its title, and buttons at the right.
 fn pane_header(ui: &mut Ui, title: &str, buttons: impl FnOnce(&mut Ui)) {
     let p = theme::palette(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), PANE_HEADER_HEIGHT), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(
+        vec2(ui.available_width(), PANE_HEADER_HEIGHT),
+        Sense::hover(),
+    );
     let painter = ui.painter();
-    painter.hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, p.border));
+    painter.hline(
+        rect.x_range(),
+        rect.bottom() - 0.5,
+        Stroke::new(1.0, p.border),
+    );
     painter.text(
         pos2(rect.left() + 14.0, rect.center().y),
         Align2::LEFT_CENTER,
@@ -360,8 +377,15 @@ pub fn files_pane(ui: &mut Ui, props: &FilesProps<'_>) -> Vec<ViewAction> {
             if props.include_subfolders {
                 ui.painter().rect_filled(rect, theme::RADIUS, p.bg_selected);
             }
-            if panes::header_button(ui, &p, ui.scope_id().with("subfolders"), rect, icons::FOLDER_TREE, label)
-                .clicked()
+            if panes::header_button(
+                ui,
+                &p,
+                ui.scope_id().with("subfolders"),
+                rect,
+                icons::FOLDER_TREE,
+                label,
+            )
+            .clicked()
             {
                 out.push(ViewAction::ToggleSubfolders);
             }
@@ -376,19 +400,34 @@ pub fn files_pane(ui: &mut Ui, props: &FilesProps<'_>) -> Vec<ViewAction> {
         return out;
     }
     if props.files.is_empty() {
-        empty_note(ui, if props.loading { "Reading…" } else { "No files in this folder." });
+        empty_note(
+            ui,
+            if props.loading {
+                "Reading…"
+            } else {
+                "No files in this folder."
+            },
+        );
         return out;
     }
     let reveal_row = props
         .reveal
-        .then(|| props.files.iter().position(|f| Some(f.path.as_path()) == props.selected))
+        .then(|| {
+            props
+                .files
+                .iter()
+                .position(|f| Some(f.path.as_path()) == props.selected)
+        })
         .flatten();
     let mut area = ScrollArea::vertical()
         .id_salt(("medialiner-files", folder))
         .auto_shrink([false, false]);
     if let Some(i) = reveal_row {
         let visible_h = ui.available_height();
-        let state = egui::scroll_area::State::load(ui.ctx(), ui.make_persistent_id(("medialiner-files", folder)));
+        let state = egui::scroll_area::State::load(
+            ui.ctx(),
+            ui.make_persistent_id(("medialiner-files", folder)),
+        );
         let top = i as f32 * FILE_ROW_HEIGHT;
         let offset = state.map_or(0.0, |s| s.clamped_offset().y);
         if top < offset || top + FILE_ROW_HEIGHT > offset + visible_h {
@@ -401,8 +440,11 @@ pub fn files_pane(ui: &mut Ui, props: &FilesProps<'_>) -> Vec<ViewAction> {
         for i in range {
             let f = &props.files[i];
             let selected = props.selected == Some(f.path.as_path());
-            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), FILE_ROW_HEIGHT), Sense::click());
-            resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::ListItem, true, selected, &f.name));
+            let (rect, resp) =
+                ui.allocate_exact_size(vec2(ui.available_width(), FILE_ROW_HEIGHT), Sense::click());
+            resp.widget_info(|| {
+                egui::WidgetInfo::selected(egui::Role::ListItem, true, selected, &f.name)
+            });
             let hint = if props.include_subfolders {
                 f.path
                     .parent()
@@ -447,7 +489,11 @@ fn paint_file_row(
     let painter = ui.painter();
     if selected {
         painter.rect_filled(rect, 0.0, p.bg_selected);
-        painter.vline(rect.left() + 1.0, rect.y_range(), Stroke::new(2.0, p.accent));
+        painter.vline(
+            rect.left() + 1.0,
+            rect.y_range(),
+            Stroke::new(2.0, p.accent),
+        );
     } else if hovered {
         painter.rect_filled(rect, 0.0, p.bg_item_hover);
     }
@@ -495,33 +541,59 @@ pub struct HeaderProps<'a> {
 pub fn centre_header(ui: &mut Ui, props: &HeaderProps<'_>) -> Vec<ViewAction> {
     let p = theme::palette(ui.ctx());
     let mut out = Vec::new();
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), PANE_HEADER_HEIGHT), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(
+        vec2(ui.available_width(), PANE_HEADER_HEIGHT),
+        Sense::hover(),
+    );
     ui.painter().rect_filled(rect, 0.0, p.bg_surface);
-    ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, p.border));
+    ui.painter().hline(
+        rect.x_range(),
+        rect.bottom() - 0.5,
+        Stroke::new(1.0, p.border),
+    );
     ui.scope_builder(
         egui::UiBuilder::new()
             .max_rect(rect.shrink2(vec2(10.0, 4.0)))
             .layout(Layout::left_to_right(Align::Center)),
         |ui| {
             if props.preview_open {
-                if dialog::icon_button(ui, Some(icons::ARROW_LEFT), "Back", ButtonKind::Secondary, true)
-                    .on_hover_text("Back to the grid (Esc)")
-                    .clicked()
+                if dialog::icon_button(
+                    ui,
+                    Some(icons::ARROW_LEFT),
+                    "Back",
+                    ButtonKind::Secondary,
+                    true,
+                )
+                .on_hover_text("Back to the grid (Esc)")
+                .clicked()
                 {
                     out.push(ViewAction::Act(Act::Back));
                 }
                 ui.add_space(6.0);
             }
-            ui.label(RichText::new(props.title).size(13.0).strong().color(p.text_primary));
+            ui.label(
+                RichText::new(props.title)
+                    .size(13.0)
+                    .strong()
+                    .color(p.text_primary),
+            );
             if let Some(sub) = &props.subtitle {
                 ui.label(RichText::new(sub).size(12.0).color(p.text_muted));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if props.preview_open {
-                    if ui.small_button("100%").on_hover_text("Actual size (1)").clicked() {
+                    if ui
+                        .small_button("100%")
+                        .on_hover_text("Actual size (1)")
+                        .clicked()
+                    {
                         out.push(ViewAction::Act(Act::ZoomActual));
                     }
-                    if ui.small_button("Fit").on_hover_text("Fit to window (0)").clicked() {
+                    if ui
+                        .small_button("Fit")
+                        .on_hover_text("Fit to window (0)")
+                        .clicked()
+                    {
                         out.push(ViewAction::Act(Act::ZoomFit));
                     }
                     if let Some(z) = &props.zoom_label {
@@ -534,8 +606,12 @@ pub fn centre_header(ui: &mut Ui, props: &HeaderProps<'_>) -> Vec<ViewAction> {
                         crate::config::THUMB_MIN..=crate::config::THUMB_MAX,
                     )
                     .show_value(false);
-                    let resp = ui.add_sized(vec2(120.0, 18.0), slider).on_hover_text("Thumbnail size (Ctrl+= and Ctrl+-)");
-                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Slider, true, "Thumbnail Size"));
+                    let resp = ui
+                        .add_sized(vec2(120.0, 18.0), slider)
+                        .on_hover_text("Thumbnail size (Ctrl+= and Ctrl+-)");
+                    resp.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::Role::Slider, true, "Thumbnail Size")
+                    });
                     if resp.changed() {
                         out.push(ViewAction::SetThumbSize(size));
                     }
@@ -575,9 +651,15 @@ pub fn grid(ui: &mut Ui, props: &GridProps<'_>, textures: &mut Textures) -> Grid
     let rows = n.div_ceil(columns);
     let row_h = cell + NAME_HEIGHT + GRID_GAP;
     let id = ("medialiner-grid", props.folder);
-    let mut area = ScrollArea::vertical().id_salt(id).auto_shrink([false, false]);
+    let mut area = ScrollArea::vertical()
+        .id_salt(id)
+        .auto_shrink([false, false]);
     if props.reveal {
-        if let Some(i) = props.photos.iter().position(|f| Some(f.path.as_path()) == props.selected) {
+        if let Some(i) = props
+            .photos
+            .iter()
+            .position(|f| Some(f.path.as_path()) == props.selected)
+        {
             let visible_h = ui.available_height();
             let state = egui::scroll_area::State::load(ui.ctx(), ui.make_persistent_id(id));
             let top = GRID_GAP + (i / columns) as f32 * row_h;
@@ -596,15 +678,25 @@ pub fn grid(ui: &mut Ui, props: &GridProps<'_>, textures: &mut Textures) -> Grid
             ui.add_space(GRID_GAP);
         }
         for r in range {
-            let (row_rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::hover());
+            let (row_rect, _) =
+                ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::hover());
             for c in 0..columns {
                 let i = r * columns + c;
                 let Some(f) = props.photos.get(i) else { break };
-                let at = pos2(row_rect.left() + GRID_GAP + c as f32 * (cell + GRID_GAP), row_rect.top());
+                let at = pos2(
+                    row_rect.left() + GRID_GAP + c as f32 * (cell + GRID_GAP),
+                    row_rect.top(),
+                );
                 let rect = Rect::from_min_size(at, vec2(cell, cell + NAME_HEIGHT));
-                let resp = ui.interact(rect, ui.make_persistent_id(("cell", &f.path)), Sense::click());
+                let resp = ui.interact(
+                    rect,
+                    ui.make_persistent_id(("cell", &f.path)),
+                    Sense::click(),
+                );
                 let selected = props.selected == Some(f.path.as_path());
-                resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::ListItem, true, selected, &f.name));
+                resp.widget_info(|| {
+                    egui::WidgetInfo::selected(egui::Role::ListItem, true, selected, &f.name)
+                });
                 let thumb = textures.thumb(&f.path, &props.keys[i]);
                 paint_cell(ui, &p, rect, cell, f, thumb, selected, resp.hovered());
                 if resp.clicked() {
@@ -669,9 +761,19 @@ fn paint_cell(
         }
     }
     if selected {
-        painter.rect_stroke(square.expand(2.0), radius, Stroke::new(3.0, p.accent), StrokeKind::Outside);
+        painter.rect_stroke(
+            square.expand(2.0),
+            radius,
+            Stroke::new(3.0, p.accent),
+            StrokeKind::Outside,
+        );
     } else if hovered {
-        painter.rect_stroke(square, radius, Stroke::new(1.0, p.border_hover), StrokeKind::Inside);
+        painter.rect_stroke(
+            square,
+            radius,
+            Stroke::new(1.0, p.border_hover),
+            StrokeKind::Inside,
+        );
     }
     let font = FontId::proportional(11.5);
     let name = elide(ui, &f.name, font.clone(), cell - 4.0);
@@ -680,7 +782,11 @@ fn paint_cell(
         Align2::CENTER_CENTER,
         name,
         font,
-        if selected { p.text_primary } else { p.text_secondary },
+        if selected {
+            p.text_primary
+        } else {
+            p.text_secondary
+        },
     );
 }
 
@@ -766,7 +872,11 @@ pub fn preview(ui: &mut Ui, props: &PreviewProps<'_>, view: &mut PreviewView) ->
         egui::WidgetInfo::labeled(
             egui::Role::Image,
             true,
-            props.path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(),
+            props
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy())
+                .unwrap_or_default(),
         )
     });
     let painter = ui.painter_at(area);
@@ -801,9 +911,18 @@ pub fn preview(ui: &mut Ui, props: &PreviewProps<'_>, view: &mut PreviewView) ->
         } else {
             (area.width() / size.x).min(area.height() / size.y)
         };
-        let pan = if view.fit || !full { Vec2::ZERO } else { view.pan };
+        let pan = if view.fit || !full {
+            Vec2::ZERO
+        } else {
+            view.pan
+        };
         let rect = Rect::from_center_size(area.center() + pan, size * zoom);
-        painter.image(t.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        painter.image(
+            t.id(),
+            rect,
+            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
         if full {
             if resp.dragged() && !view.fit {
                 view.pan += resp.drag_delta();
@@ -819,7 +938,11 @@ pub fn preview(ui: &mut Ui, props: &PreviewProps<'_>, view: &mut PreviewView) ->
                 }
             }
             if resp.double_clicked() {
-                out.push(ViewAction::Act(if view.fit { Act::ZoomActual } else { Act::ZoomFit }));
+                out.push(ViewAction::Act(if view.fit {
+                    Act::ZoomActual
+                } else {
+                    Act::ZoomFit
+                }));
             }
         }
     } else if props.texture.is_none() {
@@ -849,7 +972,11 @@ pub struct InfoProps<'a> {
 }
 
 fn when(t: Option<std::time::SystemTime>) -> Option<String> {
-    t.map(|t| DateTime::<Local>::from(t).format("%Y-%m-%d %H:%M").to_string())
+    t.map(|t| {
+        DateTime::<Local>::from(t)
+            .format("%Y-%m-%d %H:%M")
+            .to_string()
+    })
 }
 
 pub fn info_pane(ui: &mut Ui, props: &InfoProps<'_>) -> Vec<ViewAction> {
@@ -933,14 +1060,22 @@ pub fn info_pane(ui: &mut Ui, props: &InfoProps<'_>) -> Vec<ViewAction> {
 }
 
 fn section(ui: &mut Ui, p: &Palette, title: &str) {
-    ui.label(RichText::new(title.to_uppercase()).size(11.0).color(p.text_muted));
+    ui.label(
+        RichText::new(title.to_uppercase())
+            .size(11.0)
+            .color(p.text_muted),
+    );
     ui.add_space(2.0);
 }
 
 fn field(ui: &mut Ui, p: &Palette, label: &str, value: Option<String>) {
     let Some(value) = value else { return };
     ui.label(RichText::new(label).size(11.5).color(p.text_tertiary));
-    ui.add(egui::Label::new(RichText::new(value).size(13.0).color(p.text_primary)).selectable(true).wrap());
+    ui.add(
+        egui::Label::new(RichText::new(value).size(13.0).color(p.text_primary))
+            .selectable(true)
+            .wrap(),
+    );
     ui.add_space(4.0);
 }
 
@@ -978,7 +1113,11 @@ pub fn no_photos(ui: &mut Ui, loading: bool, error: Option<&str>, others: usize)
             (Some(e), _) => format!("Couldn't read this folder: {e}"),
             (None, true) => "Reading…".to_string(),
             (None, false) if others > 0 => {
-                format!("No photos here. {} other {} in the Files pane.", others, if others == 1 { "file is" } else { "files are" })
+                format!(
+                    "No photos here. {} other {} in the Files pane.",
+                    others,
+                    if others == 1 { "file is" } else { "files are" }
+                )
             }
             (None, false) => "No photos in this folder.".to_string(),
         };
@@ -993,7 +1132,10 @@ mod tests {
     #[test]
     fn crops_to_the_centre_square() {
         let uv = square_uv(vec2(200.0, 100.0));
-        assert_eq!((uv.min.x, uv.max.x, uv.min.y, uv.max.y), (0.25, 0.75, 0.0, 1.0));
+        assert_eq!(
+            (uv.min.x, uv.max.x, uv.min.y, uv.max.y),
+            (0.25, 0.75, 0.0, 1.0)
+        );
         let uv = square_uv(vec2(100.0, 400.0));
         assert_eq!((uv.min.y, uv.max.y), (0.375, 0.625));
     }

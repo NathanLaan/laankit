@@ -30,8 +30,9 @@ use tokio::runtime::Runtime;
 
 use crate::config::Paths;
 
-/// GitHub `owner/repo` publishing NoteLiner releases (`update_repo`).
-const UPDATE_REPO: &str = "NathanLaan/noteliner";
+/// GitHub `owner/repo` publishing NoteLiner releases (`update_repo`), as
+/// `native-v*` tags.
+const UPDATE_REPO: &str = "NathanLaan/laankit";
 
 /// `DEFAULT_PRESENTATION` in `lib/slides.js`: what "Presentation" seeds.
 pub fn default_presentation() -> Value {
@@ -1076,10 +1077,17 @@ impl Backend {
             let status = if cfg!(debug_assertions) {
                 UpdateStatus::Unavailable { dev: true }
             } else {
-                match updates::check(UPDATE_REPO, env!("CARGO_PKG_VERSION")).await {
+                match updates::check(
+                    UPDATE_REPO,
+                    updates::NATIVE_TAG_PREFIX,
+                    env!("CARGO_PKG_VERSION"),
+                )
+                .await
+                {
                     Ok(UpdateCheck::Available(rel)) => UpdateStatus::Available {
                         version: rel.version,
                         notes: rel.notes,
+                        url: rel.url,
                     },
                     Ok(UpdateCheck::UpToDate { .. }) => UpdateStatus::Unavailable { dev: false },
                     Err(e) => UpdateStatus::Error(e.to_string()),

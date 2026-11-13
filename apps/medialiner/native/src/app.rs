@@ -368,7 +368,8 @@ impl MediaLinerApp {
 
     fn set_prefs(&mut self, patch: serde_json::Value) {
         if let Err(e) = self.paths.set_prefs(&patch) {
-            self.toasts.error(format!("Couldn't save preferences: {e:#}"));
+            self.toasts
+                .error(format!("Couldn't save preferences: {e:#}"));
         }
     }
 
@@ -376,7 +377,8 @@ impl MediaLinerApp {
 
     fn add_folder(&mut self, folder: PathBuf) {
         if !folder.is_dir() {
-            self.toasts.error(format!("{} isn't a folder.", folder.display()));
+            self.toasts
+                .error(format!("{} isn't a folder.", folder.display()));
             return;
         }
         match self.library.add(&folder) {
@@ -502,7 +504,11 @@ impl MediaLinerApp {
         out: &mut Vec<FolderRow>,
     ) {
         let open = !missing && self.expanded.contains(dir);
-        let kids = if open { self.children_of(dir) } else { Vec::new() };
+        let kids = if open {
+            self.children_of(dir)
+        } else {
+            Vec::new()
+        };
         let branch = if missing {
             None
         } else if open {
@@ -533,7 +539,9 @@ impl MediaLinerApp {
 
     /// The arrow keys in the tree.
     fn tree_step(&mut self, act: Act) {
-        let Some(current) = self.folder.clone() else { return };
+        let Some(current) = self.folder.clone() else {
+            return;
+        };
         let rows = self.folder_rows();
         let Some(i) = rows.iter().position(|r| r.path == current) else {
             return;
@@ -596,7 +604,9 @@ impl MediaLinerApp {
     }
 
     fn open_preview(&mut self, path: PathBuf) {
-        let Some(i) = self.photo_index(&path) else { return };
+        let Some(i) = self.photo_index(&path) else {
+            return;
+        };
         self.select(path.clone());
         self.preview = Some(path.clone());
         self.preview_view = PreviewView::default();
@@ -682,7 +692,11 @@ impl MediaLinerApp {
                 self.preview_view.zoom_by(factor, Vec2::ZERO, image, area);
             }
         } else {
-            let step = if factor > 1.0 { THUMB_STEP } else { -THUMB_STEP };
+            let step = if factor > 1.0 {
+                THUMB_STEP
+            } else {
+                -THUMB_STEP
+            };
             self.set_thumb_size(self.thumb_size + step);
         }
     }
@@ -751,7 +765,9 @@ impl MediaLinerApp {
                 self.merge_progress = Some((MergeKind::Undo, 0, j.moves.len()));
                 self.backend.undo_merge(j);
             }
-            Err(e) => self.toasts.error(format!("Couldn't read the merge's journal: {e:#}")),
+            Err(e) => self
+                .toasts
+                .error(format!("Couldn't read the merge's journal: {e:#}")),
         }
     }
 
@@ -1048,7 +1064,10 @@ impl MediaLinerApp {
                 }
                 Event::MergeProgress { done, total } => {
                     if let Some(Overlay::Merge(state)) = &mut self.overlay {
-                        if let Phase::Running { done: d, total: t, .. } = &mut state.phase {
+                        if let Phase::Running {
+                            done: d, total: t, ..
+                        } = &mut state.phase
+                        {
                             *d = done;
                             *t = total;
                         }
@@ -1393,7 +1412,8 @@ impl MediaLinerApp {
                     merging: self.backend.merging(),
                     cache_dir: &self.paths.thumbs_dir(),
                 };
-                let actions = overlays::settings::show(ctx, state, &mut self.theme, &props, top_inset);
+                let actions =
+                    overlays::settings::show(ctx, state, &mut self.theme, &props, top_inset);
                 for a in actions {
                     match a {
                         SettingsAction::Close => keep = false,

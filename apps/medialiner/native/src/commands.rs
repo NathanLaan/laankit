@@ -124,16 +124,33 @@ pub fn registry() -> Registry<Act, View> {
             .when(ready),
     );
     r.register(
-        add("folders.remove", "Remove Folder from List", "Folders", Act::RemoveFolder).when(root),
+        add(
+            "folders.remove",
+            "Remove Folder from List",
+            "Folders",
+            Act::RemoveFolder,
+        )
+        .when(root),
     );
     r.register(
-        add("folders.merge", "Merge Folder Into…", "Folders", Act::MergeInto).when(folder),
+        add(
+            "folders.merge",
+            "Merge Folder Into…",
+            "Folders",
+            Act::MergeInto,
+        )
+        .when(folder),
     );
     r.register(
-        add("folders.undoMerge", "Undo Last Merge", "Folders", Act::UndoMerge)
-            .key(key(cmd, Key::Z))
-            .shortcut("Ctrl+Z")
-            .when(undo),
+        add(
+            "folders.undoMerge",
+            "Undo Last Merge",
+            "Folders",
+            Act::UndoMerge,
+        )
+        .key(key(cmd, Key::Z))
+        .shortcut("Ctrl+Z")
+        .when(undo),
     );
     r.register(
         add("folders.refresh", "Refresh", "Folders", Act::Refresh)
@@ -142,8 +159,13 @@ pub fn registry() -> Registry<Act, View> {
             .when(folder),
     );
     r.register(
-        add("folders.toggleSubfolders", "Toggle Include Subfolders", "Folders", Act::ToggleSubfolders)
-            .when(folder),
+        add(
+            "folders.toggleSubfolders",
+            "Toggle Include Subfolders",
+            "Folders",
+            Act::ToggleSubfolders,
+        )
+        .when(folder),
     );
 
     // The tree's arrows come first: they win while the tree has the keys.
@@ -187,11 +209,16 @@ pub fn registry() -> Registry<Act, View> {
             .when(grid_photo),
     );
     r.register(
-        add("photo.previous", "Previous Photo", "Photos", Act::PreviousPhoto)
-            .key(key(none, Key::ArrowLeft))
-            .key(key(none, Key::PageUp))
-            .shortcut("Left")
-            .when(|v| in_preview(v) || in_grid(v)),
+        add(
+            "photo.previous",
+            "Previous Photo",
+            "Photos",
+            Act::PreviousPhoto,
+        )
+        .key(key(none, Key::ArrowLeft))
+        .key(key(none, Key::PageUp))
+        .shortcut("Left")
+        .when(|v| in_preview(v) || in_grid(v)),
     );
     r.register(
         add("photo.next", "Next Photo", "Photos", Act::NextPhoto)
@@ -225,13 +252,24 @@ pub fn registry() -> Registry<Act, View> {
             .when(|v| in_preview(v) || in_grid(v)),
     );
     r.register(
-        add("photo.openInFolder", "Open in Folder", "Photos", Act::OpenInFolder)
-            .key(Binding::physical(shift, Key::R))
-            .shortcut("Ctrl+Shift+R")
-            .when(photo),
+        add(
+            "photo.openInFolder",
+            "Open in Folder",
+            "Photos",
+            Act::OpenInFolder,
+        )
+        .key(Binding::physical(shift, Key::R))
+        .shortcut("Ctrl+Shift+R")
+        .when(photo),
     );
     r.register(
-        add("photo.openWith", "Open With Default App", "Photos", Act::OpenWithDefault).when(photo),
+        add(
+            "photo.openWith",
+            "Open With Default App",
+            "Photos",
+            Act::OpenWithDefault,
+        )
+        .when(photo),
     );
     r.register(add("photo.copyPath", "Copy Path", "Photos", Act::CopyPath).when(photo));
 
@@ -267,22 +305,37 @@ pub fn registry() -> Registry<Act, View> {
             .when(ready),
     );
     r.register(
-        add("view.toggleFolders", "Toggle Folders Pane", "View", Act::ToggleFolders)
-            .key(key(cmd, Key::B))
-            .shortcut("Ctrl+B")
-            .when(ready),
+        add(
+            "view.toggleFolders",
+            "Toggle Folders Pane",
+            "View",
+            Act::ToggleFolders,
+        )
+        .key(key(cmd, Key::B))
+        .shortcut("Ctrl+B")
+        .when(ready),
     );
     r.register(
-        add("view.toggleFiles", "Toggle Files Pane", "View", Act::ToggleFiles)
-            .key(Binding::physical(shift, Key::F))
-            .shortcut("Ctrl+Shift+F")
-            .when(ready),
+        add(
+            "view.toggleFiles",
+            "Toggle Files Pane",
+            "View",
+            Act::ToggleFiles,
+        )
+        .key(Binding::physical(shift, Key::F))
+        .shortcut("Ctrl+Shift+F")
+        .when(ready),
     );
     r.register(
-        add("view.toggleStatusBar", "Toggle Status Bar", "View", Act::ToggleStatusBar)
-            .key(key(cmd, Key::J))
-            .shortcut("Ctrl+J")
-            .when(ready),
+        add(
+            "view.toggleStatusBar",
+            "Toggle Status Bar",
+            "View",
+            Act::ToggleStatusBar,
+        )
+        .key(key(cmd, Key::J))
+        .shortcut("Ctrl+J")
+        .when(ready),
     );
     r.register(
         add("app.settings", "Settings", "App", Act::Settings)
@@ -321,7 +374,9 @@ mod tests {
             r.commands()
                 .iter()
                 .find(|c| {
-                    c.bindings.iter().any(|b| b.matches(k, None, Modifiers::NONE))
+                    c.bindings
+                        .iter()
+                        .any(|b| b.matches(k, None, Modifiers::NONE))
                         && Registry::is_applicable(c, v)
                 })
                 .map(|c| c.action)
