@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.printliner.app</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>PrintLiner</name>
+  <summary>Live status of your Bambu Lab 3D printers</summary>
+  <developer id="com.nathanlaan">
+    <name>Nathan Laan</name>
+  </developer>
+  <description>
+    <p>
+      PrintLiner is a dashboard for the Bambu Lab 3D printers on your Bambu
+      account. It signs in through the Bambu Lab cloud, so the printers stay
+      in their normal mode and Bambu Studio and Handy keep working.
+    </p>
+    <ul>
+      <li>A card per printer: state, progress, time left, layer, and filament</li>
+      <li>Printer detail: temperatures, AMS trays, HMS alerts, and task history</li>
+      <li>Trends of temperatures and progress over a day or a week</li>
+      <li>The sign-in token kept in your system keychain; the password never saved</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.printliner.app.desktop</launchable>
+  <provides>
+    <binary>printliner</binary>
+  </provides>
+  <url type="homepage">https://github.com/NathanLaan/laankit</url>
+  <url type="bugtracker">https://github.com/NathanLaan/laankit/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-07"/>
+  </releases>
+</component>

@@ -45,11 +45,12 @@ pub enum Tool {
     ElbowLine,
     ElbowArrow,
     Text,
+    Note,
 }
 
 impl Tool {
     /// In toolbar order. The [`Tool::MORE`] shapes share one button.
-    pub const ALL: [Tool; 20] = [
+    pub const ALL: [Tool; 21] = [
         Tool::Select,
         Tool::Rect,
         Tool::RoundRect,
@@ -70,6 +71,7 @@ impl Tool {
         Tool::ElbowLine,
         Tool::ElbowArrow,
         Tool::Text,
+        Tool::Note,
     ];
 
     /// Behind the toolbar's More Shapes button.
@@ -137,6 +139,7 @@ impl Tool {
             Tool::InvertedTrapezoid => Some(ShapeKind::InvertedTrapezoid),
             Tool::Asymmetric => Some(ShapeKind::Asymmetric),
             Tool::Text => Some(ShapeKind::Text),
+            Tool::Note => Some(ShapeKind::Note),
             _ => None,
         }
     }

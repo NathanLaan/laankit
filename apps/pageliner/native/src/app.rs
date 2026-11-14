@@ -700,7 +700,12 @@ impl PageLinerApp {
                         self.backend.check_updates();
                     }
                     Some(AboutAction::OpenUrl(url)) => ctx.open_url(egui::OpenUrl::new_tab(url)),
-                    Some(AboutAction::Download | AboutAction::Install) | None => {}
+                    Some(AboutAction::Download) => {
+                        if let UpdateStatus::Available { url, .. } = &self.update {
+                            ctx.open_url(egui::OpenUrl::new_tab(url));
+                        }
+                    }
+                    Some(AboutAction::Install) | None => {}
                 }
             }
         }

@@ -135,7 +135,8 @@ fn new_rename_and_delete() {
         read(&folder, "Payments").contains("x[\"x\"]"),
         "edits waiting for the old name moved with it"
     );
-    assert_eq!(paths.prefs().last_diagram.as_deref(), Some("Payments"));
+    assert_eq!(paths.prefs().active_file, Some(folder.join("Payments.mmd")));
+    assert_eq!(h.state().tab_names(), ["Diagram", "Payments"]);
 
     // Delete (from the palette), confirmed: its neighbour opens.
     h.key_press_modifiers(Modifiers::COMMAND, Key::K);
@@ -248,17 +249,19 @@ fn without_a_folder_and_reopening() {
 fn the_command_line_opens_a_diagram_or_a_folder() {
     let (_tmp, paths, mut h) = harness();
     h.run_steps(2);
+    let folder = project(&paths);
     let other = tempfile::tempdir().unwrap();
     for name in ["a", "b"] {
         fs::write(other.path().join(format!("{name}.mmd")), "flowchart TD\n").unwrap();
     }
     fs::write(other.path().join("notes.txt"), "").unwrap();
 
-    // A file: its folder, with it open.
+    // A file: in a tab of its own; the project stays.
     h.state_mut().open_path(&other.path().join("b.mmd"));
     h.run_steps(2);
-    assert_eq!(project(&paths), other.path());
+    assert_eq!(project(&paths), folder);
     assert_eq!(h.state().doc_name(), Some("b"));
+    assert_eq!(h.state().tab_names(), ["Diagram", "b"]);
 
     // Not a diagram, or missing: an error, and the diagram stays open.
     for bad in ["notes.txt", "missing.mmd"] {
@@ -268,10 +271,13 @@ fn the_command_line_opens_a_diagram_or_a_folder() {
     }
     h.get_by_label_contains("no such file");
 
-    // A folder: its first diagram.
+    // A folder: the project, in place of the last one, whose files close.
+    // b is from the new folder, so it stays open.
     h.state_mut().open_path(other.path());
     h.run_steps(2);
-    assert_eq!(h.state().doc_name(), Some("a"));
+    assert_eq!(project(&paths), other.path());
+    assert_eq!(h.state().tab_names(), ["b"]);
+    assert_eq!(h.state().doc_name(), Some("b"));
 }
 
 #[test]

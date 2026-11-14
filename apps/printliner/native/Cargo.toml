@@ -1,0 +1,130 @@
+[package]
+name = "printliner-native"
+version = "0.1.0"
+description = "PrintLiner: a dashboard for Bambu Lab 3D printers, through the Bambu Lab cloud. An egui UI over printliner-core."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "printliner"
+path = "src/main.rs"
+
+[dependencies]
+printliner-core.workspace = true
+laankit-core.workspace = true
+laankit-egui.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+eframe.workspace = true
+egui.workspace = true
+egui_extras.workspace = true
+env_logger.workspace = true
+image.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+# build.rs embeds the icon in the .exe (Windows hosts only).
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+
+[dev-dependencies]
+egui_kittest.workspace = true
+tempfile = "3"
+wiremock = "0.6"
+
+# --- Packaging (docs/packaging.md) --------------------------------------------
+# Run `cargo run -p xtask -- icons` first: the icons come from packaging/generated.
+# As BlockLiner's: no git, and no older package names.
+
+[package.metadata.deb]
+name = "printliner"
+maintainer = "Nathan Laan <NathanLaan@users.noreply.github.com>"
+copyright = "2026, Nathan Laan"
+license-file = ["../../../LICENSE", "0"]
+extended-description = """\
+A dashboard for the Bambu Lab 3D printers on your Bambu account: live \
+status, progress, temperatures, AMS trays, HMS alerts, and task history, \
+through the Bambu Lab cloud."""
+section = "utils"
+priority = "optional"
+# $auto adds libc/libgcc. The rest are dlopened by winit/glutin/fontconfig, so
+# dpkg-shlibdeps can't see them.
+depends = "$auto, libegl1, libgl1, libfontconfig1, libxkbcommon0, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrender1, libxkbcommon-x11-0"
+assets = [
+    ["target/release/printliner", "usr/bin/", "755"],
+    ["../../../packaging/linux/com.printliner.app.desktop", "usr/share/applications/", "644"],
+    ["../../../packaging/linux/com.printliner.app.metainfo.xml", "usr/share/metainfo/", "644"],
+    ["../../../packaging/generated/printliner/icons/16x16/com.printliner.app.png", "usr/share/icons/hicolor/16x16/apps/", "644"],
+    ["../../../packaging/generated/printliner/icons/24x24/com.printliner.app.png", "usr/share/icons/hicolor/24x24/apps/", "644"],
+    ["../../../packaging/generated/printliner/icons/32x32/com.printliner.app.png", "usr/share/icons/hicolor/32x32/apps/", "644"],
+    ["../../../packaging/generated/printliner/icons/48x48/com.printliner.app.png", "usr/share/icons/hicolor/48x48/apps/", "644"],
+    ["../../../packaging/generated/printliner/icons/64x64/com.printliner.app.png", "usr/share/icons/hicolor/64x64/apps/", "644"],
+    ["../../../packaging/generated/printliner/icons/128x128/com.printliner.app.png", "usr/share/icons/hicolor/128x128/apps/", "644"],
+    ["../../../packaging/generated/printliner/icons/256x256/com.printliner.app.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
+    ["../../../packaging/generated/printliner/icons/512x512/com.printliner.app.png", "usr/share/icons/hicolor/512x512/apps/", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "printliner"
+license = "MIT"
+summary = "Dashboard for Bambu Lab 3D printers"
+url = "https://github.com/NathanLaan/laankit"
+assets = [
+    { source = "target/release/printliner", dest = "/usr/bin/printliner", mode = "755" },
+    { source = "../../../packaging/linux/com.printliner.app.desktop", dest = "/usr/share/applications/com.printliner.app.desktop", mode = "644" },
+    { source = "../../../packaging/linux/com.printliner.app.metainfo.xml", dest = "/usr/share/metainfo/com.printliner.app.metainfo.xml", mode = "644" },
+    { source = "../../../packaging/generated/printliner/icons/16x16/com.printliner.app.png", dest = "/usr/share/icons/hicolor/16x16/apps/com.printliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/printliner/icons/24x24/com.printliner.app.png", dest = "/usr/share/icons/hicolor/24x24/apps/com.printliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/printliner/icons/32x32/com.printliner.app.png", dest = "/usr/share/icons/hicolor/32x32/apps/com.printliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/printliner/icons/48x48/com.printliner.app.png", dest = "/usr/share/icons/hicolor/48x48/apps/com.printliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/printliner/icons/64x64/com.printliner.app.png", dest = "/usr/share/icons/hicolor/64x64/apps/com.printliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/printliner/icons/128x128/com.printliner.app.png", dest = "/usr/share/icons/hicolor/128x128/apps/com.printliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/printliner/icons/256x256/com.printliner.app.png", dest = "/usr/share/icons/hicolor/256x256/apps/com.printliner.app.png", mode = "644" },
+    { source = "../../../packaging/generated/printliner/icons/512x512/com.printliner.app.png", dest = "/usr/share/icons/hicolor/512x512/apps/com.printliner.app.png", mode = "644" },
+]
+# Sonames, not package names, so the requirements hold across RPM distros.
+[package.metadata.generate-rpm.requires]
+"libEGL.so.1()(64bit)" = "*"
+"libGL.so.1()(64bit)" = "*"
+"libfontconfig.so.1()(64bit)" = "*"
+"libxkbcommon.so.0()(64bit)" = "*"
+"libxkbcommon-x11.so.0()(64bit)" = "*"
+"libwayland-client.so.0()(64bit)" = "*"
+"libwayland-egl.so.1()(64bit)" = "*"
+"libX11.so.6()(64bit)" = "*"
+"libX11-xcb.so.1()(64bit)" = "*"
+"libXcursor.so.1()(64bit)" = "*"
+"libXi.so.6()(64bit)" = "*"
+"libXrender.so.1()(64bit)" = "*"
+
+# AppImage, the Windows NSIS installer and the macOS .app/.dmg (cargo-packager).
+[package.metadata.packager]
+product-name = "PrintLiner"
+identifier = "com.printliner.app"
+description = "Dashboard for Bambu Lab 3D printers"
+homepage = "https://github.com/NathanLaan/laankit"
+authors = ["Nathan Laan"]
+publisher = "Nathan Laan"
+copyright = "Copyright (c) 2026 Nathan Laan"
+license-file = "../../../LICENSE"
+category = "Utility"
+out-dir = "../../../target/packages/printliner"
+binaries-dir = "../../../target/release"
+binaries = [{ path = "printliner", main = true }]
+icons = ["../../../packaging/generated/printliner/icons/*/com.printliner.app.png"]
+
+# The AppImage's desktop entry (cargo-packager builds it from its deb config).
+[package.metadata.packager.deb]
+desktop-template = "../../../packaging/linux/com.printliner.app.appimage.desktop.hbs"
+
+[package.metadata.packager.nsis]
+installer-icon = "../../../packaging/generated/printliner/com.printliner.app.ico"
+installer-mode = "currentUser"
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"

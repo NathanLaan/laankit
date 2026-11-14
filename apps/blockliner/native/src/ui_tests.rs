@@ -1,6 +1,7 @@
 //! Drives the app headlessly (egui_kittest) against a temp config folder
 //! and project folder: picking tools from the toolbar and the keyboard, zooming and panning the
-//! canvas, and the grid settings reaching `ui-preferences.json`.
+//! canvas, and the grid, unit, and dimension-line settings reaching
+//! `ui-preferences.json`.
 
 use blockliner_core::{Diagram, Rect, Shape, ShapeKind};
 use egui::{pos2, Event, Key, Modifiers, PointerButton, Pos2};
@@ -11,11 +12,13 @@ use serde_json::Value;
 use crate::app::BlockLinerApp;
 use crate::canvas::Tool;
 use crate::config::Paths;
+use crate::units::Unit;
 
 pub(crate) type H = Harness<'static, BlockLinerApp>;
 
 /// The app with the diagram `Diagram` open from `<tmp>/project`, the
-/// sidebar hidden (so the canvas starts just right of the toolbar).
+/// sidebar hidden (so the canvas starts just right of the toolbar) and the
+/// Files pane off.
 pub(crate) fn harness() -> (tempfile::TempDir, Paths, Harness<'static, BlockLinerApp>) {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("project");
@@ -32,6 +35,9 @@ pub(crate) fn harness() -> (tempfile::TempDir, Paths, Harness<'static, BlockLine
         .set_prefs(&serde_json::json!({
             "lastProject": project,
             "sidebarVisible": false,
+            // So the Properties pane has the room it had before the Files
+            // pane; `ui_tests_tabs` shows it.
+            "filesVisible": false,
         }))
         .unwrap();
     app_harness(paths.clone(), tmp)
@@ -88,11 +94,12 @@ pub(crate) fn drag(
 const KITTEST_MARGIN: f32 = 8.0;
 
 /// The canvas starts at 100 % with the model origin at its top-left corner,
-/// just right of the 48 px toolbar, so `at(x, y)` is model (x, y).
+/// just right of the 48 px toolbar and below the tab strip, so `at(x, y)` is
+/// model (x, y).
 pub(crate) fn at(x: f32, y: f32) -> Pos2 {
     pos2(
         KITTEST_MARGIN + laankit_egui::toolbar::WIDTH + x,
-        KITTEST_MARGIN + y,
+        KITTEST_MARGIN + crate::views::TAB_HEIGHT + y,
     )
 }
 
@@ -167,6 +174,7 @@ fn tools_from_the_toolbar_and_the_keyboard() {
         (Key::H, Tool::Hexagon),
         (Key::C, Tool::Database),
         (Key::S, Tool::Subroutine),
+        (Key::N, Tool::Note),
         (Key::V, Tool::Select),
     ] {
         h.key_press(key);
@@ -185,6 +193,7 @@ fn tools_from_the_toolbar_and_the_keyboard() {
         (Key::Num7, Tool::ElbowLine),
         (Key::Num8, Tool::ElbowArrow),
         (Key::Num9, Tool::Text),
+        (Key::Num0, Tool::Note),
         (Key::Num1, Tool::Select),
     ] {
         h.key_press(key);
@@ -291,6 +300,36 @@ fn grid_settings_are_saved() {
     h.run_steps(2);
     assert!(h.state().canvas().show_grid);
     assert_eq!(prefs(&paths)["showGrid"], true);
+}
+
+#[test]
+fn units_and_dimension_lines_are_saved() {
+    let (_tmp, paths, mut h) = harness();
+    h.run_steps(2);
+    assert!(!h.state().canvas().show_dimensions);
+    assert_eq!(h.state().canvas().unit, Unit::Cm);
+
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::D);
+    h.run_steps(2);
+    assert!(h.state().canvas().show_dimensions);
+    assert_eq!(prefs(&paths)["showDimensions"], true);
+    // Shapes to measure.
+    two_shapes(&mut h);
+    h.run_steps(2);
+
+    // Inches, and the lines off again, from Settings.
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    h.get_by_label("Units / Grid Mark").click();
+    h.run_steps(2);
+    h.get_by_label("Inches (in)").click();
+    h.run_steps(2);
+    assert_eq!(h.state().canvas().unit, Unit::In);
+    assert_eq!(prefs(&paths)["gridUnit"], "in");
+    h.get_by_label("Show Dimension Lines").click();
+    h.run_steps(2);
+    assert!(!h.state().canvas().show_dimensions);
+    assert_eq!(prefs(&paths)["showDimensions"], false);
 }
 
 #[test]

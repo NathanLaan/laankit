@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use super::label::encode;
-use super::{edge_key, FORMAT_VERSION, TEXT_CLASS};
+use super::{edge_key, FORMAT_VERSION, NOTE_CLASS, NOTE_CLASS_PROPS, TEXT_CLASS};
 use crate::model::{Connector, ConnectorKind, Diagram, End, Mid, Route, Shape, ShapeKind};
 use crate::style::Dash;
 
@@ -51,6 +51,12 @@ pub fn write(d: &Diagram) -> String {
         line(
             &mut out,
             format_args!("  classDef {TEXT_CLASS} fill:none,stroke:none"),
+        );
+    }
+    if d.shapes.iter().any(|s| s.kind == ShapeKind::Note) {
+        line(
+            &mut out,
+            format_args!("  classDef {NOTE_CLASS} {NOTE_CLASS_PROPS}"),
         );
     }
 
@@ -131,6 +137,7 @@ fn node(s: &Shape) -> String {
     let label = encode(&s.label);
     match &s.kind {
         ShapeKind::Text => format!("{}[\"{label}\"]:::{TEXT_CLASS}", s.id),
+        ShapeKind::Note => format!("{}[\"{label}\"]:::{NOTE_CLASS}", s.id),
         kind => {
             let (open, close) = kind.delimiters();
             format!("{}{open}\"{label}\"{close}{}", s.id, class(s))

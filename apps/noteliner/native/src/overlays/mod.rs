@@ -482,12 +482,16 @@ pub fn new_file(
 
 // --- Move File -----------------------------------------------------------------
 
-/// `MoveFileModal`.
+/// `MoveFileModal`, with a searchable New Parent list.
 pub struct MoveForm {
     pub id: String,
     pub name: String,
     pub current_parent: String,
     pub parent: Option<String>,
+    /// The New Parent search text.
+    pub query: String,
+    /// Focus the search and scroll to the chosen parent on the next frame.
+    reveal: bool,
 }
 
 impl MoveForm {
@@ -502,8 +506,64 @@ impl MoveForm {
             name: file.name.clone(),
             current_parent,
             parent: file.parent_id.clone(),
+            query: String::new(),
+            reveal: true,
         }
     }
+}
+
+/// The label of the "no parent" choice, whose id is empty.
+const NO_PARENT: &str = "(None)";
+/// The height of the New Parent list.
+const PARENT_LIST_HEIGHT: f32 = 196.0;
+const PARENT_ROW_HEIGHT: f32 = 28.0;
+
+/// The New Parent choices as `(id, label)`: every file outside `exclude`'s
+/// subtree whose name contains `query`, ignoring case. Without a query the
+/// labels are indented as a tree; with one they are the path from the root,
+/// since the matches' parents may be filtered out.
+fn parent_matches(entries: &[Entry], exclude: &str, query: &str) -> Vec<(String, String)> {
+    let query = query.trim().to_lowercase();
+    let mut out = Vec::new();
+    if NO_PARENT.to_lowercase().contains(&query) {
+        out.push((String::new(), NO_PARENT.to_string()));
+    }
+    let mut path: Vec<String> = Vec::new();
+    for (id, name, depth) in crate::model::parent_options(entries, Some(exclude)) {
+        path.truncate(depth);
+        path.push(name.clone());
+        if query.is_empty() {
+            out.push((id, format!("{}{name}", "\u{a0}\u{a0}".repeat(depth))));
+        } else if name.to_lowercase().contains(&query) {
+            out.push((id, path.join(" / ")));
+        }
+    }
+    out
+}
+
+/// A row of the New Parent list.
+fn parent_row(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
+    let p = theme::palette(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), PARENT_ROW_HEIGHT),
+        egui::Sense::click(),
+    );
+    resp.widget_info(|| {
+        egui::WidgetInfo::selected(egui::Role::ListBoxOption, true, selected, label)
+    });
+    if selected {
+        ui.painter().rect_filled(rect, 4.0, p.bg_selected);
+    } else if resp.hovered() {
+        ui.painter().rect_filled(rect, 4.0, p.bg_item_hover);
+    }
+    ui.painter().with_clip_rect(rect).text(
+        egui::pos2(rect.left() + 10.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(theme::BODY_SIZE),
+        if selected { p.accent } else { p.text_primary },
+    );
+    resp
 }
 
 pub fn move_file(
@@ -520,25 +580,74 @@ pub fn move_file(
         ui.label(RichText::new(&form.current_parent).color(p.text_primary));
         ui.add_space(10.0);
         dialog::field_label(ui, "New Parent");
-        let mut options: Vec<(String, String)> = vec![(String::new(), "(None)".into())];
-        for (id, name, depth) in crate::model::parent_options(entries, Some(&form.id)) {
-            options.push((id, format!("{}{name}", "\u{a0}\u{a0}".repeat(depth))));
+        let search = dialog::text_input(ui, &mut form.query, "Search files…", true);
+        let mut reveal = std::mem::take(&mut form.reveal);
+        if reveal {
+            search.request_focus();
         }
-        let opts: Vec<(&str, &str)> = options
-            .iter()
-            .map(|(a, b)| (a.as_str(), b.as_str()))
-            .collect();
-        if let Some(v) = shell::select(
-            ui,
-            "New Parent",
-            &opts,
-            form.parent.as_deref().unwrap_or(""),
-        ) {
-            form.parent = (!v.is_empty()).then_some(v);
+
+        let matches = parent_matches(entries, &form.id, &form.query);
+        let chosen = form.parent.as_deref().unwrap_or("");
+        let mut at = matches.iter().position(|m| m.0 == chosen);
+        let mut pick = None;
+        // Searching keeps a match chosen, so Enter moves to the first one.
+        if at.is_none() && search.changed() {
+            pick = (!matches.is_empty()).then_some(0);
         }
-        let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-        let out = form_buttons(ui, "OK", true);
-        if enter {
+        let (up, down) = ui.input(|i| {
+            (
+                i.key_pressed(egui::Key::ArrowUp),
+                i.key_pressed(egui::Key::ArrowDown),
+            )
+        });
+        if !matches.is_empty() && (up || down) {
+            pick = Some(match at {
+                Some(i) if down => (i + 1).min(matches.len() - 1),
+                Some(i) => i.saturating_sub(1),
+                None => 0,
+            });
+        }
+        if let Some(i) = pick {
+            form.parent = (!matches[i].0.is_empty()).then(|| matches[i].0.clone());
+            at = Some(i);
+            reveal = true;
+        }
+
+        let mut submit = false;
+        ui.add_space(2.0);
+        egui::Frame::new()
+            .fill(p.bg_surface)
+            .stroke(egui::Stroke::new(1.0, p.border))
+            .corner_radius(6)
+            .inner_margin(4)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("move-file-parents")
+                    .max_height(PARENT_LIST_HEIGHT)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 0.0;
+                        if matches.is_empty() {
+                            dialog::muted_text(ui, "No matching files.");
+                        }
+                        for (i, (id, label)) in matches.iter().enumerate() {
+                            let row = parent_row(ui, label, at == Some(i));
+                            if row.clicked() {
+                                form.parent = (!id.is_empty()).then(|| id.clone());
+                            }
+                            submit |= row.double_clicked();
+                            if reveal && at == Some(i) {
+                                row.scroll_to_me(None);
+                            }
+                        }
+                    });
+            });
+
+        // The chosen parent must be one of the matches, i.e. visible.
+        let ready = at.is_some() || matches.iter().any(|m| Some(&m.0) == form.parent.as_ref());
+        submit |= ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let out = form_buttons(ui, "OK", ready);
+        if submit && ready {
             return Some(FormAction::Submit);
         }
         out
@@ -735,5 +844,93 @@ mod tests {
         assert_eq!(f.name, "Alpha-Copy");
         assert!(f.tags.contains("x"));
         assert_eq!(f.parent.as_deref(), Some("p"));
+    }
+
+    fn entry(id: &str, name: &str, parent: Option<&str>) -> Entry {
+        Entry {
+            id: id.into(),
+            name: name.into(),
+            parent_id: parent.map(Into::into),
+            ..Default::default()
+        }
+    }
+
+    /// Projects ─ Garden ─ Tomatoes, and Recipes; moving Recipes.
+    fn tree() -> Vec<Entry> {
+        vec![
+            entry("p", "Projects", None),
+            entry("g", "Garden", Some("p")),
+            entry("t", "Tomatoes", Some("g")),
+            entry("r", "Recipes", None),
+        ]
+    }
+
+    #[test]
+    fn parent_search() {
+        let entries = tree();
+        let labels = |q: &str, exclude: &str| -> Vec<String> {
+            parent_matches(&entries, exclude, q)
+                .into_iter()
+                .map(|m| m.1)
+                .collect()
+        };
+        // No query: the tree, indented, without the moved file.
+        assert_eq!(
+            labels("", "r"),
+            [
+                "(None)",
+                "Projects",
+                "\u{a0}\u{a0}Garden",
+                "\u{a0}\u{a0}\u{a0}\u{a0}Tomatoes"
+            ]
+        );
+        // A query matches names, ignoring case, and labels them by path.
+        assert_eq!(labels(" TOMA ", "r"), ["Projects / Garden / Tomatoes"]);
+        assert_eq!(labels("none", "r"), ["(None)"]);
+        assert!(labels("zzz", "r").is_empty());
+        // The moved file's subtree is never offered.
+        assert!(labels("tom", "p").is_empty());
+    }
+
+    #[test]
+    fn move_dialog_filters_and_submits_the_first_match() {
+        use egui_kittest::kittest::Queryable;
+
+        struct State {
+            form: MoveForm,
+            entries: Vec<Entry>,
+            action: Option<FormAction>,
+        }
+        let entries = tree();
+        let form = MoveForm::new(&entries[3], &entries);
+        let mut h = egui_kittest::Harness::builder()
+            .with_context_setup(fonts::install)
+            .with_size(egui::vec2(800.0, 700.0))
+            .build_ui_state(
+                |ui, s: &mut State| {
+                    if let Some(a) = move_file(ui.ctx(), &mut s.form, &s.entries) {
+                        s.action = Some(a);
+                    }
+                },
+                State {
+                    form,
+                    entries,
+                    action: None,
+                },
+            );
+        h.run_steps(3);
+        assert!(h.query_by_label_contains("Tomatoes").is_some());
+
+        // The search is focused when the dialog opens.
+        h.get_by_role(egui::accesskit::Role::TextInput)
+            .type_text("gard");
+        h.run_steps(3);
+        assert!(h.query_by_label("Projects / Garden").is_some());
+        assert!(h.query_by_label_contains("Tomatoes").is_none());
+        assert_eq!(h.state().form.parent.as_deref(), Some("g"));
+
+        h.key_press(egui::Key::Enter);
+        h.run_steps(2);
+        assert!(matches!(h.state().action, Some(FormAction::Submit)));
     }
 }

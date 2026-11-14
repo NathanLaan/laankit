@@ -131,6 +131,17 @@ pub const PRESETS: [Preset; 8] = [
     },
 ];
 
+/// A note's fill and stroke where its own style doesn't set them: the
+/// Yellow preset's, in either theme. Its label then reads dark on the fill.
+pub const NOTE_FILL: &str = "#fef9c3";
+pub const NOTE_STROKE: &str = "#eab308";
+
+/// A note's folded corner: its fill, 10 % darker.
+pub fn fold_shade([r, g, b, a]: [u8; 4]) -> [u8; 4] {
+    let dim = |c: u8| (f32::from(c) * 0.9).round() as u8;
+    [dim(r), dim(g), dim(b), a]
+}
+
 /// Label colours on a fill: near-black or white.
 pub const DARK_TEXT: &str = "#111827";
 pub const LIGHT_TEXT: &str = "#ffffff";
@@ -917,5 +928,13 @@ mod tests {
         assert_eq!(s.label_rgba(), None, "no fill to contrast with");
         let s = Style::parse("fill:#000,color:red").unwrap();
         assert_eq!(s.label_rgba(), Some([255, 0, 0, 255]));
+    }
+
+    #[test]
+    fn note_colours() {
+        // The Yellow preset, which the Mermaid classDef also uses.
+        let yellow = PRESETS.iter().find(|p| p.name == "Yellow").unwrap();
+        assert_eq!((yellow.fill, yellow.stroke), (NOTE_FILL, NOTE_STROKE));
+        assert_eq!(fold_shade([200, 100, 0, 128]), [180, 90, 0, 128]);
     }
 }

@@ -9,8 +9,10 @@ mod canvas;
 mod commands;
 mod config;
 mod export;
+mod files;
 mod overlays;
 mod properties;
+mod units;
 mod views;
 
 #[cfg(test)]
@@ -32,6 +34,8 @@ mod ui_tests_lines;
 #[cfg(test)]
 mod ui_tests_more_shapes;
 #[cfg(test)]
+mod ui_tests_note;
+#[cfg(test)]
 mod ui_tests_project;
 #[cfg(test)]
 mod ui_tests_properties;
@@ -47,6 +51,8 @@ mod ui_tests_stroke_styles;
 mod ui_tests_stroke_weight;
 #[cfg(test)]
 mod ui_tests_styles;
+#[cfg(test)]
+mod ui_tests_tabs;
 #[cfg(test)]
 mod ui_tests_text_weight;
 

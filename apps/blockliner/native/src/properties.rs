@@ -1,4 +1,4 @@
-//! The Properties pane, below the diagram list: what's selected, Change
+//! The Properties pane, last in the sidebar: what's selected, Change
 //! Shape (the selected shapes' kind) and Change Line (whether the selected
 //! lines have arrowheads), then Fill and Stroke (the current value, Default
 //! and the presets as swatches, a hex field), Stroke Style (solid, dashed or
@@ -16,8 +16,7 @@ use blockliner_core::style::{
 use blockliner_core::{Diagram, ShapeKind};
 use egui::{pos2, vec2, Align2, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
 use laankit_egui::dialog::{self, ButtonKind};
-use laankit_egui::panes::HEADER_HEIGHT;
-use laankit_egui::{fonts, icons, theme};
+use laankit_egui::{icons, theme};
 
 use crate::canvas::paint::{self, SwatchLook};
 use crate::canvas::{
@@ -26,10 +25,7 @@ use crate::canvas::{
 use crate::overlays::colour::INVALID;
 use crate::views::Glyph;
 
-/// The pane's height when there's no saved one: room for everything with
-/// both Change Shape and Change Line showing (shapes and lines selected).
-pub const DEFAULT_HEIGHT: f32 = 680.0;
-/// Its smallest height, and the least the diagram list keeps above it.
+/// The pane's smallest height in the sidebar's pane stack.
 pub const MIN_HEIGHT: f32 = 120.0;
 
 /// What the pane asks for. The app maps them to the same commands as the
@@ -160,25 +156,6 @@ pub fn show(
     state: &mut PropertiesState,
     props: &PropertiesProps,
 ) -> Option<PropertiesAction> {
-    let p = theme::palette(ui.ctx());
-    let (header, _) =
-        ui.allocate_exact_size(vec2(ui.available_width(), HEADER_HEIGHT), Sense::hover());
-    let painter = ui.painter();
-    painter.rect_filled(header, 0.0, p.bg_base);
-    for y in [header.top() + 0.5, header.bottom() - 0.5] {
-        painter.hline(header.x_range(), y, egui::Stroke::new(1.0, p.border));
-    }
-    painter.text(
-        egui::pos2(header.left() + 16.0, header.center().y),
-        egui::Align2::LEFT_CENTER,
-        "PROPERTIES",
-        fonts::Style {
-            weight: Some(fonts::SEMIBOLD),
-            ..Default::default()
-        }
-        .font(11.0),
-        p.text_muted,
-    );
     egui::ScrollArea::vertical()
         .id_salt("blockliner-properties")
         .auto_shrink([false, false])

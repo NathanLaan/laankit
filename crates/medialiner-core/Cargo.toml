@@ -1,0 +1,23 @@
+[package]
+name = "medialiner-core"
+version = "0.1.0"
+description = "MediaLiner's backend: the folder list, folder scanning, media kinds, thumbnails and their cache, EXIF details, merging folders with a journal and undo, and showing a file in the file manager. UI-framework independent."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Photos: the workspace's formats plus BMP and TIFF.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }
+# EXIF details and embedded thumbnails (pure Rust).
+kamadak-exif = "0.6"
+# Open in Folder's fallback: the folder in the file manager.
+open = "5"
+
+[dev-dependencies]
+tempfile = "3"

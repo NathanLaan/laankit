@@ -16,14 +16,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libfontconfig1-dev
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned, so a new stable's clippy lints don't fail the build unannounced.
+      # Raise it together with the local toolchain (`rustup update stable`).
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.100"
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Lint
-        run: cargo clippy -p laankit-core -p laankit-egui -p laankit-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p laankit-editor -p noteliner-export -p noteliner-slides -p blockliner-core -p blockliner-native --all-targets -- -D warnings
+        run: cargo clippy -p laankit-core -p laankit-egui -p laankit-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p laankit-editor -p noteliner-export -p noteliner-slides -p blockliner-core -p blockliner-native -p printliner-core -p printliner-native -p medialiner-core -p medialiner-native --all-targets -- -D warnings
       - name: Test
         run: |
           git config --global user.name ci
           git config --global user.email ci@localhost
-          cargo test -p laankit-core -p laankit-egui -p laankit-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p laankit-editor -p noteliner-export -p noteliner-slides -p blockliner-core -p blockliner-native
+          cargo test -p laankit-core -p laankit-egui -p laankit-richtext -p threadliner-native -p pageliner-native -p pageliner-epub -p noteliner-core -p noteliner-native -p laankit-editor -p noteliner-export -p noteliner-slides -p blockliner-core -p blockliner-native -p printliner-core -p printliner-native -p medialiner-core -p medialiner-native

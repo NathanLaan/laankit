@@ -7,13 +7,16 @@
 //!   api["API Gateway"]
 //!   orders("Orders Service")
 //!   note_1["Payments are async"]:::bl_text
+//!   note_2["Retries are handled by the queue"]:::bl_note
 //!   api --> orders
 //!   classDef bl_text fill:none,stroke:none
+//!   classDef bl_note fill:#fef9c3,stroke:#eab308,color:#111827
 //!
 //! %% blockliner 1 grid=20
 //! %% @shape api x=40 y=80 w=160 h=60
 //! %% @shape orders x=280 y=80 w=160 h=60
 //! %% @shape note_1 x=280 y=180 w=200 h=40
+//! %% @shape note_2 x=520 y=180 w=160 h=80
 //! %% @edge api->orders from=E to=W
 //! %% @line arrow from=600,40 to=orders:N
 //! ```
@@ -50,6 +53,10 @@ pub use write::write;
 
 /// The `classDef` that makes a node a borderless text box.
 pub(crate) const TEXT_CLASS: &str = "bl_text";
+/// The `classDef` that makes a node a note, and its properties: the Yellow
+/// preset with dark text, so a note is a yellow box in any Mermaid renderer.
+pub(crate) const NOTE_CLASS: &str = "bl_note";
+pub(crate) const NOTE_CLASS_PROPS: &str = "fill:#fef9c3,stroke:#eab308,color:#111827";
 /// The `%% blockliner <version>` the writer emits.
 pub(crate) const FORMAT_VERSION: u32 = 1;
 

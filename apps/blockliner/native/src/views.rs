@@ -1,6 +1,6 @@
 //! The chrome around the canvas: the toolbar (tools at the top; Open
-//! Folder, Export, Settings and About at the bottom), the sidebar listing the
-//! folder's diagrams, the empty states and the status bar.
+//! Folder, Export, Settings and About at the bottom), the sidebar's Project
+//! and Files lists, the tab strip, the empty states and the status bar.
 
 use egui::text::{LayoutJob, TextWrapping};
 use egui::{
@@ -8,7 +8,7 @@ use egui::{
     StrokeKind, Ui,
 };
 use laankit_egui::dialog::{self, ButtonKind};
-use laankit_egui::panes::{self, HEADER_HEIGHT};
+use laankit_egui::panes;
 use laankit_egui::theme::Palette;
 use laankit_egui::toolbar::{self, ToolbarButton};
 use laankit_egui::{fonts, icons, theme};
@@ -408,7 +408,8 @@ pub(crate) fn paint_tool_icon(painter: &egui::Painter, tool: Tool, c: Pos2, ink:
             ));
         }
         // The canvas's own outlines, small.
-        Tool::Diamond
+        Tool::Note
+        | Tool::Diamond
         | Tool::Hexagon
         | Tool::Database
         | Tool::Subroutine
@@ -459,70 +460,19 @@ pub fn arrowhead(from: Pos2, to: Pos2, size: f32, fill: Color32) -> Shape {
 #[derive(Clone, Debug, PartialEq)]
 pub enum SidebarAction {
     Open(String),
-    New,
     Rename(String),
     Delete(String),
     /// Show the diagram's folder in the OS file manager.
     OpenContainingFolder(String),
 }
 
-/// The open folder's diagrams: a header with the folder's name and a New
-/// button, then a row per diagram (right-click to rename, delete or open
-/// its folder).
-pub fn sidebar(
-    ui: &mut Ui,
-    folder: &str,
-    names: &[String],
-    open: Option<&str>,
-) -> Vec<SidebarAction> {
+/// The Project pane's body: a row per diagram in the folder (right-click to
+/// rename, delete or open its folder). The pane stack draws the header,
+/// with the folder's name and the New button.
+pub fn project_list(ui: &mut Ui, names: &[String], open: Option<&str>) -> Vec<SidebarAction> {
     let p = theme::palette(ui.ctx());
     let mut out = Vec::new();
     ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
-
-    let (header, _) =
-        ui.allocate_exact_size(vec2(ui.available_width(), HEADER_HEIGHT), Sense::hover());
-    let painter = ui.painter();
-    painter.rect_filled(header, 0.0, p.bg_base);
-    painter.hline(
-        header.x_range(),
-        header.bottom() - 0.5,
-        Stroke::new(1.0, p.border),
-    );
-    let button = Rect::from_center_size(
-        pos2(header.right() - 22.0, header.center().y),
-        vec2(24.0, 24.0),
-    );
-    let title = one_line(
-        ui,
-        &folder.to_uppercase(),
-        fonts::Style {
-            weight: Some(fonts::SEMIBOLD),
-            ..Default::default()
-        }
-        .font(11.0),
-        p.text_muted,
-        button.left() - header.left() - 20.0,
-    );
-    ui.painter().galley(
-        pos2(
-            header.left() + 16.0,
-            header.center().y - title.size().y / 2.0,
-        ),
-        title,
-        p.text_muted,
-    );
-    let new = panes::header_button(
-        ui,
-        &p,
-        ui.scope_id().with("new-diagram"),
-        button,
-        icons::PLUS,
-        "New Diagram (Ctrl+N)",
-    );
-    if new.clicked() {
-        out.push(SidebarAction::New);
-    }
-
     ScrollArea::vertical()
         .id_salt("blockliner-diagrams")
         .auto_shrink([false, false])
@@ -534,7 +484,7 @@ pub fn sidebar(
             }
             for name in names {
                 let active = open == Some(name.as_str());
-                let resp = row(ui, &p, name, active);
+                let resp = row(ui, &p, &Row::plain(name, active));
                 if resp.clicked() && !active {
                     out.push(SidebarAction::Open(name.clone()));
                 }
@@ -559,13 +509,120 @@ pub fn sidebar(
     out
 }
 
-/// A diagram row: icon and name, the selected wash with an accent outline
-/// when it's open.
-fn row(ui: &mut Ui, p: &Palette, name: &str, active: bool) -> egui::Response {
+/// A 24 px icon button for a pane header (inside the header's
+/// right-to-left extras). `true` when clicked.
+pub fn pane_button(ui: &mut Ui, id: &str, glyph: &str, label: &str) -> bool {
+    let p = theme::palette(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(vec2(24.0, 24.0), Sense::hover());
+    panes::header_button(ui, &p, ui.scope_id().with(id), rect, glyph, label).clicked()
+}
+
+/// A row of the Files pane.
+pub struct FileRow {
+    pub name: String,
+    /// The folder, muted after the name: for a file outside the project or
+    /// one whose name another open file shares.
+    pub hint: Option<String>,
+    /// The full path, for the tooltip.
+    pub path: String,
+    /// In the active tab.
+    pub active: bool,
+    /// Has a tab.
+    pub tabbed: bool,
+    /// Deleted or moved outside BlockLiner.
+    pub missing: bool,
+}
+
+/// What the Files pane asks for, by row index.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FilesAction {
+    /// Open its tab (if closed) and make it active.
+    Open(usize),
+    /// Remove it from the list and close its tab.
+    Close(usize),
+    OpenContainingFolder(usize),
+}
+
+/// The Files pane's body: every open file, in the order opened. The pane
+/// stack draws the header, with the Open File button.
+pub fn files_list(ui: &mut Ui, rows: &[FileRow]) -> Vec<FilesAction> {
+    let p = theme::palette(ui.ctx());
+    let mut out = Vec::new();
+    ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+    ScrollArea::vertical()
+        .id_salt("blockliner-files")
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.add_space(4.0);
+            if rows.is_empty() {
+                ui.add_space(12.0);
+                ui.vertical_centered(|ui| dialog::muted_text(ui, "No files open."));
+            }
+            for (i, f) in rows.iter().enumerate() {
+                let look = Row {
+                    name: &f.name,
+                    hint: f.hint.as_deref(),
+                    active: f.active,
+                    marker: f.tabbed && !f.active,
+                    missing: f.missing,
+                };
+                let resp = row(ui, &p, &look);
+                let tip = if f.missing {
+                    format!("{} (missing)", f.path)
+                } else {
+                    f.path.clone()
+                };
+                let resp = resp.on_hover_text(tip);
+                if resp.clicked() && !f.active {
+                    out.push(FilesAction::Open(i));
+                }
+                resp.context_menu(|ui| {
+                    if ui.button("Close").clicked() {
+                        out.push(FilesAction::Close(i));
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Open Containing Folder…").clicked() {
+                        out.push(FilesAction::OpenContainingFolder(i));
+                        ui.close();
+                    }
+                });
+            }
+            ui.add_space(4.0);
+        });
+    out
+}
+
+/// How a sidebar row looks.
+struct Row<'a> {
+    name: &'a str,
+    hint: Option<&'a str>,
+    active: bool,
+    /// A dot on the right: the file has a tab.
+    marker: bool,
+    /// Struck through and muted.
+    missing: bool,
+}
+
+impl<'a> Row<'a> {
+    fn plain(name: &'a str, active: bool) -> Self {
+        Self {
+            name,
+            hint: None,
+            active,
+            marker: false,
+            missing: false,
+        }
+    }
+}
+
+/// A diagram row: icon, name and an optional folder hint, the selected wash
+/// with an accent outline when it's open.
+fn row(ui: &mut Ui, p: &Palette, r: &Row<'_>) -> egui::Response {
     let (rect, resp) =
         ui.allocate_exact_size(vec2(ui.available_width(), ROW_HEIGHT), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::ListItem, true, active, name));
-    if active {
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::ListItem, true, r.active, r.name));
+    if r.active {
         ui.painter().rect(
             rect,
             0.0,
@@ -576,7 +633,9 @@ fn row(ui: &mut Ui, p: &Palette, name: &str, active: bool) -> egui::Response {
     } else if resp.hovered() {
         ui.painter().rect_filled(rect, 0.0, p.bg_item_hover);
     }
-    let ink = if active {
+    let ink = if r.missing {
+        p.text_muted
+    } else if r.active {
         p.text_primary
     } else {
         p.text_secondary
@@ -586,21 +645,166 @@ fn row(ui: &mut Ui, p: &Palette, name: &str, active: bool) -> egui::Response {
         Align2::LEFT_CENTER,
         icons::OBJECT_GROUP,
         icons::font(12.0),
-        if active { p.accent } else { p.text_muted },
+        if r.active { p.accent } else { p.text_muted },
     );
+    let right = rect.right() - if r.marker { 24.0 } else { 10.0 };
     let text = one_line(
         ui,
-        name,
+        r.name,
         FontId::proportional(13.0),
         ink,
-        rect.right() - icon.right() - 18.0,
+        right - icon.right() - 8.0,
     );
-    ui.painter().galley(
-        pos2(icon.right() + 8.0, rect.center().y - text.size().y / 2.0),
+    let at = pos2(icon.right() + 8.0, rect.center().y - text.size().y / 2.0);
+    let name = Rect::from_min_size(at, text.size());
+    ui.painter().galley(at, text, ink);
+    if r.missing {
+        ui.painter()
+            .hline(name.x_range(), name.center().y, Stroke::new(1.0, ink));
+    }
+    if let Some(hint) = r.hint {
+        let room = right - name.right() - 6.0;
+        if room > 24.0 {
+            let hint = one_line(ui, hint, FontId::proportional(11.0), p.text_muted, room);
+            ui.painter().galley(
+                pos2(name.right() + 6.0, rect.center().y - hint.size().y / 2.0),
+                hint,
+                p.text_muted,
+            );
+        }
+    }
+    if r.marker {
+        ui.painter().circle_filled(
+            pos2(rect.right() - 14.0, rect.center().y),
+            3.0,
+            p.text_muted,
+        );
+    }
+    resp
+}
+
+/// The tab strip's height, above the canvas.
+pub const TAB_HEIGHT: f32 = 32.0;
+
+/// A tab above the canvas.
+pub struct TabItem {
+    pub name: String,
+    /// The full path, for the tooltip.
+    pub path: String,
+    pub active: bool,
+}
+
+/// What the tab strip asks for, by tab index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TabAction {
+    Activate(usize),
+    Close(usize),
+}
+
+/// The open tabs, scrolling sideways when they don't fit. A tab's close
+/// button shows on the active tab and under the pointer; a middle click
+/// closes it too. `reveal` scrolls the active tab into view.
+pub fn tab_strip(ui: &mut Ui, tabs: &[TabItem], reveal: bool) -> Option<TabAction> {
+    let p = theme::palette(ui.ctx());
+    let strip = ui.max_rect();
+    ui.painter().rect_filled(strip, 0.0, p.bg_surface);
+    ui.painter().hline(
+        strip.x_range(),
+        strip.bottom() - 0.5,
+        Stroke::new(1.0, p.border),
+    );
+    let mut out = None;
+    ScrollArea::horizontal()
+        .id_salt("blockliner-tabs")
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+            // A vertical wheel scrolls the strip sideways.
+            if ui.rect_contains_pointer(strip) {
+                let wheel = ui.input(|i| i.smooth_scroll_delta);
+                if wheel.y != 0.0 && wheel.x == 0.0 {
+                    ui.scroll_with_delta(vec2(wheel.y, 0.0));
+                }
+            }
+            ui.horizontal(|ui| {
+                for (i, tab) in tabs.iter().enumerate() {
+                    if let Some(a) = tab_widget(ui, &p, i, tab, reveal) {
+                        out = Some(a);
+                    }
+                }
+            });
+        });
+    out
+}
+
+fn tab_widget(
+    ui: &mut Ui,
+    p: &Palette,
+    i: usize,
+    tab: &TabItem,
+    reveal: bool,
+) -> Option<TabAction> {
+    let font = FontId::proportional(13.0);
+    let ink = if tab.active {
+        p.text_primary
+    } else {
+        p.text_secondary
+    };
+    let text = one_line(ui, &tab.name, font, ink, 220.0);
+    let width = 14.0 + text.size().x + 8.0 + 18.0 + 8.0;
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, TAB_HEIGHT), Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, tab.active, &tab.name));
+    if tab.active && reveal {
+        resp.scroll_to_me(None);
+    }
+    let painter = ui.painter();
+    if tab.active {
+        painter.rect_filled(rect, 0.0, p.bg_base);
+        painter.hline(rect.x_range(), rect.top() + 1.0, Stroke::new(2.0, p.accent));
+    } else if resp.hovered() {
+        painter.rect_filled(rect.shrink2(vec2(0.0, 0.5)), 0.0, p.bg_item_hover);
+    }
+    painter.vline(
+        rect.right() - 0.5,
+        rect.y_range(),
+        Stroke::new(1.0, p.border),
+    );
+    painter.galley(
+        pos2(rect.left() + 14.0, rect.center().y - text.size().y / 2.0),
         text,
         ink,
     );
-    resp
+    let close =
+        Rect::from_center_size(pos2(rect.right() - 17.0, rect.center().y), vec2(18.0, 18.0));
+    let label = format!("Close {}", tab.name);
+    let x = ui.interact(close, ui.scope_id().with(("tab-close", i)), Sense::click());
+    x.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
+    let show_x = tab.active || resp.hovered() || x.hovered();
+    if show_x {
+        if x.hovered() {
+            ui.painter().rect_filled(close, 4.0, p.bg_button_hover);
+        }
+        ui.painter().text(
+            close.center(),
+            Align2::CENTER_CENTER,
+            icons::XMARK,
+            icons::font(10.0),
+            if x.hovered() {
+                p.text_primary
+            } else {
+                p.text_muted
+            },
+        );
+    }
+    let resp = resp.on_hover_text(&tab.path);
+    if x.clicked() || resp.middle_clicked() {
+        Some(TabAction::Close(i))
+    } else if resp.clicked() && !tab.active {
+        Some(TabAction::Activate(i))
+    } else {
+        None
+    }
 }
 
 /// One line of text, cut with an ellipsis at `width`.
@@ -616,18 +820,26 @@ fn one_line(
     ui.fonts_mut(|f| f.layout_job(job))
 }
 
-/// Where the canvas goes when there's nothing to draw: no folder open, or
-/// no diagram in it.
-pub fn empty_state(ui: &mut Ui, project_open: bool) -> Option<Act> {
+/// Where the canvas goes when there's nothing to draw: no folder or file
+/// open, or no tab.
+pub fn empty_state(ui: &mut Ui, project_open: bool, files_open: bool) -> Option<Act> {
     let p = theme::palette(ui.ctx());
     ui.painter().rect_filled(ui.max_rect(), 0.0, p.bg_base);
     let (glyph, title, detail, button, act) = if project_open {
         (
             icons::OBJECT_GROUP,
             "No diagram open",
-            "Pick one in the sidebar, or start a new one.",
+            "Open a file from the Files or Project pane, or start a new one.",
             "New Diagram",
             Act::NewDiagram,
+        )
+    } else if files_open {
+        (
+            icons::OBJECT_GROUP,
+            "No diagram open",
+            "Open a file from the Files pane, or open another.",
+            "Open File…",
+            Act::OpenFile,
         )
     } else {
         (
@@ -685,12 +897,13 @@ pub struct StatusProps<'a> {
     /// With its icon.
     pub limitation: Option<(&'static str, String)>,
     pub grid: f32,
+    pub unit: crate::units::Unit,
     pub zoom: f32,
     /// The UI scale id (`100`, `125`, …).
     pub scale: &'a str,
 }
 
-/// Tool on the left; pointer position (in grid cells), grid, canvas zoom and
+/// Tool on the left; pointer position (in grid cells), grid and its unit, canvas zoom and
 /// UI scale on the right. The zoom is a button back to 100 %:
 /// `Some(Act::ZoomReset)` when clicked.
 pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
@@ -755,7 +968,7 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
         let cell = |v: f32| (v / props.grid).floor() as i64;
         parts.push(format!("{}, {}", cell(at.x), cell(at.y)));
     }
-    parts.push(format!("Grid {} px", props.grid));
+    parts.push(format!("Grid {} px = 1 {}", props.grid, props.unit.id()));
     let zoom = format!("Zoom {:.0}%", props.zoom * 100.0);
     parts.push(zoom.clone());
     parts.push(format!("UI {}%", props.scale));

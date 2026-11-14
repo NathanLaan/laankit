@@ -1,0 +1,30 @@
+[package]
+name = "printliner-core"
+version = "0.1.0"
+description = "PrintLiner's backend: the Bambu Lab cloud client (sign-in, devices, tasks), the cloud MQTT status session, printer status, HMS and AMS decoding, and status history. UI-framework independent."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+laankit-core.workspace = true
+log.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+# Cloud MQTT. Default features off: TLS is set up here, with rustls on the
+# ring provider (as reqwest's) and Mozilla's roots, not the OS store.
+rumqttc = { version = "0.25", default-features = false, features = ["use-rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
+# The access token, in the OS keychain.
+keyring = { version = "3", features = ["apple-native", "windows-native", "async-secret-service", "async-io", "crypto-rust"] }
+
+[dev-dependencies]
+tempfile = "3"
+wiremock = "0.6"
+rumqttd = { version = "0.20", default-features = false }

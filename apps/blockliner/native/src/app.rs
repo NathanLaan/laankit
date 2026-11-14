@@ -1,7 +1,14 @@
-//! The app: owns the open folder and diagram, the canvas, the current tool
-//! and the open dialog; routes commands (keyboard, palette, toolbar,
-//! sidebar) and dialog actions, autosaves, and picks up outside changes.
+//! The app: owns the open folder, the open files and their tabs, the
+//! canvas, the current tool and the open dialog; routes commands (keyboard,
+//! palette, toolbar, sidebar, tabs) and dialog actions, autosaves, and picks
+//! up outside changes.
+//!
+//! The active tab's diagram, undo history and view live in `diagram`,
+//! `history` and `canvas`, so the editing code knows nothing of tabs.
+//! Switching tabs writes the active one's edits, puts its state aside in
+//! `stash`, and loads the next one's (from `stash`, else from its file).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -16,6 +23,7 @@ use laankit_egui::diagnostics::{self, Screenshot};
 use laankit_egui::dialog::{self, Confirm};
 use laankit_egui::file_dialog::FileDialogs;
 use laankit_egui::palette::{CommandPalette, PaletteOutcome};
+use laankit_egui::panes::{self, Pane, PaneLayout};
 use laankit_egui::theme::{self, ThemeState};
 use laankit_egui::titlebar::{self, TitleBar, TitleBarAction};
 use laankit_egui::toast::Toasts;
@@ -23,23 +31,35 @@ use laankit_egui::{fonts, icons, window};
 use serde_json::{json, Value};
 
 use crate::backend::{self, Backend, Change, Event};
+use crate::canvas::view::View as CanvasView;
 use crate::canvas::{Canvas, MenuAction, Swatch, Tool};
 use crate::commands::{self, Act, View};
 use crate::config::Paths;
 use crate::export;
+use crate::files::{self, Files};
 use crate::overlays::colour::{ColourAction, ColourState};
 use crate::overlays::export::{ExportAction, ExportState};
 use crate::overlays::name::{NameAction, NameState};
 use crate::overlays::settings::{SettingsAction, SettingsState};
 use crate::overlays::{self, Overlay};
 use crate::properties::{self, PropertiesAction, PropertiesProps, PropertiesState};
-use crate::views::{self, SaveState, SidebarAction, StatusProps, ToolbarProps};
+use crate::views::{
+    self, FileRow, FilesAction, SaveState, SidebarAction, StatusProps, TabAction, TabItem,
+    ToolbarProps,
+};
 
 /// eframe storage keys.
 const THEME_KEY: &str = "blockliner-theme";
 const RECENTS_KEY: &str = "blockliner-recents";
-/// The Properties pane's height, kept with eframe's other layout state.
-const PROPERTIES_HEIGHT_KEY: &str = "blockliner-properties-height";
+/// The sidebar's panes (order and heights), kept with eframe's other
+/// layout state.
+const PANES_KEY: &str = "blockliner-panes";
+/// The sidebar's panes.
+const PROJECT_PANE: &str = "project";
+const FILES_PANE: &str = "files";
+const PROPERTIES_PANE: &str = "properties";
+/// The Project and Files panes' least height: the header and two rows.
+const LIST_MIN_HEIGHT: f32 = 104.0;
 const DESCRIPTION: &str =
     "A diagram editor for software architecture, saving Mermaid flowcharts. Built on the laankit framework.";
 const REPO_URL: &str = "https://github.com/NathanLaan/laankit";
@@ -53,12 +73,23 @@ struct Project {
     names: Vec<String>,
 }
 
-/// The diagram open on the canvas.
+/// The diagram in the active tab.
 struct Doc {
+    path: PathBuf,
+    /// Its name: the file name without `.mmd`.
     name: String,
     /// The diagram as last read or handed to the autosave: the canvas has
     /// unsaved edits while it differs.
     saved: Diagram,
+}
+
+/// A background tab's state, put aside while another tab is active. Its
+/// edits were written before it was put aside.
+struct Stash {
+    diagram: Diagram,
+    saved: Diagram,
+    history: History,
+    view: CanvasView,
 }
 
 pub struct BlockLinerApp {
@@ -67,21 +98,31 @@ pub struct BlockLinerApp {
     /// Whether the window was built undecorated, with LaanKit's title bar.
     custom_titlebar: bool,
     sidebar_visible: bool,
-    /// The Properties pane below the diagram list (`Ctrl+I`).
+    /// The Properties pane, last in the sidebar (`Ctrl+I`).
     properties_visible: bool,
     properties: PropertiesState,
-    /// Its height, set with the divider above it.
-    properties_height: f32,
+    /// The Files pane.
+    files_visible: bool,
+    /// The sidebar's panes: their order and heights.
+    panes: PaneLayout,
     status_bar_visible: bool,
     initialized: bool,
     backend: Backend,
     project: Option<Project>,
+    /// The Files pane's list and the tabs.
+    files: Files,
+    /// The active tab's diagram; `None` with no tab.
     doc: Option<Doc>,
+    /// Background tabs that have been open, by path. A tab without one
+    /// (restored at start, never shown) is read from its file when shown.
+    stash: HashMap<PathBuf, Stash>,
+    /// Scroll the active tab into view on the next frame.
+    reveal_tab: bool,
     /// egui time of the last look at the folder.
     last_scan: f64,
     /// The window title last sent.
     title: String,
-    /// The open diagram; an empty one while none is open.
+    /// The active tab's diagram; an empty one while none is open.
     diagram: Diagram,
     history: History,
     canvas: Canvas,
@@ -119,6 +160,8 @@ pub struct BlockLinerApp {
 /// A file dialog's answer.
 enum Picked {
     Folder(PathBuf),
+    /// Open File's `.mmd` files.
+    Files(Vec<PathBuf>),
     /// Where to export, with the Export dialog's choices when Export… was
     /// pressed.
     Export {
@@ -151,19 +194,23 @@ impl BlockLinerApp {
             sidebar_visible: prefs.sidebar_visible,
             properties_visible: prefs.properties_visible,
             properties: PropertiesState::default(),
-            properties_height: storage
-                .and_then(|s| eframe::get_value(s, PROPERTIES_HEIGHT_KEY))
-                .unwrap_or(properties::DEFAULT_HEIGHT),
+            files_visible: prefs.files_visible,
+            panes: storage
+                .and_then(|s| eframe::get_value(s, PANES_KEY))
+                .unwrap_or_else(default_panes),
             status_bar_visible: prefs.status_bar_visible,
             initialized: false,
             backend: Backend::new(backend::SAVE_DELAY),
             project: None,
+            files: Files::default(),
             doc: None,
+            stash: HashMap::new(),
+            reveal_tab: false,
             last_scan: 0.0,
             title: String::new(),
             history: History::new(&diagram),
             diagram,
-            canvas: Canvas::new(prefs.show_grid),
+            canvas: Canvas::new(prefs.show_grid, prefs.show_dimensions, prefs.grid_unit),
             tool: Tool::default(),
             more_shape: Tool::MORE[0],
             clip: None,
@@ -188,10 +235,48 @@ impl BlockLinerApp {
             #[cfg(test)]
             export_to: None,
         };
-        if let Some(folder) = prefs.last_project {
-            app.open_project(folder, prefs.last_diagram);
+        if let Some(folder) = prefs.last_project.clone() {
+            app.set_project(folder);
         }
+        app.restore_files(&prefs);
         app
+    }
+
+    /// The Files pane, the tabs and the active tab as BlockLiner last
+    /// closed with them. Before there were tabs (no `openFiles` yet), the
+    /// project's last diagram, else its first.
+    fn restore_files(&mut self, prefs: &crate::config::Prefs) {
+        let Some(list) = &prefs.open_files else {
+            let names = self.project.as_ref().map(|p| p.names.clone());
+            let pick = prefs
+                .last_diagram
+                .clone()
+                .filter(|n| names.as_ref().is_some_and(|names| names.contains(n)))
+                .or_else(|| names.and_then(|n| n.first().cloned()));
+            if let Some(name) = pick {
+                self.open_diagram(&name);
+            }
+            return;
+        };
+        for path in list.iter().filter(|p| p.is_file()) {
+            self.files.list.push(files::OpenFile {
+                path: path.clone(),
+                missing: false,
+            });
+        }
+        for tab in &prefs.open_tabs {
+            if self.files.contains(tab) && !self.files.has_tab(tab) {
+                self.files.tabs.push(tab.clone());
+            }
+        }
+        let active = prefs
+            .active_file
+            .clone()
+            .filter(|a| self.files.has_tab(a))
+            .or_else(|| self.files.tabs.first().cloned());
+        if let Some(path) = active {
+            self.open_file(&path);
+        }
     }
 
     /// Fonts and the theme, once per context.
@@ -283,6 +368,31 @@ impl BlockLinerApp {
         self.doc.as_ref().map(|d| d.name.as_str())
     }
 
+    /// The Files pane's files' names, in order.
+    #[cfg(test)]
+    pub fn file_names(&self) -> Vec<String> {
+        self.files
+            .list
+            .iter()
+            .map(|f| files::name(&f.path))
+            .collect()
+    }
+
+    /// The tabs' names, in order.
+    #[cfg(test)]
+    pub fn tab_names(&self) -> Vec<String> {
+        self.files.tabs.iter().map(|t| files::name(t)).collect()
+    }
+
+    /// Whether the Files pane shows `name` as missing.
+    #[cfg(test)]
+    pub fn is_missing(&self, name: &str) -> bool {
+        self.files
+            .list
+            .iter()
+            .any(|f| f.missing && files::name(&f.path) == name)
+    }
+
     #[cfg(test)]
     pub fn is_saving(&self) -> bool {
         self.backend.is_saving()
@@ -320,6 +430,8 @@ impl BlockLinerApp {
             modal_open: self.overlay.is_some() || self.palette.is_some(),
             project_open: self.project.is_some(),
             doc_open: self.doc.is_some(),
+            doc_in_project: self.doc_in_project(),
+            tabs: self.files.tabs.len(),
             has_content: self.has_content(),
             has_selection: self.canvas.has_selection(),
             straight_selected: self.canvas.selected_routes(&self.diagram).0,
@@ -332,6 +444,14 @@ impl BlockLinerApp {
             arrow_selected: kinds.any_arrow(),
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
+        }
+    }
+
+    /// The active tab's diagram is one of the project folder's.
+    fn doc_in_project(&self) -> bool {
+        match (&self.doc, &self.project) {
+            (Some(doc), Some(project)) => doc.path.parent() == Some(project.folder.as_path()),
+            _ => false,
         }
     }
 
@@ -372,6 +492,39 @@ impl BlockLinerApp {
             }
             Act::OpenFolder => self.pick_folder(),
             Act::CloseFolder => self.close_folder(),
+            Act::OpenFile => self.pick_files(),
+            Act::CloseTab => {
+                if let Some(path) = self.files.active.clone() {
+                    self.close_tab(&path);
+                }
+            }
+            Act::CloseFile => {
+                if let Some(path) = self.files.active.clone() {
+                    self.close_file(&path);
+                }
+            }
+            Act::NextTab => {
+                if let Some(path) = self.files.step(1) {
+                    self.open_file(&path);
+                }
+            }
+            Act::PreviousTab => {
+                if let Some(path) = self.files.step(-1) {
+                    self.open_file(&path);
+                }
+            }
+            // As Toggle Properties: hides the pane if it's showing,
+            // otherwise shows it with the sidebar.
+            Act::ToggleFiles => {
+                let showing = self.files_visible && self.sidebar_visible;
+                self.files_visible = !showing;
+                let mut patch = json!({ "filesVisible": !showing });
+                if !showing && !self.sidebar_visible {
+                    self.sidebar_visible = true;
+                    patch["sidebarVisible"] = json!(true);
+                }
+                self.set_prefs(patch);
+            }
             Act::Export => {
                 if self.has_content() {
                     self.overlay = Some(Overlay::Export(ExportState {
@@ -497,6 +650,7 @@ impl BlockLinerApp {
             Act::ZoomOut => self.canvas.zoom_step(-1),
             Act::ZoomReset => self.canvas.zoom_reset(),
             Act::ToggleGrid => self.set_show_grid(!self.canvas.show_grid),
+            Act::ToggleDimensions => self.set_show_dimensions(!self.canvas.show_dimensions),
             Act::ToggleStatusBar => {
                 self.status_bar_visible = !self.status_bar_visible;
                 self.set_prefs(json!({ "statusBarVisible": self.status_bar_visible }));
@@ -605,6 +759,11 @@ impl BlockLinerApp {
         self.set_prefs(json!({ "showGrid": on }));
     }
 
+    fn set_show_dimensions(&mut self, on: bool) {
+        self.canvas.show_dimensions = on;
+        self.set_prefs(json!({ "showDimensions": on }));
+    }
+
     fn open_settings(&mut self) {
         let prefs = self.paths.prefs();
         self.overlay = Some(Overlay::Settings(SettingsState::new(
@@ -613,6 +772,8 @@ impl BlockLinerApp {
             self.custom_titlebar,
             self.canvas.show_grid,
             self.diagram.grid,
+            self.canvas.unit,
+            self.canvas.show_dimensions,
         )));
     }
 
@@ -620,11 +781,16 @@ impl BlockLinerApp {
 
     /// Shows the folder holding diagram `name` in the OS file manager.
     fn open_containing_folder(&mut self, name: &str) {
-        let Some(project) = &self.project else {
+        if let Some(path) = self.path(name) {
+            self.show_folder_of(&path);
+        }
+    }
+
+    /// Shows the folder holding `path` in the OS file manager.
+    fn show_folder_of(&mut self, path: &Path) {
+        let Some(folder) = path.parent().map(Path::to_path_buf) else {
             return;
         };
-        let file = backend::file(&project.folder, name);
-        let folder = file.parent().unwrap_or(&project.folder).to_path_buf();
         // Tests record it rather than starting a file manager.
         #[cfg(test)]
         {
@@ -645,6 +811,28 @@ impl BlockLinerApp {
         });
     }
 
+    /// Open File: one or more `.mmd` files from anywhere.
+    fn pick_files(&mut self) {
+        // Tests open files with `open_path`, never the dialog.
+        if cfg!(test) {
+            return;
+        }
+        let start = self
+            .doc
+            .as_ref()
+            .and_then(|d| d.path.parent().map(Path::to_path_buf))
+            .or_else(|| self.project.as_ref().map(|p| p.folder.clone()));
+        self.dialogs.start(move || {
+            let mut dialog = rfd::FileDialog::new()
+                .set_title("Open File")
+                .add_filter("Mermaid diagram", &[backend::EXT]);
+            if let Some(start) = start {
+                dialog = dialog.set_directory(start);
+            }
+            dialog.pick_files().map(Picked::Files)
+        });
+    }
+
     /// A file dialog's answer.
     fn picked(&mut self, ctx: &egui::Context) {
         let Some(picked) = self.dialogs.poll() else {
@@ -652,6 +840,11 @@ impl BlockLinerApp {
         };
         match picked {
             Picked::Folder(folder) => self.open_project(folder, None),
+            Picked::Files(paths) => {
+                for path in paths {
+                    self.open_path(&path);
+                }
+            }
             Picked::Export {
                 path,
                 options,
@@ -666,46 +859,124 @@ impl BlockLinerApp {
         }
     }
 
-    /// Saves the open diagram and goes back to "No folder open"; the next
-    /// start opens no folder either. A failed save keeps the folder open
-    /// (its error is shown), so closing never loses an edit.
-    fn close_folder(&mut self) {
-        if self.project.is_none() {
-            return;
-        }
+    /// Writes the active tab's edits, a label being edited included.
+    /// `false` when the write failed (its error is shown).
+    fn write_active(&mut self) -> bool {
         self.canvas.commit_label(&mut self.diagram);
         self.autosave();
-        if !self.backend.flush() {
-            return;
-        }
-        self.close_doc();
-        self.project = None;
-        self.set_prefs(json!({ "lastProject": "", "lastDiagram": "" }));
+        self.backend.flush()
     }
 
-    /// Opens `folder` and the diagram `want` in it, else its first one.
-    pub fn open_project(&mut self, folder: PathBuf, want: Option<String>) {
-        let names = match Backend::list(&folder) {
-            Ok(names) => names,
+    /// Saves the open diagram, closes the folder's own files (their tabs
+    /// and Files rows; files from elsewhere stay open), and goes back to
+    /// "No folder open"; the next start opens no folder either. A failed
+    /// save keeps the folder open (its error is shown), so closing never
+    /// loses an edit.
+    fn close_folder(&mut self) {
+        let Some(folder) = self.project.as_ref().map(|p| p.folder.clone()) else {
+            return;
+        };
+        if !self.write_active() {
+            return;
+        }
+        let own = self.files.in_folder(&folder);
+        self.drop_files(&own);
+        self.project = None;
+        self.set_prefs(json!({ "lastProject": "" }));
+        self.save_files();
+    }
+
+    /// Takes `paths` out of the Files pane and the tabs, with no saving
+    /// (done already, or the files are gone). If the active tab went, the
+    /// next one left takes its place.
+    fn drop_files(&mut self, paths: &[PathBuf]) {
+        let mut next = None;
+        for path in paths {
+            if self.files.active.as_deref() == Some(path.as_path()) {
+                self.clear_active();
+            }
+            self.stash.remove(path);
+            self.backend.unwatch(path);
+            next = self.files.close(path).or(next);
+        }
+        let next = next.filter(|n| !paths.contains(n));
+        if self.doc.is_none() {
+            self.files.active = None;
+            if let Some(path) = next.or_else(|| self.files.tabs.first().cloned()) {
+                self.open_file(&path);
+            }
+        }
+    }
+
+    /// Empties the canvas: no active tab. Nothing is written.
+    fn clear_active(&mut self) {
+        self.doc = None;
+        self.load(self.blank());
+    }
+
+    /// A new, empty diagram on the preferred grid.
+    fn blank(&self) -> Diagram {
+        Diagram {
+            grid: self.paths.prefs().grid_size,
+            ..Diagram::new()
+        }
+    }
+
+    /// Makes `folder` the project, without opening anything. `false` when
+    /// it can't be read (its error is shown).
+    fn set_project(&mut self, folder: PathBuf) -> bool {
+        match Backend::list(&folder) {
+            Ok(names) => {
+                self.set_prefs(json!({ "lastProject": folder.to_string_lossy() }));
+                self.project = Some(Project { folder, names });
+                true
+            }
             Err(e) => {
                 self.toasts
                     .error(format!("Couldn't open {}: {e}", folder.display()));
-                return;
+                false
             }
-        };
-        self.close_doc();
-        let pick = want
-            .filter(|n| names.contains(n))
-            .or_else(|| names.first().cloned());
-        self.set_prefs(json!({ "lastProject": folder.to_string_lossy() }));
-        self.project = Some(Project { folder, names });
-        if let Some(name) = pick {
-            self.open_diagram(&name);
         }
     }
 
-    /// Opens what the command line names: a folder of diagrams, or one
-    /// `.mmd` file (its folder, with it open).
+    /// Opens `folder` as the project, closing the last project's files
+    /// first (as Close Folder does), and opens the diagram `want` in it.
+    /// Without `want`, its first diagram opens when no tab is open.
+    pub fn open_project(&mut self, folder: PathBuf, want: Option<String>) {
+        if let Err(e) = Backend::list(&folder) {
+            self.toasts
+                .error(format!("Couldn't open {}: {e}", folder.display()));
+            return;
+        }
+        let old = self.project.as_ref().map(|p| p.folder.clone());
+        if let Some(old) = old.filter(|old| *old != folder) {
+            if !self.write_active() {
+                return;
+            }
+            let own = self.files.in_folder(&old);
+            self.drop_files(&own);
+        }
+        if !self.set_project(folder) {
+            return;
+        }
+        let names = self
+            .project
+            .as_ref()
+            .map(|p| p.names.clone())
+            .unwrap_or_default();
+        let pick = match want {
+            Some(want) => names.iter().find(|n| **n == want).cloned(),
+            None if self.files.tabs.is_empty() => names.first().cloned(),
+            None => None,
+        };
+        if let Some(name) = pick {
+            self.open_diagram(&name);
+        }
+        self.save_files();
+    }
+
+    /// Opens what the command line (or Open File) names: a folder of
+    /// diagrams as the project, or one `.mmd` file in a tab.
     pub fn open_path(&mut self, path: &Path) {
         let path = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
         if path.is_dir() {
@@ -713,12 +984,8 @@ impl BlockLinerApp {
         } else if !path.is_file() {
             self.toasts
                 .error(format!("Couldn't open {}: no such file", path.display()));
-        } else if let (Some(folder), Some(name), true) = (
-            path.parent(),
-            path.file_stem().and_then(|s| s.to_str()),
-            path.extension().is_some_and(|e| e == backend::EXT),
-        ) {
-            self.open_project(folder.to_owned(), Some(name.to_owned()));
+        } else if path.extension().is_some_and(|e| e == backend::EXT) {
+            self.open_file(&path);
         } else {
             self.toasts.error(format!(
                 "Couldn't open {}: BlockLiner opens .{} diagrams",
@@ -732,17 +999,6 @@ impl BlockLinerApp {
         Some(backend::file(&self.project.as_ref()?.folder, name))
     }
 
-    /// Writes the open diagram's waiting edits and closes it.
-    fn close_doc(&mut self) {
-        self.backend.flush();
-        self.backend.close();
-        self.doc = None;
-        self.load(Diagram {
-            grid: self.paths.prefs().grid_size,
-            ..Diagram::new()
-        });
-    }
-
     /// Puts `d` on the canvas as a fresh start: no selection, no undo.
     fn load(&mut self, d: Diagram) {
         self.canvas.clear(true);
@@ -750,27 +1006,164 @@ impl BlockLinerApp {
         self.diagram = d;
     }
 
+    /// The project's diagram `name`, in a tab.
     fn open_diagram(&mut self, name: &str) {
-        let Some(path) = self.path(name) else {
-            return;
+        if let Some(path) = self.path(name) {
+            self.open_file(&path);
+        }
+    }
+
+    /// Opens `path` in a tab (adding it to the Files pane) and makes it the
+    /// active tab. The tab it replaces has its edits written and its state
+    /// put aside. `false` when the file can't be read; nothing changes then
+    /// but the file's Files row, which shows as missing if it's gone.
+    pub fn open_file(&mut self, path: &Path) -> bool {
+        let path = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
+        if self.doc.as_ref().is_some_and(|d| d.path == path) {
+            self.reveal_tab = true;
+            return true;
+        }
+        // Read before leaving the active tab, so a bad file changes nothing.
+        let fresh = if self.stash.contains_key(&path) {
+            None
+        } else {
+            let opened = Backend::read(&path).and_then(|text| {
+                let d = blockliner_core::read(&text)?;
+                Ok((text, d))
+            });
+            match opened {
+                Ok(opened) => Some(opened),
+                Err(e) => {
+                    let name = files::name(&path);
+                    self.toasts.error(format!("Couldn't open “{name}”: {e:#}"));
+                    if !path.exists() {
+                        self.mark_missing(&path);
+                    }
+                    if self.doc.is_none() {
+                        self.files.active = None;
+                    }
+                    return false;
+                }
+            }
         };
-        let opened = Backend::read(&path).and_then(|text| {
-            let d = blockliner_core::read(&text)?;
-            Ok((text, d))
-        });
-        match opened {
-            Ok((text, d)) => {
-                self.close_doc();
+        self.leave_tab();
+        let name = files::name(&path);
+        match fresh {
+            Some((text, d)) => {
                 self.backend.watch(&path, &text);
                 self.doc = Some(Doc {
-                    name: name.to_owned(),
+                    path: path.clone(),
+                    name,
                     saved: d.clone(),
                 });
                 self.load(d);
-                self.set_prefs(json!({ "lastDiagram": name }));
             }
-            Err(e) => self.toasts.error(format!("Couldn't open “{name}”: {e:#}")),
+            None => {
+                if let Some(s) = self.stash.remove(&path) {
+                    self.canvas.clear(false);
+                    self.canvas.view = s.view;
+                    self.diagram = s.diagram;
+                    self.history = s.history;
+                    self.doc = Some(Doc {
+                        path: path.clone(),
+                        name,
+                        saved: s.saved,
+                    });
+                }
+            }
         }
+        self.files.open(&path);
+        self.files.active = Some(path);
+        self.reveal_tab = true;
+        self.save_files();
+        true
+    }
+
+    /// Puts the active tab aside, its edits written first, so another tab
+    /// can have the canvas.
+    fn leave_tab(&mut self) {
+        self.write_active();
+        if let Some(doc) = self.doc.take() {
+            let blank = self.blank();
+            let history = std::mem::replace(&mut self.history, History::new(&blank));
+            let stash = Stash {
+                diagram: std::mem::replace(&mut self.diagram, blank),
+                saved: doc.saved,
+                history,
+                view: self.canvas.view,
+            };
+            self.stash.insert(doc.path, stash);
+        }
+        self.canvas.clear(true);
+    }
+
+    /// Closes `path`'s tab; the file stays in the Files pane. The active
+    /// tab's edits are written first: if that fails, the tab stays open and
+    /// `false` comes back.
+    fn close_tab(&mut self, path: &Path) -> bool {
+        if !self.files.has_tab(path) {
+            return true;
+        }
+        if self.files.active.as_deref() == Some(path) {
+            if !self.write_active() {
+                return false;
+            }
+            self.clear_active();
+        }
+        self.stash.remove(path);
+        self.backend.unwatch(path);
+        if let Some(next) = self.files.close_tab(path) {
+            self.files.active = None;
+            self.open_file(&next);
+        }
+        self.save_files();
+        true
+    }
+
+    /// Closes `path`: its tab, if it has one, and its Files row.
+    fn close_file(&mut self, path: &Path) {
+        if self.close_tab(path) {
+            self.files.close(path);
+            self.save_files();
+        }
+    }
+
+    /// The Files row for `path` shows as missing, and its tab (if it was
+    /// never shown, so nothing is lost) closes.
+    fn mark_missing(&mut self, path: &Path) {
+        for f in &mut self.files.list {
+            if f.path == path {
+                f.missing = true;
+            }
+        }
+        if self.files.active.as_deref() != Some(path) {
+            self.stash.remove(path);
+            self.files.close_tab(path);
+        }
+    }
+
+    /// Writes the Files pane, the tabs and the active tab to the prefs.
+    fn save_files(&mut self) {
+        let list = |paths: Vec<&PathBuf>| -> Vec<String> {
+            paths
+                .into_iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect()
+        };
+        let open_files = list(self.files.list.iter().map(|f| &f.path).collect());
+        let open_tabs = list(self.files.tabs.iter().collect());
+        let active = self
+            .files
+            .active
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.set_prefs(json!({
+            "openFiles": open_files,
+            "openTabs": open_tabs,
+            "activeFile": active,
+            "lastDiagram": null,
+        }));
     }
 
     /// The folder's diagrams, read again.
@@ -794,7 +1187,7 @@ impl BlockLinerApp {
         })
     }
 
-    /// A new, empty diagram called `name`, opened.
+    /// A new, empty diagram called `name`, opened in a tab.
     fn create(&mut self, name: &str) -> anyhow::Result<()> {
         if self.taken(name, None) {
             anyhow::bail!(backend::TAKEN);
@@ -802,11 +1195,8 @@ impl BlockLinerApp {
         let path = self
             .path(name)
             .ok_or_else(|| anyhow::anyhow!("No folder is open."))?;
-        let d = Diagram {
-            grid: self.paths.prefs().grid_size,
-            ..Diagram::new()
-        };
-        self.backend.create(&path, &blockliner_core::write(&d))?;
+        self.backend
+            .create(&path, &blockliner_core::write(&self.blank()))?;
         self.relist();
         self.open_diagram(name);
         Ok(())
@@ -824,14 +1214,21 @@ impl BlockLinerApp {
         };
         self.backend.rename(&a, &b)?;
         self.relist();
-        if let Some(doc) = self.doc.as_mut().filter(|d| d.name == from) {
-            doc.name = to.to_owned();
-            self.set_prefs(json!({ "lastDiagram": to }));
+        self.files.rename(&a, &b);
+        if let Some(stash) = self.stash.remove(&a) {
+            self.stash.insert(b.clone(), stash);
         }
+        if let Some(doc) = self.doc.as_mut().filter(|d| d.path == a) {
+            doc.path = b;
+            doc.name = to.to_owned();
+        }
+        self.save_files();
         Ok(())
     }
 
-    /// Deletes the diagram `name`; if it was open, opens its neighbour.
+    /// Deletes the diagram `name`, closing its tab and Files row. If it was
+    /// the active tab, the next tab takes its place, else (no tab left) its
+    /// neighbour in the folder opens.
     fn delete(&mut self, name: &str) {
         let Some(path) = self.path(name) else {
             return;
@@ -846,8 +1243,9 @@ impl BlockLinerApp {
             return;
         }
         self.relist();
-        if self.doc.as_ref().is_some_and(|d| d.name == name) {
-            self.close_doc();
+        let was_active = self.files.active.as_deref() == Some(path.as_path());
+        self.drop_files(&[path]);
+        if was_active && self.doc.is_none() {
             let names = self
                 .project
                 .as_ref()
@@ -858,28 +1256,28 @@ impl BlockLinerApp {
                 self.open_diagram(&next.clone());
             }
         }
+        self.save_files();
     }
 
     /// Hands the diagram to the autosave when it changed. Only between
     /// gestures, so a drag is written once, when it ends.
     fn autosave(&mut self) {
-        let (Some(project), Some(doc)) = (&self.project, &mut self.doc) else {
+        let Some(doc) = &mut self.doc else {
             return;
         };
         if self.diagram != doc.saved {
             doc.saved = self.diagram.clone();
-            self.backend.save(
-                backend::file(&project.folder, &doc.name),
-                blockliner_core::write(&self.diagram),
-            );
+            self.backend
+                .save(doc.path.clone(), blockliner_core::write(&self.diagram));
         }
     }
 
-    /// About once a second: the folder's diagrams, and whether the open one
-    /// changed on disk. An outside edit is reloaded (as an undoable step); a
-    /// deleted file closes the diagram.
+    /// About once a second: the folder's diagrams, which open files are
+    /// missing, and whether an open tab's file changed on disk. An outside
+    /// edit is reloaded (as an undoable step); a deleted file closes its
+    /// tab and shows as missing in the Files pane.
     fn watch_folder(&mut self, ctx: &egui::Context) {
-        if self.project.is_none() {
+        if self.project.is_none() && self.files.list.is_empty() {
             return;
         }
         let now = ctx.input(|i| i.time);
@@ -889,22 +1287,61 @@ impl BlockLinerApp {
         }
         self.last_scan = now;
         self.relist();
+        // Files without a loaded tab: just whether they're there.
+        let unloaded: Vec<PathBuf> = self
+            .files
+            .list
+            .iter()
+            .map(|f| f.path.clone())
+            .filter(|p| {
+                !self.stash.contains_key(p) && self.doc.as_ref().is_none_or(|d| d.path != *p)
+            })
+            .collect();
+        for path in unloaded {
+            if path.exists() {
+                for f in &mut self.files.list {
+                    if f.path == path {
+                        f.missing = false;
+                    }
+                }
+            } else {
+                self.mark_missing(&path);
+            }
+        }
         if self.canvas.is_busy() {
             return;
         }
-        let Some(name) = self.doc.as_ref().map(|d| d.name.clone()) else {
-            return;
-        };
-        match self.backend.check() {
-            None => {}
-            Some(Change::Removed) => {
-                self.close_doc();
+        for (path, change) in self.backend.check() {
+            self.outside_change(&path, change);
+        }
+    }
+
+    /// `path`, an open tab's file, was changed or removed by something else.
+    fn outside_change(&mut self, path: &Path, change: Change) {
+        let name = files::name(path);
+        let active = self.doc.as_ref().is_some_and(|d| d.path == path);
+        match change {
+            Change::Removed => {
+                if active {
+                    self.clear_active();
+                }
+                self.stash.remove(path);
+                for f in &mut self.files.list {
+                    if f.path == path {
+                        f.missing = true;
+                    }
+                }
+                if let Some(next) = self.files.close_tab(path) {
+                    self.files.active = None;
+                    self.open_file(&next);
+                }
+                self.save_files();
                 self.toasts.info(format!(
                     "“{name}” was deleted or renamed outside BlockLiner."
                 ));
             }
-            Some(Change::Edited(text)) => match blockliner_core::read(&text) {
-                Ok(d) => {
+            Change::Edited(text) => match blockliner_core::read(&text) {
+                Ok(d) if active => {
                     if d != self.diagram {
                         self.canvas.clear(false);
                         self.diagram = d.clone();
@@ -913,6 +1350,17 @@ impl BlockLinerApp {
                     }
                     if let Some(doc) = &mut self.doc {
                         doc.saved = d;
+                    }
+                }
+                Ok(d) => {
+                    if let Some(s) = self.stash.get_mut(path) {
+                        if d != s.diagram {
+                            s.diagram = d.clone();
+                            s.history.observe(&s.diagram);
+                            self.toasts
+                                .info(format!("Reloaded “{name}”: it changed on disk."));
+                        }
+                        s.saved = d;
                     }
                 }
                 Err(e) => self
@@ -971,9 +1419,10 @@ impl BlockLinerApp {
 
     /// Asks where to export (the answer comes to [`Self::picked`]).
     fn ask_export(&mut self, state: &ExportState) {
-        let (Some(project), Some(doc)) = (&self.project, &self.doc) else {
+        let Some(doc) = &self.doc else {
             return;
         };
+        let folder = doc.path.parent().map(Path::to_path_buf).unwrap_or_default();
         let o = state.options;
         let suffix = if state.selected_only {
             " (selection)"
@@ -981,7 +1430,7 @@ impl BlockLinerApp {
             ""
         };
         let name = format!("{}{suffix}.{}", doc.name, o.format.ext());
-        let ask = self.save_dialog(project.folder.clone(), name, o.format);
+        let ask = self.save_dialog(folder, name, o.format);
         let selected_only = state.selected_only;
         self.dialogs.start(move || {
             ask().map(|path| Picked::Export {
@@ -992,7 +1441,7 @@ impl BlockLinerApp {
         });
     }
 
-    /// The system save dialog, in the project folder.
+    /// The system save dialog, in the diagram's folder.
     #[cfg(not(test))]
     fn save_dialog(
         &self,
@@ -1230,6 +1679,7 @@ impl BlockLinerApp {
                 free_lines: self.diagram.has_free_lines(),
                 limitation: self.canvas.limitation(&self.diagram),
                 grid: self.diagram.grid,
+                unit: self.canvas.unit,
                 zoom: self.canvas.view.zoom,
                 scale: &self.theme.scale,
             };
@@ -1242,6 +1692,7 @@ impl BlockLinerApp {
             acts.extend(clicked.inner);
         }
         let mut side = Vec::new();
+        let mut file_acts = Vec::new();
         let mut pane = None;
         let props = PropertiesProps::new(
             &self.diagram,
@@ -1249,65 +1700,109 @@ impl BlockLinerApp {
             self.canvas.selected_style(&self.diagram),
             self.canvas.selected_kinds(&self.diagram),
         );
-        if let (Some(project), true) = (&self.project, self.sidebar_visible) {
+        let has_files = !self.files.list.is_empty();
+        if self.sidebar_visible && (self.project.is_some() || has_files) {
             let p = theme::palette(ui.ctx());
             let (min, default, max) = views::SIDEBAR_WIDTH;
-            let folder = project
-                .folder
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| project.folder.display().to_string());
-            let open = self.doc.as_ref().map(|d| d.name.as_str());
-            egui::Panel::left("blockliner-sidebar")
+            let folder = self.project.as_ref().map(|project| {
+                project
+                    .folder
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| project.folder.display().to_string())
+                    .to_uppercase()
+            });
+            let open = self
+                .doc
+                .as_ref()
+                .filter(|_| self.doc_in_project())
+                .map(|d| d.name.clone());
+            let rows = self.file_rows();
+            let mut list = Vec::new();
+            if let Some(folder) = &folder {
+                list.push(
+                    Pane::new(PROJECT_PANE, folder)
+                        .min_height(LIST_MIN_HEIGHT)
+                        .closable(false),
+                );
+            }
+            if self.files_visible {
+                list.push(Pane::new(FILES_PANE, "FILES").min_height(LIST_MIN_HEIGHT));
+            }
+            if self.properties_visible {
+                list.push(
+                    Pane::new(PROPERTIES_PANE, "PROPERTIES").min_height(properties::MIN_HEIGHT),
+                );
+            }
+            let mut extra = None;
+            let host = egui::Panel::left("blockliner-sidebar")
                 .resizable(true)
                 .default_size(default)
                 .size_range(min..=max)
                 .frame(Frame::NONE.fill(p.bg_surface))
                 .show(ui, |ui| {
-                    if !self.properties_visible {
-                        side = views::sidebar(ui, &folder, &project.names, open);
-                        return;
-                    }
-                    // The list above, Properties below, a divider between.
-                    let full = ui.max_rect();
-                    let most = (full.height() - properties::MIN_HEIGHT).max(properties::MIN_HEIGHT);
-                    let height = self.properties_height.clamp(properties::MIN_HEIGHT, most);
-                    let split = full.bottom() - height;
-                    let (top, bottom) = full.split_top_bottom_at_y(split);
-                    side = ui
-                        .scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
-                            views::sidebar(ui, &folder, &project.names, open)
-                        })
-                        .inner;
-                    let bar = egui::Rect::from_center_size(
-                        egui::pos2(full.center().x, split),
-                        egui::vec2(full.width(), 6.0),
-                    );
-                    let drag = ui.interact(
-                        bar,
-                        ui.scope_id().with("properties-split"),
-                        egui::Sense::drag(),
-                    );
-                    if drag.dragged() {
-                        self.properties_height =
-                            (height - drag.drag_delta().y).clamp(properties::MIN_HEIGHT, most);
-                    }
-                    if drag.hovered() || drag.dragged() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeRow);
-                    }
-                    pane = ui
-                        .scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
-                            properties::show(ui, &mut self.properties, &props)
-                        })
-                        .inner;
+                    let names = self
+                        .project
+                        .as_ref()
+                        .map(|p| p.names.as_slice())
+                        .unwrap_or(&[]);
+                    panes::show(
+                        ui,
+                        ui.scope_id().with("blockliner-panes"),
+                        &mut self.panes,
+                        &list,
+                        |ui, id| match id {
+                            PROJECT_PANE => side = views::project_list(ui, names, open.as_deref()),
+                            FILES_PANE => file_acts = views::files_list(ui, &rows),
+                            _ => pane = properties::show(ui, &mut self.properties, &props),
+                        },
+                        |ui, id| {
+                            let (key, glyph, label, act) = match id {
+                                PROJECT_PANE => (
+                                    "new-diagram",
+                                    icons::PLUS,
+                                    "New Diagram (Ctrl+N)",
+                                    Act::NewDiagram,
+                                ),
+                                FILES_PANE => (
+                                    "open-file",
+                                    icons::FILE_IMPORT,
+                                    "Open File (Ctrl+Shift+O)",
+                                    Act::OpenFile,
+                                ),
+                                _ => return,
+                            };
+                            if views::pane_button(ui, key, glyph, label) {
+                                extra = Some(act);
+                            }
+                        },
+                    )
                 });
+            acts.extend(extra);
+            match host.inner.closed.as_deref() {
+                Some(FILES_PANE) => acts.push(Act::ToggleFiles),
+                Some(PROPERTIES_PANE) => acts.push(Act::ToggleProperties),
+                _ => {}
+            }
+        }
+        let mut tab_act = None;
+        if !self.files.tabs.is_empty() {
+            let tabs = self.tab_items();
+            let reveal = std::mem::take(&mut self.reveal_tab);
+            tab_act = egui::Panel::top("blockliner-tabs")
+                .exact_size(views::TAB_HEIGHT)
+                .resizable(false)
+                .show_separator_line(false)
+                .frame(Frame::NONE)
+                .show(ui, |ui| views::tab_strip(ui, &tabs, reveal))
+                .inner;
         }
         let keys = !self.view().modal_open && !ui.ctx().egui_wants_keyboard_input();
         egui::CentralPanel::default()
             .frame(Frame::NONE)
             .show(ui, |ui| {
                 if self.doc.is_none() {
-                    acts.extend(views::empty_state(ui, self.project.is_some()));
+                    acts.extend(views::empty_state(ui, self.project.is_some(), has_files));
                     return;
                 }
                 let out = self.canvas.show(ui, &mut self.diagram, self.tool, keys);
@@ -1355,10 +1850,47 @@ impl BlockLinerApp {
             Some(PropertiesAction::ChangeLine(tool)) => self.apply(Act::ChangeLine(tool)),
             None => {}
         }
+        match tab_act {
+            Some(TabAction::Activate(i)) => {
+                if let Some(path) = self.files.tabs.get(i).cloned() {
+                    self.open_file(&path);
+                }
+            }
+            Some(TabAction::Close(i)) => {
+                if let Some(path) = self.files.tabs.get(i).cloned() {
+                    self.close_tab(&path);
+                }
+            }
+            None => {}
+        }
+        for action in file_acts {
+            let path = |i: usize| self.files.list.get(i).map(|f| (f.path.clone(), f.missing));
+            match action {
+                FilesAction::Open(i) => match path(i) {
+                    Some((path, true)) => self.toasts.error(format!(
+                        "Couldn't open “{}”: it can't be found.",
+                        files::name(&path)
+                    )),
+                    Some((path, false)) => {
+                        self.open_file(&path);
+                    }
+                    None => {}
+                },
+                FilesAction::Close(i) => {
+                    if let Some((path, _)) = path(i) {
+                        self.close_file(&path);
+                    }
+                }
+                FilesAction::OpenContainingFolder(i) => {
+                    if let Some((path, _)) = path(i) {
+                        self.show_folder_of(&path);
+                    }
+                }
+            }
+        }
         for action in side {
             match action {
                 SidebarAction::Open(name) => self.open_diagram(&name),
-                SidebarAction::New => self.apply(Act::NewDiagram),
                 SidebarAction::Rename(name) => {
                     self.overlay = Some(Overlay::Name(NameState::rename(&name)));
                 }
@@ -1372,6 +1904,36 @@ impl BlockLinerApp {
             self.history.observe(&self.diagram);
             self.autosave();
         }
+    }
+
+    /// The Files pane's rows.
+    fn file_rows(&self) -> Vec<FileRow> {
+        let project = self.project.as_ref().map(|p| p.folder.as_path());
+        self.files
+            .list
+            .iter()
+            .map(|f| FileRow {
+                name: files::name(&f.path),
+                hint: files::hint(&f.path, project, &self.files),
+                path: f.path.display().to_string(),
+                active: self.files.active.as_ref() == Some(&f.path),
+                tabbed: self.files.has_tab(&f.path),
+                missing: f.missing,
+            })
+            .collect()
+    }
+
+    /// The tab strip's tabs.
+    fn tab_items(&self) -> Vec<TabItem> {
+        self.files
+            .tabs
+            .iter()
+            .map(|t| TabItem {
+                name: files::name(t),
+                path: t.display().to_string(),
+                active: self.files.active.as_ref() == Some(t),
+            })
+            .collect()
     }
 
     // --- Dialogs ---------------------------------------------------------------
@@ -1398,6 +1960,11 @@ impl BlockLinerApp {
                             self.diagram.grid = g;
                             self.set_prefs(json!({ "gridSize": g as i64 }));
                         }
+                        SettingsAction::SetGridUnit(u) => {
+                            self.canvas.unit = u;
+                            self.set_prefs(json!({ "gridUnit": u.id() }));
+                        }
+                        SettingsAction::SetShowDimensions(on) => self.set_show_dimensions(on),
                     }
                 }
             }
@@ -1489,7 +2056,7 @@ impl BlockLinerApp {
     pub fn save_state(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, THEME_KEY, &self.theme);
         eframe::set_value(storage, RECENTS_KEY, &self.registry.recents());
-        eframe::set_value(storage, PROPERTIES_HEIGHT_KEY, &self.properties_height);
+        eframe::set_value(storage, PANES_KEY, &self.panes);
     }
 }
 
@@ -1504,6 +2071,19 @@ impl eframe::App for BlockLinerApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.backend.flush();
+    }
+}
+
+/// The sidebar's first layout: short lists, so Properties (last, taking
+/// the rest) has room.
+fn default_panes() -> PaneLayout {
+    PaneLayout {
+        order: [PROJECT_PANE, FILES_PANE, PROPERTIES_PANE]
+            .map(String::from)
+            .to_vec(),
+        heights: [(PROJECT_PANE, 120.0), (FILES_PANE, 120.0)]
+            .map(|(id, h)| (id.to_string(), h))
+            .into(),
     }
 }
 

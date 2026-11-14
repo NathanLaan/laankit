@@ -2,7 +2,8 @@
 //! pointing down; the canvas maps them to the screen.
 
 use crate::ids;
-use crate::style::Style;
+use crate::style::{Colour, Style, NOTE_FILL, NOTE_STROKE};
+use std::borrow::Cow;
 
 /// The default grid spacing, in diagram pixels.
 pub const DEFAULT_GRID: f32 = 20.0;
@@ -82,6 +83,8 @@ pub enum ShapeKind {
     RoundRect,
     /// A borderless label: `id["label"]:::bl_text`.
     Text,
+    /// A sticky note with a folded corner: `id["label"]:::bl_note`.
+    Note,
     /// A decision: `id{"label"}`.
     Diamond,
     /// `id{{"label"}}`
@@ -129,8 +132,8 @@ impl ShapeKind {
     ];
 
     /// What a shape can be changed into (Change Shape), in toolbar order:
-    /// the boxes, the More Shapes, then text.
-    pub const CHANGEABLE: [ShapeKind; 15] = [
+    /// the boxes, the More Shapes, then text and notes.
+    pub const CHANGEABLE: [ShapeKind; 16] = [
         ShapeKind::Rect,
         ShapeKind::RoundRect,
         ShapeKind::Diamond,
@@ -146,6 +149,7 @@ impl ShapeKind {
         ShapeKind::InvertedTrapezoid,
         ShapeKind::Asymmetric,
         ShapeKind::Text,
+        ShapeKind::Note,
     ];
 
     /// Its name in the UI: "Rectangle", "Double Circle", …
@@ -154,6 +158,7 @@ impl ShapeKind {
             ShapeKind::Rect => "Rectangle",
             ShapeKind::RoundRect => "Rounded Rectangle",
             ShapeKind::Text => "Text",
+            ShapeKind::Note => "Note",
             ShapeKind::Diamond => "Diamond",
             ShapeKind::Hexagon => "Hexagon",
             ShapeKind::Database => "Database",
@@ -173,7 +178,7 @@ impl ShapeKind {
     /// The Mermaid brackets around the label.
     pub fn delimiters(&self) -> (&str, &str) {
         match self {
-            ShapeKind::Rect | ShapeKind::Text => ("[", "]"),
+            ShapeKind::Rect | ShapeKind::Text | ShapeKind::Note => ("[", "]"),
             ShapeKind::RoundRect => ("(", ")"),
             ShapeKind::Diamond => ("{", "}"),
             ShapeKind::Hexagon => ("{{", "}}"),
@@ -224,7 +229,8 @@ pub struct Shape {
     /// Plain text, `\n` between lines.
     pub label: String,
     pub rect: Rect,
-    /// A `:::class` from the file other than `bl_text`, written back as-is.
+    /// A `:::class` from the file other than `bl_text` and `bl_note`,
+    /// written back as-is.
     pub class: Option<String>,
     /// Declared only in a statement BlockLiner keeps verbatim (a subgraph or
     /// an unsupported edge). It is positioned and drawn, but its declaration
@@ -252,13 +258,31 @@ impl Shape {
         }
     }
 
+    /// The style it's drawn with: its own, with a note's yellow fill and
+    /// stroke where it doesn't set them. Only the drawing uses the
+    /// defaults; nothing extra is saved.
+    pub fn drawn_style(&self) -> Cow<'_, Style> {
+        let style = &self.style;
+        if self.kind != ShapeKind::Note || (style.fill.is_some() && style.stroke.is_some()) {
+            return Cow::Borrowed(style);
+        }
+        let mut style = style.clone();
+        style.fill.get_or_insert_with(|| Colour::parse(NOTE_FILL));
+        style
+            .stroke
+            .get_or_insert_with(|| Colour::parse(NOTE_STROKE));
+        Cow::Owned(style)
+    }
+
     /// A new shape's size, in grid cells: 8 × 3 for boxes, 10 × 2 for text,
+    /// 8 × 4 for a note,
     /// 8 × 4 for a diamond (its label sits in the middle half), 6 × 4
     /// for a database, 4 × 4 for a circle and 5 × 5 for a double circle
     /// (its label sits inside the inner ring).
     pub fn default_size(kind: &ShapeKind, grid: f32) -> (f32, f32) {
         let (w, h) = match kind {
             ShapeKind::Text => (10.0, 2.0),
+            ShapeKind::Note => (8.0, 4.0),
             ShapeKind::Diamond => (8.0, 4.0),
             ShapeKind::Database => (6.0, 4.0),
             ShapeKind::Circle => (4.0, 4.0),
@@ -616,5 +640,30 @@ mod tests {
         names.sort();
         names.dedup();
         assert_eq!(names.len(), ShapeKind::CHANGEABLE.len());
+    }
+
+    #[test]
+    fn notes_draw_yellow_unless_coloured() {
+        let r = Rect::new(0.0, 0.0, 160.0, 80.0);
+        let note = Shape::new("n", ShapeKind::Note, "", r);
+        let drawn = note.drawn_style();
+        assert_eq!(drawn.fill, Some(Colour::parse(NOTE_FILL)));
+        assert_eq!(drawn.stroke, Some(Colour::parse(NOTE_STROKE)));
+        // Dark text on the yellow, in either theme.
+        assert_eq!(drawn.label_rgba(), Some([0x11, 0x18, 0x27, 255]));
+        // Its own fill wins; the stroke stays yellow.
+        let mut blue = note.clone();
+        blue.style.fill = Some(Colour::parse("#dbeafe"));
+        assert_eq!(blue.drawn_style().fill, Some(Colour::parse("#dbeafe")));
+        assert_eq!(blue.drawn_style().stroke, Some(Colour::parse(NOTE_STROKE)));
+        // Other shapes keep the theme's.
+        let rect = Shape::new("r", ShapeKind::Rect, "", r);
+        assert!(rect.drawn_style().is_empty());
+        assert_eq!(Shape::default_size(&ShapeKind::Note, 20.0), (160.0, 80.0));
+        assert_eq!(ShapeKind::CHANGEABLE.len(), 16);
+        assert_eq!(
+            ShapeKind::CHANGEABLE[14..],
+            [ShapeKind::Text, ShapeKind::Note]
+        );
     }
 }

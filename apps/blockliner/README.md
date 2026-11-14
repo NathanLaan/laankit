@@ -11,18 +11,21 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 
 ## Features
 
-- Shapes: rectangles, rounded rectangles, text boxes, and (under the More Shapes button) diamonds, hexagons, databases, subroutines, stadiums, circles, double circles, parallelograms (leaning either way), trapezoids (wider at the bottom or the top), and asymmetric flags; drag to draw or click for a default size, move and resize on the grid, and edit labels in place.
+- Shapes: rectangles, rounded rectangles, text boxes, notes, and (under the More Shapes button) diamonds, hexagons, databases, subroutines, stadiums, circles, double circles, parallelograms (leaning either way), trapezoids (wider at the bottom or the top), and asymmetric flags; drag to draw or click for a default size, move and resize on the grid, and edit labels in place.
+- Notes: sticky notes for comments on a diagram, drawn as a pale yellow box with a folded top-right corner and dark text in either theme. Lines glue to them like any shape, and they take colours, stroke styles, and bold or italic text; Reset Style makes a note yellow again. In other Mermaid renderers a note is a yellow box without the fold.
 - Connectors: straight or right-angle lines and arrows that glue to a shape's sides (fixed) or to the shape (turning as it moves), plus free lines anywhere. Right-angle routes go round shapes in the way, and their middle segment can be dragged. Edge labels ("HTTPS", "reads") are edited in place: double-click the connector or its label.
-- Change shape: turn a selected shape into any other (a box into a diamond, a circle into a database, a shape into a text box) from the Properties pane's Change Shape list, the right-click menu's Change Shape ▸, or the palette. The box, label, colours, and attached lines stay; only the outline changes. Lines change the same way: the Properties pane's Change Line list (or the palette's Change Line: …) makes the selected lines a Line, Arrow, Right-Angle Line, or Right-Angle Arrow, arrowhead and route together; the right-click menu also has Add / Remove Arrowhead and Right-Angle / Straight.
+- Change shape: turn a selected shape into any other (a box into a diamond, a circle into a database, a shape into a text box or a note) from the Properties pane's Change Shape list, the right-click menu's Change Shape ▸, or the palette. The box, label, colours, and attached lines stay; only the outline changes. Lines change the same way: the Properties pane's Change Line list (or the palette's Change Line: …) makes the selected lines a Line, Arrow, Right-Angle Line, or Right-Angle Arrow, arrowhead and route together; the right-click menu also has Add / Remove Arrowhead and Right-Angle / Straight.
 - Colours: fill and stroke from eight preset swatches or any hex value, saved as Mermaid `style` lines, with labels kept readable on the fill. Connectors take a colour too, saved as `linkStyle` lines. Set them from the right-click menu, the palette, or the Properties pane (Ctrl+I), which shows "Mixed" when the selected shapes differ.
 - Stroke styles: draw a shape's outline or a line solid, dashed, or dotted, from the Properties pane's Stroke Style list, the right-click menu's Stroke Style ▸, or the palette. Saved as plain Mermaid: `stroke-dasharray` in a shape's `style` line or an edge's `linkStyle`, and a dotted edge as Mermaid's own `-.->` / `-.-`. A hand-written dash pattern shows as Custom and is kept until you pick a style.
 - Stroke weight: 1px (the default, as in Mermaid), 1.5px, 2px, 2.5px, 3px, or 4px for a shape's outline or a line, from the Properties pane's Stroke Weight list, the right-click menu's Stroke Weight ▸, or the palette. Saved as `stroke-width` (the default isn't written). A hand-written `stroke-width` is now drawn; one that isn't in the list shows as Custom and is kept until you pick a weight.
 - Bold and italic labels: Text Weight (Normal / Bold) and Text Style (Normal / Italic) for shape and edge labels, from the Properties pane, the right-click menu, or the palette; Ctrl+B toggles Bold. Saved as `font-weight:bold` and `font-style:italic`.
 - Reset Style: returns the selection to the theme's colours, a solid 1px stroke, and Normal text.
 - Copy and paste: Ctrl+C, Ctrl+X, and Ctrl+V, within a diagram, between diagrams, and between windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out; other text pastes as a text box.
-- Editing: box select, nudge with the arrow keys, undo and redo, single-key tools (V, R, O, D, H, C, S, L, A, J, E, T, or 1–9 in toolbar order), a right-click menu, and a command palette (Ctrl+K).
-- A folder of diagrams: open any folder; its `.mmd` files are the sidebar's diagrams. Right-click one to rename it, delete it, or open its containing folder in the system file manager. Changes autosave, and edits made elsewhere (an editor, `git pull`) reload as an undoable step. Close Folder saves and goes back to no folder.
+- Editing: box select, nudge with the arrow keys, undo and redo, single-key tools (V, R, O, D, H, C, S, L, A, J, E, T, N, or 1–9 and 0 in toolbar order), a right-click menu, and a command palette (Ctrl+K).
+- A folder of diagrams: open any folder; its `.mmd` files are the Project pane's diagrams. Right-click one to rename it, delete it, or open its containing folder in the system file manager. Changes autosave, and edits made elsewhere (an editor, `git pull`) reload as an undoable step. Close Folder saves, closes the folder's own files, and goes back to no folder.
+- Files and tabs: the sidebar's Files pane lists every open file, from the project folder or from anywhere else (Open File, Ctrl+Shift+O). Each open file can have a tab above the canvas, with its own undo history, pan, and zoom. Closing a tab (its close button, a middle-click, or Ctrl+W) keeps the file in the Files pane; Close in a file's right-click menu removes it and closes its tab. Ctrl+Tab and Ctrl+Shift+Tab switch tabs. The files and tabs come back at the next start.
 - Plain Mermaid in: a flowchart without BlockLiner's layout (pasted from a README, say) is laid out automatically when opened. What BlockLiner doesn't model (subgraphs, styles, other arrow types) is kept as written.
+- Units and dimension lines: Settings picks what one grid mark measures (mm, cm, m, in, or ft; cm by default). Dimension lines show each shape's width above it and its height to its right in that unit; turn them on and off with Ctrl+Shift+D or in Settings. They show on the canvas only, not in exports.
 - Export: PNG (1×, 2×, or 3×) or SVG, all objects or only the selected ones, with or without the grid (Ctrl+Shift+E).
 
 ## Data model
@@ -35,7 +38,7 @@ A diagram is one Mermaid file (`.mmd`). The folder holds nothing else:
 └── System context.mmd
 ```
 
-There is no index file and no git integration: the folder is yours to sync however you like. The app's own settings (`ui-preferences.json`: the last folder and diagram, the grid, export options) live in the platform config folder, `~/.config/BlockLiner` on Linux.
+There is no index file and no git integration: the folder is yours to sync however you like. The app's own settings (`ui-preferences.json`: the last folder, the open files and tabs, the grid and its unit, dimension lines, export options) live in the platform config folder, `~/.config/BlockLiner` on Linux.
 
 ## File format
 
@@ -80,6 +83,7 @@ Any other `%% @…` line is reserved and dropped. Other `%%` comments are kept.
 | Rectangle | `id["label"]` | |
 | Round rectangle | `id("label")` | |
 | Text box | `id["label"]:::bl_text` + `classDef bl_text fill:none,stroke:none` | Renders as bare text in Mermaid. |
+| Note | `id["label"]:::bl_note` + `classDef bl_note fill:#fef9c3,stroke:#eab308,color:#111827` | Renders as a yellow box in Mermaid; the folded corner is BlockLiner's own. A note's own colours are a `style` line, which Mermaid applies over the class. Like a text box, a note can't also keep a `:::class` of its own. |
 | Diamond, hexagon, database, subroutine | `id{"label"}`, `id{{"label"}}`, `id[("label")]`, `id[["label"]]` | Written with the delimiters files already used, so those files don't change. |
 | Stadium, circle, parallelogram, trapezoid | `id(["label"])`, `id(("label"))`, `id[/"label"/]`, `id[/"label"\]` | The mirrored `[\ \]` and `[\ /]` stay kept shapes. |
 | Any other node shape | Its own delimiters, kept | Drawn as a dashed box with a badge naming the brackets. |

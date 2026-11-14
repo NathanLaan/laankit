@@ -7,10 +7,11 @@
 //! save delay, through `laankit_core::debounce`. [`Backend::flush`] writes it
 //! at once, before switching diagrams or quitting.
 //!
-//! [`Backend::check`] notices when the open diagram's file was changed by
+//! [`Backend::check`] notices when an open tab's file was changed by
 //! something else (an editor, a `git pull`): the app calls it about once a
 //! second. A change that's only our own write is not reported.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -45,9 +46,8 @@ pub enum Change {
     Removed,
 }
 
-/// The open diagram's file as BlockLiner last read or wrote it.
+/// A watched file as BlockLiner last read or wrote it.
 struct OnDisk {
-    path: PathBuf,
     mtime: Option<SystemTime>,
     text: String,
 }
@@ -57,7 +57,8 @@ struct Core {
     pending: Mutex<Option<(PathBuf, String)>>,
     /// Held across a write and the bookkeeping after it.
     writing: Mutex<()>,
-    open: Mutex<Option<OnDisk>>,
+    /// The open tabs' files, by path.
+    open: Mutex<HashMap<PathBuf, OnDisk>>,
     saver: Debouncer,
     tx: Mutex<Sender<Event>>,
     /// Repainted when an event arrives; set by [`Backend::attach`].
@@ -84,7 +85,7 @@ impl Backend {
         let core = Arc::new(Core {
             pending: Mutex::new(None),
             writing: Mutex::new(()),
-            open: Mutex::new(None),
+            open: Mutex::new(HashMap::new()),
             saver: Debouncer::new(),
             tx: Mutex::new(tx),
             ctx: Mutex::new(None),
@@ -137,16 +138,18 @@ impl Backend {
     /// Watches the diagram just opened from `path`, with `text`, for
     /// outside changes (see [`Backend::check`]).
     pub fn watch(&self, path: &Path, text: &str) {
-        *self.core.open.lock().unwrap() = Some(OnDisk {
-            path: path.to_owned(),
-            mtime: mtime(path),
-            text: text.to_owned(),
-        });
+        self.core.open.lock().unwrap().insert(
+            path.to_owned(),
+            OnDisk {
+                mtime: mtime(path),
+                text: text.to_owned(),
+            },
+        );
     }
 
-    /// Stops watching the open diagram (it was closed).
-    pub fn close(&self) {
-        *self.core.open.lock().unwrap() = None;
+    /// Stops watching `path` (its tab was closed).
+    pub fn unwatch(&self, path: &Path) {
+        self.core.open.lock().unwrap().remove(path);
     }
 
     /// A new diagram file with `text`; fails if there is one by that name.
@@ -167,10 +170,9 @@ impl Backend {
         self.flush();
         let _w = self.core.writing.lock().unwrap();
         fs::rename(from, to).with_context(|| format!("renaming {}", from.display()))?;
-        if let Some(open) = self.core.open.lock().unwrap().as_mut() {
-            if open.path == from {
-                open.path = to.to_owned();
-            }
+        let mut open = self.core.open.lock().unwrap();
+        if let Some(watched) = open.remove(from) {
+            open.insert(to.to_owned(), watched);
         }
         Ok(())
     }
@@ -186,10 +188,7 @@ impl Backend {
         }
         let _w = self.core.writing.lock().unwrap();
         fs::remove_file(path).with_context(|| format!("deleting {}", path.display()))?;
-        let mut open = self.core.open.lock().unwrap();
-        if open.as_ref().is_some_and(|o| o.path == path) {
-            *open = None;
-        }
+        self.core.open.lock().unwrap().remove(path);
         Ok(())
     }
 
@@ -239,31 +238,42 @@ impl Backend {
 
     // --- Outside changes -------------------------------------------------------
 
-    /// Whether the open diagram's file changed on disk since BlockLiner last
-    /// read or wrote it. Nothing is reported while our own edits are waiting:
-    /// they win, and the autosave overwrites the file.
-    pub fn check(&self) -> Option<Change> {
+    /// The watched files that changed on disk since BlockLiner last read or
+    /// wrote them, in path order. A removed file stops being watched.
+    /// Nothing is reported while our own edits are waiting: they win, and
+    /// the autosave overwrites the file.
+    pub fn check(&self) -> Vec<(PathBuf, Change)> {
         if self.is_saving() {
-            return None;
+            return Vec::new();
         }
         let _w = self.core.writing.lock().unwrap();
-        let mut slot = self.core.open.lock().unwrap();
-        let open = slot.as_mut()?;
-        let now = mtime(&open.path);
-        if now.is_none() {
-            *slot = None;
-            return Some(Change::Removed);
+        let mut open = self.core.open.lock().unwrap();
+        let mut out = Vec::new();
+        for (path, watched) in open.iter_mut() {
+            let now = mtime(path);
+            if now.is_none() {
+                out.push((path.clone(), Change::Removed));
+                continue;
+            }
+            if now == watched.mtime {
+                continue;
+            }
+            watched.mtime = now;
+            let Ok(text) = fs::read_to_string(path) else {
+                continue;
+            };
+            if text != watched.text {
+                watched.text = text.clone();
+                out.push((path.clone(), Change::Edited(text)));
+            }
         }
-        if now == open.mtime {
-            return None;
+        for (path, change) in &out {
+            if *change == Change::Removed {
+                open.remove(path);
+            }
         }
-        open.mtime = now;
-        let text = fs::read_to_string(&open.path).ok()?;
-        if text == open.text {
-            return None;
-        }
-        open.text = text.clone();
-        Some(Change::Edited(text))
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
     }
 }
 
@@ -287,11 +297,9 @@ impl Core {
         let written = result.is_ok();
         let event = match result {
             Ok(()) => {
-                if let Some(open) = self.open.lock().unwrap().as_mut() {
-                    if open.path == path {
-                        open.mtime = mtime(&path);
-                        open.text = text;
-                    }
+                if let Some(watched) = self.open.lock().unwrap().get_mut(&path) {
+                    watched.mtime = mtime(&path);
+                    watched.text = text;
                 }
                 Event::Saved(path)
             }
@@ -415,12 +423,12 @@ mod tests {
         let text = Backend::read(&path).unwrap();
         assert_eq!(text, "first");
         b.watch(&path, &text);
-        assert_eq!(b.check(), None);
+        assert_eq!(b.check(), []);
 
         b.save(path.clone(), "ours".into());
-        assert_eq!(b.check(), None, "our edits are waiting");
+        assert_eq!(b.check(), [], "our edits are waiting");
         b.flush();
-        assert_eq!(b.check(), None, "our own write");
+        assert_eq!(b.check(), [], "our own write");
 
         // Some file systems keep whole-second times: make sure it moves.
         std::thread::sleep(Duration::from_millis(20));
@@ -428,12 +436,40 @@ mod tests {
         let f = fs::File::options().write(true).open(&path).unwrap();
         f.set_modified(SystemTime::now() + Duration::from_secs(2))
             .unwrap();
-        assert_eq!(b.check(), Some(Change::Edited("theirs".into())));
-        assert_eq!(b.check(), None, "reported once");
+        assert_eq!(b.check(), [(path.clone(), Change::Edited("theirs".into()))]);
+        assert_eq!(b.check(), [], "reported once");
 
         fs::remove_file(&path).unwrap();
-        assert_eq!(b.check(), Some(Change::Removed));
-        assert_eq!(b.check(), None);
+        assert_eq!(b.check(), [(path.clone(), Change::Removed)]);
+        assert_eq!(b.check(), []);
+    }
+
+    #[test]
+    fn several_files_and_unwatch() {
+        let (tmp, b) = backend();
+        let (one, two) = (file(tmp.path(), "one"), file(tmp.path(), "two"));
+        for path in [&one, &two] {
+            fs::write(path, "first").unwrap();
+            b.watch(path, "first");
+        }
+        let later = SystemTime::now() + Duration::from_secs(2);
+        for path in [&one, &two] {
+            fs::write(path, "theirs").unwrap();
+            let f = fs::File::options().write(true).open(path).unwrap();
+            f.set_modified(later).unwrap();
+        }
+        assert_eq!(
+            b.check(),
+            [
+                (one.clone(), Change::Edited("theirs".into())),
+                (two.clone(), Change::Edited("theirs".into())),
+            ]
+        );
+        b.unwatch(&one);
+        fs::remove_file(&one).unwrap();
+        fs::remove_file(&two).unwrap();
+        assert_eq!(b.check(), [(two, Change::Removed)]);
+        assert_eq!(b.check(), []);
     }
 
     #[test]
@@ -452,7 +488,7 @@ mod tests {
         b.rename(&a, &renamed).unwrap();
         assert_eq!(Backend::list(tmp.path()).unwrap(), ["A", "c"]);
         assert_eq!(fs::read_to_string(&renamed).unwrap(), "edited");
-        assert_eq!(b.check(), None, "still watching it under the new name");
+        assert_eq!(b.check(), [], "still watching it under the new name");
 
         // Deleting drops edits waiting for it.
         b.save(renamed.clone(), "lost".into());

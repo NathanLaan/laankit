@@ -38,6 +38,28 @@ pub fn user_data_dir(product_name: &str) -> PathBuf {
     config_home().join(product_name)
 }
 
+/// The per-user cache folder for `name`, for files that can be rebuilt
+/// (thumbnails): `$XDG_CACHE_HOME/<name>` or `~/.cache/<name>` on Linux,
+/// `%LOCALAPPDATA%\<name>\cache` on Windows, and
+/// `~/Library/Caches/<name>` on macOS.
+pub fn cache_dir(name: &str) -> PathBuf {
+    if cfg!(windows) {
+        let base = std::env::var_os("LOCALAPPDATA")
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home_dir().join("AppData").join("Local"));
+        return base.join(name).join("cache");
+    }
+    if cfg!(target_os = "macos") {
+        return home_dir().join("Library").join("Caches").join(name);
+    }
+    std::env::var_os("XDG_CACHE_HOME")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home_dir().join(".cache"))
+        .join(name)
+}
+
 /// Electron's `app.getPath('documents')`.
 pub fn documents_dir() -> PathBuf {
     if cfg!(all(unix, not(target_os = "macos"))) {
@@ -62,5 +84,11 @@ mod tests {
     fn user_data_dir_uses_product_name() {
         let p = user_data_dir("NoteLiner");
         assert!(p.ends_with("NoteLiner"));
+    }
+
+    #[test]
+    fn cache_dir_names_the_app() {
+        let p = cache_dir("medialiner");
+        assert!(p.to_string_lossy().contains("medialiner"));
     }
 }

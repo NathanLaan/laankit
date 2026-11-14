@@ -285,6 +285,7 @@ fn generate(rng: &mut Rng) -> Diagram {
                 ShapeKind::Rect,
                 ShapeKind::RoundRect,
                 ShapeKind::Text,
+                ShapeKind::Note,
                 ShapeKind::Diamond,
                 ShapeKind::Hexagon,
                 ShapeKind::Database,
@@ -306,7 +307,7 @@ fn generate(rng: &mut Rng) -> Diagram {
             rng.below(200) as f32 + 1.0,
         );
         let mut shape = Shape::new(d.new_id(&label), kind, label, rect);
-        if shape.kind != ShapeKind::Text && rng.chance(20) {
+        if !matches!(shape.kind, ShapeKind::Text | ShapeKind::Note) && rng.chance(20) {
             shape.class = Some("hot".into());
         }
         if rng.chance(40) {
@@ -430,9 +431,10 @@ fn changed_kinds_round_trip() {
         assert_eq!(api.kind, kind);
         assert_eq!(api.rect, Rect::new(40.0, 40.0, 160.0, 60.0));
         assert_eq!(api.label, "API");
-        // Text is written `:::bl_text`, and a node takes one class, so a
-        // class of its own isn't saved.
-        let class = (kind != ShapeKind::Text).then_some("hot");
+        // Text and notes are written `:::bl_text` and `:::bl_note`, and a
+        // node takes one class, so a class of its own isn't saved.
+        let class = !matches!(kind, ShapeKind::Text | ShapeKind::Note);
+        let class = class.then_some("hot");
         assert_eq!(api.class.as_deref(), class, "{kind:?}");
         assert_eq!(api.style.props(), d.shape("api").unwrap().style.props());
         assert_eq!(back.connectors, changed.connectors, "{kind:?}");
@@ -449,4 +451,68 @@ fn changed_kinds_round_trip() {
     let back = read(&text).unwrap();
     assert_eq!(back.connectors, flipped.connectors);
     assert!(back.connectors[0].route.is_elbow());
+}
+
+#[test]
+fn notes_are_written_with_their_class_and_read_back() {
+    let mut d = Diagram::default();
+    d.shapes.push(Shape::new(
+        "api",
+        ShapeKind::Rect,
+        "API",
+        Rect::new(40.0, 40.0, 160.0, 60.0),
+    ));
+    d.shapes.push(Shape::new(
+        "note_1",
+        ShapeKind::Note,
+        "Retries are\nqueued",
+        Rect::new(240.0, 40.0, 160.0, 80.0),
+    ));
+    d.connectors.push(Connector::new(
+        ConnectorKind::Line,
+        End::glued("note_1", None),
+        End::glued("api", None),
+    ));
+
+    let text = write(&d);
+    assert!(
+        text.contains("  note_1[\"Retries are<br>queued\"]:::bl_note\n"),
+        "{text}"
+    );
+    assert_eq!(
+        text.matches("classDef bl_note fill:#fef9c3,stroke:#eab308,color:#111827")
+            .count(),
+        1,
+        "{text}"
+    );
+    // No style line: the yellow is the class's, not the shape's.
+    assert!(!text.contains("style note_1"), "{text}");
+    let back = read(&text).unwrap();
+    assert_eq!(back, d);
+    assert_eq!(write(&back), text);
+
+    // Without notes, no classDef.
+    let mut plain = d.clone();
+    plain.shapes[1].kind = ShapeKind::Rect;
+    assert!(!write(&plain).contains("bl_note"));
+
+    // A hand-written classDef is replaced by the writer's, and the class
+    // makes a note whatever the brackets.
+    let hand = "flowchart LR\n  n(\"Hi\"):::bl_note\n  classDef bl_note fill:#f00\n";
+    let d = read(hand).unwrap();
+    assert_eq!(d.shape("n").unwrap().kind, ShapeKind::Note);
+    assert_eq!(d.shape("n").unwrap().class, None);
+    let out = write(&d);
+    assert!(!out.contains("fill:#f00"), "{out}");
+    assert!(out.contains("classDef bl_note fill:#fef9c3"), "{out}");
+
+    // Its own colours are a style line, read back as the shape's.
+    let mut coloured = read(hand).unwrap();
+    coloured.shapes[0].style.fill = Some(Colour::parse("#dbeafe"));
+    let out = write(&coloured);
+    assert!(out.contains("  style n fill:#dbeafe\n"), "{out}");
+    assert_eq!(
+        read(&out).unwrap().shapes[0].style.fill,
+        Some(Colour::parse("#dbeafe"))
+    );
 }

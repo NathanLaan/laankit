@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- MediaLiner icon: rounded tile with two stacked photos, the front one
+       showing hills and a sun. Placeholder art; replace with the final
+       design later. -->
+  <rect x="22" y="22" width="468" height="468" rx="76" ry="76" fill="#1e1e2e" stroke="#11111b" stroke-width="8"/>
+  <!-- The photo behind -->
+  <rect x="150" y="96" width="264" height="216" rx="18" fill="none" stroke="#6c7086" stroke-width="16" stroke-linejoin="round"/>
+  <!-- The front photo -->
+  <rect x="98" y="168" width="290" height="236" rx="20" fill="#1e1e2e" stroke="#a6adc8" stroke-width="18" stroke-linejoin="round"/>
+  <circle cx="314" cy="236" r="26" fill="#f9e2af"/>
+  <path d="M120 380 L198 288 L250 344 L286 306 L366 380 Z" fill="#89b4fa" stroke="#89b4fa" stroke-width="10" stroke-linejoin="round"/>
+</svg>

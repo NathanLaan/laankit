@@ -27,6 +27,8 @@ pub enum UpdateStatus {
     Available {
         version: String,
         notes: Option<String>,
+        /// The release page, which Download opens.
+        url: String,
     },
     Downloading {
         percent: f32,
@@ -87,6 +89,7 @@ pub enum AboutIcon<'a> {
 pub enum AboutAction {
     Close,
     CheckForUpdates,
+    /// Open the available release's page ([`UpdateStatus::Available::url`]).
     Download,
     Install,
     /// Open this URL in the browser (the app may route it, e.g. through its
@@ -427,6 +430,7 @@ mod tests {
         let mut h = harness(Some(UpdateStatus::Available {
             version: "2.1.0".into(),
             notes: Some("<p>Fixes</p>".into()),
+            url: "https://example.com/releases/2.1.0".into(),
         }));
         h.run();
         assert_eq!(
