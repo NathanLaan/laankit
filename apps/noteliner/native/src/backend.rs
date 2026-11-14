@@ -21,6 +21,7 @@ use laankit_egui::about::UpdateStatus;
 use noteliner_core::git::{GitConfigRequired, NoteGit};
 use noteliner_core::links::LinkGraph;
 use noteliner_core::mcp::{self, ConfirmFuture, McpHost, McpServer};
+use noteliner_core::project::FileKind;
 use noteliner_core::project::Project;
 use noteliner_core::window_state::WindowState;
 use noteliner_core::workspace::{Shared, Workspace};
@@ -88,6 +89,8 @@ pub enum ExportKind {
     Html,
     Markdown,
     Pdf,
+    /// A diagram's `.mmd` file, as it is.
+    Mermaid,
 }
 
 /// `mcp:getStatus`.
@@ -706,6 +709,28 @@ impl Backend {
         });
     }
 
+    /// A new, blank diagram (`.mmd`).
+    pub fn create_diagram(&self, name: String, tags: Vec<String>, parent: Option<String>) {
+        self.spawn(|core| async move {
+            let mut ws = core.ws.lock().await;
+            let r = ws
+                .project
+                .create(
+                    FileKind::Diagram,
+                    &name,
+                    &json!(tags),
+                    None,
+                    parent.as_deref(),
+                )
+                .await;
+            drop(ws);
+            match r {
+                Ok(entry) => core.send(Event::Created(entry)),
+                Err(e) => send_failure(&core, e, "Couldn't create the diagram"),
+            }
+        });
+    }
+
     /// `file:duplicate`.
     pub fn duplicate_file(
         &self,
@@ -716,14 +741,16 @@ impl Backend {
     ) {
         self.spawn(|core| async move {
             let mut ws = core.ws.lock().await;
-            let body = ws
+            let filename = ws
                 .project
                 .find(&source)
-                .and_then(|f| f["filename"].as_str().map(str::to_string))
-                .and_then(|f| ws.project.read_file(&f).ok());
+                .and_then(|f| f["filename"].as_str().map(str::to_string));
+            // The copy is the same kind of file as its source.
+            let kind = filename.as_deref().map(FileKind::of).unwrap_or_default();
+            let body = filename.and_then(|f| ws.project.read_file(&f).ok());
             let r = ws
                 .project
-                .create_file(&name, &json!(tags), body, parent.as_deref())
+                .create(kind, &name, &json!(tags), body, parent.as_deref())
                 .await;
             if r.is_ok() {
                 ws.rebuild_links();
@@ -737,7 +764,8 @@ impl Backend {
     }
 
     /// Markdown files dropped on the sidebar (`handleExternalDrop`): each
-    /// becomes a note with the file's content.
+    /// becomes a note with the file's content. A `.mmd` or `.mermaid` file
+    /// becomes a diagram, if it's one BlockLiner can read.
     pub fn import_markdown(&self, files: Vec<PathBuf>) {
         self.spawn(|core| async move {
             for path in files {
@@ -749,6 +777,18 @@ impl Backend {
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or_default();
                 let mut ws = core.ws.lock().await;
+                if FileKind::of(&path.to_string_lossy()) == FileKind::Diagram {
+                    let r = ws
+                        .project
+                        .create(FileKind::Diagram, &name, &json!([]), Some(content), None)
+                        .await;
+                    drop(ws);
+                    match r {
+                        Ok(entry) => core.send(Event::Created(entry)),
+                        Err(e) => send_failure(&core, e, &format!("Couldn't add “{name}”")),
+                    }
+                    continue;
+                }
                 match ws.project.create_file(&name, &json!([]), None, None).await {
                     Ok(mut entry) => {
                         let filename = entry["filename"].as_str().unwrap_or_default().to_string();
@@ -901,6 +941,7 @@ impl Backend {
                 let slug = export::export_slug(&name);
                 match kind {
                     ExportKind::Markdown => std::fs::write(dir.join(format!("{slug}.md")), &raw)?,
+                    ExportKind::Mermaid => std::fs::write(dir.join(format!("{slug}.mmd")), &raw)?,
                     ExportKind::Html => std::fs::write(
                         dir.join(format!("{slug}.html")),
                         export::html_document(&name, &frontmatter::strip_body(&raw)),

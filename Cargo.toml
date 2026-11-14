@@ -16,6 +16,7 @@ pageliner-epub = { path = "crates/pageliner-epub" }
 noteliner-export = { path = "crates/noteliner-export" }
 noteliner-slides = { path = "crates/noteliner-slides" }
 blockliner-core = { path = "crates/blockliner-core" }
+blockliner-egui = { path = "crates/blockliner-egui" }
 printliner-core = { path = "crates/printliner-core" }
 medialiner-core = { path = "crates/medialiner-core" }
 anyhow = "1"

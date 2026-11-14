@@ -3,16 +3,14 @@
 //! BlockLiner: a Visio-style editor for software architecture diagrams,
 //! saved as Mermaid flowcharts. An egui UI over `blockliner-core`.
 
+use blockliner_egui::{canvas, export, properties, units};
+
 mod app;
 mod backend;
-mod canvas;
 mod commands;
 mod config;
-mod export;
 mod files;
 mod overlays;
-mod properties;
-mod units;
 mod views;
 
 #[cfg(test)]

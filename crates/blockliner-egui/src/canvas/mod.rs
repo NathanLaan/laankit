@@ -360,7 +360,6 @@ impl Canvas {
 
     /// The canvas's top-left corner on screen (model origin at 100 % and no
     /// pan), as of the last frame.
-    #[cfg(test)]
     pub fn origin(&self) -> Pos2 {
         self.rect.min
     }
@@ -565,7 +564,7 @@ impl Canvas {
                     for kind in ShapeKind::CHANGEABLE {
                         let icon = Tool::for_shape(&kind).unwrap_or(Tool::Rect);
                         let active = kinds.shape == Agreed::Same(kind.clone());
-                        if crate::views::icon_row(ui, icon, kind.name(), None, active, 210.0)
+                        if crate::glyphs::icon_row(ui, icon, kind.name(), None, active, 210.0)
                             .clicked()
                         {
                             picked = Some(MenuAction::ChangeShape(kind));
@@ -598,8 +597,8 @@ impl Canvas {
                     for dash in STROKE_STYLES {
                         let active = style.dash == DashCommon::Same(dash.clone());
                         let name = Dash::name(dash.as_ref());
-                        let glyph = crate::views::Glyph::Dash(dash.clone());
-                        if crate::views::icon_row(ui, glyph, name, None, active, 170.0).clicked() {
+                        let glyph = crate::glyphs::Glyph::Dash(dash.clone());
+                        if crate::glyphs::icon_row(ui, glyph, name, None, active, 170.0).clicked() {
                             picked = Some(MenuAction::StrokeStyle(dash));
                             ui.close();
                         }
@@ -610,8 +609,9 @@ impl Canvas {
                     for weight in WEIGHTS {
                         let active = style.weight == Agreement::Same(weight.clone());
                         let name = Weight::label(weight.as_ref());
-                        let glyph = crate::views::Glyph::Weight(weight.clone());
-                        if crate::views::icon_row(ui, glyph, &name, None, active, 190.0).clicked() {
+                        let glyph = crate::glyphs::Glyph::Weight(weight.clone());
+                        if crate::glyphs::icon_row(ui, glyph, &name, None, active, 190.0).clicked()
+                        {
                             picked = Some(MenuAction::StrokeWeight(weight));
                             ui.close();
                         }
@@ -625,11 +625,11 @@ impl Canvas {
                     ui.menu_button(title, |ui| {
                         for (name, value) in [("Normal", false), (on, true)] {
                             let active = *current == Agreement::Same(value);
-                            let glyph = crate::views::Glyph::Text {
+                            let glyph = crate::glyphs::Glyph::Text {
                                 bold: bold && value,
                                 italic: !bold && value,
                             };
-                            if crate::views::icon_row(ui, glyph, name, None, active, 170.0)
+                            if crate::glyphs::icon_row(ui, glyph, name, None, active, 170.0)
                                 .clicked()
                             {
                                 picked = Some(if bold {

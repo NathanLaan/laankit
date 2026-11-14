@@ -68,6 +68,10 @@ pub enum Overlay {
         filename: String,
         dialog: Box<noteliner_slides::PresentationSettings>,
     },
+    /// A hex value for the selected shapes' fill or stroke, in a diagram.
+    Colour(blockliner_egui::dialogs::colour::ColourState),
+    /// Export Diagram: PNG or SVG, the grid, and the scale.
+    ExportDiagram(blockliner_egui::dialogs::export::ExportState),
     /// "Syncing changes to remote..." / "Importing …": no way to close it.
     Busy {
         title: &'static str,
@@ -298,6 +302,8 @@ pub struct NewFileForm {
     pub parent: Option<String>,
     /// `true` for Presentation (`fileType === 'deck'`).
     pub deck: bool,
+    /// `true` for Diagram: a blank `.mmd`, with no template.
+    pub diagram: bool,
     pub template: Option<String>,
     /// From `templates:list`: `{ id, name, kind }`.
     pub templates: Vec<serde_json::Value>,
@@ -311,8 +317,17 @@ impl NewFileForm {
             tags: BTreeSet::new(),
             parent: None,
             deck,
+            diagram: false,
             template: None,
             templates: Vec::new(),
+        }
+    }
+
+    /// New Diagram.
+    pub fn diagram(name: &str) -> Self {
+        Self {
+            diagram: true,
+            ..Self::new(name, false)
         }
     }
 
@@ -323,6 +338,7 @@ impl NewFileForm {
             tags: source.tags.iter().cloned().collect(),
             parent: source.parent_id.clone(),
             deck: false,
+            diagram: false,
             template: None,
             templates: Vec::new(),
         }
@@ -330,6 +346,9 @@ impl NewFileForm {
 
     /// Templates of the chosen type (`visibleTemplates`).
     fn visible_templates(&self) -> Vec<&serde_json::Value> {
+        if self.diagram {
+            return Vec::new();
+        }
         let kind = if self.deck { "deck" } else { "note" };
         self.templates
             .iter()
@@ -346,10 +365,11 @@ pub fn new_file(
     current: Option<&Entry>,
 ) -> Option<FormAction> {
     let duplicating = form.duplicate_of.is_some();
-    let title = match (duplicating, form.deck) {
-        (true, _) => "Duplicate",
-        (false, true) => "New Presentation",
-        (false, false) => "New File",
+    let title = match (duplicating, form.deck, form.diagram) {
+        (true, _, _) => "Duplicate",
+        (false, _, true) => "New Diagram",
+        (false, true, false) => "New Presentation",
+        (false, false, false) => "New File",
     };
     let resp = Dialog::compact("new-file", title).show(ctx, |ui| {
         let p = theme::palette(ui.ctx());
@@ -357,17 +377,19 @@ pub fn new_file(
         if !duplicating {
             dialog::field_label(ui, "Type");
             ui.horizontal(|ui| {
-                for (deck, glyph, label) in [
-                    (false, icons::FILE_LINES, "Note"),
-                    (true, icons::PERSON_CHALKBOARD, "Presentation"),
+                for (deck, diagram, glyph, label) in [
+                    (false, false, icons::FILE_LINES, "Note"),
+                    (true, false, icons::PERSON_CHALKBOARD, "Presentation"),
+                    (false, true, icons::OBJECT_GROUP, "Diagram"),
                 ] {
-                    let kind = if form.deck == deck {
+                    let kind = if (form.deck, form.diagram) == (deck, diagram) {
                         ButtonKind::Primary
                     } else {
                         ButtonKind::Secondary
                     };
                     if dialog::icon_button(ui, Some(glyph), label, kind, true).clicked() {
                         form.deck = deck;
+                        form.diagram = diagram;
                     }
                 }
             });
@@ -419,7 +441,7 @@ pub fn new_file(
         });
 
         let visible = form.visible_templates();
-        if !duplicating && (!visible.is_empty() || form.deck) {
+        if !duplicating && !form.diagram && (!visible.is_empty() || form.deck) {
             ui.add_space(10.0);
             dialog::field_label(ui, "Template");
             let blank = if form.deck {

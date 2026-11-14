@@ -229,7 +229,9 @@ fn new_project_file_type_rename_move_delete() {
         !second2.exists() && a.entries().len() == 1
     });
     assert_eq!(index(&project)["files"].as_array().unwrap().len(), 1);
-    assert!(h.state().selected().is_none());
+    // Its tab closed: the other note's tab is shown.
+    let renamed_id = h.state().entries()[0].id.clone();
+    assert_eq!(h.state().selected(), Some(renamed_id));
 
     // Every change was committed.
     let log = std::process::Command::new("git")

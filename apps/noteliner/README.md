@@ -1,6 +1,6 @@
 # NoteLiner
 
-NoteLiner is a single-user, outliner-style note-taking app: a hierarchical tree of Markdown notes with syntax highlighting, live preview, tags, wikilinks, backlinks, slides, and PDF export, where every change is committed to git and pushed to an optional remote for cross-device sync.
+NoteLiner is a single-user, outliner-style note-taking app: a hierarchical tree of Markdown notes and diagrams with syntax highlighting, live preview, tags, wikilinks, backlinks, slides, and PDF export, where every change is committed to git and pushed to an optional remote for cross-device sync.
 
 It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) over the shared `laankit-*` crates, with no webview and no JavaScript. The shipped binary is `noteliner`.
 
@@ -13,6 +13,8 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 ## Features
 
 - Hierarchical note tree with drag-and-drop reordering and re-parenting
+- Tabs: each file you open gets a tab above the document, with its own undo history, cursor, and scroll. Ctrl+W closes a tab, and Ctrl+Tab and Ctrl+Shift+Tab switch tabs. The tabs come back when you reopen the project
+- Diagrams: BlockLiner's diagram editor inside a project. A diagram is a `.mmd` file beside your notes, with BlockLiner's tools in the toolbar above it and a Properties panel to its right. It can be tagged, linked with `[[wikilinks]]`, moved in the tree, and exported as PNG, SVG, or Mermaid
 - Markdown editor with syntax highlighting, list editing, multiple cursors, folding, find/replace, and `[[wikilink]]` completion
 - Live Markdown preview with math (`$…$`, `$$…$$`) typeset by Typst
 - Tags, backlinks, and full-text search panes
@@ -31,8 +33,9 @@ A Project is a folder on disk containing:
 1. A local git repository, optionally linked to a remote on GitHub or GitLab.
 2. `noteliner.json`: the index, with every note, its place in the hierarchy, tags, and attachments.
 3. Markdown files (`.md`) in the project root.
-4. `_attachments/`: files attached to notes (images, PDFs, …; 30 MB cap).
-5. `_templates/` (optional): reusable note skeletons (plain `.md` files).
+4. Diagram files (`.mmd`) in the project root: Mermaid flowcharts in BlockLiner's format, so the same file opens in BlockLiner. A diagram's name, tags, and dates are in the index only; nothing but the diagram is written into its file.
+5. `_attachments/`: files attached to notes (images, PDFs, …; 30 MB cap).
+6. `_templates/` (optional): reusable note skeletons (plain `.md` files).
 
 Changes are committed locally whenever a note is added, removed, or modified, and pushed to the remote on a debounce timer. Settings and data live in the platform config/data folders (`~/.config/NoteLiner` on Linux), shared across every build LaanKit has ever shipped, so projects open unchanged.
 
@@ -58,6 +61,8 @@ Enable it in Settings → MCP; the first time you do, a one-screen walkthrough e
 #### Tools
 
 Reads: `list_notes`, `read_note`, `search`, `get_backlinks`, `list_attachments`, `list_tags`; writes: `create_note`, `update_note`, `delete_note`, `rename_note`, `set_tags`, `add_attachment`, `remove_attachment`. It also exposes `noteliner://` resource URIs and a handful of prompts (`daily_note`, `meeting_note`, `summarize_note`, `link_suggestions`).
+
+The same tools work on diagrams. `list_notes` gives each entry's `kind` (`note`, `deck`, or `diagram`), `create_note` takes `kind: "diagram"`, and `read_note` and `update_note` read and write a diagram's Mermaid text. `update_note` refuses text that BlockLiner can't read, so a diagram always opens.
 
 #### Safety
 

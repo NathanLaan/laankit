@@ -54,6 +54,79 @@ pub fn extname(name: &str) -> String {
     }
 }
 
+/// What a project file is, read from its extension: a Markdown note, or a
+/// BlockLiner diagram (a Mermaid flowchart, `.mmd`). A diagram's file holds
+/// only the diagram: its name, tags and dates live in the index, and no
+/// frontmatter is written into it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FileKind {
+    #[default]
+    Note,
+    Diagram,
+}
+
+impl FileKind {
+    /// The kind of the file named `filename`.
+    pub fn of(filename: &str) -> Self {
+        match extname(filename).to_lowercase().as_str() {
+            ".mmd" | ".mermaid" => FileKind::Diagram,
+            _ => FileKind::Note,
+        }
+    }
+
+    /// The kind of an index entry.
+    pub fn of_entry(entry: &Value) -> Self {
+        Self::of(s(&entry["filename"]))
+    }
+
+    /// The extension of a new file of this kind, with its dot.
+    pub fn ext(self) -> &'static str {
+        match self {
+            FileKind::Note => ".md",
+            FileKind::Diagram => ".mmd",
+        }
+    }
+
+    /// `note` or `diagram`.
+    pub fn name(self) -> &'static str {
+        match self {
+            FileKind::Note => "note",
+            FileKind::Diagram => "diagram",
+        }
+    }
+
+    /// The kind named `name`, as [`FileKind::name`] spells it.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "note" => Some(FileKind::Note),
+            "diagram" => Some(FileKind::Diagram),
+            _ => None,
+        }
+    }
+}
+
+/// An entry's kind as the MCP listings give it: `note`, `deck` (a note with
+/// a `presentation:` block) or `diagram`.
+pub fn entry_kind(entry: &Value) -> &'static str {
+    match FileKind::of_entry(entry) {
+        FileKind::Diagram => "diagram",
+        FileKind::Note if entry["deck"] == true => "deck",
+        FileKind::Note => "note",
+    }
+}
+
+/// A new diagram's text: an empty flowchart.
+pub fn blank_diagram() -> String {
+    blockliner_core::write(&blockliner_core::Diagram::new())
+}
+
+/// Checks that `text` is a diagram BlockLiner can open.
+pub fn check_diagram(text: &str) -> Result<()> {
+    blockliner_core::read(text)
+        .map(|_| ())
+        .map_err(|e| anyhow::anyhow!("Not a diagram BlockLiner can read: {e}"))
+}
+
 /// Lowercase, collapse non-alphanumerics to `-`, trim dashes.
 pub fn slugify(text: &str) -> String {
     let lower = text.to_lowercase();
@@ -334,6 +407,10 @@ impl Project {
         let n = self.files().len();
         for i in 0..n {
             let entry = self.files()[i].clone();
+            // A diagram has no frontmatter and is never a deck.
+            if FileKind::of_entry(&entry) == FileKind::Diagram {
+                continue;
+            }
             let path = dir.join(s(&entry["filename"]));
             let Ok(raw) = fs::read_to_string(&path) else {
                 continue;
@@ -360,12 +437,17 @@ impl Project {
     pub fn read_file(&self, filename: &str) -> Result<String> {
         let path = self.file_path(filename)?;
         match fs::read_to_string(path) {
+            // A diagram is its whole file.
+            Ok(raw) if FileKind::of(filename) == FileKind::Diagram => Ok(raw),
             Ok(raw) => Ok(frontmatter::strip_body(&raw)),
             Err(_) => Ok(String::new()),
         }
     }
 
     pub fn read_frontmatter(&self, filename: &str) -> Value {
+        if FileKind::of(filename) == FileKind::Diagram {
+            return json!({});
+        }
         match self
             .file_path(filename)
             .ok()
@@ -380,7 +462,7 @@ impl Project {
         let path = self.file_path(filename)?;
         let pos = self.position_by_filename(filename);
         let mut out = body.to_string();
-        if self.write_frontmatter {
+        if self.write_frontmatter && FileKind::of(filename) == FileKind::Note {
             let existing = fs::read_to_string(&path)
                 .map(|r| frontmatter::parse(&r).data)
                 .unwrap_or_default();
@@ -404,7 +486,7 @@ impl Project {
 
     /// Refresh only the on-disk frontmatter for `entry`, keeping the body.
     pub fn rewrite_frontmatter(&self, entry: &Value) -> Result<bool> {
-        if !self.write_frontmatter {
+        if !self.write_frontmatter || FileKind::of_entry(entry) == FileKind::Diagram {
             return Ok(false);
         }
         let path = self.file_path(s(&entry["filename"]))?;
@@ -421,8 +503,23 @@ impl Project {
         Ok(false)
     }
 
+    /// A new note.
     pub async fn create_file(
         &mut self,
+        name: &str,
+        tags: &Value,
+        body: Option<String>,
+        parent_id: Option<&str>,
+    ) -> Result<Value> {
+        self.create(FileKind::Note, name, tags, body, parent_id)
+            .await
+    }
+
+    /// A new file of `kind`. A diagram starts blank, or as `body`, which
+    /// must be one BlockLiner can read.
+    pub async fn create(
+        &mut self,
+        kind: FileKind,
         name: &str,
         tags: &Value,
         body: Option<String>,
@@ -431,8 +528,13 @@ impl Project {
         if name.trim().is_empty() {
             bail!("File name cannot be empty");
         }
+        if kind == FileKind::Diagram {
+            if let Some(body) = &body {
+                check_diagram(body)?;
+            }
+        }
         let id = uuid::Uuid::new_v4().to_string();
-        let filename = self.unique_filename(&format!("{}.md", slugify(name)))?;
+        let filename = self.unique_filename(&format!("{}{}", slugify(name), kind.ext()))?;
         let parent = parent_id
             .filter(|p| self.find(p).is_some())
             .map(str::to_string);
@@ -454,9 +556,11 @@ impl Project {
             "modifiedAt": now,
         });
         let path = self.file_path(&filename)?;
-        let initial = body
-            .unwrap_or_else(|| format!("# {name} {}\n", chrono::Local::now().format("%Y-%m-%d")));
-        if self.write_frontmatter {
+        let initial = body.unwrap_or_else(|| match kind {
+            FileKind::Note => format!("# {name} {}\n", chrono::Local::now().format("%Y-%m-%d")),
+            FileKind::Diagram => blank_diagram(),
+        });
+        if self.write_frontmatter && kind == FileKind::Note {
             // A template may carry its own frontmatter (a deck template's
             // `presentation:`); keep it, minus the template-only `kind`.
             let seeded = frontmatter::parse(&initial);
@@ -498,7 +602,9 @@ impl Project {
             return Ok(None);
         };
         let old_filename = s(&self.files()[i]["filename"]).to_string();
-        let new_filename = format!("{}.md", slugify(new_name));
+        // The extension, and so the kind, stays.
+        let ext = FileKind::of(&old_filename).ext();
+        let new_filename = format!("{}{ext}", slugify(new_name));
         let (old_path, new_path) = (
             self.file_path(&old_filename)?,
             self.file_path(&new_filename)?,
@@ -528,6 +634,9 @@ impl Project {
         let path = self.file_path(filename)?;
         if !path.exists() {
             bail!("File does not exist");
+        }
+        if FileKind::of(filename) == FileKind::Diagram {
+            bail!("A diagram can't be a presentation");
         }
         let parsed = frontmatter::parse(&fs::read_to_string(&path)?);
         let mut next = parsed.data;
@@ -655,10 +764,17 @@ impl Project {
             let Ok(raw) = fs::read_to_string(dir.join(s(&f["filename"]))) else {
                 continue;
             };
-            let body = frontmatter::strip_body(&raw);
+            // A diagram's `%%` lines are its layout, not its text.
+            let diagram = FileKind::of_entry(f) == FileKind::Diagram;
+            let body = if diagram {
+                raw
+            } else {
+                frontmatter::strip_body(&raw)
+            };
             let matches: Vec<Value> = body
                 .split('\n')
                 .enumerate()
+                .filter(|(_, line)| !(diagram && line.trim_start().starts_with("%%")))
                 .filter(|(_, line)| {
                     if case_sensitive {
                         line.contains(&needle)
@@ -775,6 +891,156 @@ mod tests {
         assert_eq!(slugify("  Été 2026 "), "t-2026");
         assert_eq!(extname("a/b.tar.gz"), ".gz");
         assert_eq!(extname(".bashrc"), "");
+    }
+
+    /// A box with a subroutine, as BlockLiner writes them.
+    const DIAGRAM: &str = "flowchart LR\n  api[\"API Gateway\"]\n  jobs[[\"Job Runner\"]]\n  api --> jobs\n%% blockliner 1 grid=20\n%% @shape api x=40 y=40 w=160 h=80\n%% @shape jobs x=280 y=40 w=160 h=80\n";
+
+    #[test]
+    fn kinds_come_from_the_extension() {
+        assert_eq!(FileKind::of("a.md"), FileKind::Note);
+        assert_eq!(FileKind::of("a.mmd"), FileKind::Diagram);
+        assert_eq!(FileKind::of("a.MERMAID"), FileKind::Diagram);
+        assert_eq!(FileKind::of("mmd"), FileKind::Note);
+        assert_eq!(entry_kind(&json!({ "filename": "a.md" })), "note");
+        assert_eq!(
+            entry_kind(&json!({ "filename": "a.md", "deck": true })),
+            "deck"
+        );
+        assert_eq!(entry_kind(&json!({ "filename": "a.mmd" })), "diagram");
+        assert!(check_diagram(&blank_diagram()).is_ok());
+        assert!(check_diagram(DIAGRAM).is_ok());
+    }
+
+    #[tokio::test]
+    async fn diagram_lifecycle() {
+        let (tmp, mut p) = project();
+        let dir = tmp.path().to_path_buf();
+        p.git.git.init(&dir).await.unwrap();
+        p.set_git_config_for_test(&dir).await;
+        p.open(&dir).await.unwrap();
+        assert!(p.write_frontmatter);
+
+        // Created blank, as `.mmd`, with no frontmatter.
+        let d = p
+            .create(
+                FileKind::Diagram,
+                "System Map",
+                &json!(["arch"]),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(d["filename"], "system-map.mmd");
+        assert_eq!(d["tags"], json!(["arch"]));
+        assert!(d.get("deck").is_none());
+        let raw = fs::read_to_string(dir.join("system-map.mmd")).unwrap();
+        assert_eq!(raw, blank_diagram());
+        assert!(!raw.starts_with("---"));
+
+        // Text that isn't a diagram is refused.
+        assert!(p
+            .create(
+                FileKind::Diagram,
+                "Bad",
+                &json!([]),
+                Some("# A note".into()),
+                None
+            )
+            .await
+            .is_err());
+        assert!(!dir.join("bad.mmd").exists());
+
+        // Written and read back byte for byte.
+        p.write_file("system-map.mmd", DIAGRAM).await.unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.join("system-map.mmd")).unwrap(),
+            DIAGRAM
+        );
+        assert_eq!(p.read_file("system-map.mmd").unwrap(), DIAGRAM);
+        assert_eq!(p.read_frontmatter("system-map.mmd"), json!({}));
+
+        // Reconciling frontmatter (as opening a project does) leaves it alone.
+        assert_eq!(p.reconcile_frontmatter(true).unwrap(), 0);
+        assert_eq!(
+            fs::read_to_string(dir.join("system-map.mmd")).unwrap(),
+            DIAGRAM
+        );
+
+        // Search finds a label, not the layout lines.
+        let hits = p.search("job runner", false);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0]["matches"].as_array().unwrap().len(), 1);
+        assert!(p.search("@shape", false).is_empty());
+        assert!(p.search("blockliner", false).is_empty());
+
+        // Renaming keeps the extension and the content.
+        let id = d["id"].as_str().unwrap();
+        let renamed = p.rename_file(id, "Service Map").await.unwrap().unwrap();
+        assert_eq!(renamed["filename"], "service-map.mmd");
+        assert!(!dir.join("system-map.mmd").exists());
+        assert_eq!(
+            fs::read_to_string(dir.join("service-map.mmd")).unwrap(),
+            DIAGRAM
+        );
+
+        // A diagram can't become a presentation.
+        assert!(p
+            .set_presentation("service-map.mmd", &json!({ "theme": "x" }))
+            .await
+            .is_err());
+        assert_eq!(
+            fs::read_to_string(dir.join("service-map.mmd")).unwrap(),
+            DIAGRAM
+        );
+
+        // Reopening the project doesn't touch it either.
+        p.close();
+        p.open(&dir).await.unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.join("service-map.mmd")).unwrap(),
+            DIAGRAM
+        );
+    }
+
+    #[tokio::test]
+    async fn diagrams_are_link_targets_but_hold_no_links() {
+        let (tmp, mut p) = project();
+        let dir = tmp.path().to_path_buf();
+        p.git.git.init(&dir).await.unwrap();
+        p.set_git_config_for_test(&dir).await;
+        p.open(&dir).await.unwrap();
+        let jobs = p
+            .create_file("Job Runner", &json!([]), Some("jobs".into()), None)
+            .await
+            .unwrap();
+        // An unquoted subroutine label reads exactly like a wikilink.
+        let text = "flowchart LR\n  jobs[[Job Runner]]\n";
+        assert_eq!(crate::links::parse_links(text), ["Job Runner"]);
+        let d = p
+            .create(
+                FileKind::Diagram,
+                "Map",
+                &json!([]),
+                Some(text.into()),
+                None,
+            )
+            .await
+            .unwrap();
+        let note = p
+            .create_file("Overview", &json!([]), Some("See [[Map]].".into()), None)
+            .await
+            .unwrap();
+        let mut links = crate::links::LinkGraph::default();
+        links.rebuild(&p);
+        // `jobs[["Job Runner"]]` in the diagram is a shape, not a link.
+        assert!(links
+            .backlink_snippets(&p, jobs["id"].as_str().unwrap())
+            .is_empty());
+        let back = links.backlink_snippets(&p, d["id"].as_str().unwrap());
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0]["sourceId"], note["id"]);
     }
 
     #[tokio::test]

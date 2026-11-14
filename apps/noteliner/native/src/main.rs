@@ -13,22 +13,28 @@ mod backend;
 mod commands;
 mod config;
 mod deck;
+mod diagram;
 mod editor;
 mod math;
 mod model;
 mod overlays;
 mod spell;
 mod svg_colors;
+mod tabs;
 mod views;
 
 #[cfg(test)]
 mod ui_tests;
+#[cfg(test)]
+mod ui_tests_diagram;
 #[cfg(test)]
 mod ui_tests_editor;
 #[cfg(test)]
 mod ui_tests_panes;
 #[cfg(test)]
 mod ui_tests_present;
+#[cfg(test)]
+mod ui_tests_tabs;
 
 use config::Paths;
 

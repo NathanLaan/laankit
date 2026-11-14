@@ -30,6 +30,8 @@ pub enum ContextAction {
     OpenInFileSystem,
     Preview,
     Export(ExportKind),
+    /// The Export dialog for a diagram (PNG or SVG).
+    ExportDiagram,
     ConvertToPresentation,
     ConvertToNote,
     PresentationSettings,
@@ -340,11 +342,7 @@ fn paint_row(
             p.text_muted,
         );
     }
-    let icon = if entry.deck {
-        icons::PERSON_CHALKBOARD
-    } else {
-        icons::FILE_LINES
-    };
+    let icon = file_icon(entry.is_diagram(), entry.deck);
     painter.text(
         pos2(rect.left() + indent + 6.0, cy),
         Align2::CENTER_CENTER,
@@ -452,20 +450,32 @@ fn context_menu(ui: &mut Ui, entry: &Entry, out: &mut Vec<TreeAction>, state: &m
         act(ContextAction::OpenInFileSystem);
     }
     ui.separator();
-    if item(ui, icons::EYE, "Preview", Some("Ctrl+P")) {
-        act(ContextAction::Preview);
-    }
-    if item(ui, icons::FILE_CODE, "Save to HTML", None) {
-        act(ContextAction::Export(ExportKind::Html));
-    }
-    if item(ui, icons::FILE_PDF, "Save to PDF", None) {
-        act(ContextAction::Export(ExportKind::Pdf));
-    }
-    if item(ui, icons::FILE_LINES, "Save to Markdown", None) {
-        act(ContextAction::Export(ExportKind::Markdown));
+    // A diagram has no preview, note exports or presentation.
+    if entry.is_diagram() {
+        if item(ui, icons::FILE_EXPORT, "Export...", None) {
+            act(ContextAction::ExportDiagram);
+        }
+        if item(ui, icons::FILE_CODE, "Save to Mermaid", None) {
+            act(ContextAction::Export(ExportKind::Mermaid));
+        }
+    } else {
+        if item(ui, icons::EYE, "Preview", Some("Ctrl+P")) {
+            act(ContextAction::Preview);
+        }
+        if item(ui, icons::FILE_CODE, "Save to HTML", None) {
+            act(ContextAction::Export(ExportKind::Html));
+        }
+        if item(ui, icons::FILE_PDF, "Save to PDF", None) {
+            act(ContextAction::Export(ExportKind::Pdf));
+        }
+        if item(ui, icons::FILE_LINES, "Save to Markdown", None) {
+            act(ContextAction::Export(ExportKind::Markdown));
+        }
     }
     ui.separator();
-    if entry.deck {
+    if entry.is_diagram() {
+        // Nothing to convert.
+    } else if entry.deck {
         if item(ui, icons::SLIDERS, "Presentation Settings...", None) {
             act(ContextAction::PresentationSettings);
         }
@@ -522,6 +532,18 @@ pub fn elide(ui: &Ui, text: &str, font: FontId, width: f32) -> String {
         }
     }
     chars[..lo].iter().collect::<String>() + "…"
+}
+
+/// A file's icon, in the tree and on its tab: a diagram, a presentation or
+/// a note.
+pub fn file_icon(diagram: bool, deck: bool) -> &'static str {
+    if diagram {
+        icons::OBJECT_GROUP
+    } else if deck {
+        icons::PERSON_CHALKBOARD
+    } else {
+        icons::FILE_LINES
+    }
 }
 
 #[cfg(test)]

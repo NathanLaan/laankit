@@ -185,6 +185,17 @@ impl NoteEditor {
         self.text_rect = None;
     }
 
+    /// An empty editor set up as this one (context, display preferences),
+    /// to take its place while it waits in a background tab.
+    pub fn sibling(&self) -> NoteEditor {
+        let mut e = NoteEditor {
+            ctx: self.ctx.clone(),
+            ..Default::default()
+        };
+        e.state.set_prefs(self.state.prefs());
+        e
+    }
+
     pub fn file_id(&self) -> Option<&str> {
         self.id.as_deref()
     }
@@ -362,10 +373,16 @@ impl NoteEditor {
     /// Puts the caret and scroll back where `view` said they were (the note
     /// must be loaded); offsets past the end are clamped.
     pub fn restore_view(&mut self, anchor: usize, head: usize, scroll: egui::Vec2) {
+        self.place_view(anchor, head, scroll);
+        self.state.focus();
+    }
+
+    /// As [`NoteEditor::restore_view`], leaving the keyboard focus where it
+    /// is (a tab shown from the file tree keeps the tree's keys).
+    pub fn place_view(&mut self, anchor: usize, head: usize, scroll: egui::Vec2) {
         let n = self.state.text().chars().count();
         self.state
             .restore_view(&self.ctx, anchor.min(n), head.min(n), scroll);
-        self.state.focus();
         self.ctx.request_repaint();
     }
 

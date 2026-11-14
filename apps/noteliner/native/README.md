@@ -53,13 +53,17 @@ The Help pages are `assets/help-pages.json` (loaded at build time with `include_
 | `model`          | Typed index entries, the tree order and sorts, and drag-and-drop / move / clear-tags edits on the index JSON |
 | `commands`       | `registerCommands`: every command and shortcut, for the keyboard, the palette, and Settings          |
 | `editor`         | `NoteEditor`: `laankit-editor`'s widget with the autosave, status, and event contract (see below)     |
+| `tabs`           | The open tabs: their order, and the state of the tabs in the background (see Tabs)                   |
+| `diagram`        | `DiagramDoc`: `blockliner-egui`'s editor with the same autosave and status contract (see Diagrams)   |
 | `spell`          | Hunspell dictionary lookup, background loading, and the personal word list                           |
 | `deck`           | The open deck, parsed per edit, and the `noteliner-slides` widgets (pane, preview, presenter)       |
-| `views`          | `OpenScreen`, `StatusBar`, `LogPanel`; `views::tree` (`FileTree`), `views::sidebar` (`Sidebar`), `views::panes` (`SearchPane`, `BacklinksPane`, `TagsPane`, `TagFilterPopover`), `views::history` (`HistoryPanel`), `views::attachments` (`AttachmentPanel`), `views::preview` (`Preview`) |
+| `views`          | `OpenScreen`, `StatusBar`, `LogPanel`; `views::tree` (`FileTree`), `views::sidebar` (`Sidebar`), `views::panes` (`SearchPane`, `BacklinksPane`, `TagsPane`, `TagFilterPopover`), `views::history` (`HistoryPanel`), `views::attachments` (`AttachmentPanel`), `views::preview` (`Preview`), `views::diagram` (the diagram toolbar and the Properties panel) |
 | `overlays`       | The dialogs: New Project, Set Up, New File / Duplicate, Move, Delete, Clear Tags, Remove Recent, Project Settings, Settings, Remote Sync, Help, About, the busy dialogs, the Tag Editor (`overlays::tags`), Remove Attachment, and the MCP confirmation and walkthrough (`overlays::mcp`) |
 | `svg_colors`     | The SVG named colours for tag chips (`lib/svgColors.js`)                                            |
 | `ui_tests`       | egui_kittest: new project → new file → type → autosave → rename → drag-and-drop move → delete       |
 | `ui_tests_panes` | egui_kittest: search → jump, backlinks → jump, history, tags pane / filter / editor, attachments insert and remove, MCP allow / session / deny; and a PDF export read back with hayro |
+| `ui_tests_tabs`  | egui_kittest: each tab keeps its text and undo history, closing tabs shows the neighbour, Next File reuses the active tab, and the tabs come back when the project reopens |
+| `ui_tests_diagram` | egui_kittest: New Diagram creates a `.mmd` and shows the canvas and the tools, drawing with a button and with a tool key autosaves, a tool key typed into Search doesn't draw, a note tab and a diagram tab keep their state, and Export writes an SVG |
 | `ui_tests_editor`| egui_kittest: typing autosaves, list Enter, `[[` completion, a pasted image becomes an attachment and its Markdown, and Ctrl+click on a wikilink; SLIDES pane insert → disk, presentation settings save, presenter open/close; reopening a project restores the last note's caret and scroll (and only that note's) |
 
 ### Editor
@@ -77,7 +81,36 @@ The Help pages are `assets/help-pages.json` (loaded at build time with `include_
 
 `[[` completes the names of the other notes in the index (`wikilinkCompletions`). The editor's display matches the CodeMirror setup (14 px, line numbers, wrapping); only `spellCheckEnabled` is a preference.
 
-Reopening a project opens the note that was open, with its caret and scroll where they were (the editor plan's decision 3). Only that one note is remembered: the app keeps `lastFilePosition: { fileId, anchor, cursor, scrollX, scroll }` in the project's layout in `window-state.json` (the Tauri shape, plus this key, which the Svelte build ignores), updates it as the caret and scroll move, and saves it with the layout (debounced) and on close and quit. It's applied once the note has loaded, and ignored if the note is gone. Other notes open at the top, as in the Svelte build.
+Reopening a project opens the tabs that were open and shows the active one, with its caret and scroll where they were (the editor plan's decision 3). Only the active note's place is remembered: the app keeps `lastFilePosition: { fileId, anchor, cursor, scrollX, scroll }` in the project's layout in `window-state.json` (the Tauri shape, plus this key, which the Svelte build ignores), updates it as the caret and scroll move, and saves it with the layout (debounced) and on close and quit. It's applied once the note has loaded, and ignored if the note is gone. Other notes open at the top, as in the Svelte build.
+
+### Tabs
+
+`src/tabs.rs` holds the open tabs. The active tab is the project's selected file, and its state lives in the app's `NoteEditor` or `DiagramDoc`. Leaving a tab writes its pending edit and stores its state in `Tabs`; entering one takes the state back, or reads the file if the tab has none. The tab strip is `laankit_egui::tabs`, which BlockLiner uses too.
+
+| Action | Does |
+|---|---|
+| Choosing a file (the tree, a search result, a link, the palette) | Opens its tab at the end of the strip, or shows the tab it has |
+| Previous File and Next File (Ctrl+PgUp, Ctrl+PgDn) | Show the file in the active tab's place, or show the tab it has |
+| Close Tab (Ctrl+W, the tab's close button, a middle-click) | Writes the pending edit and shows the tab to the right, else the one to the left |
+| Next Tab and Previous Tab (Ctrl+Tab, Ctrl+Shift+Tab) | Step through the strip, wrapping around |
+
+A note in a background tab keeps its text, undo history, caret, and scroll. A diagram keeps its undo history and its pan and zoom. Closing a tab drops them. The layout in `window-state.json` keeps `openTabs` (the file ids in tab order) and `activeTab`; tabs whose file is gone are left out when the project reopens.
+
+### Diagrams
+
+A file whose name ends in `.mmd` is a diagram: a Mermaid flowchart in BlockLiner's format (see `apps/blockliner/README.md`). `noteliner-core` reads the kind from the extension (`FileKind`), writes no frontmatter into a diagram, doesn't scan it for wikilinks (`id[[label]]` is Mermaid's subroutine shape), and skips its `%%` layout lines in search.
+
+`src/diagram.rs` holds `DiagramDoc`, a wrapper around `blockliner_egui::DiagramEditor` with the note editor's contract: `load` when `file:read` arrives, a write 500 ms after the diagram last changed, `flush` before switching tabs, and `take` and `restore` for a background tab. A diagram that BlockLiner can't read isn't opened, and its error is shown.
+
+While a diagram is the active tab:
+
+- The toolbar above the document shows BlockLiner's tools, Undo and Redo, the grid, the dimension lines, the zoom, and the Properties, Export, and History toggles.
+- The Properties panel is to the right of the canvas (Ctrl+I), where the preview is for a note.
+- BlockLiner's edit commands apply, with the same keys: the tool keys (V, R, O, and the rest), the digits, Delete, the arrow keys, Enter, Esc, Ctrl+Z, Ctrl+Shift+Z, Ctrl+A, Ctrl+B, and copy, cut, and paste. They are registered from `blockliner_egui::commands` and wait while a text field has the keyboard.
+- Ctrl+=, Ctrl+-, and Ctrl+0 zoom NoteLiner's interface, as always. Ctrl+Shift+=, Ctrl+Shift+-, and Ctrl+Shift+0 zoom the canvas.
+- Export Diagram writes a PNG or an SVG to the Downloads folder, and Save Diagram to Mermaid copies the `.mmd` there.
+
+Settings has a Diagrams tab for the grid, the grid size of a new diagram, the unit of a grid mark, and the dimension lines. They are NoteLiner's own settings (`diagramShowGrid`, `diagramGridSize`, `diagramGridUnit`, `diagramShowDimensions`, and the `diagramExport*` keys in `ui-preferences.json`); BlockLiner's are separate. The layout keeps `showProperties` and `propertiesWidth`.
 
 ### Spell checking
 

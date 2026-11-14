@@ -22,8 +22,8 @@ use crate::canvas::paint::{self, SwatchLook};
 use crate::canvas::{
     current_swatch, Agreed, SelectionKinds, SelectionStyle, Swatch, Tool, STROKE_STYLES,
 };
-use crate::overlays::colour::INVALID;
-use crate::views::Glyph;
+use crate::dialogs::colour::INVALID;
+use crate::glyphs::Glyph;
 
 /// The pane's smallest height in the sidebar's pane stack.
 pub const MIN_HEIGHT: f32 = 120.0;
@@ -270,7 +270,7 @@ fn shape_row(ui: &mut Ui, current: &Agreed<ShapeKind>) -> Option<ShapeKind> {
         for kind in ShapeKind::CHANGEABLE {
             let icon = Tool::for_shape(&kind).unwrap_or(Tool::Rect);
             let active = *current == Agreed::Same(kind.clone());
-            if crate::views::icon_row(ui, icon, kind.name(), None, active, width).clicked() {
+            if crate::glyphs::icon_row(ui, icon, kind.name(), None, active, width).clicked() {
                 picked = Some(kind);
             }
         }
@@ -291,7 +291,7 @@ fn line_row(ui: &mut Ui, current: &Agreed<Tool>) -> Option<Tool> {
     kind_select(ui, "Change Line", shown, |ui, width| {
         for tool in Tool::LINES {
             let active = *current == Agreed::Same(tool);
-            if crate::views::icon_row(ui, tool, tool.name(), None, active, width).clicked() {
+            if crate::glyphs::icon_row(ui, tool, tool.name(), None, active, width).clicked() {
                 picked = Some(tool);
             }
         }
@@ -315,7 +315,7 @@ fn dash_row(ui: &mut Ui, current: &DashCommon) -> Option<Option<Dash>> {
             let active = *current == DashCommon::Same(dash.clone());
             let name = Dash::name(dash.as_ref());
             let glyph = Glyph::Dash(dash.clone());
-            if crate::views::icon_row(ui, glyph, name, None, active, width).clicked() {
+            if crate::glyphs::icon_row(ui, glyph, name, None, active, width).clicked() {
                 picked = Some(dash);
             }
         }
@@ -348,7 +348,7 @@ fn weight_row(ui: &mut Ui, current: &Agreement<Option<Weight>>) -> Option<Option
                 let active = *current == Agreement::Same(weight.clone());
                 let name = Weight::label(weight.as_ref());
                 let glyph = Glyph::Weight(weight.clone());
-                if crate::views::icon_row(ui, glyph, &name, None, active, width).clicked() {
+                if crate::glyphs::icon_row(ui, glyph, &name, None, active, width).clicked() {
                     picked = Some(weight);
                 }
             }
@@ -386,7 +386,7 @@ fn text_row(ui: &mut Ui, bold: bool, current: &Agreement<bool>) -> Option<bool> 
         for value in [false, true] {
             let (glyph, name) = look(value);
             let active = *current == Agreement::Same(value);
-            if crate::views::icon_row(ui, glyph, name, None, active, width).clicked() {
+            if crate::glyphs::icon_row(ui, glyph, name, None, active, width).clicked() {
                 picked = Some(value);
             }
         }
@@ -429,7 +429,7 @@ fn kind_select(
     match current {
         Some((icon, name)) => {
             let ink = p.text_primary;
-            crate::views::paint_glyph(
+            crate::glyphs::paint_glyph(
                 painter,
                 &icon,
                 pos2(rect.left() + 18.0, rect.center().y),

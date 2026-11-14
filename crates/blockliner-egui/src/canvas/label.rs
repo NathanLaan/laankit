@@ -86,7 +86,6 @@ impl Canvas {
         }
     }
 
-    #[cfg(test)]
     pub fn is_editing_label(&self) -> bool {
         self.label.is_some()
     }

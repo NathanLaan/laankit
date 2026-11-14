@@ -13,7 +13,7 @@ use laankit_egui::{fonts, icons};
 
 use super::view::View;
 use super::{pos, tools::Hit};
-use crate::views::arrowhead;
+use crate::glyphs::arrowhead;
 
 /// Label text size at 100 %, in diagram pixels.
 pub const LABEL_SIZE: f32 = 14.0;

@@ -7,7 +7,7 @@ BlockLiner's app: an [egui](https://github.com/emilk/egui) UI over `blockliner-c
 ```bash
 cargo run -p blockliner-native --release
 cargo run -p blockliner-native --release -- ~/diagrams/Checkout.mmd   # or a folder
-cargo test -p blockliner-core -p blockliner-native
+cargo test -p blockliner-core -p blockliner-egui -p blockliner-native
 ```
 
 The package is `blockliner-native`; its binary is `blockliner`, the one the release packages install as `/usr/bin/blockliner`.
@@ -63,22 +63,32 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | `style`    | Colours and dashes: `Colour`, `Style` (a shape's `style` line or an edge's `linkStyle`), `Dash` (solid, dashed, dotted, custom), the presets, label contrast |
 | `clipboard`| Copy and paste: the selection as a diagram (ends on shapes left behind freed), new ids and placement on paste, and plain text as a text box |
 
+`blockliner-egui` (`crates/blockliner-egui`) is the editor as egui widgets, shared with NoteLiner:
+
+| Module     | What it does                                                                                |
+|------------|---------------------------------------------------------------------------------------------|
+| `editor`   | `DiagramEditor`: one diagram with its undo history, canvas, and active tool; runs an edit command, copy and paste, and the keys that aren't shortcuts |
+| `commands` | `EditAct` (the edit commands) and their registrations, which each app adds to its own registry |
+| `canvas`   | The grid, painting, dimension lines, pan and zoom, the tools and their gestures, and the label editor |
+| `tools`    | The tool buttons, the More Shapes list, and the tools' keys                                  |
+| `properties` | The Properties pane: Change Shape and Change Line (Line, Arrow, Right-Angle Line, Right-Angle Arrow) lists, the selection's Fill and Stroke (Mixed when they differ), hex fields, the Stroke Style, Stroke Weight, Text Weight, and Text Style lists, Reset Style |
+| `glyphs`   | The icons in the lists: tools, stroke styles, weights, and text styles                       |
+| `export`   | The SVG writer (labels wrapped by egui, as on the canvas) and PNG through `resvg`            |
+| `dialogs`  | The Export and Custom colour dialogs                                                         |
+| `units`    | What one grid mark measures (mm, cm, m, in, ft) and how a length reads in it                 |
+
 The app (`apps/blockliner/native`):
 
 | Module     | What it does                                                                                |
 |------------|---------------------------------------------------------------------------------------------|
 | `main`     | The eframe window (1280 × 800, at least 800 × 640), icon, app id, the command-line path        |
-| `app`      | Owns everything; routes commands, canvas output, tab and Files actions, overlay actions, and autosave events; puts background tabs' state aside |
+| `app`      | Owns everything but the diagram being edited, which is a `DiagramEditor`; routes commands, tab and Files actions, overlay actions, and autosave events; puts background tabs' state aside |
 | `backend`  | The folder on disk: list, read, create, rename, delete; the debounced atomic autosave; outside changes to the open tabs' files |
 | `config`   | `ui-preferences.json` in `~/.config/BlockLiner` (the platform equivalent elsewhere)           |
-| `commands` | The laankit-egui command registry: shortcuts, palette, and the Settings shortcut list         |
-| `canvas`   | The grid, painting, dimension lines, pan and zoom, the tools and their gestures, and the label editor |
-| `units`    | What one grid mark measures (mm, cm, m, in, ft) and how a length reads in it                 |
-| `views`    | The toolbar, the Project and Files lists, the tab strip, empty states, and the status bar     |
+| `commands` | The laankit-egui command registry: the file, tab, and window commands, plus the edit commands from `blockliner-egui` |
+| `views`    | The toolbar, the Project and Files lists, empty states, and the status bar. The tab strip is `laankit_egui::tabs` |
 | `files`    | The open files: the Files pane's list, the tabs, and the active tab, as paths                 |
-| `properties` | The Properties pane below the diagram list: Change Shape and Change Line (Line, Arrow, Right-Angle Line, Right-Angle Arrow) lists, the selection's Fill and Stroke (Mixed when they differ), hex fields, the Stroke Style, Stroke Weight, Text Weight, and Text Style lists, Reset Style |
-| `overlays` | Settings, About, Export, New/Rename Diagram, delete confirmation, Custom colour              |
-| `export`   | The SVG writer (labels wrapped by egui, as on the canvas) and PNG through `resvg`            |
+| `overlays` | Settings, About, New/Rename Diagram, and the delete confirmation                              |
 | `ui_tests*`| egui_kittest flows, headless (below)                                                        |
 
 ### Files
@@ -94,7 +104,7 @@ The diagram is drawn once, as SVG: fixed light colours, the canvas's font, corne
 ## Tests
 
 ```bash
-cargo test -p blockliner-core -p blockliner-native
+cargo test -p blockliner-core -p blockliner-egui -p blockliner-native
 BLOCKLINER_BLESS=1 cargo test -p blockliner-native the_svg_matches   # rewrite the golden SVG
 ```
 

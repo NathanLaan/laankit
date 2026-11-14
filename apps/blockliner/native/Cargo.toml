@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 blockliner-core.workspace = true
+blockliner-egui.workspace = true
 laankit-core.workspace = true
 laankit-egui.workspace = true
 anyhow.workspace = true

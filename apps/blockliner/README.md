@@ -1,6 +1,6 @@
 # BlockLiner
 
-BlockLiner is a desktop diagram editor for software components and architecture, in the style of Visio: rectangles, rounded rectangles, lines, arrows, and text labels that snap to a grid. Each diagram is saved as a Mermaid flowchart, so it renders on GitHub, in NoteLiner, and anywhere else Mermaid does, and diffs cleanly as text.
+BlockLiner is a desktop diagram editor for software components and architecture, in the style of Visio: rectangles, rounded rectangles, lines, arrows, and text labels that snap to a grid. Each diagram is saved as a Mermaid flowchart, so it renders anywhere Mermaid does and diffs cleanly as text. NoteLiner opens and edits the same files, with the same editor, as the diagrams in a notes project.
 
 It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) over the shared `laankit-*` crates, with no webview and no JavaScript. The shipped binary is `blockliner`.
 

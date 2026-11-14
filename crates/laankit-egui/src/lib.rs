@@ -17,6 +17,7 @@
 //! | `about`        | `AboutModal.svelte`                                                    |
 //! | `dialog`       | compact and full modals, form inputs, buttons, confirmations           |
 //! | `file_dialog`  | system file dialogs that don't freeze the window (`FileDialogs`)       |
+//! | `tabs`         | a strip of document tabs, with close buttons                           |
 //! | `tree`         | a tree of rows (folders), with drag and drop and a right-click menu    |
 //! | `not_ported`   | the "not in the native build yet" panel                                |
 //! | `diagnostics`  | `LAANKIT_SCREENSHOT` and friends                                        |
@@ -32,6 +33,7 @@ pub mod not_ported;
 pub mod palette;
 pub mod panes;
 pub mod settings;
+pub mod tabs;
 pub mod theme;
 pub mod titlebar;
 pub mod toast;

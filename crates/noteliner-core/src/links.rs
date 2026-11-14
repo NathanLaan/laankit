@@ -9,7 +9,7 @@ use regex::Regex;
 use serde_json::{json, Value};
 
 use crate::frontmatter;
-use crate::project::Project;
+use crate::project::{FileKind, Project};
 
 pub static WIKILINK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]").unwrap());
@@ -32,7 +32,12 @@ fn name_index(p: &Project) -> HashMap<String, String> {
         .collect()
 }
 
+/// A note's text, to scan for links. A diagram has none: `id[[label]]` is
+/// Mermaid's subroutine shape, not a link.
 fn body_of(p: &Project, filename: &str) -> Option<String> {
+    if FileKind::of(filename) == FileKind::Diagram {
+        return Some(String::new());
+    }
     let path = p.file_path(filename).ok()?;
     fs::read_to_string(path)
         .ok()

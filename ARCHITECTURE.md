@@ -55,7 +55,7 @@ Each app has its own backend crate: `noteliner-core`, `threadliner-core`, `pagel
 
 ### `laankit-egui`
 
-The shared egui shell: themes and fonts, the window chrome and optional custom title bar, the command palette, the settings dialog, panes, a tree widget, and toolbars. Run `cargo run -p laankit-egui --example gallery` to see the widgets on their own.
+The shared egui shell: themes and fonts, the window chrome and optional custom title bar, the command palette, the settings dialog, panes, document tabs, a tree widget, and toolbars. Run `cargo run -p laankit-egui --example gallery` to see the widgets on their own.
 
 #### Why glow and not wgpu
 
@@ -66,6 +66,10 @@ eframe uses the `glow` (OpenGL) renderer instead of `wgpu`. glow works on more o
 `laankit-editor` is NoteLiner's Markdown editor. It has its own text engine instead of egui's `TextEdit`, with syntax highlighting, list editing, multiple cursors, folding, find and replace, `[[wikilink]]` completion, and optional Hunspell spell check.
 
 `laankit-richtext` renders HTML and XHTML for ThreadLiner's articles and PageLiner's EPUB content.
+
+### `blockliner-egui`
+
+`blockliner-egui` is BlockLiner's diagram editor as egui widgets, over `blockliner-core`: the canvas, the tool buttons, the Properties pane, the edit commands, and the SVG and PNG export. Its `DiagramEditor` holds one diagram with its undo history, canvas, and active tool, and an app embeds it. BlockLiner uses it for its window, and NoteLiner uses it for the diagrams in a notes project, so a `.mmd` file opens and edits the same way in both.
 
 ## An app
 

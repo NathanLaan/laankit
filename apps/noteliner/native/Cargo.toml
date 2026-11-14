@@ -1,6 +1,6 @@
 [package]
 name = "noteliner-native"
-version = "2.3.2"
+version = "2.4.0"
 description = "NoteLiner in pure Rust: an egui UI over noteliner-core."
 edition.workspace = true
 license.workspace = true
@@ -20,6 +20,9 @@ noteliner-core = { path = "../../../crates/noteliner-core" }
 noteliner-export.workspace = true
 noteliner-slides.workspace = true
 laankit-editor = { workspace = true, features = ["spellcheck"] }
+# Diagrams in a project: BlockLiner's model and its editor widgets.
+blockliner-core.workspace = true
+blockliner-egui.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 eframe.workspace = true

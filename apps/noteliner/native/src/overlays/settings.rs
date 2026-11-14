@@ -3,6 +3,7 @@
 //! Turning the MCP server on asks first, with `McpWalkthroughModal`
 //! ([`super::mcp::walkthrough`]): MCP stays off until Enable is clicked.
 
+use blockliner_egui::units::Unit;
 use egui::RichText;
 use laankit_egui::dialog::{self, ButtonKind};
 use laankit_egui::settings::{self, SettingsShell, Tab};
@@ -11,12 +12,16 @@ use laankit_egui::{fonts, theme};
 use serde_json::{json, Value};
 
 use crate::backend::McpStatus;
-use crate::config::Prefs;
+use crate::config::{Prefs, DIAGRAM_GRID_SIZES};
 
-const TABS: [Tab<'static>; 3] = [
+const TABS: [Tab<'static>; 4] = [
     Tab {
         id: "ui",
         label: "UI",
+    },
+    Tab {
+        id: "diagrams",
+        label: "Diagrams",
     },
     Tab {
         id: "mcp",
@@ -39,6 +44,12 @@ pub struct SettingsState {
     pub mcp_confirm_writes: bool,
     pub mcp_disabled_tools: Vec<String>,
     pub mcp_status: Option<McpStatus>,
+    /// Diagrams: the canvas grid, the grid of a new diagram, the unit of a
+    /// grid mark, and the dimension lines.
+    pub diagram_show_grid: bool,
+    pub diagram_grid_size: f32,
+    pub diagram_grid_unit: Unit,
+    pub diagram_show_dimensions: bool,
     /// The MCP walkthrough is open (asking before turning MCP on).
     pub confirm_mcp: bool,
     /// The walkthrough's "Copied" shows until this time.
@@ -59,6 +70,10 @@ impl SettingsState {
             mcp_confirm_writes: prefs.mcp_confirm_writes,
             mcp_disabled_tools: prefs.mcp_disabled_tools.clone(),
             mcp_status: None,
+            diagram_show_grid: prefs.diagram_show_grid,
+            diagram_grid_size: prefs.diagram_grid_size,
+            diagram_grid_unit: prefs.diagram_grid_unit,
+            diagram_show_dimensions: prefs.diagram_show_dimensions,
             confirm_mcp: false,
             walkthrough_copied_until: 0.0,
             copied_until: 0.0,
@@ -115,6 +130,7 @@ pub fn show(
             .top_inset(top_inset)
             .show(ctx, &mut tab, |ui, id| match id {
                 "ui" => ui_tab(ui, state, theme_state, &mut out),
+                "diagrams" => diagrams_tab(ui, state, &mut out),
                 "mcp" => mcp_tab(ui, state, &mut out),
                 _ => settings::shortcuts_list(ui, &crate::commands::shortcut_list(), None),
             });
@@ -208,6 +224,76 @@ fn ui_tab(
             }
         },
     );
+}
+
+/// The canvas settings for the diagrams in a project, as BlockLiner's.
+/// NoteLiner keeps its own: BlockLiner's settings aren't changed.
+fn diagrams_tab(ui: &mut egui::Ui, state: &mut SettingsState, out: &mut Vec<SettingsAction>) {
+    settings::setting_group(ui, "Canvas", None, |ui| {
+        if settings::toggle_option(ui, "Show Grid", &mut state.diagram_show_grid, true).changed() {
+            out.push(SettingsAction::SetPrefs(
+                json!({ "diagramShowGrid": state.diagram_show_grid }),
+            ));
+        }
+        ui.add_space(8.0);
+        dialog::field_label(ui, "Grid Size");
+        let options: Vec<(String, String)> = DIAGRAM_GRID_SIZES
+            .iter()
+            .map(|g| (g.to_string(), format!("{g} px")))
+            .collect();
+        let options: Vec<(&str, &str)> = options
+            .iter()
+            .map(|(v, l)| (v.as_str(), l.as_str()))
+            .collect();
+        let current = state.diagram_grid_size.to_string();
+        if let Some(g) = settings::select(ui, "Grid Size", &options, &current)
+            .and_then(|v| v.parse::<f32>().ok())
+        {
+            state.diagram_grid_size = g;
+            out.push(SettingsAction::SetPrefs(json!({ "diagramGridSize": g })));
+        }
+        ui.add_space(4.0);
+        dialog::muted_text(ui, "Applies to new diagrams.");
+        ui.add_space(8.0);
+        dialog::field_label(ui, "Units / Grid Mark");
+        let units: Vec<(&str, &str)> = Unit::ALL.iter().map(|u| (u.id(), u.label())).collect();
+        if let Some(u) = settings::select(
+            ui,
+            "Units / Grid Mark",
+            &units,
+            state.diagram_grid_unit.id(),
+        )
+        .and_then(|v| Unit::parse(&v))
+        {
+            state.diagram_grid_unit = u;
+            out.push(SettingsAction::SetPrefs(
+                json!({ "diagramGridUnit": u.id() }),
+            ));
+        }
+        ui.add_space(4.0);
+        dialog::muted_text(ui, "One grid mark measures one of this unit.");
+        ui.add_space(8.0);
+        if settings::toggle_option(
+            ui,
+            "Show Dimension Lines",
+            &mut state.diagram_show_dimensions,
+            true,
+        )
+        .changed()
+        {
+            out.push(SettingsAction::SetPrefs(
+                json!({ "diagramShowDimensions": state.diagram_show_dimensions }),
+            ));
+        }
+        ui.add_space(4.0);
+        dialog::muted_text(ui, "Each shape's width and height, beside it.");
+    });
+    settings::setting_group(ui, "Zoom", None, |ui| {
+        dialog::muted_text(
+            ui,
+            "Ctrl+Shift+= / Ctrl+Shift+- / Ctrl+Shift+0 zoom the canvas. Ctrl+= / Ctrl+- / Ctrl+0 zoom NoteLiner's interface.",
+        );
+    });
 }
 
 fn mcp_tab(ui: &mut egui::Ui, state: &mut SettingsState, out: &mut Vec<SettingsAction>) {

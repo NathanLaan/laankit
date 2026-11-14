@@ -2,6 +2,7 @@
 //! tree, the preview, `StatusBar.svelte` and `LogPanel.svelte`.
 
 pub mod attachments;
+pub mod diagram;
 pub mod history;
 pub mod panes;
 pub mod preview;
@@ -198,6 +199,9 @@ pub struct StatusProps<'a> {
     pub spell_check: bool,
     /// A deck's current slide, slide count and speaking minutes (`deckInfo`).
     pub deck: Option<(usize, usize, usize)>,
+    /// The open file is a diagram: its zoom (1.0 is 100%) and the pointer's
+    /// place on the canvas. Shown in place of the note's counts.
+    pub diagram: Option<(f32, Option<egui::Pos2>)>,
     pub mcp_running: bool,
     pub branch: Option<&'a str>,
     pub sync: Option<&'a SyncStatus>,
@@ -343,7 +347,12 @@ pub fn status_bar(ui: &mut Ui, s: &StatusProps<'_>) -> bool {
     if s.mcp_running {
         seg_right(ui, format!("{} MCP", icons::PLUG), p.text_muted);
     }
-    if s.note.is_some() {
+    if let Some((zoom, pointer)) = s.diagram.filter(|_| s.note.is_some()) {
+        seg_right(ui, format!("{:.0}%", zoom * 100.0), p.text_secondary);
+        if let Some(at) = pointer {
+            seg_right(ui, format!("{:.0}, {:.0}", at.x, at.y), p.text_muted);
+        }
+    } else if s.note.is_some() {
         if let Some((current, total, minutes)) = s.deck {
             seg_right(ui, format!("~{minutes} min"), p.text_muted);
             seg_right(
