@@ -4,11 +4,12 @@
 //!
 //! | File                  | Holds |
 //! |-----------------------|-------|
-//! | `settings.json`       | `folders` (the folders you added), `expanded` (open folders in the tree), `selectedFolder` |
-//! | `ui-preferences.json` | `customTitlebar`, `statusBarVisible`, `thumbSize`, `includeSubfolders`, `showLocation`, `foldersVisible`, `filesVisible`, `infoVisible` |
+//! | `settings.json`       | `folders` (the folders you added), `expanded` (open folders in the tree), `selectedFolder`, `offerImport` |
+//! | `ui-preferences.json` | `customTitlebar`, `statusBarVisible`, `thumbSize`, `includeSubfolders`, `showLocation`, `foldersVisible`, `filesVisible`, `infoVisible`, `importVideos`, `importOthers` |
 //!
-//! In `~/.local/share/medialiner`: `merges/` (the merge journals) and
-//! eframe's `app.ron`. In `~/.cache/medialiner`: `thumbs/`.
+//! In `~/.local/share/medialiner`: `merges/` (the merge journals),
+//! `imports/` (what has been imported from each device, and the last
+//! import's journal), and eframe's `app.ron`. In `~/.cache/medialiner`: `thumbs/`.
 
 use std::path::{Path, PathBuf};
 
@@ -30,11 +31,24 @@ pub struct Paths {
 }
 
 /// `settings.json`.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
     pub folders: Vec<PathBuf>,
     pub expanded: Vec<PathBuf>,
     pub selected_folder: Option<PathBuf>,
+    /// Whether plugging in a device opens the Import dialog.
+    pub offer_import: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            folders: Vec::new(),
+            expanded: Vec::new(),
+            selected_folder: None,
+            offer_import: true,
+        }
+    }
 }
 
 /// `ui-preferences.json`.
@@ -48,6 +62,8 @@ pub struct Prefs {
     pub folders_visible: bool,
     pub files_visible: bool,
     pub info_visible: bool,
+    pub import_videos: bool,
+    pub import_others: bool,
 }
 
 fn paths_of(v: Option<&Value>) -> Vec<PathBuf> {
@@ -95,6 +111,10 @@ impl Paths {
         self.data.join("merges")
     }
 
+    pub fn imports_dir(&self) -> PathBuf {
+        self.data.join("imports")
+    }
+
     pub fn thumbs_dir(&self) -> PathBuf {
         self.cache.join("thumbs")
     }
@@ -109,6 +129,10 @@ impl Paths {
                 .and_then(Value::as_str)
                 .filter(|s| !s.is_empty())
                 .map(PathBuf::from),
+            offer_import: m
+                .get("offerImport")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
         }
     }
 
@@ -120,6 +144,7 @@ impl Paths {
                 "folders": s.folders,
                 "expanded": s.expanded,
                 "selectedFolder": s.selected_folder,
+                "offerImport": s.offer_import,
             }),
         );
         laankit_core::json::write(&self.settings_file(), &m)
@@ -148,6 +173,8 @@ impl Paths {
             folders_visible: flag("foldersVisible"),
             files_visible: flag("filesVisible"),
             info_visible: flag("infoVisible"),
+            import_videos: flag("importVideos"),
+            import_others: flag("importOthers"),
         }
     }
 
@@ -169,6 +196,8 @@ fn prefs_defaults() -> Map<String, Value> {
         "foldersVisible": true,
         "filesVisible": true,
         "infoVisible": false,
+        "importVideos": true,
+        "importOthers": true,
     });
     v.as_object().cloned().unwrap_or_default()
 }
@@ -191,6 +220,8 @@ mod tests {
         let p = paths.prefs();
         assert!(p.status_bar_visible && p.folders_visible && p.files_visible);
         assert!(!p.info_visible && !p.include_subfolders && !p.show_location);
+        assert!(p.import_videos && p.import_others);
+        assert!(paths.settings().offer_import);
         assert_eq!(p.thumb_size, THUMB_DEFAULT);
 
         laankit_core::json::write(&paths.settings_file(), &json!({ "future": 1 })).unwrap();
@@ -198,6 +229,7 @@ mod tests {
             folders: vec!["/a".into(), "/b".into()],
             expanded: vec!["/a/x".into()],
             selected_folder: Some("/a/x".into()),
+            offer_import: false,
         };
         paths.save_settings(&s).unwrap();
         assert_eq!(paths.settings(), s);

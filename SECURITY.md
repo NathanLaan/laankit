@@ -63,8 +63,9 @@ The MCP server is not available on Windows yet (it requires a Unix socket).
 
 ### MediaLiner and your photo folders
 
-- MediaLiner reads the folders you add and never changes a photo's contents. It writes nothing into your folders except what a merge moves there and a merge's `.medialiner-duplicates` folder.
+- MediaLiner reads the folders you add and never changes a photo's contents. It writes nothing into your folders except what a merge moves there, a merge's `.medialiner-duplicates` folder, and what an import copies there.
 - Merging a folder is the only operation that moves your files. It never overwrites a file, writes each move to a journal (in MediaLiner's data folder) before making it, and across drives deletes an original only after its copy is complete and the same size. Undo moves the files back from the journal.
+- MediaLiner looks at the drives and media devices you plug in, and reads one's file names, sizes, and dates to offer an import. An import copies files and never overwrites one. MediaLiner writes to a device only when you choose Delete from Device After Import and confirm it after the copy, and then deletes only the files it copied. It keeps the names, sizes, and dates of imported files in its data folder; Settings → Import forgets them.
 - Photos are untrusted input: they're decoded by the pure-Rust `image` and `kamadak-exif` crates. A photo that crashes or hangs the decoder is in scope.
 - A photo's EXIF location is hidden in the Info pane until you choose to show it. Thumbnails are cached in your user's cache folder; Settings → Storage clears them.
 - Open in Folder runs `explorer.exe` on Windows, and `gdbus` or `dbus-send` on Linux, with the file's path as an argument, never through a shell.

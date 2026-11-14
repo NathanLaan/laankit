@@ -16,6 +16,8 @@ mod views;
 
 #[cfg(test)]
 mod ui_tests;
+#[cfg(test)]
+mod ui_tests_import;
 
 use app::{Launch, MediaLinerApp};
 use config::Paths;
@@ -41,6 +43,7 @@ fn main() -> eframe::Result {
             .iter()
             .find(|a| !a.starts_with('-'))
             .map(|a| std::path::absolute(a).unwrap_or_else(|_| a.into())),
+        watch_devices: true,
         ..Default::default()
     };
     let paths = Paths::default_location(eframe::storage_dir(STORAGE_ID));

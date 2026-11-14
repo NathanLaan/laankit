@@ -5,6 +5,9 @@
 //! | Files (one) | Folder listings, file details, merge plans, the cache's size, and the merge journals, in order |
 //! | Pictures (up to four) | Previews first, then thumbnails, in the order the grid wants them |
 //! | Merge (one per merge or undo) | Moving files, with progress and cancel |
+//! | Devices (one) | Looks every two seconds for a drive or media device plugged in or removed |
+//! | Scan (one per device) | Lists a device's files for the Import dialog |
+//! | Import (one per import) | Copying from a device, with progress and cancel, then deleting from it when asked |
 //!
 //! The grid sends the thumbnails it wants each frame with
 //! [`Backend::want_thumbs`], which replaces the waiting ones, so photos
@@ -15,9 +18,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use egui::ColorImage;
+use medialiner_core::devices::{self, Location, Volume};
+use medialiner_core::import::{self, Item, Progress, Record, Undone};
 use medialiner_core::info::{self, FileInfo};
 use medialiner_core::merge::{self, Journal, MergePlan, Outcome};
 use medialiner_core::scan::{self, FileEntry};
@@ -27,6 +32,10 @@ use medialiner_core::thumbs::{self, Cache, PREVIEW_MAX};
 const CACHE_AGE: Duration = Duration::from_secs(90 * 24 * 60 * 60);
 /// Merge journals kept for undo.
 pub const JOURNALS_KEPT: usize = 10;
+/// How often the plugged-in devices are looked at.
+const DEVICE_CHECK: Duration = Duration::from_secs(2);
+/// The least time between two progress events of an import.
+const PROGRESS_EVERY: Duration = Duration::from_millis(60);
 
 /// A thumbnail the grid wants.
 #[derive(Clone, Debug, PartialEq)]
@@ -99,6 +108,39 @@ pub enum Event {
         count: usize,
     },
     Journals(Vec<Journal>),
+    /// A drive or media device was plugged in.
+    DeviceAdded(Volume),
+    DeviceRemoved(Volume),
+    /// The devices there now, for Import from Device.
+    Devices(Vec<Volume>),
+    DeviceScanning {
+        location: Location,
+        found: usize,
+    },
+    DeviceScanned {
+        volume: Volume,
+        items: Result<Vec<Item>, String>,
+        record: Option<Record>,
+        /// Found by the watcher, so the dialog is offered.
+        offer: bool,
+    },
+    ImportProgress(Progress),
+    /// The copying is over. With `ask_delete`, the import waits to hear
+    /// whether to delete the copied files from the device.
+    ImportDone {
+        outcome: import::Outcome,
+        ask_delete: bool,
+    },
+    ImportDeleting {
+        done: usize,
+        total: usize,
+    },
+    ImportDeleted {
+        deleted: usize,
+        failed: Vec<(String, String)>,
+    },
+    ImportUndone(Result<Undone, String>),
+    ImportRecords(Vec<Record>),
 }
 
 enum Job {
@@ -115,6 +157,11 @@ enum Job {
     CacheUsage,
     ClearCache,
     Journals,
+    /// The devices there now. Tests get none: they pass their own.
+    Devices(bool),
+    UndoImport,
+    ImportRecords,
+    ForgetDevice(String),
 }
 
 #[derive(Default)]
@@ -144,8 +191,11 @@ impl Shared {
 pub struct Config {
     pub thumbs_dir: PathBuf,
     pub merges_dir: PathBuf,
+    pub imports_dir: PathBuf,
     /// Tests: move by copying, as across drives.
     pub force_copy: bool,
+    /// Whether to look for devices being plugged in. Tests pass their own.
+    pub watch_devices: bool,
 }
 
 pub struct Backend {
@@ -158,6 +208,11 @@ pub struct Backend {
     /// The running merge's cancel flag.
     cancel: Option<Arc<AtomicBool>>,
     last_wanted: Vec<PathBuf>,
+    imports_dir: PathBuf,
+    watch_devices: bool,
+    /// The running import's cancel flag, and where its answer about
+    /// deleting from the device goes.
+    import: Option<(Arc<AtomicBool>, Sender<bool>)>,
 }
 
 impl Backend {
@@ -175,10 +230,19 @@ impl Backend {
             let shared = shared.clone();
             let cache = cache.clone();
             let merges = config.merges_dir.clone();
+            let imports = config.imports_dir.clone();
             std::thread::Builder::new()
                 .name("medialiner-files".into())
-                .spawn(move || files_thread(jobs_rx, tx, shared, cache, merges))
+                .spawn(move || files_thread(jobs_rx, tx, shared, cache, merges, imports))
                 .expect("files thread");
+        }
+        if config.watch_devices {
+            let tx = events_tx.clone();
+            let shared = shared.clone();
+            std::thread::Builder::new()
+                .name("medialiner-devices".into())
+                .spawn(move || devices_thread(tx, shared))
+                .expect("devices thread");
         }
         let workers = std::thread::available_parallelism()
             .map_or(2, |n| n.get())
@@ -208,6 +272,9 @@ impl Backend {
             force_copy: config.force_copy,
             cancel: None,
             last_wanted: Vec::new(),
+            imports_dir: config.imports_dir,
+            watch_devices: config.watch_devices,
+            import: None,
         }
     }
 
@@ -344,6 +411,150 @@ impl Backend {
     pub fn merge_finished(&mut self) {
         self.cancel = None;
     }
+
+    // --- Importing ----------------------------------------------------------
+
+    /// Asks for the devices there now.
+    pub fn devices(&self) {
+        self.job(Job::Devices(self.watch_devices));
+    }
+
+    /// Lists `volume`'s files on a thread of its own.
+    pub fn scan_device(&self, volume: Volume, offer: bool) {
+        let tx = self.events_tx.clone();
+        let shared = self.shared.clone();
+        let dir = self.imports_dir.clone();
+        std::thread::spawn(move || {
+            let location = volume.location.clone();
+            let mut last = Instant::now();
+            let mut found = |n: usize| {
+                if last.elapsed() >= PROGRESS_EVERY {
+                    last = Instant::now();
+                    let _ = tx.send(Event::DeviceScanning {
+                        location: location.clone(),
+                        found: n,
+                    });
+                    shared.repaint();
+                }
+            };
+            let items = import::open_source(&volume)
+                .and_then(|mut src| src.list(&AtomicBool::new(false), &mut found))
+                .map_err(|e| format!("{e:#}"));
+            let record = Record::load(&dir, &volume.key);
+            let _ = tx.send(Event::DeviceScanned {
+                volume,
+                items,
+                record,
+                offer,
+            });
+            shared.repaint();
+        });
+    }
+
+    pub fn importing(&self) -> bool {
+        self.import.is_some()
+    }
+
+    /// Copies `items` from `volume` into `dest` on a thread of its own.
+    /// With `ask_delete`, the thread then waits for [`Self::import_delete`].
+    pub fn run_import(
+        &mut self,
+        volume: Volume,
+        items: Vec<Item>,
+        dest: PathBuf,
+        ask_delete: bool,
+    ) {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (answer_tx, answer_rx) = channel::<bool>();
+        self.import = Some((cancel.clone(), answer_tx));
+        let tx = self.events_tx.clone();
+        let shared = self.shared.clone();
+        let dir = self.imports_dir.clone();
+        std::thread::spawn(move || {
+            let mut source = match import::open_source(&volume) {
+                Ok(s) => s,
+                Err(e) => {
+                    let why = format!("{e:#}");
+                    let outcome = import::Outcome {
+                        failed: items
+                            .iter()
+                            .map(|i| (i.name.clone(), why.clone()))
+                            .collect(),
+                        ..import::Outcome::default()
+                    };
+                    let _ = tx.send(Event::ImportDone {
+                        outcome,
+                        ask_delete: false,
+                    });
+                    shared.repaint();
+                    return;
+                }
+            };
+            let mut last = Instant::now();
+            let mut progress = |p: &Progress| {
+                if last.elapsed() >= PROGRESS_EVERY || p.done == p.total {
+                    last = Instant::now();
+                    let _ = tx.send(Event::ImportProgress(p.clone()));
+                    shared.repaint();
+                }
+            };
+            let outcome = import::run(source.as_mut(), &items, &dest, &cancel, &mut progress);
+            if let Err(e) = import::finish(&dir, &volume, &dest, &outcome) {
+                log::warn!("recording the import: {e:#}");
+            }
+            let ask = ask_delete && !outcome.copied.is_empty() && !outcome.removed;
+            let _ = tx.send(Event::ImportDone {
+                outcome: outcome.clone(),
+                ask_delete: ask,
+            });
+            shared.repaint();
+            if !ask || !answer_rx.recv().unwrap_or(false) {
+                return;
+            }
+            let mut deleting = |done, total| {
+                let _ = tx.send(Event::ImportDeleting { done, total });
+                shared.repaint();
+            };
+            let (deleted, failed) =
+                import::delete_copied(source.as_mut(), &outcome, &dir, &mut deleting);
+            let _ = tx.send(Event::ImportDeleted { deleted, failed });
+            shared.repaint();
+        });
+    }
+
+    /// Stops the running import.
+    pub fn cancel_import(&self) {
+        if let Some((c, _)) = &self.import {
+            c.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// The answer to "delete the copied files from the device?".
+    pub fn import_delete(&mut self, delete: bool) {
+        if let Some((_, answer)) = &self.import {
+            let _ = answer.send(delete);
+        }
+        if !delete {
+            self.import = None;
+        }
+    }
+
+    /// The import has nothing more to do.
+    pub fn import_finished(&mut self) {
+        self.import = None;
+    }
+
+    pub fn undo_import(&self) {
+        self.job(Job::UndoImport);
+    }
+
+    pub fn import_records(&self) {
+        self.job(Job::ImportRecords);
+    }
+
+    pub fn forget_device(&self, key: &str) {
+        self.job(Job::ForgetDevice(key.to_owned()));
+    }
 }
 
 impl Drop for Backend {
@@ -359,6 +570,7 @@ fn files_thread(
     shared: Arc<Shared>,
     cache: Cache,
     merges: PathBuf,
+    imports: PathBuf,
 ) {
     for job in jobs {
         let event = match job {
@@ -399,11 +611,58 @@ fn files_thread(
                 Event::CacheUsage { bytes, count }
             }
             Job::Journals => Event::Journals(merge::journals(&merges)),
+            Job::Devices(real) => {
+                Event::Devices(if real { devices::volumes() } else { Vec::new() })
+            }
+            Job::UndoImport => {
+                Event::ImportUndone(import::undo(&imports).map_err(|e| format!("{e:#}")))
+            }
+            Job::ImportRecords => Event::ImportRecords(import::records(&imports)),
+            Job::ForgetDevice(key) => {
+                if let Err(e) = import::forget(&imports, &key) {
+                    log::warn!("forgetting a device: {e}");
+                }
+                Event::ImportRecords(import::records(&imports))
+            }
         };
         if tx.send(event).is_err() {
             return;
         }
         shared.repaint();
+    }
+}
+
+/// Tells the app when a device is plugged in or removed. The devices
+/// there at the start are not reported.
+fn devices_thread(tx: Sender<Event>, shared: Arc<Shared>) {
+    let mut before = devices::volumes();
+    loop {
+        // Asleep in short steps, so closing the app isn't held up.
+        let until = Instant::now() + DEVICE_CHECK;
+        while Instant::now() < until {
+            if shared.queue.lock().unwrap().stop {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let now = devices::volumes();
+        let mut changed = false;
+        for v in devices::added(&before, &now) {
+            changed = true;
+            if tx.send(Event::DeviceAdded(v)).is_err() {
+                return;
+            }
+        }
+        for v in devices::added(&now, &before) {
+            changed = true;
+            if tx.send(Event::DeviceRemoved(v)).is_err() {
+                return;
+            }
+        }
+        if changed {
+            shared.repaint();
+        }
+        before = now;
     }
 }
 

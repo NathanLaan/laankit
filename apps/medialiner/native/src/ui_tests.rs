@@ -18,9 +18,9 @@ use crate::app::{Launch, MediaLinerApp};
 use crate::commands::{Act, Focus};
 use crate::config::Paths;
 
-type H = Harness<'static, MediaLinerApp>;
+pub(crate) type H = Harness<'static, MediaLinerApp>;
 
-fn harness(paths: Paths) -> H {
+pub(crate) fn harness(paths: Paths) -> H {
     Harness::builder()
         .with_size(egui::vec2(1360.0, 860.0))
         .with_step_dt(1.0 / 60.0)
@@ -39,7 +39,7 @@ fn harness(paths: Paths) -> H {
 }
 
 /// Steps until `done` holds (the backend answers on its own threads).
-fn wait_for(h: &mut H, what: &str, done: impl Fn(&mut MediaLinerApp) -> bool) {
+pub(crate) fn wait_for(h: &mut H, what: &str, done: impl Fn(&mut MediaLinerApp) -> bool) {
     let start = Instant::now();
     while !done(h.state_mut()) {
         assert!(
@@ -53,7 +53,7 @@ fn wait_for(h: &mut H, what: &str, done: impl Fn(&mut MediaLinerApp) -> bool) {
 }
 
 /// A PNG of `w` × `h`.
-fn photo(path: &Path, w: u32, h: u32) {
+pub(crate) fn photo(path: &Path, w: u32, h: u32) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     image::RgbImage::from_pixel(w, h, image::Rgb([40, 120, 200]))
         .save(path)
@@ -70,7 +70,7 @@ fn library(tmp: &Path) -> PathBuf {
     root
 }
 
-fn with_folder() -> (tempfile::TempDir, PathBuf, H) {
+pub(crate) fn with_folder() -> (tempfile::TempDir, PathBuf, H) {
     let tmp = tempfile::tempdir().unwrap();
     let root = library(tmp.path());
     let mut h = harness(Paths::under(tmp.path()));

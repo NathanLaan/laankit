@@ -120,6 +120,12 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
             if toolbar::button(ui, add).clicked() {
                 out.push(Act::AddFolder);
             }
+            let import =
+                ToolbarButton::new(icons::FILE_IMPORT, "Import from Device (Ctrl+Shift+M)")
+                    .label("Import");
+            if toolbar::button(ui, import).clicked() {
+                out.push(Act::ImportFromDevice);
+            }
             toolbar::divider(ui);
             let folders = ToolbarButton::new(icons::FOLDER_TREE, "Folders Pane (Ctrl+B)")
                 .label("Folders")

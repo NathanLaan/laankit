@@ -1,4 +1,4 @@
-//! Settings: Folders, Merges, Storage, UI, and Keyboard Shortcuts.
+//! Settings: Folders, Import, Merges, Storage, UI, and Keyboard Shortcuts.
 
 use std::path::PathBuf;
 
@@ -7,14 +7,19 @@ use egui::RichText;
 use laankit_egui::dialog::{self, ButtonKind};
 use laankit_egui::settings::{self, SettingsShell, Tab};
 use laankit_egui::theme::{self, ThemeState};
+use medialiner_core::import::Record;
 use medialiner_core::info::human_size;
 use medialiner_core::merge::Journal;
 use medialiner_core::scan::file_name;
 
-const TABS: [Tab<'static>; 5] = [
+const TABS: [Tab<'static>; 6] = [
     Tab {
         id: "folders",
         label: "Folders",
+    },
+    Tab {
+        id: "import",
+        label: "Import",
     },
     Tab {
         id: "merges",
@@ -43,10 +48,18 @@ pub struct SettingsState {
     pub cache: Option<(u64, usize)>,
     /// The merge journals, newest first, once read.
     pub journals: Option<Vec<Journal>>,
+    pub offer_import: bool,
+    /// The devices photos have been imported from, once read.
+    pub records: Option<Vec<Record>>,
 }
 
 impl SettingsState {
-    pub fn new(tab: &str, custom_titlebar: bool, status_bar_visible: bool) -> Self {
+    pub fn new(
+        tab: &str,
+        custom_titlebar: bool,
+        status_bar_visible: bool,
+        offer_import: bool,
+    ) -> Self {
         Self {
             tab: tab.to_string(),
             custom_titlebar,
@@ -54,6 +67,8 @@ impl SettingsState {
             status_bar_visible,
             cache: None,
             journals: None,
+            offer_import,
+            records: None,
         }
     }
 }
@@ -62,6 +77,7 @@ pub struct SettingsProps<'a> {
     pub folders: &'a [PathBuf],
     pub merging: bool,
     pub cache_dir: &'a std::path::Path,
+    pub can_undo_import: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -76,6 +92,10 @@ pub enum SettingsAction {
     ClearCache,
     /// Undo the merge with this journal.
     Undo(PathBuf),
+    SetOfferImport(bool),
+    /// Forget what was imported from the device with this key.
+    ForgetDevice(String),
+    UndoImport,
 }
 
 pub fn show(
@@ -92,6 +112,7 @@ pub fn show(
             .top_inset(top_inset)
             .show(ctx, &mut tab, |ui, id| match id {
                 "folders" => folders_tab(ui, props, &mut out),
+                "import" => import_tab(ui, state, props, &mut out),
                 "merges" => merges_tab(ui, state, props, &mut out),
                 "storage" => storage_tab(ui, state, props, &mut out),
                 "ui" => ui_tab(ui, state, theme_state, &mut out),
@@ -136,6 +157,86 @@ fn folders_tab(ui: &mut egui::Ui, props: &SettingsProps<'_>, out: &mut Vec<Setti
             ui.add_space(6.0);
             if dialog::button(ui, "Add Folder…", ButtonKind::Primary, true).clicked() {
                 out.push(SettingsAction::AddFolder);
+            }
+        },
+    );
+}
+
+fn import_tab(
+    ui: &mut egui::Ui,
+    state: &mut SettingsState,
+    props: &SettingsProps<'_>,
+    out: &mut Vec<SettingsAction>,
+) {
+    let p = theme::palette(ui.ctx());
+    settings::setting_group(
+        ui,
+        "When a Device Is Plugged In",
+        Some("A memory card, a USB drive, or a camera with photos on it opens the Import dialog. Import from Device (Ctrl+Shift+M) opens it at any time."),
+        |ui| {
+            let mut on = state.offer_import;
+            settings::toggle_option(
+                ui,
+                "Offer to import when a device is plugged in",
+                &mut on,
+                true,
+            );
+            if on != state.offer_import {
+                state.offer_import = on;
+                out.push(SettingsAction::SetOfferImport(on));
+            }
+        },
+    );
+    settings::setting_group(
+        ui,
+        "Last Import",
+        Some("Undo removes the files the last import copied, leaving any you have changed since. An import that deleted the photos from the device can't be undone."),
+        |ui| {
+            if dialog::button(
+                ui,
+                "Undo Last Import",
+                ButtonKind::Secondary,
+                props.can_undo_import,
+            )
+            .clicked()
+            {
+                out.push(SettingsAction::UndoImport);
+            }
+        },
+    );
+    settings::setting_group(
+        ui,
+        "Devices",
+        Some("MediaLiner remembers which files it has imported from each device, so it can offer only the new ones the next time. Forget makes everything on the device count as new."),
+        |ui| {
+            let Some(records) = &state.records else {
+                dialog::muted_text(ui, "Reading…");
+                return;
+            };
+            if records.is_empty() {
+                dialog::muted_text(ui, "Nothing has been imported yet.");
+            }
+            for r in records {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(&r.name).color(p.text_primary));
+                        ui.label(
+                            RichText::new(format!(
+                                "{} {} imported",
+                                r.files.len(),
+                                if r.files.len() == 1 { "file" } else { "files" }
+                            ))
+                            .size(12.0)
+                            .color(p.text_muted),
+                        );
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if dialog::button(ui, "Forget", ButtonKind::Secondary, true).clicked() {
+                            out.push(SettingsAction::ForgetDevice(r.key.clone()));
+                        }
+                    });
+                });
+                ui.add_space(6.0);
             }
         },
     );

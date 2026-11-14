@@ -43,6 +43,9 @@ pub enum Act {
     ToggleStatusBar,
     MergeInto,
     UndoMerge,
+    /// The Import dialog, for the devices plugged in.
+    ImportFromDevice,
+    UndoImport,
     OpenInFolder,
     OpenWithDefault,
     CopyPath,
@@ -70,6 +73,7 @@ pub struct View {
     pub has_photos: bool,
     pub preview_open: bool,
     pub can_undo_merge: bool,
+    pub can_undo_import: bool,
 }
 
 fn ready(v: &View) -> bool {
@@ -106,6 +110,10 @@ fn root(v: &View) -> bool {
 
 fn undo(v: &View) -> bool {
     ready(v) && v.can_undo_merge
+}
+
+fn undo_import(v: &View) -> bool {
+    ready(v) && v.can_undo_import
 }
 
 pub fn registry() -> Registry<Act, View> {
@@ -152,6 +160,18 @@ pub fn registry() -> Registry<Act, View> {
         .shortcut("Ctrl+Z")
         .when(undo),
     );
+    r.register(
+        add(
+            "import.device",
+            "Import from Device…",
+            "Import",
+            Act::ImportFromDevice,
+        )
+        .key(Binding::physical(shift, Key::M))
+        .shortcut("Ctrl+Shift+M")
+        .when(ready),
+    );
+    r.register(add("import.undo", "Undo Last Import", "Import", Act::UndoImport).when(undo_import));
     r.register(
         add("folders.refresh", "Refresh", "Folders", Act::Refresh)
             .key(key(none, Key::F5))

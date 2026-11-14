@@ -11,7 +11,7 @@ LaanKit is a set of desktop apps that share one UI and backend foundation. Every
 | PageLiner   | `pageliner`   | EPUB/PDF e-reader and document library with bookmarks, highlights, and reading-position persistence. |
 | BlockLiner  | `blockliner`  | Visio-style diagram editor for software components and architecture, saved as Mermaid flowcharts, with PNG/SVG export. |
 | PrintLiner  | `printliner`  | Dashboard for the Bambu Lab 3D printers on your Bambu account: live status, temperatures, AMS trays, HMS alerts, task history, and trends, through the Bambu Lab cloud. |
-| MediaLiner  | `medialiner`  | Photo browser for the folders you choose: a folder tree, a thumbnail grid, a preview, file and EXIF details, and merging one folder into another, with undo. |
+| MediaLiner  | `medialiner`  | Photo browser for the folders you choose: a folder tree, a thumbnail grid, a preview, file and EXIF details, merging one folder into another, and importing from a memory card, drive, or camera, with undo. |
 
 Each lives in `apps/<app>/native/` and is a Cargo package named `<app>-native`. See the per-app README (`apps/<app>/README.md`) and its detailed `apps/<app>/native/README.md`.
 
@@ -30,7 +30,7 @@ Each lives in `apps/<app>/native/` and is a Cargo package named `<app>-native`. 
 | `crates/pageliner-epub/`     | EPUB parsing/state. |
 | `crates/blockliner-core/`    | The diagram model, Mermaid read/write, layout. |
 | `crates/printliner-core/`    | The Bambu Lab cloud client, the MQTT status session, and printer status. |
-| `crates/medialiner-core/`    | The folder list, scanning, thumbnails, EXIF details, and merging folders. |
+| `crates/medialiner-core/`    | The folder list, scanning, thumbnails, EXIF details, merging folders, and importing from devices. |
 | `packaging/`                 | Linux desktop/metainfo files and Flatpak manifests. |
 | `scripts/`, `xtask/`         | Packaging helpers and the icon pipeline. |
 | `docs/`                      | Packaging guide and open plans. |
