@@ -1,8 +1,8 @@
 //! The dialogs: Settings, About, Export, naming a diagram, confirming a
 //! delete, and a custom colour.
 
-pub mod colour;
-pub mod export;
+pub use blockliner_egui::dialogs::{colour, export};
+
 pub mod name;
 pub mod settings;
 

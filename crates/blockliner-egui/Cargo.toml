@@ -1,0 +1,19 @@
+[package]
+name = "blockliner-egui"
+version = "0.1.0"
+description = "BlockLiner's diagram editor as egui widgets: the canvas, tools, Properties pane and SVG/PNG export, over blockliner-core. Shared by BlockLiner and NoteLiner."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+blockliner-core.workspace = true
+laankit-egui.workspace = true
+anyhow.workspace = true
+egui.workspace = true
+image.workspace = true
+# PNG export: rasterises the SVG export (the version laankit-richtext uses).
+resvg = { version = "0.45", default-features = false, features = ["text"] }
+
+[dev-dependencies]
+egui_kittest.workspace = true

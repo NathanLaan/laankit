@@ -3,7 +3,14 @@
 //! list drives the shortcuts, the command palette and Settings → Keyboard
 //! Shortcuts. Registration order matters, as in the Svelte build: the first
 //! applicable match wins (so Ctrl+Shift++ adds a tag before it zooms).
+//!
+//! While a diagram is the active tab, BlockLiner's edit commands apply too
+//! (`blockliner_egui::commands`): the tool keys, Undo, Delete and the rest.
+//! They are registered first, and only fire while no text field has the
+//! keyboard. Ctrl+=, Ctrl+- and Ctrl+0 stay NoteLiner's interface zoom; the
+//! canvas zooms with Ctrl+Shift+=, Ctrl+Shift+- and Ctrl+Shift+0.
 
+use blockliner_egui::commands::{EditAct, EditView, When};
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
 use laankit_egui::theme::ThemeId;
@@ -19,6 +26,20 @@ pub enum Act {
     OpenFolder,
     PrevFile,
     NextFile,
+    CloseTab,
+    NextTab,
+    PreviousTab,
+    /// New File, with Diagram chosen.
+    NewDiagram,
+    /// An edit of the diagram in the active tab.
+    Diagram(EditAct),
+    /// The Export dialog for the diagram in the active tab (PNG or SVG).
+    ExportDiagram,
+    /// The diagram's `.mmd` file, copied to Downloads.
+    ExportMermaid,
+    ToggleProperties,
+    ToggleGrid,
+    ToggleDimensions,
     NewPresentation,
     ConvertToPresentation,
     ConvertToNote,
@@ -71,6 +92,16 @@ pub struct View {
     pub has_selection: bool,
     pub is_deck: bool,
     pub tags_visible: bool,
+    /// How many tabs are open.
+    pub tabs: usize,
+    /// The active tab is a diagram, loaded on the canvas.
+    pub is_diagram: bool,
+    /// …and it has something to export.
+    pub diagram_has_content: bool,
+    /// What's selected in it, and its undo history.
+    pub diagram: EditView,
+    /// A text field has the keyboard: the diagram's keys wait.
+    pub typing: bool,
     /// A dialog is open: shortcuts other than zoom wait (the Svelte palette
     /// "owns keys while open"; the native dialogs do the same).
     pub modal_open: bool,
@@ -88,12 +119,82 @@ fn has_selection(v: &View) -> bool {
     project_open(v) && v.has_selection
 }
 
+fn has_tab(v: &View) -> bool {
+    project_open(v) && v.tabs > 0
+}
+
+fn many_tabs(v: &View) -> bool {
+    project_open(v) && v.tabs > 1
+}
+
 fn is_deck(v: &View) -> bool {
     has_selection(v) && v.is_deck
 }
 
 fn not_deck(v: &View) -> bool {
-    has_selection(v) && !v.is_deck
+    is_note(v) && !v.is_deck
+}
+
+/// A note (or presentation) is the active tab, not a diagram.
+fn is_note(v: &View) -> bool {
+    has_selection(v) && !v.is_diagram
+}
+
+/// A diagram is the active tab.
+fn is_diagram(v: &View) -> bool {
+    has_selection(v) && v.is_diagram
+}
+
+fn diagram_exportable(v: &View) -> bool {
+    is_diagram(v) && v.diagram_has_content
+}
+
+/// A diagram is the active tab and has the keyboard: its edit commands
+/// apply. Each of the rest adds what its [`When`] asks of the selection.
+fn diagram_ready(v: &View) -> bool {
+    is_diagram(v) && !v.typing
+}
+
+macro_rules! diagram_whens {
+    ($($name:ident => $when:ident),* $(,)?) => {
+        $(fn $name(v: &View) -> bool {
+            diagram_ready(v) && When::$when.holds(&v.diagram)
+        })*
+    };
+}
+
+diagram_whens! {
+    diagram_selected => Selected,
+    diagram_has_straight => HasStraight,
+    diagram_has_elbow => HasElbow,
+    diagram_stylable => Stylable,
+    diagram_fillable => Fillable,
+    diagram_labellable => Labellable,
+    diagram_changeable => Changeable,
+    diagram_has_line => HasLine,
+    diagram_has_plain_line => HasPlainLine,
+    diagram_has_arrow => HasArrow,
+    diagram_undoable => Undoable,
+    diagram_redoable => Redoable,
+}
+
+/// The predicate for one of BlockLiner's edit commands.
+fn diagram_when(when: When) -> fn(&View) -> bool {
+    match when {
+        When::Ready | When::Editing => diagram_ready,
+        When::Selected => diagram_selected,
+        When::HasStraight => diagram_has_straight,
+        When::HasElbow => diagram_has_elbow,
+        When::Stylable => diagram_stylable,
+        When::Fillable => diagram_fillable,
+        When::Labellable => diagram_labellable,
+        When::Changeable => diagram_changeable,
+        When::HasLine => diagram_has_line,
+        When::HasPlainLine => diagram_has_plain_line,
+        When::HasArrow => diagram_has_arrow,
+        When::Undoable => diagram_undoable,
+        When::Redoable => diagram_redoable,
+    }
 }
 
 fn tag_plus(v: &View) -> bool {
@@ -109,7 +210,97 @@ pub fn registry() -> Registry<Act, View> {
     let add =
         |id: &str, label: &str, section: &str, act: Act| Command::new(id, label, section, act);
 
+    // Diagram: BlockLiner's edit commands, first so their keys win while a
+    // diagram has the keyboard. They never apply otherwise.
+    for c in blockliner_egui::commands::commands() {
+        let mut c = c.into_command(Act::Diagram, diagram_when);
+        c.id = format!("diagram.{}", c.id);
+        c.section = "Diagram".into();
+        r.register(c);
+    }
+    // The canvas zoom. Physical keys: Shift changes what these keys type.
+    for (id, label, act, key, text) in [
+        (
+            "diagram.zoomIn",
+            "Zoom Canvas In",
+            EditAct::ZoomIn,
+            Key::Equals,
+            "Ctrl+Shift+=",
+        ),
+        (
+            "diagram.zoomOut",
+            "Zoom Canvas Out",
+            EditAct::ZoomOut,
+            Key::Minus,
+            "Ctrl+Shift+-",
+        ),
+        (
+            "diagram.zoomReset",
+            "Reset Canvas Zoom",
+            EditAct::ZoomReset,
+            Key::Num0,
+            "Ctrl+Shift+0",
+        ),
+    ] {
+        r.register(
+            add(id, label, "Diagram", Act::Diagram(act))
+                .key(Binding::physical(shift, key))
+                .shortcut(text)
+                .when(is_diagram),
+        );
+    }
+    r.register(
+        add(
+            "diagram.toggleProperties",
+            "Toggle Properties",
+            "Diagram",
+            Act::ToggleProperties,
+        )
+        .key(Binding::logical(cmd, Key::I))
+        .shortcut("Ctrl+I")
+        .when(diagram_ready),
+    );
+    r.register(
+        add(
+            "diagram.toggleGrid",
+            "Toggle Grid",
+            "Diagram",
+            Act::ToggleGrid,
+        )
+        .when(is_diagram),
+    );
+    r.register(
+        add(
+            "diagram.toggleDimensions",
+            "Toggle Dimension Lines",
+            "Diagram",
+            Act::ToggleDimensions,
+        )
+        .when(is_diagram),
+    );
+    r.register(
+        add(
+            "diagram.export",
+            "Export Diagram...",
+            "Diagram",
+            Act::ExportDiagram,
+        )
+        .when(diagram_exportable),
+    );
+    r.register(
+        add(
+            "diagram.exportMermaid",
+            "Save Diagram to Mermaid",
+            "Diagram",
+            Act::ExportMermaid,
+        )
+        .when(is_diagram),
+    );
+
     // File
+    r.register(
+        add("file.newDiagram", "New Diagram...", "File", Act::NewDiagram).when(project_open),
+    );
     r.register(
         add("file.new", "New File", "File", Act::NewFile)
             .key(Binding::logical(cmd, Key::N))
@@ -170,6 +361,24 @@ pub fn registry() -> Registry<Act, View> {
             .key(Binding::loose(cmd, Key::PageDown))
             .shortcut("Ctrl+PgDn")
             .when(project_open),
+    );
+    r.register(
+        add("file.closeTab", "Close Tab", "File", Act::CloseTab)
+            .key(Binding::logical(cmd, Key::W))
+            .shortcut("Ctrl+W")
+            .when(has_tab),
+    );
+    r.register(
+        add("view.nextTab", "Next Tab", "View", Act::NextTab)
+            .key(Binding::logical(cmd, Key::Tab))
+            .shortcut("Ctrl+Tab")
+            .when(many_tabs),
+    );
+    r.register(
+        add("view.previousTab", "Previous Tab", "View", Act::PreviousTab)
+            .key(Binding::logical(shift, Key::Tab))
+            .shortcut("Ctrl+Shift+Tab")
+            .when(many_tabs),
     );
 
     // Presentations: gated on the open note being a deck.
@@ -296,7 +505,7 @@ pub fn registry() -> Registry<Act, View> {
         add("editor.goToLine", "Go to Line", "Editor", Act::GoToLine)
             .key(Binding::physical(alt, Key::G))
             .shortcut("Ctrl+Alt+G")
-            .when(has_selection),
+            .when(is_note),
     );
 
     // Tags: before View, so Ctrl+Shift++ adds a tag (with the TAGS pane
@@ -581,6 +790,46 @@ mod tests {
             is_deck: true,
             ..Default::default()
         });
+        assert!(!open.contains(&"file.closeTab".into()));
+        let tabs = applicable(View {
+            project_open: true,
+            has_selection: true,
+            tabs: 1,
+            ..Default::default()
+        });
+        assert!(tabs.contains(&"file.closeTab".into()));
+        assert!(!tabs.contains(&"view.nextTab".into()));
+        // A diagram's commands apply only while one is the active tab…
+        assert!(tabs.contains(&"deck.convert".into()));
+        assert!(!tabs.contains(&"diagram.edit.undo".into()));
+        assert!(!tabs.contains(&"diagram.tool.rectangle".into()));
+        let diagram = View {
+            project_open: true,
+            has_selection: true,
+            tabs: 1,
+            is_diagram: true,
+            diagram: EditView {
+                can_undo: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let on = applicable(diagram);
+        assert!(on.contains(&"diagram.tool.rectangle".into()));
+        assert!(on.contains(&"diagram.edit.undo".into()));
+        assert!(!on.contains(&"diagram.edit.redo".into()));
+        assert!(!on.contains(&"diagram.edit.delete".into()));
+        assert!(on.contains(&"diagram.zoomIn".into()));
+        assert!(!on.contains(&"deck.convert".into()));
+        assert!(!on.contains(&"editor.goToLine".into()));
+        // …and its keys wait while a text field has the keyboard.
+        let typing = applicable(View {
+            typing: true,
+            ..diagram
+        });
+        assert!(!typing.contains(&"diagram.tool.rectangle".into()));
+        assert!(!typing.contains(&"diagram.edit.undo".into()));
+        assert!(typing.contains(&"diagram.zoomIn".into()));
         assert!(deck.contains(&"deck.convertBack".into()));
         assert!(!deck.contains(&"deck.convert".into()));
         let modal = applicable(View {
@@ -603,6 +852,9 @@ mod tests {
             "Ctrl+O",
             "Ctrl+PgUp",
             "Ctrl+PgDn",
+            "Ctrl+W",
+            "Ctrl+Tab",
+            "Ctrl+Shift+Tab",
             "Ctrl+Shift+G",
             "Ctrl+Enter",
             "Ctrl+Shift+Enter",

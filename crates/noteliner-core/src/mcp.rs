@@ -17,6 +17,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::task::JoinSet;
 
+use crate::project::{check_diagram, entry_kind, FileKind};
 use crate::workspace::Shared;
 
 pub const PROTOCOL_VERSION: &str = "2024-11-05";
@@ -381,6 +382,7 @@ impl McpServer {
                     .map(|f| {
                         json!({
                             "id": f["id"], "name": f["name"], "filename": f["filename"],
+                            "kind": entry_kind(f),
                             "tags": if f["tags"].is_array() { f["tags"].clone() } else { json!([]) },
                             "parentId": if f["parentId"].is_null() || f["parentId"] == "" { Value::Null } else { f["parentId"].clone() },
                         })
@@ -426,9 +428,16 @@ impl McpServer {
                 } else {
                     json!([])
                 };
+                let kind = match args.get("kind") {
+                    None | Some(Value::Null) => FileKind::Note,
+                    Some(k) => match k.as_str().and_then(FileKind::parse) {
+                        Some(kind) => kind,
+                        None => return Err(tool_err("\"kind\" must be \"note\" or \"diagram\".")),
+                    },
+                };
                 let entry = ws
                     .project
-                    .create_file(name.trim(), &tags, body, None)
+                    .create(kind, name.trim(), &tags, body, None)
                     .await?;
                 let entry_id = s(&entry["id"]).to_string();
                 if let Some(parent) = str_arg("parentId") {
@@ -465,6 +474,10 @@ impl McpServer {
                     )));
                 }
                 let entry = resolve(&ws)?;
+                // A diagram that won't open is refused, not written.
+                if FileKind::of_entry(&entry) == FileKind::Diagram {
+                    check_diagram(body).map_err(|e| tool_err(e.to_string()))?;
+                }
                 ws.project.write_file(s(&entry["filename"]), body).await?;
                 ws.scan_links(s(&entry["id"]));
                 self.host.log(format!(
@@ -683,8 +696,13 @@ impl McpServer {
             resources.push(json!({
                 "uri": format!("noteliner://note/{}", s(&f["id"])),
                 "name": f["name"],
-                "description": format!("Markdown body of \"{}\".", s(&f["name"])),
-                "mimeType": "text/markdown",
+                "description": match FileKind::of_entry(f) {
+                    FileKind::Note => format!("Markdown body of \"{}\".", s(&f["name"])),
+                    FileKind::Diagram => {
+                        format!("Mermaid flowchart of the diagram \"{}\".", s(&f["name"]))
+                    }
+                },
+                "mimeType": mime_of(f),
             }));
         }
         json!({ "resources": resources })
@@ -722,7 +740,7 @@ impl McpServer {
                 .read_file(s(&entry["filename"]))
                 .map_err(ToolError::from)?;
             return Ok(
-                json!({ "contents": [{ "uri": uri, "mimeType": "text/markdown", "text": body }] }),
+                json!({ "contents": [{ "uri": uri, "mimeType": mime_of(entry), "text": body }] }),
             );
         }
         if let Some(enc) = uri
@@ -1018,13 +1036,13 @@ pub fn tool_definitions() -> Value {
         o
     };
     json!([
-        { "name": "list_notes", "description": "List every note in the open NoteLiner project. Returns id, name, filename, tags, parentId.",
+        { "name": "list_notes", "description": "List every note and diagram in the open NoteLiner project. Returns id, name, filename, kind (note, deck or diagram), tags, parentId.",
           "inputSchema": obj(json!({}), None) },
-        { "name": "read_note", "description": "Read the markdown body of a note by id or by name.",
+        { "name": "read_note", "description": "Read the markdown body of a note, or the Mermaid flowchart of a diagram, by id or by name.",
           "inputSchema": obj(json!({ "id": { "type": "string", "description": "Note id (preferred)." }, "name": { "type": "string", "description": "Note name (case-insensitive)." } }), None) },
-        { "name": "create_note", "description": "Create a new note. Auto-commits to git via the standard project write path.",
-          "inputSchema": obj(json!({ "name": { "type": "string" }, "body": { "type": "string", "description": "Markdown body. Optional." }, "tags": { "type": "array", "items": { "type": "string" } }, "parentId": { "type": "string", "description": "Optional parent note id for hierarchical placement." } }), Some(json!(["name"]))) },
-        { "name": "update_note", "description": "Replace the markdown body of an existing note. Auto-commits.",
+        { "name": "create_note", "description": "Create a new note, or a diagram with kind \"diagram\". Auto-commits to git via the standard project write path.",
+          "inputSchema": obj(json!({ "name": { "type": "string" }, "body": { "type": "string", "description": "Markdown body, or a Mermaid flowchart for a diagram. Optional." }, "kind": { "type": "string", "enum": ["note", "diagram"], "description": "Optional; a note by default." }, "tags": { "type": "array", "items": { "type": "string" } }, "parentId": { "type": "string", "description": "Optional parent note id for hierarchical placement." } }), Some(json!(["name"]))) },
+        { "name": "update_note", "description": "Replace the markdown body of an existing note, or the Mermaid flowchart of a diagram (refused if it isn't a flowchart BlockLiner can read). Auto-commits.",
           "inputSchema": obj(id_name_schema(json!({ "body": { "type": "string" } })), Some(json!(["body"]))) },
         { "name": "delete_note", "description": "Delete a note. Children of the deleted note are re-parented to its parent.",
           "inputSchema": obj(id_name_schema(json!({})), None) },
@@ -1122,6 +1140,14 @@ pub async fn run_bridge(user_data: &Path) -> i32 {
     }
 }
 
+/// The MIME type of an entry's text: Markdown, or Mermaid for a diagram.
+fn mime_of(entry: &Value) -> &'static str {
+    match FileKind::of_entry(entry) {
+        FileKind::Note => "text/markdown",
+        FileKind::Diagram => "text/vnd.mermaid",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1145,6 +1171,103 @@ mod tests {
             .handle_message(&msg.to_string())
             .await
             .unwrap_or(Value::Null)
+    }
+
+    #[tokio::test]
+    async fn diagrams_through_the_tools() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut p = Project::new(NoteGit::new(Arc::new(|_| {})));
+        p.git.git.init(tmp.path()).await.unwrap();
+        p.path = Some(tmp.path().to_path_buf());
+        p.set_git_config("T", "t@x").await.unwrap();
+        p.open(tmp.path()).await.unwrap();
+        let ws = Workspace::new(p);
+        let server = McpServer::new(ws.clone(), Arc::new(TestHost), "9.9.9");
+        let call = |name: &str, args: Value| json!({ "jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": { "name": name, "arguments": args } });
+        let text = |v: &Value| {
+            v["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        let flow = "flowchart LR\n  a[\"Alpha\"]\n";
+
+        // Created as `.mmd`; a kind that isn't one is refused.
+        let made = rpc(
+            &server,
+            call("create_note", json!({ "name": "Map", "kind": "diagram" })),
+        )
+        .await;
+        assert_eq!(made["result"]["isError"], false, "{made}");
+        assert!(text(&made).contains("filename: map.mmd"), "{made}");
+        let bad = rpc(
+            &server,
+            call("create_note", json!({ "name": "X", "kind": "sheet" })),
+        )
+        .await;
+        assert_eq!(bad["result"]["isError"], true);
+
+        // Listed with its kind.
+        let list = rpc(&server, call("list_notes", json!({}))).await;
+        let notes: Value = serde_json::from_str(&text(&list)).unwrap();
+        assert_eq!(notes[0]["kind"], "diagram");
+
+        // Updating: a flowchart is written as it is; other text is refused
+        // and the file keeps what it had.
+        let ok = rpc(
+            &server,
+            call("update_note", json!({ "name": "Map", "body": flow })),
+        )
+        .await;
+        assert_eq!(ok["result"]["isError"], false, "{ok}");
+        let file = tmp.path().join("map.mmd");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), flow);
+        let refused = rpc(
+            &server,
+            call(
+                "update_note",
+                json!({ "name": "Map", "body": "# Not a diagram" }),
+            ),
+        )
+        .await;
+        assert_eq!(refused["result"]["isError"], true, "{refused}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), flow);
+        let read = rpc(&server, call("read_note", json!({ "name": "Map" }))).await;
+        assert_eq!(text(&read), flow);
+
+        // Renaming keeps the extension.
+        let renamed = rpc(
+            &server,
+            call(
+                "rename_note",
+                json!({ "name": "Map", "newName": "Big Map" }),
+            ),
+        )
+        .await;
+        assert_eq!(renamed["result"]["isError"], false, "{renamed}");
+        assert!(tmp.path().join("big-map.mmd").exists());
+
+        // The resource is Mermaid.
+        let resources = rpc(
+            &server,
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "resources/list" }),
+        )
+        .await;
+        let diagram = resources["result"]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["name"] == "Big Map")
+            .unwrap()
+            .clone();
+        assert_eq!(diagram["mimeType"], "text/vnd.mermaid");
+        let got = rpc(
+            &server,
+            json!({ "jsonrpc": "2.0", "id": 5, "method": "resources/read", "params": { "uri": diagram["uri"] } }),
+        )
+        .await;
+        assert_eq!(got["result"]["contents"][0]["mimeType"], "text/vnd.mermaid");
+        assert_eq!(got["result"]["contents"][0]["text"], flow);
     }
 
     #[tokio::test]

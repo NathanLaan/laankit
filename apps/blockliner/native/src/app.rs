@@ -12,9 +12,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use blockliner_core::clipboard;
-use blockliner_core::history::History;
-use blockliner_core::style::{Colour, Style, PRESETS};
 use blockliner_core::Diagram;
 use egui::{Frame, Ui};
 use laankit_egui::about::{AboutAction, AboutIcon, AboutModal};
@@ -31,22 +28,26 @@ use laankit_egui::{fonts, icons, window};
 use serde_json::{json, Value};
 
 use crate::backend::{self, Backend, Change, Event};
-use crate::canvas::view::View as CanvasView;
-use crate::canvas::{Canvas, MenuAction, Swatch, Tool};
+use blockliner_egui::editor::{self, DiagramEditor};
+
+use crate::canvas::Canvas;
+#[cfg(test)]
+use crate::canvas::Tool;
 use crate::commands::{self, Act, View};
 use crate::config::Paths;
 use crate::export;
 use crate::files::{self, Files};
-use crate::overlays::colour::{ColourAction, ColourState};
+use crate::overlays::colour::ColourAction;
 use crate::overlays::export::{ExportAction, ExportState};
 use crate::overlays::name::{NameAction, NameState};
 use crate::overlays::settings::{SettingsAction, SettingsState};
 use crate::overlays::{self, Overlay};
-use crate::properties::{self, PropertiesAction, PropertiesProps, PropertiesState};
+use crate::properties::{self, PropertiesProps, PropertiesState};
 use crate::views::{
     self, FileRow, FilesAction, SaveState, SidebarAction, StatusProps, TabAction, TabItem,
     ToolbarProps,
 };
+use blockliner_egui::EditAct;
 
 /// eframe storage keys.
 const THEME_KEY: &str = "blockliner-theme";
@@ -86,10 +87,9 @@ struct Doc {
 /// A background tab's state, put aside while another tab is active. Its
 /// edits were written before it was put aside.
 struct Stash {
-    diagram: Diagram,
+    /// The diagram, its undo history and its view.
+    editor: editor::Stash,
     saved: Diagram,
-    history: History,
-    view: CanvasView,
 }
 
 pub struct BlockLinerApp {
@@ -122,27 +122,12 @@ pub struct BlockLinerApp {
     last_scan: f64,
     /// The window title last sent.
     title: String,
-    /// The active tab's diagram; an empty one while none is open.
-    diagram: Diagram,
-    history: History,
-    canvas: Canvas,
-    tool: Tool,
-    /// The More Shapes button's shape: the last of the four picked.
-    more_shape: Tool,
-    /// The last copy's (or paste's) clipboard text, and how many times it's
-    /// been pasted, so each paste of the same copy steps further.
-    clip: Option<(String, usize)>,
-    /// For the end of the frame (commands run without the context): text
-    /// for the system clipboard, and a paste to ask for.
-    copy_out: Option<String>,
-    paste_request: bool,
-    /// The tool was picked with Shift, so it stays after each shape.
-    sticky_tool: bool,
+    /// The active tab's diagram (an empty one while none is open), with its
+    /// undo history, canvas and tool.
+    ed: DiagramEditor,
     /// The folders Open Containing Folder asked for, in tests.
     #[cfg(test)]
     opened_folders: Vec<std::path::PathBuf>,
-    /// Shift is down this frame (for picking a tool with it).
-    shift: bool,
     overlay: Option<Overlay>,
     palette: Option<CommandPalette>,
     registry: Registry<Act, View>,
@@ -208,18 +193,12 @@ impl BlockLinerApp {
             reveal_tab: false,
             last_scan: 0.0,
             title: String::new(),
-            history: History::new(&diagram),
-            diagram,
-            canvas: Canvas::new(prefs.show_grid, prefs.show_dimensions, prefs.grid_unit),
-            tool: Tool::default(),
-            more_shape: Tool::MORE[0],
-            clip: None,
-            copy_out: None,
-            paste_request: false,
-            sticky_tool: false,
+            ed: DiagramEditor::new(
+                Canvas::new(prefs.show_grid, prefs.show_dimensions, prefs.grid_unit),
+                diagram,
+            ),
             #[cfg(test)]
             opened_folders: Vec::new(),
-            shift: false,
             overlay: None,
             palette: None,
             registry,
@@ -301,7 +280,7 @@ impl BlockLinerApp {
 
     #[cfg(test)]
     pub fn tool(&self) -> Tool {
-        self.tool
+        self.ed.tool
     }
 
     #[cfg(test)]
@@ -311,43 +290,43 @@ impl BlockLinerApp {
 
     #[cfg(test)]
     pub fn canvas(&self) -> &Canvas {
-        &self.canvas
+        &self.ed.canvas
     }
 
     #[cfg(test)]
     pub fn diagram(&self) -> &Diagram {
-        &self.diagram
+        &self.ed.diagram
     }
 
     #[cfg(test)]
     pub fn selection(&self) -> &[String] {
-        &self.canvas.selection
+        &self.ed.canvas.selection
     }
 
     #[cfg(test)]
     pub fn selected_lines(&self) -> &[usize] {
-        &self.canvas.lines
+        &self.ed.canvas.lines
     }
 
     #[cfg(test)]
     pub fn editing_label(&self) -> bool {
-        self.canvas.is_editing_label()
+        self.ed.canvas.is_editing_label()
     }
 
     #[cfg(test)]
     pub fn diagram_mut(&mut self) -> &mut Diagram {
-        &mut self.diagram
+        &mut self.ed.diagram
     }
 
     #[cfg(test)]
     pub fn can_undo(&self) -> bool {
-        self.history.can_undo()
+        self.ed.history.can_undo()
     }
 
     /// The last copy's clipboard text.
     #[cfg(test)]
     pub fn clipboard_text(&self) -> Option<&str> {
-        self.clip.as_ref().map(|(text, _)| text.as_str())
+        self.ed.clip_text()
     }
 
     #[cfg(test)]
@@ -425,7 +404,7 @@ impl BlockLinerApp {
     }
 
     fn view(&self) -> View {
-        let kinds = self.canvas.selected_kinds(&self.diagram);
+        let kinds = self.ed.canvas.selected_kinds(&self.ed.diagram);
         View {
             modal_open: self.overlay.is_some() || self.palette.is_some(),
             project_open: self.project.is_some(),
@@ -433,17 +412,17 @@ impl BlockLinerApp {
             doc_in_project: self.doc_in_project(),
             tabs: self.files.tabs.len(),
             has_content: self.has_content(),
-            has_selection: self.canvas.has_selection(),
-            straight_selected: self.canvas.selected_routes(&self.diagram).0,
-            elbow_selected: self.canvas.selected_routes(&self.diagram).1,
-            stylable: self.canvas.stylable(&self.diagram),
-            fillable: self.canvas.fillable(&self.diagram),
-            labellable: self.canvas.can_edit_label(&self.diagram),
-            changeable: self.canvas.fillable(&self.diagram),
+            has_selection: self.ed.canvas.has_selection(),
+            straight_selected: self.ed.canvas.selected_routes(&self.ed.diagram).0,
+            elbow_selected: self.ed.canvas.selected_routes(&self.ed.diagram).1,
+            stylable: self.ed.canvas.stylable(&self.ed.diagram),
+            fillable: self.ed.canvas.fillable(&self.ed.diagram),
+            labellable: self.ed.canvas.can_edit_label(&self.ed.diagram),
+            changeable: self.ed.canvas.fillable(&self.ed.diagram),
             plain_line_selected: kinds.any_line(),
             arrow_selected: kinds.any_arrow(),
-            can_undo: self.history.can_undo(),
-            can_redo: self.history.can_redo(),
+            can_undo: self.ed.history.can_undo(),
+            can_redo: self.ed.history.can_redo(),
         }
     }
 
@@ -530,7 +509,7 @@ impl BlockLinerApp {
                     self.overlay = Some(Overlay::Export(ExportState {
                         options: self.paths.prefs().export,
                         selected_only: false,
-                        has_selection: self.canvas.has_selection(),
+                        has_selection: self.ed.canvas.has_selection(),
                     }));
                 }
             }
@@ -550,107 +529,9 @@ impl BlockLinerApp {
                 self.sidebar_visible = !self.sidebar_visible;
                 self.set_prefs(json!({ "sidebarVisible": self.sidebar_visible }));
             }
-            Act::Tool(tool) => {
-                self.tool = tool;
-                self.sticky_tool = self.shift;
-                if tool.is_more() {
-                    self.more_shape = tool;
-                }
-            }
-            Act::MoreShapes => {
-                self.tool = self.more_shape;
-                self.sticky_tool = self.shift;
-            }
-            Act::Undo => {
-                self.canvas.cancel(&mut self.diagram);
-                if self.history.undo(&mut self.diagram) {
-                    // Line indices may now name other lines.
-                    self.canvas.lines.clear();
-                }
-            }
-            Act::Redo => {
-                self.canvas.cancel(&mut self.diagram);
-                if self.history.redo(&mut self.diagram) {
-                    self.canvas.lines.clear();
-                }
-            }
-            Act::SelectAll => self.canvas.select_all(&self.diagram),
-            Act::SelectShapes => self.canvas.select_shapes(&self.diagram, false),
-            Act::SelectLines => self.canvas.select_lines(&self.diagram),
-            Act::SelectText => self.canvas.select_shapes(&self.diagram, true),
-            Act::Nudge(dx, dy) => {
-                let g = self.diagram.grid;
-                self.canvas
-                    .nudge(&mut self.diagram, f32::from(dx) * g, f32::from(dy) * g);
-            }
-            Act::Copy => {
-                self.copy();
-            }
-            Act::Cut => {
-                if self.copy() {
-                    self.canvas.delete_selection(&mut self.diagram);
-                }
-            }
-            Act::Paste => self.paste_request = true,
-            Act::Delete => {
-                self.canvas.delete_selection(&mut self.diagram);
-            }
-            Act::EditLabel => {
-                self.tool = Tool::Select;
-                self.canvas.edit_selected_label(&self.diagram);
-            }
-            Act::RouteElbow => {
-                self.canvas.set_route(&mut self.diagram, true);
-            }
-            Act::RouteStraight => {
-                self.canvas.set_route(&mut self.diagram, false);
-            }
-            Act::ChangeShape(kind) => {
-                self.canvas.change_shape(&mut self.diagram, &kind);
-            }
-            Act::ChangeLine(tool) => {
-                self.canvas.change_line(&mut self.diagram, tool);
-            }
-            Act::AddArrowheads => {
-                self.canvas.set_arrowheads(&mut self.diagram, true);
-            }
-            Act::RemoveArrowheads => {
-                self.canvas.set_arrowheads(&mut self.diagram, false);
-            }
-            Act::Fill(swatch) => self.style(swatch, false),
-            Act::Stroke(swatch) => self.style(swatch, true),
-            Act::StrokeStyle(dash) => {
-                self.canvas
-                    .style_selection(&mut self.diagram, true, |s| s.set_dash(dash.clone()));
-            }
-            Act::StrokeWeight(weight) => {
-                self.canvas
-                    .style_selection(&mut self.diagram, true, |s| s.set_weight(weight.clone()));
-            }
-            Act::TextWeight(bold) => {
-                self.canvas
-                    .style_selection(&mut self.diagram, true, |s| s.set_bold(bold));
-            }
-            Act::TextStyle(italic) => {
-                self.canvas
-                    .style_selection(&mut self.diagram, true, |s| s.set_italic(italic));
-            }
-            // Normal when everything is Bold, else all Bold.
-            Act::ToggleBold => {
-                let all = self.canvas.selected_style(&self.diagram).bold
-                    == blockliner_core::style::Agreement::Same(true);
-                self.canvas
-                    .style_selection(&mut self.diagram, true, |s| s.set_bold(!all));
-            }
-            Act::ResetStyle => self
-                .canvas
-                .style_selection(&mut self.diagram, true, Style::reset),
-            Act::Escape => self.canvas.escape(&mut self.diagram),
-            Act::ZoomIn => self.canvas.zoom_step(1),
-            Act::ZoomOut => self.canvas.zoom_step(-1),
-            Act::ZoomReset => self.canvas.zoom_reset(),
-            Act::ToggleGrid => self.set_show_grid(!self.canvas.show_grid),
-            Act::ToggleDimensions => self.set_show_dimensions(!self.canvas.show_dimensions),
+            Act::Edit(act) => self.edit(act),
+            Act::ToggleGrid => self.set_show_grid(!self.ed.canvas.show_grid),
+            Act::ToggleDimensions => self.set_show_dimensions(!self.ed.canvas.show_dimensions),
             Act::ToggleStatusBar => {
                 self.status_bar_visible = !self.status_bar_visible;
                 self.set_prefs(json!({ "statusBarVisible": self.status_bar_visible }));
@@ -661,106 +542,20 @@ impl BlockLinerApp {
         }
     }
 
-    /// The selection to the clipboard as Mermaid (`clipboard::copy`).
-    /// `false` when nothing is selected.
-    fn copy(&mut self) -> bool {
-        let Some(clip) = clipboard::copy(&self.diagram, &self.canvas.selection, &self.canvas.lines)
-        else {
-            return false;
-        };
-        let text = blockliner_core::write(&clip);
-        self.clip = Some((text.clone(), 0));
-        self.copy_out = Some(text);
-        true
-    }
-
-    /// Clipboard text into the diagram, selected: a flowchart (a copy, or
-    /// one from elsewhere) where `clipboard::offset` puts it, else a text
-    /// box in the middle of the view.
-    fn paste(&mut self, text: &str) {
-        if self.doc.is_none() || self.canvas.is_busy() {
-            return;
+    /// Runs an edit of the open diagram. A Custom… colour opens its dialog.
+    fn edit(&mut self, act: EditAct) {
+        if let Some(state) = self.ed.apply(act) {
+            self.overlay = Some(Overlay::Colour(state));
         }
-        let n = match &self.clip {
-            Some((last, n)) if last == text => n + 1,
-            _ => 1,
-        };
-        self.clip = Some((text.to_owned(), n));
-        let view = self.canvas.visible();
-        let (shapes, lines) = match clipboard::parse(text) {
-            Some(clip) => {
-                let (dx, dy) = clipboard::offset(&clip, n, view, self.diagram.grid);
-                clipboard::paste(&mut self.diagram, &clip, dx, dy)
-            }
-            None => match clipboard::paste_text(&mut self.diagram, text, view.center()) {
-                Some(id) => (vec![id], Vec::new()),
-                None => return,
-            },
-        };
-        self.canvas.select_only(shapes, lines);
-        self.tool = Tool::Select;
-    }
-
-    /// The selected shapes' fill (or `stroke`): a preset, the default, or
-    /// the Custom… dialog.
-    fn style(&mut self, swatch: Swatch, stroke: bool) {
-        let colour = match swatch {
-            Swatch::Default => None,
-            Swatch::Preset(i) => {
-                let preset = PRESETS[i];
-                Some(Colour::parse(if stroke {
-                    preset.stroke
-                } else {
-                    preset.fill
-                }))
-            }
-            Swatch::Custom => {
-                // The first selected shape's (or, for a stroke, line's).
-                let d = &self.diagram;
-                let shapes = self
-                    .canvas
-                    .selection
-                    .iter()
-                    .filter_map(|id| d.shape(id).filter(|s| !s.external))
-                    .map(|s| &s.style);
-                let lines = self
-                    .canvas
-                    .lines
-                    .iter()
-                    .filter_map(|&i| d.connectors.get(i))
-                    .filter(|_| stroke)
-                    .map(|c| &c.style);
-                let current = shapes.chain(lines).next().and_then(|s| {
-                    if stroke {
-                        s.stroke.as_ref()
-                    } else {
-                        s.fill.as_ref()
-                    }
-                });
-                self.overlay = Some(Overlay::Colour(ColourState::new(stroke, current)));
-                return;
-            }
-        };
-        self.apply_colour(colour, stroke);
-    }
-
-    fn apply_colour(&mut self, colour: Option<Colour>, stroke: bool) {
-        self.canvas.style_selection(&mut self.diagram, stroke, |s| {
-            if stroke {
-                s.set_stroke(colour.clone());
-            } else {
-                s.set_fill(colour.clone());
-            }
-        });
     }
 
     fn set_show_grid(&mut self, on: bool) {
-        self.canvas.show_grid = on;
+        self.ed.canvas.show_grid = on;
         self.set_prefs(json!({ "showGrid": on }));
     }
 
     fn set_show_dimensions(&mut self, on: bool) {
-        self.canvas.show_dimensions = on;
+        self.ed.canvas.show_dimensions = on;
         self.set_prefs(json!({ "showDimensions": on }));
     }
 
@@ -770,10 +565,10 @@ impl BlockLinerApp {
             "ui",
             prefs.custom_titlebar,
             self.custom_titlebar,
-            self.canvas.show_grid,
-            self.diagram.grid,
-            self.canvas.unit,
-            self.canvas.show_dimensions,
+            self.ed.canvas.show_grid,
+            self.ed.diagram.grid,
+            self.ed.canvas.unit,
+            self.ed.canvas.show_dimensions,
         )));
     }
 
@@ -862,7 +657,7 @@ impl BlockLinerApp {
     /// Writes the active tab's edits, a label being edited included.
     /// `false` when the write failed (its error is shown).
     fn write_active(&mut self) -> bool {
-        self.canvas.commit_label(&mut self.diagram);
+        self.ed.canvas.commit_label(&mut self.ed.diagram);
         self.autosave();
         self.backend.flush()
     }
@@ -1001,9 +796,7 @@ impl BlockLinerApp {
 
     /// Puts `d` on the canvas as a fresh start: no selection, no undo.
     fn load(&mut self, d: Diagram) {
-        self.canvas.clear(true);
-        self.history.reset(&d);
-        self.diagram = d;
+        self.ed.load(d);
     }
 
     /// The project's diagram `name`, in a tab.
@@ -1060,10 +853,7 @@ impl BlockLinerApp {
             }
             None => {
                 if let Some(s) = self.stash.remove(&path) {
-                    self.canvas.clear(false);
-                    self.canvas.view = s.view;
-                    self.diagram = s.diagram;
-                    self.history = s.history;
+                    self.ed.restore(s.editor);
                     self.doc = Some(Doc {
                         path: path.clone(),
                         name,
@@ -1084,17 +874,13 @@ impl BlockLinerApp {
     fn leave_tab(&mut self) {
         self.write_active();
         if let Some(doc) = self.doc.take() {
-            let blank = self.blank();
-            let history = std::mem::replace(&mut self.history, History::new(&blank));
             let stash = Stash {
-                diagram: std::mem::replace(&mut self.diagram, blank),
+                editor: self.ed.take(self.blank()),
                 saved: doc.saved,
-                history,
-                view: self.canvas.view,
             };
             self.stash.insert(doc.path, stash);
         }
-        self.canvas.clear(true);
+        self.ed.canvas.clear(true);
     }
 
     /// Closes `path`'s tab; the file stays in the Files pane. The active
@@ -1265,10 +1051,10 @@ impl BlockLinerApp {
         let Some(doc) = &mut self.doc else {
             return;
         };
-        if self.diagram != doc.saved {
-            doc.saved = self.diagram.clone();
+        if self.ed.diagram != doc.saved {
+            doc.saved = self.ed.diagram.clone();
             self.backend
-                .save(doc.path.clone(), blockliner_core::write(&self.diagram));
+                .save(doc.path.clone(), blockliner_core::write(&self.ed.diagram));
         }
     }
 
@@ -1308,7 +1094,7 @@ impl BlockLinerApp {
                 self.mark_missing(&path);
             }
         }
-        if self.canvas.is_busy() {
+        if self.ed.canvas.is_busy() {
             return;
         }
         for (path, change) in self.backend.check() {
@@ -1342,9 +1128,9 @@ impl BlockLinerApp {
             }
             Change::Edited(text) => match blockliner_core::read(&text) {
                 Ok(d) if active => {
-                    if d != self.diagram {
-                        self.canvas.clear(false);
-                        self.diagram = d.clone();
+                    if d != self.ed.diagram {
+                        self.ed.canvas.clear(false);
+                        self.ed.diagram = d.clone();
                         self.toasts
                             .info(format!("Reloaded “{name}”: it changed on disk."));
                     }
@@ -1354,9 +1140,9 @@ impl BlockLinerApp {
                 }
                 Ok(d) => {
                     if let Some(s) = self.stash.get_mut(path) {
-                        if d != s.diagram {
-                            s.diagram = d.clone();
-                            s.history.observe(&s.diagram);
+                        if d != s.editor.diagram {
+                            s.editor.diagram = d.clone();
+                            s.editor.history.observe(&s.editor.diagram);
                             self.toasts
                                 .info(format!("Reloaded “{name}”: it changed on disk."));
                         }
@@ -1401,20 +1187,20 @@ impl BlockLinerApp {
 
     fn has_content(&self) -> bool {
         self.doc.is_some()
-            && (!self.diagram.shapes.is_empty() || !self.diagram.connectors.is_empty())
+            && (!self.ed.diagram.shapes.is_empty() || !self.ed.diagram.connectors.is_empty())
     }
 
     fn export_scope(&self, selected_only: bool) -> Option<blockliner_core::export::Scope> {
         use blockliner_core::export::{scope, Objects};
         let objects = if selected_only {
             Objects::Selected {
-                shapes: &self.canvas.selection,
-                lines: &self.canvas.lines,
+                shapes: &self.ed.canvas.selection,
+                lines: &self.ed.canvas.lines,
             }
         } else {
             Objects::All
         };
-        scope(&self.diagram, objects)
+        scope(&self.ed.diagram, objects)
     }
 
     /// Asks where to export (the answer comes to [`Self::picked`]).
@@ -1485,7 +1271,7 @@ impl BlockLinerApp {
                 .error("Couldn't export: there's nothing to export.");
             return false;
         };
-        let written = export::render(ctx, &self.diagram, &scope, &o)
+        let written = export::render(ctx, &self.ed.diagram, &scope, &o)
             .and_then(|bytes| export::write(path, &bytes));
         match written {
             Ok(()) => {
@@ -1518,79 +1304,9 @@ impl BlockLinerApp {
         for act in self.registry.dispatch_keys(ctx, &view) {
             self.apply(act);
         }
-        self.nudge_keys(ctx);
-        self.clipboard_events(ctx);
-    }
-
-    /// egui's copy, cut and paste events: the platform's keys, or the
-    /// clipboard a Paste command asked for. Called only while no text field
-    /// has the keyboard (a label being edited keeps them).
-    fn clipboard_events(&mut self, ctx: &egui::Context) {
-        if self.view().modal_open || self.doc.is_none() {
-            return;
-        }
-        let events = ctx.input_mut(|i| {
-            let mut out = Vec::new();
-            i.events.retain(|e| match e {
-                egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) => {
-                    out.push(e.clone());
-                    false
-                }
-                _ => true,
-            });
-            out
-        });
-        for e in events {
-            match e {
-                egui::Event::Copy => self.apply(Act::Copy),
-                egui::Event::Cut => self.apply(Act::Cut),
-                egui::Event::Paste(text) => self.paste(&text),
-                _ => {}
-            }
-        }
-    }
-
-    /// The arrow keys nudge the selection: one grid step, five with Shift,
-    /// one pixel with Alt. Read from the key events themselves, which carry
-    /// their modifiers.
-    fn nudge_keys(&mut self, ctx: &egui::Context) {
-        if self.view().modal_open || !self.canvas.has_selection() {
-            return;
-        }
-        let grid = self.diagram.grid;
-        let moves: Vec<(f32, f32)> = ctx.input_mut(|i| {
-            let mut moves = Vec::new();
-            i.events.retain(|e| {
-                let egui::Event::Key {
-                    key,
-                    pressed: true,
-                    modifiers,
-                    ..
-                } = e
-                else {
-                    return true;
-                };
-                let (dx, dy) = match key {
-                    egui::Key::ArrowLeft => (-1.0, 0.0),
-                    egui::Key::ArrowRight => (1.0, 0.0),
-                    egui::Key::ArrowUp => (0.0, -1.0),
-                    egui::Key::ArrowDown => (0.0, 1.0),
-                    _ => return true,
-                };
-                let step = if modifiers.alt {
-                    1.0
-                } else if modifiers.shift {
-                    5.0 * grid
-                } else {
-                    grid
-                };
-                moves.push((dx * step, dy * step));
-                false
-            });
-            moves
-        });
-        for (dx, dy) in moves {
-            self.canvas.nudge(&mut self.diagram, dx, dy);
+        // The arrow keys and the clipboard, while a diagram has the keyboard.
+        if !self.view().modal_open && self.doc.is_some() {
+            self.ed.keys(ctx);
         }
     }
 
@@ -1598,7 +1314,7 @@ impl BlockLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
-        self.shift = ctx.input(|i| i.modifiers.shift);
+        self.ed.begin_frame(&ctx);
         self.backend_events();
         self.picked(&ctx);
         self.watch_folder(&ctx);
@@ -1611,12 +1327,7 @@ impl BlockLinerApp {
         self.overlays(&ctx);
         self.palette(&ctx);
         self.toasts.show(&ctx);
-        if let Some(text) = self.copy_out.take() {
-            ctx.copy_text(text);
-        }
-        if std::mem::take(&mut self.paste_request) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
-        }
+        self.ed.end_frame(&ctx);
         self.update_title(&ctx);
         if self.custom_titlebar {
             window::window_edges(&ctx);
@@ -1655,8 +1366,8 @@ impl BlockLinerApp {
 
     fn main_view(&mut self, ui: &mut Ui) {
         let props = ToolbarProps {
-            tool: self.tool,
-            more_shape: self.more_shape,
+            tool: self.ed.tool,
+            more_shape: self.ed.more_shape,
             can_close_folder: self.project.is_some(),
             properties_open: self.properties_visible && self.sidebar_visible,
             can_export: self.has_content(),
@@ -1672,15 +1383,15 @@ impl BlockLinerApp {
                 Some(_) => SaveState::Saved,
             };
             let status = StatusProps {
-                tool: self.tool,
+                tool: self.ed.tool,
                 save,
-                pointer: self.canvas.pointer,
-                selected: self.canvas.selected_count(),
-                free_lines: self.diagram.has_free_lines(),
-                limitation: self.canvas.limitation(&self.diagram),
-                grid: self.diagram.grid,
-                unit: self.canvas.unit,
-                zoom: self.canvas.view.zoom,
+                pointer: self.ed.canvas.pointer,
+                selected: self.ed.canvas.selected_count(),
+                free_lines: self.ed.diagram.has_free_lines(),
+                limitation: self.ed.canvas.limitation(&self.ed.diagram),
+                grid: self.ed.diagram.grid,
+                unit: self.ed.canvas.unit,
+                zoom: self.ed.canvas.view.zoom,
                 scale: &self.theme.scale,
             };
             let clicked = egui::Panel::bottom("blockliner-status")
@@ -1695,10 +1406,10 @@ impl BlockLinerApp {
         let mut file_acts = Vec::new();
         let mut pane = None;
         let props = PropertiesProps::new(
-            &self.diagram,
-            &self.canvas.selection,
-            self.canvas.selected_style(&self.diagram),
-            self.canvas.selected_kinds(&self.diagram),
+            &self.ed.diagram,
+            &self.ed.canvas.selection,
+            self.ed.canvas.selected_style(&self.ed.diagram),
+            self.ed.canvas.selected_kinds(&self.ed.diagram),
         );
         let has_files = !self.files.list.is_empty();
         if self.sidebar_visible && (self.project.is_some() || has_files) {
@@ -1794,7 +1505,9 @@ impl BlockLinerApp {
                 .resizable(false)
                 .show_separator_line(false)
                 .frame(Frame::NONE)
-                .show(ui, |ui| views::tab_strip(ui, &tabs, reveal))
+                .show(ui, |ui| {
+                    views::tab_strip(ui, "blockliner-tabs", &tabs, reveal)
+                })
                 .inner;
         }
         let keys = !self.view().modal_open && !ui.ctx().egui_wants_keyboard_input();
@@ -1805,50 +1518,13 @@ impl BlockLinerApp {
                     acts.extend(views::empty_state(ui, self.project.is_some(), has_files));
                     return;
                 }
-                let out = self.canvas.show(ui, &mut self.diagram, self.tool, keys);
-                if out.tool_done && !self.sticky_tool {
-                    self.tool = Tool::Select;
-                }
-                acts.extend(out.menu.map(|m| match m {
-                    MenuAction::EditLabel => Act::EditLabel,
-                    MenuAction::ChangeShape(kind) => Act::ChangeShape(kind),
-                    MenuAction::AddArrowheads => Act::AddArrowheads,
-                    MenuAction::RemoveArrowheads => Act::RemoveArrowheads,
-                    MenuAction::Cut => Act::Cut,
-                    MenuAction::Copy => Act::Copy,
-                    MenuAction::Paste => Act::Paste,
-                    MenuAction::RouteElbow => Act::RouteElbow,
-                    MenuAction::RouteStraight => Act::RouteStraight,
-                    MenuAction::Fill(s) => Act::Fill(s),
-                    MenuAction::Stroke(s) => Act::Stroke(s),
-                    MenuAction::StrokeStyle(d) => Act::StrokeStyle(d),
-                    MenuAction::StrokeWeight(w) => Act::StrokeWeight(w),
-                    MenuAction::TextWeight(b) => Act::TextWeight(b),
-                    MenuAction::TextStyle(i) => Act::TextStyle(i),
-                    MenuAction::ResetStyle => Act::ResetStyle,
-                    MenuAction::Delete => Act::Delete,
-                    MenuAction::SelectAll => Act::SelectAll,
-                    MenuAction::SelectShapes => Act::SelectShapes,
-                    MenuAction::SelectLines => Act::SelectLines,
-                    MenuAction::SelectText => Act::SelectText,
-                }));
+                acts.extend(self.ed.show(ui, keys).map(Act::Edit));
             });
         for act in acts {
             self.apply(act);
         }
-        match pane {
-            Some(PropertiesAction::Fill(s)) => self.apply(Act::Fill(s)),
-            Some(PropertiesAction::Stroke(s)) => self.apply(Act::Stroke(s)),
-            Some(PropertiesAction::FillHex(c)) => self.apply_colour(Some(c), false),
-            Some(PropertiesAction::StrokeHex(c)) => self.apply_colour(Some(c), true),
-            Some(PropertiesAction::StrokeStyle(d)) => self.apply(Act::StrokeStyle(d)),
-            Some(PropertiesAction::StrokeWeight(w)) => self.apply(Act::StrokeWeight(w)),
-            Some(PropertiesAction::TextWeight(b)) => self.apply(Act::TextWeight(b)),
-            Some(PropertiesAction::TextStyle(i)) => self.apply(Act::TextStyle(i)),
-            Some(PropertiesAction::ResetStyle) => self.apply(Act::ResetStyle),
-            Some(PropertiesAction::ChangeShape(kind)) => self.apply(Act::ChangeShape(kind)),
-            Some(PropertiesAction::ChangeLine(tool)) => self.apply(Act::ChangeLine(tool)),
-            None => {}
+        if let Some(state) = pane.and_then(|a| self.ed.apply_properties(a)) {
+            self.overlay = Some(Overlay::Colour(state));
         }
         match tab_act {
             Some(TabAction::Activate(i)) => {
@@ -1900,8 +1576,7 @@ impl BlockLinerApp {
         }
         // One undo step per finished change (see `History`), and the
         // autosave after it.
-        if !self.canvas.is_busy() {
-            self.history.observe(&self.diagram);
+        if self.ed.observe() {
             self.autosave();
         }
     }
@@ -1932,6 +1607,7 @@ impl BlockLinerApp {
                 name: files::name(t),
                 path: t.display().to_string(),
                 active: self.files.active.as_ref() == Some(t),
+                icon: None,
             })
             .collect()
     }
@@ -1957,11 +1633,11 @@ impl BlockLinerApp {
                         SettingsAction::Restart => restart(ctx),
                         SettingsAction::SetShowGrid(on) => self.set_show_grid(on),
                         SettingsAction::SetGridSize(g) => {
-                            self.diagram.grid = g;
+                            self.ed.diagram.grid = g;
                             self.set_prefs(json!({ "gridSize": g as i64 }));
                         }
                         SettingsAction::SetGridUnit(u) => {
-                            self.canvas.unit = u;
+                            self.ed.canvas.unit = u;
                             self.set_prefs(json!({ "gridUnit": u.id() }));
                         }
                         SettingsAction::SetShowDimensions(on) => self.set_show_dimensions(on),
@@ -2008,7 +1684,7 @@ impl BlockLinerApp {
                 Some(ColourAction::Close) => keep = false,
                 Some(ColourAction::Apply(c)) => {
                     let stroke = state.stroke;
-                    self.apply_colour(Some(c), stroke);
+                    self.ed.apply_colour(Some(c), stroke);
                     keep = false;
                 }
                 None => {}

@@ -75,9 +75,12 @@ pub fn of_note(index: &Value, id: &str) -> Vec<Attachment> {
         .unwrap_or_default()
 }
 
+/// `insertable`: the open file is a note, so an attachment's Markdown can
+/// be inserted into it (not into a diagram).
 pub fn show(
     ui: &mut Ui,
     selected: bool,
+    insertable: bool,
     attachments: &[Attachment],
     dir: &Path,
 ) -> Vec<AttachmentAction> {
@@ -118,7 +121,7 @@ pub fn show(
                     return;
                 }
                 for a in attachments {
-                    item(ui, &p, a, dir, &mut out);
+                    item(ui, &p, a, dir, insertable, &mut out);
                 }
             });
         });
@@ -141,7 +144,14 @@ fn empty(ui: &mut Ui, p: &Palette, text: &str) {
 }
 
 /// `.attachment-item`: a thumbnail or type icon, the name, and `×`.
-fn item(ui: &mut Ui, p: &Palette, a: &Attachment, dir: &Path, out: &mut Vec<AttachmentAction>) {
+fn item(
+    ui: &mut Ui,
+    p: &Palette,
+    a: &Attachment,
+    dir: &Path,
+    insertable: bool,
+    out: &mut Vec<AttachmentAction>,
+) {
     let (rect, resp) =
         ui.allocate_exact_size(vec2(ui.available_width(), ITEM_HEIGHT), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ListItem, true, &a.original_name));
@@ -235,7 +245,10 @@ fn item(ui: &mut Ui, p: &Palette, a: &Attachment, dir: &Path, out: &mut Vec<Atta
         out.push(AttachmentAction::Open(path));
     }
     resp.context_menu(|ui| {
-        if ui.button("Insert into Note").clicked() {
+        if ui
+            .add_enabled(insertable, egui::Button::new("Insert into Note"))
+            .clicked()
+        {
             out.push(AttachmentAction::Insert(a.markdown()));
             ui.close();
         }

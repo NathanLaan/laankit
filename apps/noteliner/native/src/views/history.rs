@@ -9,6 +9,7 @@ use laankit_egui::theme::{self, Palette};
 use laankit_egui::{fonts, icons};
 use laankit_richtext::{Action, Document, RichStyle, RichView};
 
+use crate::model::FileKind;
 use crate::views::preview::{self, AttachmentResolver};
 
 /// `commitListHeight`'s default and floor.
@@ -92,7 +93,18 @@ impl HistoryState {
             return;
         }
         self.content_loading = false;
-        self.doc = content.map(|c| preview::document(&c));
+        // A diagram's version is shown as its Mermaid source.
+        let diagram = self
+            .filename
+            .as_deref()
+            .is_some_and(|f| FileKind::of(f) == FileKind::Diagram);
+        self.doc = content.map(|c| {
+            if diagram {
+                preview::document(&format!("```mermaid\n{}\n```\n", c.trim_end()))
+            } else {
+                preview::document(&c)
+            }
+        });
         self.view.reset();
     }
 

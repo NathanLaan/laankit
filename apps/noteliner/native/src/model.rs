@@ -12,6 +12,8 @@ use std::collections::HashSet;
 
 use serde_json::{json, Value};
 
+pub use noteliner_core::project::FileKind;
+
 /// `UNTAGGED_KEY`: the tag-filter row for files without tags. A leading
 /// space can't appear in a real tag.
 pub const UNTAGGED_KEY: &str = " __untagged__";
@@ -33,6 +35,15 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// A note, or a diagram: read from the file's extension.
+    pub fn kind(&self) -> FileKind {
+        FileKind::of(&self.filename)
+    }
+
+    pub fn is_diagram(&self) -> bool {
+        self.kind() == FileKind::Diagram
+    }
+
     pub fn from_value(v: &Value) -> Option<Self> {
         let s = |k: &str| v[k].as_str().unwrap_or_default().to_string();
         Some(Self {

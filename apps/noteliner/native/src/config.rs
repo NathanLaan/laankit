@@ -13,6 +13,9 @@
 
 use std::path::{Path, PathBuf};
 
+use blockliner_core::model::DEFAULT_GRID;
+use blockliner_egui::export::{self, Format};
+use blockliner_egui::units::Unit;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
@@ -38,6 +41,43 @@ pub struct Prefs {
     pub spell_check: bool,
     pub files_sort_mode: String,
     pub command_recents: Vec<String>,
+    /// Diagrams: whether the canvas grid shows (`diagramShowGrid`).
+    pub diagram_show_grid: bool,
+    /// The grid of a new diagram; one of [`DIAGRAM_GRID_SIZES`].
+    pub diagram_grid_size: f32,
+    /// What one grid mark measures, for the dimension lines.
+    pub diagram_grid_unit: Unit,
+    pub diagram_show_dimensions: bool,
+    /// The last Export Diagram choices.
+    pub diagram_export: export::Options,
+}
+
+/// The grid sizes Settings offers for new diagrams, as BlockLiner's.
+pub const DIAGRAM_GRID_SIZES: [f32; 3] = [10.0, 20.0, 40.0];
+
+impl Default for Prefs {
+    /// The prefs of a fresh install.
+    fn default() -> Self {
+        Self {
+            custom_titlebar: false,
+            write_frontmatter: true,
+            mcp_enabled: false,
+            mcp_confirm_writes: false,
+            mcp_disabled_tools: Vec::new(),
+            spell_check: true,
+            files_sort_mode: "user".into(),
+            command_recents: Vec::new(),
+            diagram_show_grid: true,
+            diagram_grid_size: DEFAULT_GRID,
+            diagram_grid_unit: Unit::default(),
+            diagram_show_dimensions: false,
+            diagram_export: export::Options {
+                format: Format::default(),
+                grid: false,
+                scale: 2,
+            },
+        }
+    }
 }
 
 /// A recent project (`recent-projects.json`).
@@ -108,6 +148,34 @@ impl Paths {
                 .unwrap_or("user")
                 .to_string(),
             command_recents: strings("commandRecents"),
+            // `diagramShowGrid !== false`: the grid shows unless switched off.
+            diagram_show_grid: flag("diagramShowGrid", true),
+            diagram_grid_size: m
+                .get("diagramGridSize")
+                .and_then(Value::as_f64)
+                .map(|g| g as f32)
+                .filter(|g| DIAGRAM_GRID_SIZES.contains(g))
+                .unwrap_or(DEFAULT_GRID),
+            diagram_grid_unit: m
+                .get("diagramGridUnit")
+                .and_then(Value::as_str)
+                .and_then(Unit::parse)
+                .unwrap_or_default(),
+            diagram_show_dimensions: flag("diagramShowDimensions", false),
+            diagram_export: export::Options {
+                format: m
+                    .get("diagramExportFormat")
+                    .and_then(Value::as_str)
+                    .and_then(Format::parse)
+                    .unwrap_or_default(),
+                grid: flag("diagramExportGrid", false),
+                scale: m
+                    .get("diagramExportScale")
+                    .and_then(Value::as_u64)
+                    .map(|s| s as u32)
+                    .filter(|s| export::SCALES.contains(s))
+                    .unwrap_or(2),
+            },
         }
     }
 
@@ -205,6 +273,10 @@ pub struct Layout {
     pub show_attachments: bool,
     pub show_search: bool,
     pub show_backlinks: bool,
+    /// The Properties panel, to the right of a diagram.
+    pub show_properties: bool,
+    #[serde(serialize_with = "js_number")]
+    pub properties_width: f32,
     #[serde(serialize_with = "js_number")]
     pub sidebar_width: f32,
     #[serde(serialize_with = "js_number")]
@@ -228,6 +300,12 @@ pub struct Layout {
     /// only): reopened there with the project. Only one note is remembered.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_file_position: Option<LastFilePosition>,
+    /// The open tabs' file ids, in tab order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub open_tabs: Vec<String>,
+    /// The active tab's file id, or empty.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub active_tab: String,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -262,6 +340,8 @@ impl Default for Layout {
             show_attachments: false,
             show_search: false,
             show_backlinks: false,
+            show_properties: true,
+            properties_width: 240.0,
             sidebar_width: 260.0,
             log_panel_height: 300.0,
             attachment_panel_width: 220.0,
@@ -273,6 +353,8 @@ impl Default for Layout {
             backlinks_height: 180.0,
             pane_order: PANE_KEYS.iter().map(|k| k.to_string()).collect(),
             last_file_position: None,
+            open_tabs: Vec::new(),
+            active_tab: String::new(),
             extra: Map::new(),
         }
     }

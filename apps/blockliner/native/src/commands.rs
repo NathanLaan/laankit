@@ -8,10 +8,7 @@
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
 
-use blockliner_core::style::{Dash, Weight, PRESETS, WEIGHTS};
-use blockliner_core::ShapeKind;
-
-use crate::canvas::{Swatch, Tool};
+use blockliner_egui::commands::{EditAct, EditCommand, When};
 
 /// Everything a shortcut, button or palette entry can ask for.
 #[derive(Clone, Debug, PartialEq)]
@@ -31,64 +28,8 @@ pub enum Act {
     PreviousTab,
     ToggleFiles,
     Export,
-    Tool(Tool),
-    /// The More Shapes button's shape: the last of [`Tool::MORE`] used.
-    MoreShapes,
-    Undo,
-    Redo,
-    SelectAll,
-    /// Every shape but the text boxes…
-    SelectShapes,
-    /// …every connector…
-    SelectLines,
-    /// …or every text box.
-    SelectText,
-    /// The selection to the clipboard, as Mermaid…
-    Copy,
-    /// …and deleted…
-    Cut,
-    /// …and back: asks for the clipboard, which arrives as egui's paste
-    /// event.
-    Paste,
-    Delete,
-    /// Edit the single selected shape's or connector's label.
-    EditLabel,
-    /// The selected connectors become right-angle…
-    RouteElbow,
-    /// …or straight.
-    RouteStraight,
-    /// The selected shapes become this kind (Change Shape).
-    ChangeShape(ShapeKind),
-    /// The selected lines become what this line tool draws (Change Line).
-    ChangeLine(Tool),
-    /// The selected lines get an arrowhead…
-    AddArrowheads,
-    /// …or lose it.
-    RemoveArrowheads,
-    /// The selected shapes' fill…
-    Fill(Swatch),
-    /// …or stroke.
-    Stroke(Swatch),
-    /// Both back to the theme's.
-    /// Solid (`None`), Dashed or Dotted.
-    StrokeStyle(Option<Dash>),
-    /// A weight (`None`: the default, 1px).
-    StrokeWeight(Option<Weight>),
-    /// Bold (`true`) or Normal…
-    TextWeight(bool),
-    /// …Italic or Normal…
-    TextStyle(bool),
-    /// …and Ctrl+B: Normal when all are Bold, else all Bold.
-    ToggleBold,
-    ResetStyle,
-    /// Move the selection by this many grid steps (the arrow keys go
-    /// through `App::nudge_keys`, which also reads Shift and Alt).
-    Nudge(i8, i8),
-    /// Cancel the drag in progress, else clear the selection.
-    Escape,
-    ZoomIn,
-    ZoomOut,
-    ZoomReset,
+    /// An edit of the open diagram (`blockliner-egui`).
+    Edit(EditAct),
     ToggleGrid,
     ToggleDimensions,
     ToggleSidebar,
@@ -205,56 +146,25 @@ fn redoable(v: &View) -> bool {
     ready(v) && v.can_redo
 }
 
-/// A tool's letter (Excalidraw's; never fires while a text field has the
-/// keyboard). The later more shapes have none: they're in the More Shapes
-/// list and the palette.
-pub fn tool_key(tool: Tool) -> Option<(Key, &'static str)> {
-    Some(match tool {
-        Tool::Select => (Key::V, "V"),
-        Tool::Rect => (Key::R, "R"),
-        Tool::RoundRect => (Key::O, "O"),
-        // C for a cylinder, S for a subroutine.
-        Tool::Diamond => (Key::D, "D"),
-        Tool::Hexagon => (Key::H, "H"),
-        Tool::Database => (Key::C, "C"),
-        Tool::Subroutine => (Key::S, "S"),
-        Tool::Line => (Key::L, "L"),
-        Tool::Arrow => (Key::A, "A"),
-        // An elbow looks like a J; E for (right-angle) arrows, the most used.
-        Tool::ElbowLine => (Key::J, "J"),
-        Tool::ElbowArrow => (Key::E, "E"),
-        Tool::Text => (Key::T, "T"),
-        Tool::Note => (Key::N, "N"),
-        Tool::Stadium
-        | Tool::Circle
-        | Tool::DoubleCircle
-        | Tool::Parallelogram
-        | Tool::ReverseParallelogram
-        | Tool::Trapezoid
-        | Tool::InvertedTrapezoid
-        | Tool::Asymmetric => return None,
+/// An edit command in BlockLiner's registry: no dialog open, and what its
+/// [`When`] asks of the selection.
+fn edit_command(c: EditCommand) -> Command<Act, View> {
+    c.into_command(Act::Edit, |when| match when {
+        When::Ready => ready,
+        When::Editing => editing,
+        When::Selected => selected,
+        When::HasStraight => has_straight,
+        When::HasElbow => has_elbow,
+        When::Stylable => stylable,
+        When::Fillable => fillable,
+        When::Labellable => labellable,
+        When::Changeable => changeable,
+        When::HasLine => has_line,
+        When::HasPlainLine => has_plain_line,
+        When::HasArrow => has_arrow,
+        When::Undoable => undoable,
+        When::Redoable => redoable,
     })
-}
-
-/// A tool's number: its toolbar button ([`Tool::slot`]), so the more
-/// shapes share 4, which picks the last one used, and the tenth button
-/// (Note) is 0. Bound to the physical
-/// key, so the number row works on layouts that put the digits behind
-/// Shift.
-pub fn tool_digit(tool: Tool) -> (Key, &'static str) {
-    const DIGITS: [(Key, &str); 10] = [
-        (Key::Num1, "1"),
-        (Key::Num2, "2"),
-        (Key::Num3, "3"),
-        (Key::Num4, "4"),
-        (Key::Num5, "5"),
-        (Key::Num6, "6"),
-        (Key::Num7, "7"),
-        (Key::Num8, "8"),
-        (Key::Num9, "9"),
-        (Key::Num0, "0"),
-    ];
-    DIGITS[tool.slot()]
 }
 
 pub fn registry() -> Registry<Act, View> {
@@ -325,322 +235,37 @@ pub fn registry() -> Registry<Act, View> {
         )
         .when(ready),
     );
-    for tool in Tool::ALL {
-        let letter = tool_key(tool);
-        let (digit, number) = tool_digit(tool);
-        let id: String = tool
-            .name()
-            .to_lowercase()
-            .chars()
-            .filter(char::is_ascii_alphanumeric)
-            .collect();
-        let id = format!("tool.{id}");
-        let mut command = add(
-            &id,
-            &format!("{} Tool", tool.name()),
-            "Tools",
-            Act::Tool(tool),
-        )
-        .when(ready);
-        if let Some((key, _)) = letter {
-            command = command
-                .key(Binding::logical(Modifiers::NONE, key))
-                // With Shift the tool stays picked after each shape.
-                .key(Binding::logical(Modifiers::SHIFT, key));
-        }
-        // The more shapes' number is More Shapes'.
-        r.register(match (tool.is_more(), letter) {
-            (true, Some((_, letter))) => command.shortcut(letter),
-            (true, None) => command,
-            (false, letter) => command
-                .key(Binding::physical(Modifiers::NONE, digit))
-                .key(Binding::physical(Modifiers::SHIFT, digit))
-                .shortcut(match letter {
-                    Some((_, letter)) => format!("{letter}, {number}"),
-                    None => number.to_owned(),
-                }),
-        });
-    }
-    let (digit, number) = tool_digit(Tool::MORE[0]);
-    r.register(
-        add(
-            "tool.moreShapes",
-            "More Shapes Tool",
-            "Tools",
-            Act::MoreShapes,
-        )
-        .key(Binding::physical(Modifiers::NONE, digit))
-        .key(Binding::physical(Modifiers::SHIFT, digit))
-        .shortcut(number)
-        .when(ready),
-    );
-    r.register(
-        add("edit.undo", "Undo", "Edit", Act::Undo)
-            .key(Binding::logical(cmd, Key::Z))
-            .shortcut("Ctrl+Z")
-            .when(undoable),
-    );
-    r.register(
-        add("edit.redo", "Redo", "Edit", Act::Redo)
-            .key(Binding::logical(shift, Key::Z))
-            .key(Binding::logical(cmd, Key::Y))
-            .shortcut("Ctrl+Shift+Z")
-            .when(redoable),
-    );
-    r.register(
-        add("edit.selectAll", "Select All", "Edit", Act::SelectAll)
-            .key(Binding::logical(cmd, Key::A))
-            .shortcut("Ctrl+A")
-            .when(ready),
-    );
-    // Physical keys, as for the other Shift and Alt shortcuts.
-    let alt = cmd | Modifiers::ALT;
-    for (id, label, binding, keys, act) in [
-        (
-            "edit.selectShapes",
-            "Select All Shapes",
-            Binding::physical(shift, Key::A),
-            "Ctrl+Shift+A",
-            Act::SelectShapes,
-        ),
-        (
-            "edit.selectLines",
-            "Select All Lines",
-            Binding::physical(alt, Key::A),
-            "Ctrl+Alt+A",
-            Act::SelectLines,
-        ),
-        (
-            "edit.selectText",
-            "Select All Text",
-            Binding::physical(shift, Key::T),
-            "Ctrl+Shift+T",
-            Act::SelectText,
-        ),
-    ] {
-        r.register(
-            add(id, label, "Edit", act)
-                .key(binding)
-                .shortcut(keys)
-                .when(ready),
-        );
-    }
-    // No key bindings: egui turns the platform's copy, cut and paste keys
-    // into its clipboard events, which `App::clipboard_events` reads.
-    for (id, label, keys, act, when) in [
-        (
-            "edit.cut",
-            "Cut",
-            "Ctrl+X",
-            Act::Cut,
-            selected as fn(&View) -> bool,
-        ),
-        ("edit.copy", "Copy", "Ctrl+C", Act::Copy, selected),
-        ("edit.paste", "Paste", "Ctrl+V", Act::Paste, editing),
-    ] {
-        r.register(add(id, label, "Edit", act).shortcut(keys).when(when));
-    }
-    // No key bindings: the arrow keys are read in `App::nudge_keys`, which
-    // also handles Shift (5 steps) and Alt (1 px). These entries put them in
-    // the palette and the shortcuts list.
-    for (id, label, keys, (dx, dy)) in [
-        ("edit.nudgeLeft", "Nudge Left", "←", (-1, 0)),
-        ("edit.nudgeRight", "Nudge Right", "→", (1, 0)),
-        ("edit.nudgeUp", "Nudge Up", "↑", (0, -1)),
-        ("edit.nudgeDown", "Nudge Down", "↓", (0, 1)),
-    ] {
-        r.register(
-            add(id, label, "Edit", Act::Nudge(dx, dy))
-                .shortcut(keys)
-                .when(selected),
-        );
+    for c in blockliner_egui::commands::commands() {
+        r.register(edit_command(c));
     }
     r.register(
-        add(
-            "edit.routeElbow",
-            "Make Connectors Right-Angle",
-            "Edit",
-            Act::RouteElbow,
-        )
-        .when(has_straight),
-    );
-    r.register(
-        add(
-            "edit.routeStraight",
-            "Make Connectors Straight",
-            "Edit",
-            Act::RouteStraight,
-        )
-        .when(has_elbow),
-    );
-    // Change Shape and arrowheads: palette-only (and the right-click menu
-    // and the Properties pane). The letters already pick drawing tools.
-    for kind in ShapeKind::CHANGEABLE {
-        let id: String = kind
-            .name()
-            .to_lowercase()
-            .chars()
-            .filter(char::is_ascii_alphanumeric)
-            .collect();
-        let label = format!("Change Shape: {}", kind.name());
-        r.register(
-            add(
-                &format!("edit.changeShape.{id}"),
-                &label,
-                "Edit",
-                Act::ChangeShape(kind),
-            )
-            .when(changeable),
-        );
-    }
-    for tool in Tool::LINES {
-        let id: String = tool
-            .name()
-            .to_lowercase()
-            .chars()
-            .filter(char::is_ascii_alphanumeric)
-            .collect();
-        r.register(
-            add(
-                &format!("edit.changeLine.{id}"),
-                &format!("Change Line: {}", tool.name()),
-                "Edit",
-                Act::ChangeLine(tool),
-            )
-            .when(has_line),
-        );
-    }
-    r.register(
-        add(
-            "edit.addArrowheads",
-            "Add Arrowheads",
-            "Edit",
-            Act::AddArrowheads,
-        )
-        .when(has_plain_line),
-    );
-    r.register(
-        add(
-            "edit.removeArrowheads",
-            "Remove Arrowheads",
-            "Edit",
-            Act::RemoveArrowheads,
-        )
-        .when(has_arrow),
-    );
-    // Colours: palette-only (and the right-click menu).
-    type When = fn(&View) -> bool;
-    for (part, make, when) in [
-        ("Fill", Act::Fill as fn(Swatch) -> Act, fillable as When),
-        ("Stroke", Act::Stroke, stylable),
-    ] {
-        let mut swatch = |id: String, name: &str, s: Swatch| {
-            let label = format!("{part}: {name}");
-            r.register(add(&id, &label, "Style", make(s)).when(when));
-        };
-        let key = part.to_lowercase();
-        swatch(format!("style.{key}.default"), "Default", Swatch::Default);
-        for (i, preset) in PRESETS.iter().enumerate() {
-            let id = format!("style.{key}.{}", preset.name.to_lowercase());
-            swatch(id, preset.name, Swatch::Preset(i));
-        }
-        swatch(format!("style.{key}.custom"), "Custom…", Swatch::Custom);
-    }
-    for dash in crate::canvas::STROKE_STYLES {
-        let name = Dash::name(dash.as_ref());
-        r.register(
-            add(
-                &format!("style.strokeStyle.{}", name.to_lowercase()),
-                &format!("Stroke Style: {name}"),
-                "Style",
-                Act::StrokeStyle(dash),
-            )
-            .when(stylable),
-        );
-    }
-    for weight in WEIGHTS {
-        let id = match &weight {
-            Some(w) => w.field().replace('.', "_"),
-            None => Weight::number_text(Weight::DEFAULT).replace('.', "_"),
-        };
-        r.register(
-            add(
-                &format!("style.strokeWeight.{id}"),
-                &format!("Stroke Weight: {}", Weight::label(weight.as_ref())),
-                "Style",
-                Act::StrokeWeight(weight),
-            )
-            .when(stylable),
-        );
-    }
-    for (id, label, act) in [
-        (
-            "style.textWeight.normal",
-            "Text Weight: Normal",
-            Act::TextWeight(false),
-        ),
-        (
-            "style.textWeight.bold",
-            "Text Weight: Bold",
-            Act::TextWeight(true),
-        ),
-        (
-            "style.textStyle.normal",
-            "Text Style: Normal",
-            Act::TextStyle(false),
-        ),
-        (
-            "style.textStyle.italic",
-            "Text Style: Italic",
-            Act::TextStyle(true),
-        ),
-    ] {
-        r.register(add(id, label, "Style", act).when(stylable));
-    }
-    r.register(
-        add("style.toggleBold", "Toggle Bold", "Style", Act::ToggleBold)
-            .key(Binding::logical(cmd, Key::B))
-            .shortcut("Ctrl+B")
-            .when(stylable),
-    );
-    r.register(add("style.reset", "Reset Style", "Style", Act::ResetStyle).when(stylable));
-    r.register(
-        add("edit.label", "Edit Label", "Edit", Act::EditLabel)
-            .key(Binding::logical(Modifiers::NONE, Key::Enter))
-            .shortcut("Enter")
-            .when(labellable),
-    );
-    r.register(
-        add("edit.delete", "Delete", "Edit", Act::Delete)
-            .key(Binding::logical(Modifiers::NONE, Key::Delete))
-            .key(Binding::logical(Modifiers::NONE, Key::Backspace))
-            .shortcut("Delete")
-            .when(selected),
-    );
-    r.register(
-        add("edit.escape", "Clear Selection", "Edit", Act::Escape)
-            .key(Binding::logical(Modifiers::NONE, Key::Escape))
-            .shortcut("Esc")
-            .when(ready),
-    );
-    r.register(
-        add("view.zoomIn", "Zoom In", "View", Act::ZoomIn)
+        add("view.zoomIn", "Zoom In", "View", Act::Edit(EditAct::ZoomIn))
             .key(Binding::logical(cmd, Key::Equals))
             .key(Binding::loose(cmd, Key::Plus))
             .shortcut("Ctrl+=")
             .when(ready),
     );
     r.register(
-        add("view.zoomOut", "Zoom Out", "View", Act::ZoomOut)
-            .key(Binding::logical(cmd, Key::Minus))
-            .shortcut("Ctrl+-")
-            .when(ready),
+        add(
+            "view.zoomOut",
+            "Zoom Out",
+            "View",
+            Act::Edit(EditAct::ZoomOut),
+        )
+        .key(Binding::logical(cmd, Key::Minus))
+        .shortcut("Ctrl+-")
+        .when(ready),
     );
     r.register(
-        add("view.zoomReset", "Zoom to 100%", "View", Act::ZoomReset)
-            .key(Binding::logical(cmd, Key::Num0))
-            .shortcut("Ctrl+0")
-            .when(ready),
+        add(
+            "view.zoomReset",
+            "Zoom to 100%",
+            "View",
+            Act::Edit(EditAct::ZoomReset),
+        )
+        .key(Binding::logical(cmd, Key::Num0))
+        .shortcut("Ctrl+0")
+        .when(ready),
     );
     r.register(
         add("view.toggleGrid", "Toggle Grid", "View", Act::ToggleGrid)
@@ -721,6 +346,7 @@ pub fn shortcut_list() -> Vec<ShortcutEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::canvas::Tool;
 
     #[test]
     fn every_tool_has_a_command() {
@@ -748,7 +374,7 @@ mod tests {
             assert!(
                 r.applicable_commands(&view)
                     .iter()
-                    .any(|c| c.action == Act::Tool(tool)),
+                    .any(|c| c.action == Act::Edit(EditAct::Tool(tool))),
                 "{tool:?}"
             );
         }

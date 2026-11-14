@@ -4,7 +4,7 @@
 
 use egui::text::{LayoutJob, TextWrapping};
 use egui::{
-    pos2, vec2, Align2, Color32, FontId, Pos2, Rect, RichText, ScrollArea, Sense, Shape, Stroke,
+    pos2, vec2, Align2, Color32, FontId, Pos2, Rect, RichText, ScrollArea, Sense, Stroke,
     StrokeKind, Ui,
 };
 use laankit_egui::dialog::{self, ButtonKind};
@@ -13,8 +13,11 @@ use laankit_egui::theme::Palette;
 use laankit_egui::toolbar::{self, ToolbarButton};
 use laankit_egui::{fonts, icons, theme};
 
-use crate::canvas::{paint, Tool};
-use crate::commands::{tool_digit, tool_key, Act};
+use blockliner_egui::tools::{more_shapes_button, tool_button};
+
+use crate::canvas::Tool;
+use crate::commands::Act;
+use blockliner_egui::EditAct;
 
 /// `.status-bar { height: 24px }`, as in the other apps.
 pub const STATUS_BAR_HEIGHT: f32 = 24.0;
@@ -48,13 +51,13 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
                     // One button for the four.
                     if tool == Tool::MORE[0] {
                         if let Some(t) = more_shapes_button(ui, props.more_shape, props.tool) {
-                            out.push(Act::Tool(t));
+                            out.push(Act::Edit(EditAct::Tool(t)));
                         }
                     }
                     continue;
                 }
                 if tool_button(ui, tool, props.tool == tool) {
-                    out.push(Act::Tool(tool));
+                    out.push(Act::Edit(EditAct::Tool(tool)));
                 }
                 if tool == Tool::Select {
                     toolbar::divider(ui);
@@ -128,332 +131,6 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
     );
     out.extend(bottom);
     out
-}
-
-/// A tool button. Select and Text use Font Awesome glyphs; the shape and
-/// line tools draw what they make, since no icon says "rounded rectangle".
-fn tool_button(ui: &mut Ui, tool: Tool, active: bool) -> bool {
-    let number = tool_digit(tool).1;
-    let title = match tool_key(tool) {
-        Some((_, letter)) => format!("{} — {letter} or {number}", tool.name()),
-        None => format!("{} — {number}", tool.name()),
-    };
-    let glyph = match tool {
-        Tool::Select => icons::ARROW_POINTER,
-        Tool::Text => icons::FONT,
-        _ => "",
-    };
-    let resp = toolbar::button(
-        ui,
-        ToolbarButton::new(glyph, &title)
-            .label(tool.name())
-            .active(active),
-    );
-    if glyph.is_empty() {
-        paint_tool_icon(
-            ui.painter(),
-            tool,
-            resp.rect.center(),
-            tool_ink(ui, &resp, active),
-        );
-    }
-    tool_number(ui, &resp, number);
-    resp.clicked()
-}
-
-/// The toolbar button's own ink: accent when active, brighter on hover.
-fn tool_ink(ui: &Ui, resp: &egui::Response, active: bool) -> Color32 {
-    let p = theme::palette(ui.ctx());
-    if active {
-        p.accent
-    } else if resp.hovered() {
-        p.text_primary
-    } else {
-        p.text_secondary
-    }
-}
-
-/// The number, so the shortcut shows without hovering (as in Excalidraw).
-fn tool_number(ui: &Ui, resp: &egui::Response, number: &str) {
-    let p = theme::palette(ui.ctx());
-    ui.painter().text(
-        resp.rect.right_bottom() + vec2(-4.0, -1.0),
-        egui::Align2::RIGHT_BOTTOM,
-        number,
-        egui::FontId::proportional(9.0),
-        p.text_faint,
-    );
-}
-
-/// The More Shapes button: shows and picks the last of [`Tool::MORE`] used
-/// (`shown`). Its corner triangle, or a right-click, opens them all.
-fn more_shapes_button(ui: &mut Ui, shown: Tool, tool: Tool) -> Option<Tool> {
-    let number = tool_digit(shown).1;
-    let keys = match tool_key(shown) {
-        Some((_, letter)) => format!("{letter} or {number}"),
-        None => number.to_owned(),
-    };
-    let title = format!(
-        "{} — {keys}. More shapes: right-click, or the corner",
-        shown.name()
-    );
-    let label = format!("More Shapes: {}", shown.name());
-    let resp = toolbar::button(
-        ui,
-        ToolbarButton::new("", &title)
-            .label(&label)
-            .active(tool.is_more()),
-    );
-    let ink = tool_ink(ui, &resp, tool == shown);
-    paint_tool_icon(ui.painter(), shown, resp.rect.center(), ink);
-    tool_number(ui, &resp, number);
-
-    // The corner opens the list; it sits over the button, so it gets the
-    // click there.
-    let corner = Rect::from_min_size(resp.rect.right_top() + vec2(-13.0, 0.0), vec2(13.0, 13.0));
-    let open = ui.interact(corner, resp.id.with("more"), Sense::click());
-    open.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Show More Shapes"));
-    let p = theme::palette(ui.ctx());
-    let tip = resp.rect.right_top() + vec2(-4.0, 4.0);
-    let triangle = vec![tip, tip + vec2(0.0, 6.0), tip + vec2(-6.0, 0.0)];
-    let fill = if open.hovered() {
-        p.text_primary
-    } else {
-        p.text_muted
-    };
-    ui.painter()
-        .add(Shape::convex_polygon(triangle, fill, Stroke::NONE));
-
-    let set = if open.clicked() || resp.secondary_clicked() {
-        Some(egui::SetOpenCommand::Toggle)
-    } else if resp.clicked() {
-        Some(egui::SetOpenCommand::Bool(false))
-    } else {
-        None
-    };
-    let mut picked = resp.clicked().then_some(shown);
-    egui::Popup::from_response(&resp)
-        .kind(egui::PopupKind::Menu)
-        .align(egui::RectAlign::RIGHT_START)
-        .gap(4.0)
-        .open_memory(set)
-        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
-        .show(|ui| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            for t in Tool::MORE {
-                if more_shapes_row(ui, t, t == tool) {
-                    picked = Some(t);
-                }
-            }
-        });
-    picked
-}
-
-/// A row of the More Shapes list: the shape's icon, name and letter (if it
-/// has one).
-fn more_shapes_row(ui: &mut Ui, tool: Tool, active: bool) -> bool {
-    let letter = tool_key(tool).map(|(_, letter)| letter);
-    icon_row(ui, tool, tool.name(), letter, active, 190.0).clicked()
-}
-
-/// A row of an icon list (More Shapes, Change Shape, Change Line): `icon`'s
-/// toolbar icon, `name`, and a key letter on the right if it has one;
-/// ticked (in the accent) when `active`.
-pub(crate) fn icon_row(
-    ui: &mut Ui,
-    icon: impl Into<Glyph>,
-    name: &str,
-    letter: Option<&str>,
-    active: bool,
-    width: f32,
-) -> egui::Response {
-    let p = theme::palette(ui.ctx());
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::MenuItemRadio, true, active, name));
-    if resp.hovered() {
-        ui.painter().rect_filled(rect, 4.0, p.bg_button);
-    }
-    let ink = if active { p.accent } else { p.text_primary };
-    let at = pos2(rect.left() + 18.0, rect.center().y);
-    paint_glyph(ui.painter(), &icon.into(), at, ink);
-    let font = FontId::proportional(theme::BODY_SIZE);
-    ui.painter().text(
-        pos2(rect.left() + 38.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        name,
-        font.clone(),
-        ink,
-    );
-    if let Some(letter) = letter {
-        ui.painter().text(
-            pos2(rect.right() - 10.0, rect.center().y),
-            Align2::RIGHT_CENTER,
-            letter,
-            font,
-            p.text_muted,
-        );
-    }
-    resp
-}
-
-/// What a list row or select shows beside its name: a tool's icon, or a
-/// stroke style's sample.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Glyph {
-    Tool(Tool),
-    /// Solid (`None`), Dashed, Dotted or Custom.
-    Dash(Option<blockliner_core::style::Dash>),
-    /// A stroke weight (`None`: the default), as a line that thick.
-    Weight(Option<blockliner_core::style::Weight>),
-    /// "Aa" in Bold and/or Italic.
-    Text {
-        bold: bool,
-        italic: bool,
-    },
-}
-
-impl From<Tool> for Glyph {
-    fn from(t: Tool) -> Self {
-        Glyph::Tool(t)
-    }
-}
-
-/// A glyph, centred on `c`.
-pub(crate) fn paint_glyph(painter: &egui::Painter, glyph: &Glyph, c: Pos2, ink: Color32) {
-    use blockliner_core::style::{Dash, Weight};
-    match glyph {
-        Glyph::Tool(t) => paint_tool_icon(painter, *t, c, ink),
-        Glyph::Dash(dash) => {
-            let line = [c + vec2(-10.0, 0.0), c + vec2(10.0, 0.0)];
-            let stroke = Stroke::new(1.6, ink);
-            match dash {
-                None => {
-                    painter.line_segment(line, stroke);
-                }
-                Some(Dash::Dotted) => {
-                    painter.extend(egui::Shape::dotted_line(&line, ink, 4.0, 1.1));
-                }
-                Some(_) => {
-                    painter.extend(egui::Shape::dashed_line(&line, stroke, 5.0, 2.5));
-                }
-            }
-        }
-        Glyph::Weight(weight) => {
-            let width = weight
-                .as_ref()
-                .and_then(|w| w.px())
-                .unwrap_or(Weight::DEFAULT_PX);
-            let line = [c + vec2(-10.0, 0.0), c + vec2(10.0, 0.0)];
-            painter.line_segment(line, Stroke::new(width.min(6.0), ink));
-        }
-        Glyph::Text { bold, italic } => {
-            let face = laankit_egui::fonts::Style {
-                weight: bold.then_some(laankit_egui::fonts::BOLD),
-                italic: *italic,
-                mono: false,
-            };
-            painter.text(
-                c,
-                Align2::CENTER_CENTER,
-                "Aa",
-                face.font(theme::BODY_SIZE),
-                ink,
-            );
-        }
-    }
-}
-
-/// A tool's toolbar icon, centred on `c`.
-pub(crate) fn paint_tool_icon(painter: &egui::Painter, tool: Tool, c: Pos2, ink: Color32) {
-    let stroke = Stroke::new(1.6, ink);
-    let shape = Rect::from_center_size(c, vec2(18.0, 12.0));
-    match tool {
-        Tool::Rect => {
-            painter.rect_stroke(shape, 0.0, stroke, egui::StrokeKind::Middle);
-        }
-        Tool::RoundRect => {
-            painter.rect_stroke(shape, 4.0, stroke, egui::StrokeKind::Middle);
-        }
-        Tool::Line => {
-            painter.line_segment([c + vec2(-8.0, 7.0), c + vec2(8.0, -7.0)], stroke);
-        }
-        Tool::Arrow => {
-            let (from, to) = (c + vec2(-8.0, 7.0), c + vec2(8.0, -7.0));
-            painter.line_segment([from, to - (to - from).normalized() * 3.0], stroke);
-            painter.add(arrowhead(from, to, 8.0, ink));
-        }
-        // Across, up, across: a right-angle route.
-        Tool::ElbowLine => {
-            let points = [
-                vec2(-9.0, 6.0),
-                vec2(0.0, 6.0),
-                vec2(0.0, -6.0),
-                vec2(9.0, -6.0),
-            ];
-            painter.add(Shape::line(points.map(|v| c + v).to_vec(), stroke));
-        }
-        Tool::ElbowArrow => {
-            let points = [
-                vec2(-9.0, 6.0),
-                vec2(-1.0, 6.0),
-                vec2(-1.0, -6.0),
-                vec2(6.0, -6.0),
-            ];
-            painter.add(Shape::line(points.map(|v| c + v).to_vec(), stroke));
-            painter.add(arrowhead(
-                c + vec2(-1.0, -6.0),
-                c + vec2(10.0, -6.0),
-                7.0,
-                ink,
-            ));
-        }
-        // The canvas's own outlines, small.
-        Tool::Note
-        | Tool::Diamond
-        | Tool::Hexagon
-        | Tool::Database
-        | Tool::Subroutine
-        | Tool::Stadium
-        | Tool::Circle
-        | Tool::DoubleCircle
-        | Tool::Parallelogram
-        | Tool::ReverseParallelogram
-        | Tool::Trapezoid
-        | Tool::InvertedTrapezoid
-        | Tool::Asymmetric => {
-            let size = match tool {
-                Tool::Diamond => vec2(20.0, 14.0),
-                Tool::Database => vec2(14.0, 16.0),
-                Tool::Circle | Tool::DoubleCircle => vec2(15.0, 15.0),
-                _ => vec2(18.0, 12.0),
-            };
-            if let Some(kind) = tool.shape_kind() {
-                let r = Rect::from_center_size(c, size);
-                paint::outline(painter, r, &kind, 0.4, Color32::TRANSPARENT, stroke);
-            }
-        }
-        // The toolbar draws these as glyphs; lists draw them here.
-        Tool::Select | Tool::Text => {
-            let glyph = if tool == Tool::Text {
-                icons::FONT
-            } else {
-                icons::ARROW_POINTER
-            };
-            painter.text(c, Align2::CENTER_CENTER, glyph, icons::font(14.0), ink);
-        }
-    }
-}
-
-/// A filled arrowhead with its tip at `to`, pointing away from `from`.
-pub fn arrowhead(from: Pos2, to: Pos2, size: f32, fill: Color32) -> Shape {
-    let dir = (to - from).normalized();
-    let normal = vec2(-dir.y, dir.x);
-    let base = to - dir * size;
-    Shape::convex_polygon(
-        vec![to, base + normal * size * 0.45, base - normal * size * 0.45],
-        fill,
-        Stroke::NONE,
-    )
 }
 
 /// What the sidebar asks for.
@@ -683,129 +360,7 @@ fn row(ui: &mut Ui, p: &Palette, r: &Row<'_>) -> egui::Response {
     resp
 }
 
-/// The tab strip's height, above the canvas.
-pub const TAB_HEIGHT: f32 = 32.0;
-
-/// A tab above the canvas.
-pub struct TabItem {
-    pub name: String,
-    /// The full path, for the tooltip.
-    pub path: String,
-    pub active: bool,
-}
-
-/// What the tab strip asks for, by tab index.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TabAction {
-    Activate(usize),
-    Close(usize),
-}
-
-/// The open tabs, scrolling sideways when they don't fit. A tab's close
-/// button shows on the active tab and under the pointer; a middle click
-/// closes it too. `reveal` scrolls the active tab into view.
-pub fn tab_strip(ui: &mut Ui, tabs: &[TabItem], reveal: bool) -> Option<TabAction> {
-    let p = theme::palette(ui.ctx());
-    let strip = ui.max_rect();
-    ui.painter().rect_filled(strip, 0.0, p.bg_surface);
-    ui.painter().hline(
-        strip.x_range(),
-        strip.bottom() - 0.5,
-        Stroke::new(1.0, p.border),
-    );
-    let mut out = None;
-    ScrollArea::horizontal()
-        .id_salt("blockliner-tabs")
-        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
-            // A vertical wheel scrolls the strip sideways.
-            if ui.rect_contains_pointer(strip) {
-                let wheel = ui.input(|i| i.smooth_scroll_delta);
-                if wheel.y != 0.0 && wheel.x == 0.0 {
-                    ui.scroll_with_delta(vec2(wheel.y, 0.0));
-                }
-            }
-            ui.horizontal(|ui| {
-                for (i, tab) in tabs.iter().enumerate() {
-                    if let Some(a) = tab_widget(ui, &p, i, tab, reveal) {
-                        out = Some(a);
-                    }
-                }
-            });
-        });
-    out
-}
-
-fn tab_widget(
-    ui: &mut Ui,
-    p: &Palette,
-    i: usize,
-    tab: &TabItem,
-    reveal: bool,
-) -> Option<TabAction> {
-    let font = FontId::proportional(13.0);
-    let ink = if tab.active {
-        p.text_primary
-    } else {
-        p.text_secondary
-    };
-    let text = one_line(ui, &tab.name, font, ink, 220.0);
-    let width = 14.0 + text.size().x + 8.0 + 18.0 + 8.0;
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, TAB_HEIGHT), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, tab.active, &tab.name));
-    if tab.active && reveal {
-        resp.scroll_to_me(None);
-    }
-    let painter = ui.painter();
-    if tab.active {
-        painter.rect_filled(rect, 0.0, p.bg_base);
-        painter.hline(rect.x_range(), rect.top() + 1.0, Stroke::new(2.0, p.accent));
-    } else if resp.hovered() {
-        painter.rect_filled(rect.shrink2(vec2(0.0, 0.5)), 0.0, p.bg_item_hover);
-    }
-    painter.vline(
-        rect.right() - 0.5,
-        rect.y_range(),
-        Stroke::new(1.0, p.border),
-    );
-    painter.galley(
-        pos2(rect.left() + 14.0, rect.center().y - text.size().y / 2.0),
-        text,
-        ink,
-    );
-    let close =
-        Rect::from_center_size(pos2(rect.right() - 17.0, rect.center().y), vec2(18.0, 18.0));
-    let label = format!("Close {}", tab.name);
-    let x = ui.interact(close, ui.scope_id().with(("tab-close", i)), Sense::click());
-    x.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
-    let show_x = tab.active || resp.hovered() || x.hovered();
-    if show_x {
-        if x.hovered() {
-            ui.painter().rect_filled(close, 4.0, p.bg_button_hover);
-        }
-        ui.painter().text(
-            close.center(),
-            Align2::CENTER_CENTER,
-            icons::XMARK,
-            icons::font(10.0),
-            if x.hovered() {
-                p.text_primary
-            } else {
-                p.text_muted
-            },
-        );
-    }
-    let resp = resp.on_hover_text(&tab.path);
-    if x.clicked() || resp.middle_clicked() {
-        Some(TabAction::Close(i))
-    } else if resp.clicked() && !tab.active {
-        Some(TabAction::Activate(i))
-    } else {
-        None
-    }
-}
+pub use laankit_egui::tabs::{strip as tab_strip, TabAction, TabItem, HEIGHT as TAB_HEIGHT};
 
 /// One line of text, cut with an ellipsis at `width`.
 fn one_line(
@@ -905,7 +460,7 @@ pub struct StatusProps<'a> {
 
 /// Tool on the left; pointer position (in grid cells), grid and its unit, canvas zoom and
 /// UI scale on the right. The zoom is a button back to 100 %:
-/// `Some(Act::ZoomReset)` when clicked.
+/// `Some(Act::Edit(EditAct::ZoomReset))` when clicked.
 pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
     let p = theme::palette(ui.ctx());
     let rect = ui.max_rect();
@@ -997,7 +552,7 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
                 .on_hover_cursor(egui::CursorIcon::PointingHand)
                 .on_hover_text("Reset zoom to 100% (Ctrl+0)");
             if resp.clicked() {
-                out = Some(Act::ZoomReset);
+                out = Some(Act::Edit(EditAct::ZoomReset));
             }
         }
         painter.galley(at.min, galley, ink);

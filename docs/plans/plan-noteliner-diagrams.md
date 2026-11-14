@@ -1,6 +1,6 @@
 # NoteLiner: Diagrams and Tabs Plan
 
-Status: proposed (2026-11-13), for review. Adds BlockLiner diagrams to NoteLiner as a second document type, tabs so you can keep several notes and diagrams open, and a toolbar above the document that carries BlockLiner's drawing tools while a diagram is open.
+Status: implemented (2026-11-13), NoteLiner 2.4.0. Adds BlockLiner diagrams to NoteLiner as a second document type, tabs so you can keep several notes and diagrams open, and a toolbar above the document that carries BlockLiner's drawing tools while a diagram is open.
 
 ## Summary
 
@@ -9,6 +9,42 @@ Status: proposed (2026-11-13), for review. Adds BlockLiner diagrams to NoteLiner
 - Tabs sit along the top of the document. Each tab is a note or a diagram and keeps its own undo history, cursor or view, and scroll position while it is open.
 - BlockLiner's canvas, tools, Properties pane, and export move out of the BlockLiner app into a shared crate that both apps use. BlockLiner's tab strip moves into `laankit-egui`.
 - The work is in six phases. Tabs for notes (P1 and P2) are useful on their own and can ship before diagrams.
+
+## Decisions
+
+The open questions were answered on 2026-11-13:
+
+| # | Answer |
+|---|---|
+| Q1 | Choosing a file opens a new tab. Ctrl+W closes the current tab. Previous File and Next File reuse the active tab. |
+| Q2 | A diagram's metadata lives in the index only. |
+| Q3 | Ctrl+=, Ctrl+-, and Ctrl+0 zoom the interface. Ctrl+Shift+=, Ctrl+Shift+-, and Ctrl+Shift+0 zoom the canvas. |
+| Q4 | The Properties pane is a panel to the right of the canvas. |
+| Q5 | Undo, Redo, Grid, Dimensions, and zoom are on the diagram toolbar. |
+| Q6 | Embedding a diagram in a note is not part of this work. |
+| Q7 | Each app keeps its own diagram settings. |
+| Q8 | NoteLiner 2.4.0. BlockLiner's version is unchanged. |
+
+## Changes during implementation
+
+- The tab strip is `laankit_egui::tabs::strip`, with `TabItem` and `TabAction`. Each tab takes an optional icon, which NoteLiner uses for the file's type.
+- Closing a tab sends its pending edit to be written and closes the tab at once, as choosing another note always has. A failed write shows its error; the tab doesn't stay open for it.
+- P4's stage of opening a diagram as read-only text was skipped: P5 followed directly.
+- The Properties panel has a header with a close button, as the Attachments panel does.
+- The diagram settings are a Diagrams tab in Settings, not a section of the UI tab.
+- Export Diagram writes the PNG or SVG to the Downloads folder and opens it, as the note exports do, with no save dialog. Save Diagram to Mermaid (the palette and the tree's right-click menu) copies the `.mmd` there.
+- The diagram's commands are listed in the palette under Diagram, with ids that start `diagram.`.
+- Ctrl+Shift+E, Ctrl+Shift+O, Ctrl+Shift+D, and Ctrl+' are not bound for diagrams in NoteLiner. Export Diagram, Toggle Grid, and Toggle Dimension Lines are on the diagram toolbar and in the palette.
+- The diagram toolbar hides the file name when the window is too narrow for every button; the tab above shows it. The buttons still scroll sideways if they don't fit.
+- A diagram that BlockLiner can't read closes its tab and shows the reader's error.
+- A label still being typed is put into the diagram before a write, as BlockLiner does before it switches tabs.
+- The History pane shows a diagram's version as a `mermaid` code block.
+- The status bar shows the diagram's zoom, and the pointer's place while it is over the canvas.
+- In BlockLiner, `Act::Edit(EditAct)` wraps the shared edit commands. BlockLiner's tests pass unchanged.
+- `noteliner-core` gains `Project::create(kind, ...)`; `create_file` still creates a note.
+- The CI workflow lints and tests `blockliner-egui`.
+
+Checked by eye: a diagram tab in the dark and light themes, and a note tab, at one window size and scale (`LAANKIT_SCREENSHOT`). Not checked by eye: 200% scale, the Diagrams settings tab, and BlockLiner's own window after the move to the shared crate (its tests cover it). Opening one file in both apps wasn't tried by hand; both read and write it through the same `blockliner-core` functions.
 
 ## Before this change
 
@@ -38,23 +74,22 @@ Status: proposed (2026-11-13), for review. Adds BlockLiner diagrams to NoteLiner
 ### Layout
 
 ```
-+----+------------+--------------------------------------------------+
-|    | FILES      | [ Roadmap x ] [ Architecture x ] [ Meeting ]     |
-| t  |  Roadmap   |--------------------------------------------------|
-| o  |  Architec. | Architecture | [V][R][O][More][L][A][J][E][T][N] |
-| o  |  Meeting   |--------------------------------------------------|
-| l  |------------|                                                  |
-| b  | PROPERTIES |                                                  |
-| a  |  Fill      |                     canvas                       |
-| r  |  Stroke    |                                                  |
-|    |------------|                                                  |
-|    | TAGS       |                                                  |
-+----+------------+--------------------------------------------------+
++----+------------+---------------------------------------------------+
+|    | FILES      | [ Roadmap x ] [ Architecture x ] [ Meeting ]      |
+| t  |  Roadmap   |---------------------------------------------------|
+| o  |  Architec. | Architecture | [V][R][O][More][L][A][J][E][T][N]  |
+| o  |  Meeting   |--------------------------------------+------------|
+| l  |------------|                                      | PROPERTIES |
+| b  | TAGS       |                                      |  Fill      |
+| a  |            |               canvas                 |  Stroke    |
+| r  |            |                                      |            |
++----+------------+--------------------------------------+------------+
 ```
 
 - The tab strip is a new row above the document, 32 points high, across the editor and the preview.
 - Below it is the document toolbar, in the place and at the height of the note toolbar today. Its contents depend on the active tab's type.
 - Below that is the document: the note editor, or the diagram canvas.
+- The Properties pane is a panel to the right of the canvas, where the preview is for a note. It can be resized and hidden.
 
 ### Diagrams as a document type
 
@@ -73,7 +108,7 @@ How each feature treats a diagram:
 | Import, dropped files | A dropped or imported `.mmd` or `.mermaid` file becomes a diagram. A file BlockLiner can't read isn't imported, and the error is shown. |
 | Preview | Hidden. The Preview toggle isn't shown on a diagram's toolbar. |
 | Outline, Slides | Empty and hidden, as Slides is for a note. |
-| Properties | A new sidebar pane, shown only while a diagram is the active tab. |
+| Properties | A new panel to the right of the canvas, shown only while a diagram is the active tab. |
 | Tags, Attachments | Work as for a note. Insert into Note is off for a diagram. |
 | Search | Searches a diagram's Mermaid lines but skips the `%%` layout lines, so a match is a label and not a coordinate. Choosing a result opens the diagram. |
 | Wikilinks | `[[Architecture]]` in a note opens the diagram, and diagrams are offered when you type `[[`. A diagram's own text is not scanned for links: `id[[label]]` is Mermaid's subroutine shape, not a link. |
@@ -138,7 +173,8 @@ For a diagram it shows:
 
 | Keys | BlockLiner | In NoteLiner with a diagram open |
 |---|---|---|
-| Ctrl+=, Ctrl+-, Ctrl+0 | Zoom the canvas | Zoom NoteLiner's interface, as today. The canvas zooms with Ctrl and the mouse wheel, a pinch, and the toolbar's zoom readout. |
+| Ctrl+=, Ctrl+-, Ctrl+0 | Zoom the canvas | Zoom NoteLiner's interface, as today. |
+| Ctrl+Shift+=, Ctrl+Shift+-, Ctrl+Shift+0 | (none) | Zoom the canvas in, out, and back to 100%. The canvas also zooms with a pinch and the toolbar's zoom readout. With a note open, Ctrl+Shift+= keeps what it does today. |
 | Ctrl+I | Toggle Properties | Toggle Properties. Ctrl+I is italic only inside the note editor. |
 | Ctrl+E, Ctrl+J, Ctrl+K, Ctrl+, | Sidebar, status bar, palette, Settings | The same commands in NoteLiner. |
 | Ctrl+N, Ctrl+O, Ctrl+W, Ctrl+Tab | New, Open Folder, Close Tab, Next Tab | NoteLiner's New File, Open Folder, Close Tab, Next Tab. |
@@ -153,6 +189,7 @@ For a diagram it shows:
 | Next Tab | Ctrl+Tab | Two or more tabs |
 | Previous Tab | Ctrl+Shift+Tab | Two or more tabs |
 | Toggle Properties | Ctrl+I | A diagram is the active tab |
+| Zoom Canvas In, Zoom Canvas Out, Reset Canvas Zoom | Ctrl+Shift+=, Ctrl+Shift+-, Ctrl+Shift+0 | A diagram is the active tab |
 | Export Diagram | (as Export today) | A diagram is the active tab |
 | The diagram edit commands | As in BlockLiner | A diagram is the active tab |
 
@@ -181,7 +218,7 @@ The per-project layout in `window-state.json` gains:
 |---|---|
 | `openTabs` | The open tabs' file ids, in tab order |
 | `activeTab` | The active tab's file id, or empty |
-| `showProperties`, `propertiesHeight` | The Properties pane's toggle and height, as the other panes have |
+| `showProperties`, `propertiesWidth` | The Properties panel's toggle and width |
 
 - `lastFilePosition` stays, and holds the active tab's position. Other tabs come back at the top of their file.
 - On opening a project, tabs whose file is gone are left out. A project saved before tabs opens with one tab, from `lastFilePosition`.
@@ -259,14 +296,13 @@ It adds one new type, `DiagramEditor`, which takes over the glue that is in `Blo
 | `tabs.rs` (new) | The open-tab model: the tab order, the active tab, and each background tab's stored state (a note's editor state, or a diagram's `take`). |
 | `app.rs` | `select` becomes open-or-activate a tab. Leaving a tab stores its state; entering one restores it or reads the file. The document area draws the tab strip, then the note editor or the diagram editor. Autosave, export, rename, delete, and Sync Reset follow the tabs. The diagram's keys are handled when a diagram is active. |
 | `editor.rs` | `NoteEditor` can hand over and take back its editor state, so a note's undo history survives a tab switch. |
-| `views/diagram.rs` (new) | The diagram's document toolbar and its status bar text. |
-| `views/sidebar.rs` | The Properties pane. |
+| `views/diagram.rs` (new) | The diagram's document toolbar, the Properties panel, and its status bar text. |
 | `views/tree.rs` | The diagram icon; the menu items that don't apply are off. |
 | `views/history.rs` | A diagram's version shows as source. |
 | `overlays/mod.rs` | The Type row's Diagram choice. |
 | `overlays/settings.rs` | The Diagrams section. |
 | `commands.rs` | New Diagram, Close Tab, Next Tab, Previous Tab, Toggle Properties, and the wrapped `EditAct` commands; `View` gains `is_diagram` and the tab count. |
-| `config.rs` | The diagram settings, and `openTabs`, `activeTab`, `showProperties`, and `propertiesHeight` in the layout. |
+| `config.rs` | The diagram settings, and `openTabs`, `activeTab`, `showProperties`, and `propertiesWidth` in the layout. |
 | `backend.rs` | `create_file` takes a kind. Import accepts `.mmd` and `.mermaid`. Export writes PNG, SVG, or Mermaid for a diagram. |
 | `Cargo.toml` | Adds `blockliner-core` and `blockliner-egui`. |
 
@@ -311,7 +347,7 @@ P1 and P2 don't depend on P3 to P5, and P3 doesn't depend on P1 and P2.
   - Restart: the tabs and the active tab come back.
   - New Diagram creates a `.mmd`, opens the canvas, and shows the tool buttons in the document toolbar.
   - Drawing a rectangle with the toolbar button and with the R key writes it to disk; R typed into Search doesn't draw.
-  - A note tab and a diagram tab: the toolbar and the sidebar panes change with the active tab.
+  - A note tab and a diagram tab: the toolbar and the right-hand panel change with the active tab.
   - Export a diagram to SVG (a test hook in place of the dialog, as in BlockLiner).
 - BlockLiner's existing UI tests are the check on P1 and P3.
 
@@ -329,13 +365,4 @@ P1 and P2 don't depend on P3 to P5, and P3 doesn't depend on P1 and P2.
 
 ## Open questions
 
-| # | Question | Plan assumes |
-|---|---|---|
-| Q1 | Should choosing a file in the Files tree always open a new tab, as in BlockLiner, or show it in the active tab unless you ask for a new one (Ctrl+click or a middle-click)? Browsing a large project opens many tabs under the first. | A new tab, as in BlockLiner, with Previous File and Next File reusing the active tab. |
-| Q2 | Should a diagram's metadata also be written into the `.mmd` file, as frontmatter is for notes, so a project can be rebuilt from its files alone? Mermaid allows a frontmatter block, but BlockLiner's reader and other renderers would need checking. | No: the index only. |
-| Q3 | With a diagram open, should Ctrl+=, Ctrl+-, and Ctrl+0 zoom the canvas, as in BlockLiner, in place of NoteLiner's interface? | No: they keep zooming the interface. |
-| Q4 | Should the Properties pane sit in the left sidebar stack, as in BlockLiner, or in a panel to the right of the canvas, where the preview is for a note? | The left sidebar stack. |
-| Q5 | Should Undo, Redo, Grid, Dimensions, and zoom be on the diagram toolbar? BlockLiner's own toolbar has only the tools. | Yes, since NoteLiner has no other place for them. |
-| Q6 | Should embedding a diagram in a note (the first item under Out of scope) be part of this work? | No: a follow-on plan. |
-| Q7 | Should the two apps share the diagram settings (grid, unit, export)? | No: each app keeps its own. |
-| Q8 | Is 2.4.0 the right version for NoteLiner, and should BlockLiner be bumped for the move to the shared crate? | NoteLiner 2.4.0; BlockLiner unchanged. |
+All answered: see Decisions above.

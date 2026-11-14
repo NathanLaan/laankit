@@ -16,6 +16,7 @@ use laankit_egui::diagnostics::{self, Screenshot};
 use laankit_egui::dialog::Confirm;
 use laankit_egui::file_dialog::FileDialogs;
 use laankit_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
+use laankit_egui::tabs::{self, TabAction, TabItem};
 use laankit_egui::theme::{self, ThemeState};
 use laankit_egui::titlebar::{self, TitleBar, TitleBarAction};
 use laankit_egui::toast::Toasts;
@@ -31,6 +32,13 @@ use crate::backend::{self, Backend, Event, ExportKind, McpConfirm, Op, Outcome};
 use crate::commands::{self, Act, View};
 use crate::config::{LastFilePosition, Layout, Paths, Prefs, Recent};
 use crate::deck::{self, DeckState, SlideImages};
+use blockliner_egui::dialogs::colour::{self as colour_dialog, ColourAction};
+use blockliner_egui::dialogs::export::{self as export_dialog, ExportAction, ExportState};
+use blockliner_egui::export as diagram_export;
+use blockliner_egui::properties::PropertiesProps;
+use blockliner_egui::EditAct;
+
+use crate::diagram::DiagramDoc;
 use crate::editor::{EditorAction, NoteEditor};
 use crate::model::{self, Entry, SortMode};
 use crate::overlays::settings::{SettingsAction, SettingsState};
@@ -40,7 +48,9 @@ use crate::overlays::{
     ProjectSettingsForm, SetupAction, SetupForm,
 };
 use crate::spell;
+use crate::tabs::{NoteStash, Stashed, Tabs};
 use crate::views::attachments::{self, AttachmentAction};
+use crate::views::diagram::{self as diagram_view, ToolbarAction as DiagramToolbarAction};
 use crate::views::history::{self, HistoryAction, HistoryState};
 use crate::views::panes::{PaneAction, PaneStates};
 use crate::views::preview::{DeckProps, Preview, PreviewAction};
@@ -153,6 +163,15 @@ pub struct NoteLinerApp {
     #[cfg(test)]
     mcp_decisions: Vec<(u64, &'static str)>,
     editor: NoteEditor,
+    /// The diagram editor: the active tab's diagram, when it is one.
+    diagram: DiagramDoc,
+    /// Open the Export dialog once this diagram has loaded.
+    pending_diagram_export: Option<String>,
+    /// Where Export Diagram writes, in tests (the Downloads folder otherwise).
+    #[cfg(test)]
+    diagram_export_dir: Option<PathBuf>,
+    /// The open tabs; the active one is the project's selected file.
+    tabs: Tabs,
     /// The open deck and the slides widgets.
     deck: DeckState,
     /// A note being converted to a presentation: open its settings once done
@@ -206,6 +225,7 @@ impl NoteLinerApp {
         let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         let backend = Backend::new(paths);
         let recent = backend.recent();
+        let diagram = DiagramDoc::new(&prefs);
         Self {
             sort: SortMode::from_id(&prefs.files_sort_mode),
             custom_titlebar: prefs.custom_titlebar,
@@ -224,6 +244,11 @@ impl NoteLinerApp {
             #[cfg(test)]
             mcp_decisions: Vec::new(),
             editor: NoteEditor::default(),
+            diagram,
+            pending_diagram_export: None,
+            #[cfg(test)]
+            diagram_export_dir: None,
+            tabs: Tabs::default(),
             deck: DeckState::default(),
             pending_convert: None,
             pending_settings: None,
@@ -303,6 +328,29 @@ impl NoteLinerApp {
     #[cfg(test)]
     pub fn selected(&self) -> Option<String> {
         self.project.as_ref()?.selected.clone()
+    }
+
+    /// The diagram on the canvas: the open diagram's id, if one is loaded.
+    #[cfg(test)]
+    pub fn diagram_file_id(&self) -> Option<String> {
+        self.diagram.file_id().map(str::to_string)
+    }
+
+    #[cfg(test)]
+    pub fn diagram_editor(&self) -> &blockliner_egui::DiagramEditor {
+        &self.diagram.editor
+    }
+
+    /// Export Diagram writes here instead of the Downloads folder.
+    #[cfg(test)]
+    pub fn set_diagram_export_dir(&mut self, dir: PathBuf) {
+        self.diagram_export_dir = Some(dir);
+    }
+
+    /// The open tabs' file ids, in tab order.
+    #[cfg(test)]
+    pub fn tab_ids(&self) -> Vec<String> {
+        self.tabs.order().to_vec()
     }
 
     #[cfg(test)]
@@ -402,10 +450,26 @@ impl NoteLinerApp {
             has_selection: p.is_some_and(|p| p.selected.is_some()),
             is_deck: p.is_some_and(Project::is_deck),
             tags_visible: p.is_some_and(|p| p.layout.show_tags),
+            tabs: self.tabs.len(),
+            is_diagram: self.diagram_active(),
+            diagram_has_content: self.diagram_has_content(),
+            diagram: self.diagram.editor.view(),
+            typing: false,
             modal_open: self.overlay.is_some()
                 || self.palette.is_some()
                 || !self.mcp_queue.is_empty(),
         }
+    }
+
+    /// The active tab is a diagram, loaded on the canvas.
+    fn diagram_active(&self) -> bool {
+        let selected = self.project.as_ref().and_then(|p| p.selected.as_deref());
+        selected.is_some() && selected == self.diagram.file_id()
+    }
+
+    fn diagram_has_content(&self) -> bool {
+        let d = &self.diagram.editor.diagram;
+        self.diagram_active() && !(d.shapes.is_empty() && d.connectors.is_empty())
     }
 
     fn top_inset(&self) -> f32 {
@@ -448,6 +512,8 @@ impl NoteLinerApp {
             Event::ProjectClosed => {
                 self.project = None;
                 self.editor.clear();
+                self.diagram.clear();
+                self.tabs.clear();
                 self.hidden_tags.clear();
                 self.panes = PaneStates::default();
                 self.history = HistoryState::default();
@@ -468,6 +534,25 @@ impl NoteLinerApp {
             } => {
                 let Some(p) = &mut self.project else { return };
                 if p.selected.as_deref() != Some(id.as_str()) {
+                    return;
+                }
+                // A diagram goes on the canvas; one that can't be read closes.
+                if let Some(e) = p.entry(&id).filter(|e| e.is_diagram()) {
+                    self.pending_line = None;
+                    match self.diagram.load(&id, &e.name, &e.filename, &content) {
+                        Ok(()) => {
+                            if self.pending_diagram_export.as_deref() == Some(id.as_str()) {
+                                self.pending_diagram_export = None;
+                                self.open_diagram_export();
+                            }
+                        }
+                        Err(message) => {
+                            self.toasts
+                                .error(format!("Couldn't open “{}”: {message}", e.name));
+                            self.close_tab(&id);
+                        }
+                    }
+                    self.open_from_env(ctx);
                     return;
                 }
                 p.frontmatter = frontmatter;
@@ -502,6 +587,13 @@ impl NoteLinerApp {
             } => {
                 let ok = outcome == Outcome::Ok(());
                 self.editor.saved(&id, &content, ok);
+                for e in self.tabs.editors_mut() {
+                    e.saved(&id, &content, ok);
+                }
+                self.diagram.saved(&id);
+                for d in self.tabs.diagrams_mut() {
+                    d.saved(&id);
+                }
                 if let (Some(p), Some(entry)) = (&mut self.project, entry) {
                     model::update_file(
                         &mut p.index,
@@ -532,6 +624,13 @@ impl NoteLinerApp {
                 p.refresh();
                 if let Some(e) = p.entry(&id) {
                     self.editor.renamed(&id, &e.name, &e.filename);
+                    for t in self.tabs.editors_mut() {
+                        t.renamed(&id, &e.name, &e.filename);
+                    }
+                    self.diagram.renamed(&id, &e.name, &e.filename);
+                    for d in self.tabs.diagrams_mut() {
+                        d.renamed(&id, &e.name, &e.filename);
+                    }
                 }
             }
             Event::Deleted(id) => {
@@ -547,10 +646,17 @@ impl NoteLinerApp {
                 }
                 model::remove_file(&mut p.index, &id);
                 p.refresh();
-                if p.selected.as_deref() == Some(id.as_str()) {
+                // Its tab closes; the edits of a deleted note aren't written.
+                let active = p.selected.as_deref() == Some(id.as_str());
+                if active {
                     p.selected = None;
                     p.frontmatter = json!({});
                     self.editor.clear();
+                    self.diagram.clear();
+                }
+                let next = self.tabs.close(&id);
+                if let Some(next) = next.filter(|_| active) {
+                    self.select(next);
                 }
             }
             Event::IndexSaved(outcome) => match outcome {
@@ -571,6 +677,11 @@ impl NoteLinerApp {
                         self.overlay = None;
                     }
                     let Some(p) = &mut self.project else { return };
+                    // A background tab's frontmatter is stale: read it again
+                    // when it's shown.
+                    if p.selected.as_deref() != Some(id.as_str()) {
+                        self.tabs.take(&id);
+                    }
                     if presentation.is_null() {
                         remove_key(&mut p.index, &id, "deck");
                     } else {
@@ -674,6 +785,8 @@ impl NoteLinerApp {
                     p.selected = None;
                     p.frontmatter = json!({});
                     self.editor.clear();
+                    self.diagram.clear();
+                    self.tabs.clear();
                 }
             }
             Event::Mcp(status) => {
@@ -697,6 +810,7 @@ impl NoteLinerApp {
                         ExportKind::Html => "HTML",
                         ExportKind::Markdown => "Markdown",
                         ExportKind::Pdf => "PDF",
+                        ExportKind::Mermaid => "Mermaid",
                     };
                     self.toasts.error(format!("Save to {what} failed: {e}"));
                 }
@@ -807,18 +921,35 @@ impl NoteLinerApp {
             layout,
         };
         project.refresh();
+        // The tabs that were open, less the files that are gone.
+        let open: Vec<String> = project
+            .layout
+            .open_tabs
+            .iter()
+            .filter(|id| project.entry(id).is_some())
+            .cloned()
+            .collect();
+        let active = Some(project.layout.active_tab.clone())
+            .filter(|id| open.contains(id))
+            .or_else(|| open.first().cloned());
         let last = project
             .layout
             .last_file_position
             .clone()
-            .filter(|pos| project.entry(&pos.file_id).is_some());
+            .filter(|pos| project.entry(&pos.file_id).is_some())
+            // A layout saved before tabs has no tab list: the one open note.
+            .filter(|pos| open.is_empty() || active.as_deref() == Some(pos.file_id.as_str()));
         self.project = Some(project);
         self.editor.clear();
+        self.diagram.clear();
+        self.tabs.restore(open);
         self.pending_position = None;
         // Reopen the note that was open, where it was left.
         if let Some(pos) = last {
             let id = pos.file_id.clone();
             self.pending_position = Some(pos);
+            self.select(id);
+        } else if let Some(id) = active {
             self.select(id);
         }
         self.backend.git_state();
@@ -922,24 +1053,130 @@ impl NoteLinerApp {
         }
     }
 
-    /// `selectFile`: flush the pending edit to its own note, then read this one.
+    /// `selectFile`: shows the file in its tab, opening one at the end of the
+    /// strip if it has none.
     fn select(&mut self, id: String) {
-        let Some(p) = &mut self.project else { return };
+        self.show_file(id, false);
+    }
+
+    /// Makes `id` the active tab. The pending edit is flushed to its own
+    /// note first and the tab being left keeps its state. `reuse` shows a
+    /// file without a tab in the active tab's place (Previous File and Next
+    /// File), so stepping through a project doesn't fill the strip.
+    fn show_file(&mut self, id: String, reuse: bool) {
+        let Some(p) = &self.project else { return };
         let Some(entry) = p.entry(&id).cloned() else {
             return;
         };
-        if p.selected.as_deref() == Some(id.as_str()) && self.editor.file_id() == Some(id.as_str())
-        {
+        let current = p.selected.clone();
+        let loaded = self.editor.file_id() == Some(id.as_str())
+            || self.diagram.file_id() == Some(id.as_str());
+        if current.as_deref() == Some(id.as_str()) && loaded {
             return;
         }
-        if let Some(save) = self.editor.flush() {
+        self.flush_active();
+        let Some(p) = &mut self.project else { return };
+        let replaced = self.tabs.open(&id, current.as_deref().filter(|_| reuse));
+        // The tab being left keeps its editor, unless this file took its place.
+        if let Some(left) = current.filter(|c| *c != id && replaced.as_ref() != Some(c)) {
+            if self.diagram.file_id() == Some(left.as_str()) {
+                if let Some(stash) = self.diagram.take() {
+                    self.tabs.put(&left, Stashed::Diagram(Box::new(stash)));
+                }
+            } else if self.editor.file_id() == Some(left.as_str()) {
+                if let Some((_, anchor, head, scroll)) = self.editor.view() {
+                    // An empty editor with this one's settings takes its place.
+                    let mut fresh = self.editor.sibling();
+                    if let Some(checker) = &self.spell_checker {
+                        fresh.set_spell_checker(Some(
+                            checker.clone() as Arc<dyn laankit_editor::SpellChecker>
+                        ));
+                    }
+                    let editor = std::mem::replace(&mut self.editor, fresh);
+                    let frontmatter = std::mem::replace(&mut p.frontmatter, json!({}));
+                    self.tabs.put(
+                        &left,
+                        Stashed::Note(Box::new(NoteStash {
+                            editor,
+                            frontmatter,
+                            anchor,
+                            head,
+                            scroll,
+                        })),
+                    );
+                }
+            }
+        }
+        p.selected = Some(id.clone());
+        self.link_key = None;
+        match self.tabs.take(&id) {
+            Some(Stashed::Note(note)) => {
+                let NoteStash {
+                    editor,
+                    frontmatter,
+                    anchor,
+                    head,
+                    scroll,
+                } = *note;
+                self.editor = editor;
+                self.diagram.clear();
+                p.frontmatter = frontmatter;
+                self.editor.place_view(anchor, head, scroll);
+            }
+            Some(Stashed::Diagram(diagram)) => {
+                p.frontmatter = json!({});
+                self.editor.clear();
+                self.diagram.restore(*diagram);
+            }
+            None => {
+                p.frontmatter = json!({});
+                self.editor.clear();
+                self.diagram.clear();
+                self.backend.read_file(id, entry.filename);
+            }
+        }
+    }
+
+    /// Writes the active tab's pending edit, a note's or a diagram's.
+    fn flush_active(&mut self) {
+        for save in [self.editor.flush(), self.diagram.flush()]
+            .into_iter()
+            .flatten()
+        {
             self.backend
                 .write_file(save.id, save.filename, save.content);
         }
-        p.selected = Some(id.clone());
-        p.frontmatter = json!({});
-        self.editor.clear();
-        self.backend.read_file(id, entry.filename);
+    }
+
+    /// Closes `id`'s tab, writing its pending edit. The active tab's
+    /// neighbour is shown in its place.
+    fn close_tab(&mut self, id: &str) {
+        let active = self
+            .project
+            .as_ref()
+            .is_some_and(|p| p.selected.as_deref() == Some(id));
+        if active {
+            self.flush_active();
+        }
+        let Some(p) = &mut self.project else { return };
+        if active {
+            p.selected = None;
+            p.frontmatter = json!({});
+            self.editor.clear();
+            self.diagram.clear();
+        }
+        let next = self.tabs.close(id);
+        if let Some(next) = next.filter(|_| active) {
+            self.select(next);
+        }
+    }
+
+    /// Next Tab and Previous Tab.
+    fn step_tab(&mut self, delta: isize) {
+        let active = self.project.as_ref().and_then(|p| p.selected.clone());
+        if let Some(id) = self.tabs.step(active.as_deref(), delta) {
+            self.select(id);
+        }
     }
 
     /// `selectPrevFile` / `selectNextFile`.
@@ -961,7 +1198,7 @@ impl NoteLinerApp {
         };
         if let Some(i) = next {
             let id = list[i].0.id.clone();
-            self.select(id);
+            self.show_file(id, true);
         }
     }
 
@@ -977,7 +1214,7 @@ impl NoteLinerApp {
     fn go_home(&mut self) {
         let Some(p) = &self.project else { return };
         self.backend.save_layout(&p.folder, p.layout.to_value());
-        let pending = self.editor.flush();
+        let pending = self.editor.flush().or_else(|| self.diagram.flush());
         self.overlay = Some(Overlay::Busy {
             title: "Syncing",
             message: "Syncing changes to remote...".into(),
@@ -994,16 +1231,98 @@ impl NoteLinerApp {
         else {
             return;
         };
+        let (name, filename) = (e.name.clone(), e.filename.clone());
         // The file on disk is what's exported: write a pending edit first.
-        if let Some(save) = self.editor.flush() {
-            self.backend
-                .write_file(save.id, save.filename, save.content);
-        }
+        self.flush_active();
         if kind == ExportKind::Pdf {
-            self.toasts.info(format!("Saving {} as PDF…", e.name));
+            self.toasts.info(format!("Saving {name} as PDF…"));
         }
-        self.backend
-            .export(kind, e.filename.clone(), e.name.clone());
+        self.backend.export(kind, filename, name);
+    }
+
+    // --- Diagrams ------------------------------------------------------------------
+
+    /// Runs an edit of the active tab's diagram. A Custom… colour opens its
+    /// dialog.
+    fn edit_diagram(&mut self, act: EditAct) {
+        if !self.diagram_active() {
+            return;
+        }
+        if let Some(state) = self.diagram.editor.apply(act) {
+            self.overlay = Some(Overlay::Colour(state));
+        }
+    }
+
+    /// The Export dialog for the active tab's diagram.
+    fn open_diagram_export(&mut self) {
+        if self.diagram_has_content() {
+            self.overlay = Some(Overlay::ExportDiagram(ExportState {
+                options: self.prefs.diagram_export,
+                selected_only: false,
+                has_selection: self.diagram.editor.canvas.has_selection(),
+            }));
+        }
+    }
+
+    /// What Export Diagram writes: everything, or the selection.
+    fn diagram_scope(&self, selected_only: bool) -> Option<blockliner_core::export::Scope> {
+        use blockliner_core::export::{scope, Objects};
+        let ed = &self.diagram.editor;
+        let objects = if selected_only {
+            Objects::Selected {
+                shapes: &ed.canvas.selection,
+                lines: &ed.canvas.lines,
+            }
+        } else {
+            Objects::All
+        };
+        scope(&ed.diagram, objects)
+    }
+
+    /// Writes the diagram as a PNG or an SVG to the Downloads folder, as the
+    /// note exports do, and opens the folder. `false` if it couldn't.
+    fn export_diagram(&mut self, ctx: &egui::Context, state: &ExportState) -> bool {
+        let Some(scope) = self.diagram_scope(state.selected_only) else {
+            return false;
+        };
+        let o = state.options;
+        let name = self.diagram.name().unwrap_or("diagram").to_string();
+        #[cfg(test)]
+        let dir = self
+            .diagram_export_dir
+            .clone()
+            .unwrap_or_else(backend::downloads_dir);
+        #[cfg(not(test))]
+        let dir = backend::downloads_dir();
+        let path = dir.join(format!(
+            "{}.{}",
+            noteliner_core::export::export_slug(&name),
+            o.format.ext()
+        ));
+        let result = std::fs::create_dir_all(&dir)
+            .map_err(anyhow::Error::from)
+            .and_then(|()| diagram_export::render(ctx, &self.diagram.editor.diagram, &scope, &o))
+            .and_then(|bytes| diagram_export::write(&path, &bytes));
+        match result {
+            Ok(()) => {
+                self.prefs.diagram_export = o;
+                self.backend.set_prefs(json!({
+                    "diagramExportFormat": o.format.ext(),
+                    "diagramExportGrid": o.grid,
+                    "diagramExportScale": o.scale,
+                }));
+                #[cfg(not(test))]
+                if let Err(e) = open::that_detached(&dir) {
+                    log::warn!("opening {}: {e}", dir.display());
+                }
+                self.toasts.info(format!("Saved to {}", path.display()));
+                true
+            }
+            Err(e) => {
+                self.toasts.error(format!("Couldn't export: {e:#}"));
+                false
+            }
+        }
     }
 
     fn set_presentation(&mut self, id: Option<String>, on: bool) {
@@ -1318,6 +1637,40 @@ impl NoteLinerApp {
             Act::OpenFolder => self.pick_folder(),
             Act::PrevFile => self.step(-1),
             Act::NextFile => self.step(1),
+            Act::CloseTab => {
+                if let Some(id) = self.project.as_ref().and_then(|p| p.selected.clone()) {
+                    self.close_tab(&id);
+                }
+            }
+            Act::NextTab => self.step_tab(1),
+            Act::PreviousTab => self.step_tab(-1),
+            Act::NewDiagram => {
+                if self.project.is_some() {
+                    self.overlay = Some(Overlay::NewFile(NewFileForm::diagram("")));
+                    self.backend.list_templates();
+                }
+            }
+            Act::Diagram(act) => self.edit_diagram(act),
+            Act::ExportDiagram => self.open_diagram_export(),
+            Act::ExportMermaid => {
+                if self.diagram_active() {
+                    self.export(ExportKind::Mermaid, None);
+                }
+            }
+            Act::ToggleProperties => self.toggle(|l| l.show_properties = !l.show_properties),
+            Act::ToggleGrid => {
+                self.prefs.diagram_show_grid = !self.prefs.diagram_show_grid;
+                self.diagram.set_prefs(&self.prefs);
+                self.backend
+                    .set_prefs(json!({ "diagramShowGrid": self.prefs.diagram_show_grid }));
+            }
+            Act::ToggleDimensions => {
+                self.prefs.diagram_show_dimensions = !self.prefs.diagram_show_dimensions;
+                self.diagram.set_prefs(&self.prefs);
+                self.backend.set_prefs(
+                    json!({ "diagramShowDimensions": self.prefs.diagram_show_dimensions }),
+                );
+            }
             Act::ConvertToPresentation => self.set_presentation(None, true),
             Act::ConvertToNote => self.set_presentation(None, false),
             Act::PresentationSettings => {
@@ -1437,6 +1790,19 @@ impl NoteLinerApp {
             }
             ContextAction::Preview => self.toggle(|l| l.show_preview = !l.show_preview),
             ContextAction::Export(kind) => self.export(kind, Some(id)),
+            ContextAction::ExportDiagram => {
+                // The export draws the diagram on the canvas: show it first.
+                if self.diagram.file_id() == Some(id.as_str()) && self.diagram_active() {
+                    self.open_diagram_export();
+                } else {
+                    self.pending_diagram_export = Some(id.clone());
+                    self.select(id.clone());
+                    if self.diagram.file_id() == Some(id.as_str()) {
+                        self.pending_diagram_export = None;
+                        self.open_diagram_export();
+                    }
+                }
+            }
             ContextAction::ConvertToPresentation => self.set_presentation(Some(id), true),
             ContextAction::ConvertToNote => self.set_presentation(Some(id), false),
             ContextAction::PresentationSettings => self.presentation_settings_for(id),
@@ -1571,9 +1937,15 @@ impl NoteLinerApp {
         if self.palette.is_some() {
             return;
         }
-        let view = self.view();
+        let mut view = self.view();
+        view.typing = ctx.egui_wants_keyboard_input();
         for act in self.registry.dispatch_keys(ctx, &view) {
             self.apply(ctx, act);
+        }
+        // A diagram's other keys (the arrows, copy, cut and paste), while it
+        // has the keyboard.
+        if view.is_diagram && !view.modal_open && !view.typing {
+            self.diagram.editor.keys(ctx);
         }
     }
 
@@ -1603,6 +1975,7 @@ impl NoteLinerApp {
         self.editor_took_drop = false;
         self.update_editor_inputs();
         self.update_deck();
+        self.diagram.editor.begin_frame(&ctx);
         // While presenting, the presenter owns the keyboard.
         if self.deck.presenter.is_none() {
             self.dispatch_keys(&ctx);
@@ -1630,6 +2003,7 @@ impl NoteLinerApp {
         self.dropped_files(&ctx);
         self.present(&ctx);
         self.toasts.show(&ctx);
+        self.diagram.editor.end_frame(&ctx);
         if self.custom_titlebar {
             window::window_edges(&ctx);
         }
@@ -1884,9 +2258,15 @@ impl NoteLinerApp {
         let ctx = ui.ctx().clone();
         let mut open_sync = false;
         let p = self.project.as_ref();
-        let note = p
-            .and_then(Project::selected_entry)
-            .map(|e| (e.name.clone(), self.editor.status()));
+        let diagram_on = self.diagram_active();
+        let note = p.and_then(Project::selected_entry).map(|e| {
+            let status = if diagram_on {
+                self.diagram.status()
+            } else {
+                self.editor.status()
+            };
+            (e.name.clone(), status)
+        });
         let props = StatusProps {
             project_open: p.is_some(),
             note_count: p.map_or(0, |p| p.entries.len()),
@@ -1900,6 +2280,10 @@ impl NoteLinerApp {
             } else {
                 None
             },
+            diagram: diagram_on.then(|| {
+                let canvas = &self.diagram.editor.canvas;
+                (canvas.view.zoom, canvas.pointer)
+            }),
             mcp_running: self.mcp_running,
             branch: self.branch.as_deref(),
             sync: self.sync.as_ref(),
@@ -1946,6 +2330,8 @@ impl NoteLinerApp {
             return;
         }
 
+        let modal_open =
+            self.overlay.is_some() || self.palette.is_some() || !self.mcp_queue.is_empty();
         let mut sidebar_actions = Vec::new();
         let mut preview_actions = Vec::new();
         let mut editor_actions = Vec::new();
@@ -2036,6 +2422,35 @@ impl NoteLinerApp {
             remember_size(&mut p.layout.sidebar_width, resp.response.rect.width());
         }
 
+        // The tabs, across the document and the panels to its right.
+        let mut tab_action = None;
+        let tab_ids: Vec<String> = self.tabs.order().to_vec();
+        if !tab_ids.is_empty() {
+            let items: Vec<TabItem> = tab_ids
+                .iter()
+                .map(|id| {
+                    let e = p.entry(id);
+                    TabItem {
+                        name: e.map(|e| e.name.clone()).unwrap_or_default(),
+                        path: e.map(|e| e.filename.clone()).unwrap_or_default(),
+                        active: p.selected.as_deref() == Some(id.as_str()),
+                        icon: Some(views::tree::file_icon(
+                            e.is_some_and(Entry::is_diagram),
+                            e.is_some_and(|e| e.deck),
+                        )),
+                    }
+                })
+                .collect();
+            let reveal = std::mem::take(&mut self.tabs.reveal);
+            tab_action = egui::Panel::top("noteliner-tabs")
+                .exact_size(tabs::HEIGHT)
+                .resizable(false)
+                .show_separator_line(false)
+                .frame(Frame::NONE)
+                .show(ui, |ui| tabs::strip(ui, "noteliner-tabs", &items, reveal))
+                .inner;
+        }
+
         if p.layout.show_attachments {
             let list = p
                 .selected
@@ -2044,19 +2459,47 @@ impl NoteLinerApp {
                 .unwrap_or_default();
             let dir = p.attachments_dir();
             let selected = p.selected.is_some();
+            let insertable = p.selected_entry().is_some_and(|e| !e.is_diagram());
             let resp = egui::Panel::right("noteliner-attachments")
                 .resizable(true)
                 .default_size(p.layout.attachment_panel_width)
                 .size_range(160.0..=400.0)
                 .frame(Frame::NONE.fill(pal.bg_surface))
-                .show(ui, |ui| attachments::show(ui, selected, &list, &dir));
+                .show(ui, |ui| {
+                    attachments::show(ui, selected, insertable, &list, &dir)
+                });
             attachment_actions = resp.inner;
             remember_size(
                 &mut p.layout.attachment_panel_width,
                 resp.response.rect.width(),
             );
         }
-        if p.layout.show_preview {
+        // A diagram has the Properties panel where a note has its preview.
+        let diagram_on = p.selected.is_some() && p.selected.as_deref() == self.diagram.file_id();
+        let mut properties_action = None;
+        if diagram_on && p.layout.show_properties {
+            let ed = &self.diagram.editor;
+            let props = PropertiesProps::new(
+                &ed.diagram,
+                &ed.canvas.selection,
+                ed.canvas.selected_style(&ed.diagram),
+                ed.canvas.selected_kinds(&ed.diagram),
+            );
+            let state = &mut self.diagram.properties;
+            let resp = egui::Panel::right("noteliner-properties")
+                .resizable(true)
+                .default_size(p.layout.properties_width)
+                .size_range(200.0..=420.0)
+                .frame(Frame::NONE.fill(pal.bg_surface))
+                .show(ui, |ui| diagram_view::properties_panel(ui, state, &props));
+            let closed;
+            (properties_action, closed) = resp.inner;
+            remember_size(&mut p.layout.properties_width, resp.response.rect.width());
+            if closed {
+                p.layout.show_properties = false;
+            }
+        }
+        if p.layout.show_preview && !diagram_on {
             let attachments = p.attachments_dir();
             let resp = egui::Panel::right("noteliner-preview")
                 .resizable(true)
@@ -2094,11 +2537,47 @@ impl NoteLinerApp {
                 .inner;
         }
         let (preview_on, history_on) = (p.layout.show_preview, p.layout.show_history);
-        egui::CentralPanel::default()
-            .frame(Frame::NONE.fill(pal.bg_base))
-            .show(ui, |ui| {
-                editor_actions = self.editor.show(ui, preview_on, history_on);
-            });
+        let mut diagram_actions = Vec::new();
+        let mut diagram_menu = None;
+        if diagram_on {
+            let ed = &self.diagram.editor;
+            let view = ed.view();
+            let props = diagram_view::ToolbarProps {
+                file_name: &note_name,
+                tool: ed.tool,
+                more_shape: ed.more_shape,
+                can_undo: view.can_undo,
+                can_redo: view.can_redo,
+                show_grid: ed.canvas.show_grid,
+                show_dimensions: ed.canvas.show_dimensions,
+                zoom: ed.canvas.view.zoom,
+                show_properties: p.layout.show_properties,
+                show_history: history_on,
+                can_export: !(ed.diagram.shapes.is_empty() && ed.diagram.connectors.is_empty()),
+            };
+            // No dialog or text field has the keyboard: Space may pan.
+            let keys = !modal_open && !ctx.egui_wants_keyboard_input();
+            egui::CentralPanel::default()
+                .frame(Frame::NONE.fill(pal.bg_base))
+                .show(ui, |ui| {
+                    diagram_actions = egui::Panel::top(ui.scope_id().with("diagram-toolbar"))
+                        .frame(Frame::NONE)
+                        .show_separator_line(false)
+                        .show(ui, |ui| diagram_view::toolbar(ui, &props))
+                        .inner;
+                    egui::CentralPanel::default()
+                        .frame(Frame::NONE)
+                        .show(ui, |ui| {
+                            diagram_menu = self.diagram.editor.show(ui, keys);
+                        });
+                });
+        } else {
+            egui::CentralPanel::default()
+                .frame(Frame::NONE.fill(pal.bg_base))
+                .show(ui, |ui| {
+                    editor_actions = self.editor.show(ui, preview_on, history_on);
+                });
+        }
 
         // A note dropped from FILES onto the text: a link at the drop point
         // (`interceptInternalDrops`).
@@ -2118,6 +2597,52 @@ impl NoteLinerApp {
             }
         }
 
+        // The diagram: its toolbar, its right-click menu, the Properties
+        // panel, then one undo step per finished change and the autosave.
+        for a in diagram_actions {
+            match a {
+                DiagramToolbarAction::Edit(act) => self.edit_diagram(act),
+                DiagramToolbarAction::ToggleGrid => self.apply(&ctx, Act::ToggleGrid),
+                DiagramToolbarAction::ToggleDimensions => self.apply(&ctx, Act::ToggleDimensions),
+                DiagramToolbarAction::ToggleProperties => self.apply(&ctx, Act::ToggleProperties),
+                DiagramToolbarAction::Export => self.apply(&ctx, Act::ExportDiagram),
+                DiagramToolbarAction::ToggleHistory => self.apply(&ctx, Act::ToggleHistory),
+            }
+        }
+        if let Some(act) = diagram_menu {
+            self.edit_diagram(act);
+        }
+        if let Some(state) = properties_action.and_then(|a| self.diagram.editor.apply_properties(a))
+        {
+            self.overlay = Some(Overlay::Colour(state));
+        }
+        if diagram_on && self.diagram.editor.observe() {
+            let now = ctx.input(|i| i.time);
+            if let Some(save) = self.diagram.due(now) {
+                self.backend
+                    .write_file(save.id, save.filename, save.content);
+            }
+            // Keep the autosave timer ticking without input.
+            if self.diagram.is_dirty() {
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(
+                    crate::editor::SAVE_DELAY_SECS,
+                ));
+            }
+        }
+
+        match tab_action {
+            Some(TabAction::Activate(i)) => {
+                if let Some(id) = tab_ids.get(i) {
+                    self.select(id.clone());
+                }
+            }
+            Some(TabAction::Close(i)) => {
+                if let Some(id) = tab_ids.get(i) {
+                    self.close_tab(id);
+                }
+            }
+            None => {}
+        }
         for a in sidebar_actions {
             self.sidebar_action(a);
         }
@@ -2383,6 +2908,13 @@ impl NoteLinerApp {
     /// (`WindowState` debounces the write by a second).
     fn persist_layout(&mut self) {
         let Some(p) = &mut self.project else { return };
+        if p.layout.open_tabs != self.tabs.order() {
+            p.layout.open_tabs = self.tabs.order().to_vec();
+        }
+        let active = p.selected.as_deref().unwrap_or_default();
+        if p.layout.active_tab != active {
+            p.layout.active_tab = active.to_string();
+        }
         if p.layout != p.saved_layout {
             p.saved_layout = p.layout.clone();
             self.backend.save_layout(&p.folder, p.layout.to_value());
@@ -2464,7 +2996,13 @@ impl NoteLinerApp {
                 .dropped_files
                 .iter()
                 .map(|f| f.path().to_path_buf())
-                .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("md")))
+                .filter(|p| {
+                    p.extension().is_some_and(|e| {
+                        ["md", "mmd", "mermaid"]
+                            .iter()
+                            .any(|x| e.eq_ignore_ascii_case(x))
+                    })
+                })
                 .collect();
             (paths, !i.raw.hovered_files.is_empty())
         });
@@ -2474,7 +3012,7 @@ impl NoteLinerApp {
         if hovering && over_editor {
             views::drop_overlay(ctx, "Drop files to attach them to the note");
         } else if hovering {
-            views::drop_overlay(ctx, "Drop Markdown files to add them as notes");
+            views::drop_overlay(ctx, "Drop Markdown or Mermaid files to add them");
         }
     }
 
@@ -2544,6 +3082,9 @@ impl NoteLinerApp {
                                 tags,
                                 form.parent.clone(),
                             ),
+                            None if form.diagram => {
+                                self.backend.create_diagram(name, tags, form.parent.clone())
+                            }
                             None => self.backend.create_file(
                                 name,
                                 tags,
@@ -2576,12 +3117,34 @@ impl NoteLinerApp {
                     None => {}
                 }
             }
+            Overlay::Colour(state) => match colour_dialog::show(ctx, state) {
+                Some(ColourAction::Close) => keep = false,
+                Some(ColourAction::Apply(c)) => {
+                    let stroke = state.stroke;
+                    self.diagram.editor.apply_colour(Some(c), stroke);
+                    keep = false;
+                }
+                None => {}
+            },
+            Overlay::ExportDiagram(state) => {
+                let size = self
+                    .diagram_scope(state.selected_only)
+                    .map(|s| diagram_export::size(&s, &state.options));
+                match export_dialog::show(ctx, state, size, false) {
+                    Some(ExportAction::Close) => keep = false,
+                    Some(ExportAction::Export) => keep = !self.export_diagram(ctx, state),
+                    None => {}
+                }
+            }
             Overlay::DeleteFile { id, name } => match overlays::delete_file(ctx, name) {
                 Some(Confirm::Yes) => {
                     keep = false;
                     // A pending edit to a note being deleted is dropped.
                     if self.editor.file_id() == Some(id.as_str()) {
                         let _ = self.editor.flush();
+                    }
+                    if self.diagram.file_id() == Some(id.as_str()) {
+                        let _ = self.diagram.flush();
                     }
                     self.backend.delete_file(id.clone());
                 }
@@ -2641,6 +3204,7 @@ impl NoteLinerApp {
                         SettingsAction::SetPrefs(patch) => {
                             self.backend.set_prefs(patch);
                             self.prefs = self.backend.paths().prefs();
+                            self.diagram.set_prefs(&self.prefs);
                         }
                         SettingsAction::RefreshMcp => self.backend.mcp_status(),
                         SettingsAction::Restart => restart(ctx),
@@ -2873,7 +3437,10 @@ impl NoteLinerApp {
 
     /// On quit: write the pending edit and the layout, flush the push.
     pub fn shutdown(&mut self) {
-        if let Some(save) = self.editor.flush() {
+        for save in [self.editor.flush(), self.diagram.flush()]
+            .into_iter()
+            .flatten()
+        {
             if let Err(e) = self.backend.write_file_now(&save.filename, &save.content) {
                 log::warn!("couldn't save {}: {e}", save.filename);
             }

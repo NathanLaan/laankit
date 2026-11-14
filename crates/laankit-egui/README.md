@@ -57,7 +57,7 @@ cargo run -p laankit-egui --example gallery
 | `diagnostics` | `LAANKIT_SCREENSHOT`, `LAANKIT_SCREENSHOT_EXIT`, `LAANKIT_THEME`, `LAANKIT_SCALE`                   |
 | `dialog`      | Compact and full-size modals (`.modal-compact`, `.modal`), text inputs, buttons, `confirm`       |
 | `file_dialog` | `FileDialogs`: runs an `rfd` dialog on its own thread on Linux, so the window keeps answering the compositor (no "not responding" prompt) |
-| `commands`, `palette`, `settings`, `panes`, `about`, `not_ported` | Command registry and palette, settings shell, pane host, about dialog, "not in the native build yet" panel |
+| `commands`, `palette`, `settings`, `panes`, `tabs`, `about`, `not_ported` | Command registry and palette, settings shell, pane host, document tabs, about dialog, "not in the native build yet" panel |
 
 ## Fonts
 

@@ -8,6 +8,8 @@ rust-version.workspace = true
 
 [dependencies]
 laankit-core.workspace = true
+# The diagrams in a project: a blank one, and the check that one can be read.
+blockliner-core.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 serde.workspace = true
