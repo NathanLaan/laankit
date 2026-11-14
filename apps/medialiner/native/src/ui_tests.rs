@@ -134,6 +134,12 @@ fn the_preview_steps_through_photos_and_goes_back() {
     assert_eq!(h.state().preview_path(), Some(root.join("a.png").as_path()));
     wait_for(&mut h, "the preview", |a| a.preview_ready());
     h.get_by_label("1 of 2");
+    // Back fits inside the header, with its padding.
+    let back = h.get_by_role_and_label(Role::Button, "Back").rect();
+    assert!(
+        back.height() <= crate::views::PANE_HEADER_HEIGHT - 8.0,
+        "{back:?}"
+    );
 
     h.key_press(Key::ArrowRight);
     h.run_steps(2);

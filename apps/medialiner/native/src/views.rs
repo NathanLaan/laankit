@@ -557,15 +557,9 @@ pub fn centre_header(ui: &mut Ui, props: &HeaderProps<'_>) -> Vec<ViewAction> {
             .layout(Layout::left_to_right(Align::Center)),
         |ui| {
             if props.preview_open {
-                if dialog::icon_button(
-                    ui,
-                    Some(icons::ARROW_LEFT),
-                    "Back",
-                    ButtonKind::Secondary,
-                    true,
-                )
-                .on_hover_text("Back to the grid (Esc)")
-                .clicked()
+                if header_text_button(ui, icons::ARROW_LEFT, "Back")
+                    .on_hover_text("Back to the grid (Esc)")
+                    .clicked()
                 {
                     out.push(ViewAction::Act(Act::Back));
                 }
@@ -621,6 +615,48 @@ pub fn centre_header(ui: &mut Ui, props: &HeaderProps<'_>) -> Vec<ViewAction> {
         },
     );
     out
+}
+
+/// A button with a glyph and a label, short enough for the centre header.
+fn header_text_button(ui: &mut Ui, icon: &str, label: &str) -> egui::Response {
+    const HEIGHT: f32 = 24.0;
+    let p = theme::palette(ui.ctx());
+    let text = ui.painter().layout_no_wrap(
+        label.to_string(),
+        egui::FontId::proportional(13.0),
+        p.text_primary,
+    );
+    let size = vec2(10.0 + 18.0 + text.size().x + 10.0, HEIGHT);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
+    let fill = if resp.hovered() {
+        p.bg_button_hover
+    } else {
+        p.bg_button
+    };
+    ui.painter().rect(
+        rect,
+        4.0,
+        fill,
+        Stroke::new(1.0, p.border),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().text(
+        egui::pos2(rect.left() + 10.0 + 6.0, rect.center().y),
+        egui::Align2::CENTER_CENTER,
+        icon,
+        icons::font(12.0),
+        p.text_primary,
+    );
+    ui.painter().galley(
+        egui::pos2(
+            rect.left() + 10.0 + 18.0,
+            rect.center().y - text.size().y / 2.0,
+        ),
+        text,
+        p.text_primary,
+    );
+    resp
 }
 
 // --- Grid ------------------------------------------------------------------
