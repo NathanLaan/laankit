@@ -446,11 +446,50 @@ impl Connector {
     }
 }
 
+/// A change to the stacking order of shapes ([`Diagram::reorder`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Order {
+    /// In front of every other shape.
+    Front,
+    /// In front of the nearest shape that covers one of them.
+    Up,
+    /// Behind the nearest shape that one of them covers.
+    Down,
+    /// Behind every other shape.
+    Back,
+}
+
+impl Order {
+    /// In the order the toolbar and the menu list them.
+    pub const ALL: [Order; 4] = [Order::Front, Order::Up, Order::Down, Order::Back];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Order::Front => "Move to Front",
+            Order::Up => "Move Up",
+            Order::Down => "Move Down",
+            Order::Back => "Move to Back",
+        }
+    }
+
+    /// Its place in [`Order::ALL`].
+    pub fn index(self) -> usize {
+        match self {
+            Order::Front => 0,
+            Order::Up => 1,
+            Order::Down => 2,
+            Order::Back => 3,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Diagram {
     pub direction: Direction,
     pub grid: f32,
-    /// In creation order, which is the order they are written in.
+    /// In stacking order, back to front: a later shape is drawn over an
+    /// earlier one, and a new shape goes on the end. It is also the order
+    /// they are written in. [`Diagram::reorder`] changes it.
     pub shapes: Vec<Shape>,
     /// In creation order. The writer puts Mermaid edges before free lines,
     /// so a diagram read back has its edges first.
@@ -517,6 +556,63 @@ impl Diagram {
         let gone = |e: &End| e.shape().is_some_and(|id| ids.iter().any(|x| x == id));
         self.connectors.retain(|c| !gone(&c.from) && !gone(&c.to));
         before - self.shapes.len()
+    }
+
+    /// The shapes' indexes in the order `order` would leave them, or `None`
+    /// when it would change nothing. The shapes in `ids` keep their order
+    /// among themselves; ids that aren't shapes are ignored.
+    ///
+    /// Up and Down step over the nearest shape that overlaps one of the
+    /// moved shapes, not one place in the list: most shapes in a diagram
+    /// don't touch, and passing those changes nothing on screen.
+    fn reordered(&self, ids: &[String], order: Order) -> Option<Vec<usize>> {
+        let n = self.shapes.len();
+        let picked: Vec<bool> = self.shapes.iter().map(|s| ids.contains(&s.id)).collect();
+        let overlaps = |a: usize, b: usize| self.shapes[a].rect.overlaps(&self.shapes[b].rect);
+        let all = 0..n;
+        let new: Vec<usize> = match order {
+            Order::Front => (all.clone().filter(|&i| !picked[i]))
+                .chain(all.filter(|&i| picked[i]))
+                .collect(),
+            Order::Back => (all.clone().filter(|&i| picked[i]))
+                .chain(all.filter(|&i| !picked[i]))
+                .collect(),
+            Order::Up => {
+                // The first shape in front of a picked one it overlaps.
+                let t =
+                    (0..n).find(|&t| !picked[t] && (0..t).any(|i| picked[i] && overlaps(i, t)))?;
+                ((0..=t).filter(|&i| !picked[i]))
+                    .chain((0..t).filter(|&i| picked[i]))
+                    .chain(t + 1..n)
+                    .collect()
+            }
+            Order::Down => {
+                let t = (0..n)
+                    .rev()
+                    .find(|&t| !picked[t] && (t + 1..n).any(|i| picked[i] && overlaps(i, t)))?;
+                (0..t)
+                    .chain((t + 1..n).filter(|&i| picked[i]))
+                    .chain((t..n).filter(|&i| !picked[i]))
+                    .collect()
+            }
+        };
+        (!new.iter().copied().eq(0..n)).then_some(new)
+    }
+
+    /// Whether [`Diagram::reorder`] would move anything.
+    pub fn can_reorder(&self, ids: &[String], order: Order) -> bool {
+        self.reordered(ids, order).is_some()
+    }
+
+    /// Moves the shapes with these ids in the stacking order. Connectors
+    /// stay in front of every shape. `false` when nothing moved.
+    pub fn reorder(&mut self, ids: &[String], order: Order) -> bool {
+        let Some(new) = self.reordered(ids, order) else {
+            return false;
+        };
+        let mut old: Vec<Option<Shape>> = self.shapes.drain(..).map(Some).collect();
+        self.shapes = new.into_iter().filter_map(|i| old[i].take()).collect();
+        true
     }
 
     /// Makes the shapes with these ids `kind` (Change Shape), keeping their
@@ -665,5 +761,111 @@ mod tests {
             ShapeKind::CHANGEABLE[14..],
             [ShapeKind::Text, ShapeKind::Note]
         );
+    }
+
+    /// Four shapes: `a` and `b` overlap, `c` is off on its own, and `d`
+    /// overlaps `b` only. Back to front: a, b, c, d.
+    fn stack() -> Diagram {
+        let mut d = Diagram::new();
+        for (label, x) in [("a", 0.0), ("b", 50.0), ("c", 500.0), ("d", 120.0)] {
+            d.add_shape(ShapeKind::Rect, Rect::new(x, 0.0, 100.0, 60.0), label);
+        }
+        d
+    }
+
+    fn order(d: &Diagram) -> String {
+        d.shapes.iter().map(|s| s.id.as_str()).collect()
+    }
+
+    fn ids(s: &str) -> Vec<String> {
+        s.chars().map(String::from).collect()
+    }
+
+    #[test]
+    fn front_and_back_move_past_everything() {
+        let mut d = stack();
+        assert!(d.reorder(&ids("a"), Order::Front));
+        assert_eq!(order(&d), "bcda");
+        assert!(!d.can_reorder(&ids("a"), Order::Front));
+        assert!(!d.reorder(&ids("a"), Order::Front), "already in front");
+        assert!(d.reorder(&ids("a"), Order::Back));
+        assert_eq!(order(&d), "abcd");
+        assert!(!d.reorder(&ids("a"), Order::Back), "already at the back");
+
+        // Several keep their order among themselves, whatever order they
+        // were selected in.
+        assert!(d.reorder(&ids("ca"), Order::Front));
+        assert_eq!(order(&d), "bdac");
+        assert!(d.reorder(&ids("dc"), Order::Back));
+        assert_eq!(order(&d), "dcba");
+    }
+
+    #[test]
+    fn up_and_down_step_over_the_nearest_overlapping_shape() {
+        let mut d = stack();
+        // a goes over b, the nearest shape covering it, and no further.
+        assert!(d.reorder(&ids("a"), Order::Up));
+        assert_eq!(order(&d), "bacd");
+        // Nothing in front overlaps a now, though c and d are in front.
+        assert!(!d.can_reorder(&ids("a"), Order::Up));
+        assert!(!d.reorder(&ids("a"), Order::Up));
+        assert_eq!(order(&d), "bacd");
+        assert!(d.can_reorder(&ids("a"), Order::Front));
+
+        // d steps down past c (which it doesn't touch) to behind b.
+        assert!(d.reorder(&ids("d"), Order::Down));
+        assert_eq!(order(&d), "dbac");
+        assert!(!d.can_reorder(&ids("d"), Order::Down));
+
+        // c touches nothing: it has no step either way.
+        assert!(!d.can_reorder(&ids("c"), Order::Up));
+        assert!(!d.can_reorder(&ids("c"), Order::Down));
+    }
+
+    #[test]
+    fn several_shapes_step_together() {
+        let mut d = stack();
+        // b is the first unselected shape over one of them (a); d, already
+        // in front of b, stays where it is.
+        assert!(d.reorder(&ids("ad"), Order::Up));
+        assert_eq!(order(&d), "bacd");
+        let mut d = stack();
+        assert!(d.reorder(&ids("ad"), Order::Down));
+        assert_eq!(order(&d), "adbc");
+    }
+
+    #[test]
+    fn reordering_ignores_what_it_cannot_move() {
+        let mut d = stack();
+        let before = d.clone();
+        for o in Order::ALL {
+            assert!(!d.can_reorder(&[], o));
+            assert!(!d.reorder(&ids("z"), o), "not a shape");
+            // Everything selected: there's nothing to move past.
+            assert!(!d.reorder(&ids("abcd"), o));
+        }
+        assert_eq!(d, before);
+        // Shapes that only share an edge don't overlap.
+        let mut d = Diagram::new();
+        d.add_shape(ShapeKind::Rect, Rect::new(0.0, 0.0, 100.0, 60.0), "a");
+        d.add_shape(ShapeKind::Rect, Rect::new(100.0, 0.0, 100.0, 60.0), "b");
+        assert!(!d.can_reorder(&ids("a"), Order::Up));
+        // A shape kept in a Mermaid statement moves like any other.
+        let mut d = stack();
+        d.shapes[0].external = true;
+        assert!(d.reorder(&ids("a"), Order::Front));
+        assert_eq!(order(&d), "bcda");
+    }
+
+    #[test]
+    fn the_stacking_order_is_saved() {
+        let mut d = stack();
+        d.shapes[1].external = true;
+        d.passthrough.push("subgraph g\n  b[\"b\"]\nend".into());
+        assert!(d.reorder(&ids("ab"), Order::Front));
+        let text = crate::write(&d);
+        let back = crate::read(&text).unwrap();
+        assert_eq!(order(&back), "cdab");
+        assert_eq!(crate::write(&back), text, "stable on the next save");
     }
 }

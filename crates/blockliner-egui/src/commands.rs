@@ -7,7 +7,7 @@
 //! its own view, then registers them with laankit-egui's registry.
 
 use blockliner_core::style::{Dash, Weight, PRESETS, WEIGHTS};
-use blockliner_core::ShapeKind;
+use blockliner_core::{Order, ShapeKind};
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command};
 
@@ -67,6 +67,8 @@ pub enum EditAct {
     ToggleBold,
     /// Fill, stroke and text back to the theme's.
     ResetStyle,
+    /// The selected shapes forward or back in the stacking order.
+    Order(Order),
     /// Move the selection by this many grid steps (the arrow keys go
     /// through `DiagramEditor::keys`, which also reads Shift and Alt).
     Nudge(i8, i8),
@@ -98,8 +100,17 @@ pub struct EditView {
     pub plain_line_selected: bool,
     /// …or one with.
     pub arrow_selected: bool,
+    /// Which of [`Order::ALL`] would move a selected shape.
+    pub orderable: [bool; 4],
     pub can_undo: bool,
     pub can_redo: bool,
+}
+
+impl EditView {
+    /// Whether `order` would move a selected shape.
+    pub fn can_order(&self, order: Order) -> bool {
+        self.orderable[order.index()]
+    }
 }
 
 /// When an edit command applies. The app adds its own conditions (no dialog
@@ -120,6 +131,8 @@ pub enum When {
     HasLine,
     HasPlainLine,
     HasArrow,
+    /// This move in the stacking order would change something.
+    Orderable(Order),
     Undoable,
     Redoable,
 }
@@ -140,6 +153,7 @@ impl When {
             When::HasLine => v.straight_selected || v.elbow_selected,
             When::HasPlainLine => v.plain_line_selected,
             When::HasArrow => v.arrow_selected,
+            When::Orderable(order) => v.can_order(order),
             When::Undoable => v.can_undo,
             When::Redoable => v.can_redo,
         }
@@ -187,6 +201,17 @@ impl EditCommand {
             when: Some(when(self.when)),
             action: wrap(c.action),
         }
+    }
+}
+
+/// The keys of a move in the stacking order, as the menu and the buttons
+/// show them.
+pub fn order_keys(order: Order) -> &'static str {
+    match order {
+        Order::Front => "Ctrl+Shift+]",
+        Order::Up => "Ctrl+]",
+        Order::Down => "Ctrl+[",
+        Order::Back => "Ctrl+Shift+[",
     }
 }
 
@@ -420,6 +445,37 @@ pub fn commands() -> Vec<EditCommand> {
         )
         .when(has_arrow),
     );
+    // The stacking order. Physical keys: Shift turns a bracket into a brace,
+    // and many layouts put the brackets behind AltGr.
+    for (order, id, binding) in [
+        (
+            Order::Front,
+            "edit.moveToFront",
+            Binding::physical(shift, Key::CloseBracket),
+        ),
+        (
+            Order::Up,
+            "edit.moveUp",
+            Binding::physical(cmd, Key::CloseBracket),
+        ),
+        (
+            Order::Down,
+            "edit.moveDown",
+            Binding::physical(cmd, Key::OpenBracket),
+        ),
+        (
+            Order::Back,
+            "edit.moveToBack",
+            Binding::physical(shift, Key::OpenBracket),
+        ),
+    ] {
+        r.register(
+            add(id, order.name(), "Edit", EditAct::Order(order))
+                .key(binding)
+                .shortcut(order_keys(order))
+                .when(When::Orderable(order)),
+        );
+    }
     // Colours: palette-only (and the right-click menu).
     for (part, make, when) in [
         ("Fill", EditAct::Fill as fn(Swatch) -> EditAct, fillable),
@@ -557,5 +613,11 @@ mod tests {
         assert!(When::HasLine.holds(&v) && When::HasElbow.holds(&v));
         assert!(!When::HasStraight.holds(&v));
         assert!(When::Undoable.holds(&v) && !When::Redoable.holds(&v));
+        let v = EditView {
+            orderable: [true, false, false, true],
+            ..Default::default()
+        };
+        assert!(When::Orderable(Order::Front).holds(&v) && When::Orderable(Order::Back).holds(&v));
+        assert!(!When::Orderable(Order::Up).holds(&v) && !When::Orderable(Order::Down).holds(&v));
     }
 }

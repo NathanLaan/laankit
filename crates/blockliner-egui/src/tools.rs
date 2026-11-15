@@ -6,8 +6,11 @@ use egui::{vec2, Color32, Key, Rect, Sense, Shape, Stroke, Ui};
 use laankit_egui::toolbar::{self, ToolbarButton};
 use laankit_egui::{icons, theme};
 
+use blockliner_core::Order;
+
 use crate::canvas::Tool;
-use crate::glyphs::{icon_row, paint_tool_icon};
+use crate::commands::order_keys;
+use crate::glyphs::{icon_row, icon_row_enabled, paint_tool_icon};
 
 /// A tool's letter (Excalidraw's; never fires while a text field has the
 /// keyboard). The later more shapes have none: they're in the More Shapes
@@ -185,4 +188,67 @@ pub fn more_shapes_button(ui: &mut Ui, shown: Tool, tool: Tool) -> Option<Tool> 
 fn more_shapes_row(ui: &mut Ui, tool: Tool, active: bool) -> bool {
     let letter = tool_key(tool).map(|(_, letter)| letter);
     icon_row(ui, tool, tool.name(), letter, active, 190.0).clicked()
+}
+
+/// The tool buttons in toolbar order, with one More Shapes button for the
+/// more shapes and `divider` after Select. `more_shape` is the shape the
+/// More Shapes button shows. Returns the tool picked.
+pub fn tool_buttons(
+    ui: &mut Ui,
+    tool: Tool,
+    more_shape: Tool,
+    mut divider: impl FnMut(&mut Ui),
+) -> Option<Tool> {
+    let mut picked = None;
+    for t in Tool::ALL {
+        if t.is_more() {
+            // One button for them all.
+            if t == Tool::MORE[0] {
+                if let Some(t) = more_shapes_button(ui, more_shape, tool) {
+                    picked = Some(t);
+                }
+            }
+            continue;
+        }
+        if tool_button(ui, t, tool == t) {
+            picked = Some(t);
+        }
+        if t == Tool::Select {
+            divider(ui);
+        }
+    }
+    picked
+}
+
+/// One Order button for a toolbar without room for four: a click opens the
+/// four moves as a list, each with its icon and keys, greyed when it would
+/// move nothing. Returns the one picked.
+pub fn order_menu_button(ui: &mut Ui, orderable: [bool; 4]) -> Option<Order> {
+    let resp = toolbar::button(
+        ui,
+        ToolbarButton::new(
+            icons::LAYER_GROUP,
+            "Order: move shapes to the front or back",
+        )
+        .label("Order"),
+    );
+    let set = resp.clicked().then_some(egui::SetOpenCommand::Toggle);
+    let mut picked = None;
+    egui::Popup::from_response(&resp)
+        .kind(egui::PopupKind::Menu)
+        .align(egui::RectAlign::RIGHT_START)
+        .gap(4.0)
+        .open_memory(set)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        .show(|ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for order in Order::ALL {
+                let on = orderable[order.index()];
+                let keys = Some(order_keys(order));
+                if icon_row_enabled(ui, order, order.name(), keys, false, 250.0, on).clicked() {
+                    picked = Some(order);
+                }
+            }
+        });
+    picked
 }

@@ -34,6 +34,8 @@ mod ui_tests_more_shapes;
 #[cfg(test)]
 mod ui_tests_note;
 #[cfg(test)]
+mod ui_tests_order;
+#[cfg(test)]
 mod ui_tests_project;
 #[cfg(test)]
 mod ui_tests_properties;
@@ -62,17 +64,28 @@ const APP_ID: &str = "com.blockliner.app";
 /// Where eframe keeps its own state (`app.ron`).
 const STORAGE_ID: &str = "blockliner";
 
+/// The window's least height, without a title bar of its own.
+const MIN_HEIGHT: f32 = 712.0;
+
 fn main() -> eframe::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let paths = Paths::default_location();
+    let custom_titlebar = paths.prefs().custom_titlebar;
+    let title_bar = if custom_titlebar {
+        laankit_egui::theme::TITLEBAR_HEIGHT
+    } else {
+        0.0
+    };
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("BlockLiner")
         .with_app_id(APP_ID)
         .with_inner_size([1280.0, 800.0])
-        // Tall enough for every toolbar button (the tools and the bottom group).
-        .with_min_inner_size([800.0, 640.0])
+        // Tall enough for every toolbar button: the tools, Order and the
+        // bottom group (706 px), under the app's own title bar when it has
+        // one.
+        .with_min_inner_size([800.0, MIN_HEIGHT + title_bar])
         .with_icon(app_icon());
-    if paths.prefs().custom_titlebar {
+    if custom_titlebar {
         viewport = laankit_egui::window::undecorated(viewport);
     }
     let options = eframe::NativeOptions {

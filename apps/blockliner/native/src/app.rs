@@ -421,6 +421,7 @@ impl BlockLinerApp {
             changeable: self.ed.canvas.fillable(&self.ed.diagram),
             plain_line_selected: kinds.any_line(),
             arrow_selected: kinds.any_arrow(),
+            orderable: self.ed.view().orderable,
             can_undo: self.ed.history.can_undo(),
             can_redo: self.ed.history.can_redo(),
         }
@@ -1368,6 +1369,7 @@ impl BlockLinerApp {
         let props = ToolbarProps {
             tool: self.ed.tool,
             more_shape: self.ed.more_shape,
+            orderable: self.ed.view().orderable,
             can_close_folder: self.project.is_some(),
             properties_open: self.properties_visible && self.sidebar_visible,
             can_export: self.has_content(),

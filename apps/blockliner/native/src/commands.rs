@@ -8,6 +8,7 @@
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
 
+use blockliner_core::Order;
 use blockliner_egui::commands::{EditAct, EditCommand, When};
 
 /// Everything a shortcut, button or palette entry can ask for.
@@ -69,6 +70,9 @@ pub struct View {
     pub plain_line_selected: bool,
     /// …or one with.
     pub arrow_selected: bool,
+    /// Which stacking-order moves would move a selected shape
+    /// (`EditView::orderable`).
+    pub orderable: [bool; 4],
     pub can_undo: bool,
     pub can_redo: bool,
 }
@@ -138,6 +142,16 @@ fn has_arrow(v: &View) -> bool {
     ready(v) && v.arrow_selected
 }
 
+/// The predicate for a move in the stacking order.
+fn orderable(order: Order) -> fn(&View) -> bool {
+    match order {
+        Order::Front => |v| ready(v) && v.orderable[Order::Front.index()],
+        Order::Up => |v| ready(v) && v.orderable[Order::Up.index()],
+        Order::Down => |v| ready(v) && v.orderable[Order::Down.index()],
+        Order::Back => |v| ready(v) && v.orderable[Order::Back.index()],
+    }
+}
+
 fn undoable(v: &View) -> bool {
     ready(v) && v.can_undo
 }
@@ -162,6 +176,7 @@ fn edit_command(c: EditCommand) -> Command<Act, View> {
         When::HasLine => has_line,
         When::HasPlainLine => has_plain_line,
         When::HasArrow => has_arrow,
+        When::Orderable(order) => orderable(order),
         When::Undoable => undoable,
         When::Redoable => redoable,
     })
@@ -367,6 +382,7 @@ mod tests {
             changeable: true,
             plain_line_selected: true,
             arrow_selected: true,
+            orderable: [true; 4],
             can_undo: true,
             can_redo: true,
         };
@@ -395,6 +411,7 @@ mod tests {
                 changeable: true,
                 plain_line_selected: true,
                 arrow_selected: true,
+                orderable: [true; 4],
                 can_undo: true,
                 can_redo: true,
             })
@@ -417,6 +434,8 @@ mod tests {
         assert_eq!(label("tool.rightangleline").as_deref(), Some("J, 7"));
         assert_eq!(label("tool.rightanglearrow").as_deref(), Some("E, 8"));
         assert_eq!(label("tool.text").as_deref(), Some("T, 9"));
+        assert_eq!(label("edit.moveToFront").as_deref(), Some("Ctrl+Shift+]"));
+        assert_eq!(label("edit.moveDown").as_deref(), Some("Ctrl+["));
     }
 
     #[test]

@@ -14,7 +14,7 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 
 - Hierarchical note tree with drag-and-drop reordering and re-parenting
 - Tabs: each file you open gets a tab above the document, with its own undo history, cursor, and scroll. Ctrl+W closes a tab, and Ctrl+Tab and Ctrl+Shift+Tab switch tabs. The tabs come back when you reopen the project
-- Diagrams: BlockLiner's diagram editor inside a project. A diagram is a `.mmd` file beside your notes, with BlockLiner's tools in the toolbar above it and a Properties panel to its right. It can be tagged, linked with `[[wikilinks]]`, moved in the tree, and exported as PNG, SVG, or Mermaid
+- Diagrams: BlockLiner's diagram editor inside a project. A diagram is a `.mmd` file beside your notes, with BlockLiner's tools in the toolbar above it and a Properties panel to its right. Shapes can be moved in front of or behind one another (Move to Front, Move Up, Move Down, Move to Back). It can be tagged, linked with `[[wikilinks]]`, moved in the tree, and exported as PNG, SVG, or Mermaid
 - Markdown editor with syntax highlighting, list editing, multiple cursors, folding, find/replace, and `[[wikilink]]` completion
 - Live Markdown preview with math (`$…$`, `$$…$$`) typeset by Typst
 - Tags, backlinks, and full-text search panes

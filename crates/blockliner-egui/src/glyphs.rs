@@ -17,13 +17,39 @@ pub fn icon_row(
     active: bool,
     width: f32,
 ) -> egui::Response {
+    icon_row_enabled(ui, icon, name, letter, active, width, true)
+}
+
+/// [`icon_row`], greyed and not clickable when `enabled` is off.
+pub fn icon_row_enabled(
+    ui: &mut Ui,
+    icon: impl Into<Glyph>,
+    name: &str,
+    letter: Option<&str>,
+    active: bool,
+    width: f32,
+    enabled: bool,
+) -> egui::Response {
     let p = theme::palette(ui.ctx());
-    let (rect, resp) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::MenuItemRadio, true, active, name));
-    if resp.hovered() {
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, resp) = ui.allocate_exact_size(vec2(width, 30.0), sense);
+    resp.widget_info(|| {
+        egui::WidgetInfo::selected(egui::Role::MenuItemRadio, enabled, active, name)
+    });
+    if resp.hovered() && enabled {
         ui.painter().rect_filled(rect, 4.0, p.bg_button);
     }
-    let ink = if active { p.accent } else { p.text_primary };
+    let ink = if !enabled {
+        p.text_faint
+    } else if active {
+        p.accent
+    } else {
+        p.text_primary
+    };
     let at = pos2(rect.left() + 18.0, rect.center().y);
     paint_glyph(ui.painter(), &icon.into(), at, ink);
     let font = FontId::proportional(theme::BODY_SIZE);
@@ -60,6 +86,15 @@ pub enum Glyph {
         bold: bool,
         italic: bool,
     },
+    /// A move in the stacking order: two overlapping squares, the moving
+    /// one filled.
+    Order(blockliner_core::Order),
+}
+
+impl From<blockliner_core::Order> for Glyph {
+    fn from(o: blockliner_core::Order) -> Self {
+        Glyph::Order(o)
+    }
 }
 
 impl From<Tool> for Glyph {
@@ -96,6 +131,7 @@ pub fn paint_glyph(painter: &egui::Painter, glyph: &Glyph, c: Pos2, ink: Color32
             let line = [c + vec2(-10.0, 0.0), c + vec2(10.0, 0.0)];
             painter.line_segment(line, Stroke::new(width.min(6.0), ink));
         }
+        Glyph::Order(order) => paint_order_icon(painter, *order, c, ink),
         Glyph::Text { bold, italic } => {
             let face = laankit_egui::fonts::Style {
                 weight: bold.then_some(laankit_egui::fonts::BOLD),
@@ -110,6 +146,54 @@ pub fn paint_glyph(painter: &egui::Painter, glyph: &Glyph, c: Pos2, ink: Color32
                 ink,
             );
         }
+    }
+}
+
+/// A stacking-order move's icon, centred on `c`: two overlapping squares.
+/// The filled one is the shape that moves: in front of the outlined one for
+/// Up and Front, behind it for Down and Back. Front and Back add a bar at
+/// the end they go to.
+pub fn paint_order_icon(
+    painter: &egui::Painter,
+    order: blockliner_core::Order,
+    c: Pos2,
+    ink: Color32,
+) {
+    use blockliner_core::Order;
+    let stroke = Stroke::new(1.4, ink);
+    let far = matches!(order, Order::Front | Order::Back);
+    // The bar takes room at its end, so the squares shift the other way.
+    let c = match order {
+        Order::Front => c + vec2(0.0, 1.5),
+        Order::Back => c + vec2(0.0, -1.5),
+        _ => c,
+    };
+    let behind = Rect::from_min_max(c + vec2(-7.0, -7.0), c + vec2(2.0, 2.0));
+    let front = Rect::from_min_max(c + vec2(-2.0, -2.0), c + vec2(7.0, 7.0));
+    match order {
+        Order::Front | Order::Up => {
+            painter.rect_stroke(behind, 1.0, stroke, egui::StrokeKind::Inside);
+            painter.rect_filled(front, 1.0, ink);
+        }
+        Order::Down | Order::Back => {
+            // The part of the filled square the front one doesn't cover.
+            let top = Rect::from_min_max(behind.min, pos2(behind.right(), front.top() - 1.5));
+            let left = Rect::from_min_max(
+                pos2(behind.left(), top.bottom()),
+                pos2(front.left() - 1.5, behind.bottom()),
+            );
+            painter.rect_filled(top, 0.0, ink);
+            painter.rect_filled(left, 0.0, ink);
+            painter.rect_stroke(front, 1.0, stroke, egui::StrokeKind::Inside);
+        }
+    }
+    if far {
+        let y = if order == Order::Front {
+            c.y - 10.0
+        } else {
+            c.y + 10.0
+        };
+        painter.line_segment([pos2(c.x - 7.0, y), pos2(c.x + 7.0, y)], stroke);
     }
 }
 

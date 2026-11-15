@@ -33,7 +33,7 @@ use blockliner_core::style::{
     Weight, PRESETS, WEIGHTS,
 };
 use blockliner_core::{
-    Connector, ConnectorKind, Diagram, End, Point, Rect as ModelRect, ShapeKind,
+    Connector, ConnectorKind, Diagram, End, Order, Point, Rect as ModelRect, ShapeKind,
 };
 use egui::{CursorIcon, Key, PointerButton, Pos2, Rect, Sense, Ui, Vec2};
 use laankit_egui::theme;
@@ -92,6 +92,8 @@ pub enum MenuAction {
     /// Italic (`true`) or Normal.
     TextStyle(bool),
     ResetStyle,
+    /// The selected shapes forward or back in the stacking order.
+    Order(Order),
     Delete,
     SelectAll,
     SelectShapes,
@@ -331,6 +333,14 @@ impl Canvas {
     pub fn change_shape(&mut self, d: &mut Diagram, kind: &ShapeKind) -> bool {
         self.commit_label(d);
         d.set_shape_kind(&self.selection, kind) > 0
+    }
+
+    /// Moves the selected shapes in the stacking order (selected lines stay
+    /// where they are: lines are always in front of shapes). A label being
+    /// edited is committed first. `false` if nothing moved.
+    pub fn reorder(&mut self, d: &mut Diagram, order: Order) -> bool {
+        self.commit_label(d);
+        d.reorder(&self.selection, order)
     }
 
     /// Gives the selected lines an arrowhead (`on`) or takes it away.
@@ -666,6 +676,19 @@ impl Canvas {
                     arrow,
                     MenuAction::RemoveArrowheads,
                 );
+                ui.separator();
+            }
+            // The stacking order: shapes only.
+            if !self.selection.is_empty() {
+                for order in Order::ALL {
+                    item(
+                        ui,
+                        order.name(),
+                        crate::commands::order_keys(order),
+                        d.can_reorder(&self.selection, order),
+                        MenuAction::Order(order),
+                    );
+                }
                 ui.separator();
             }
             item(ui, "Delete", "Delete", any, MenuAction::Delete);

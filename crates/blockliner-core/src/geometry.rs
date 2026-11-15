@@ -29,6 +29,12 @@ impl Rect {
         p.x >= self.x && p.x <= self.right() && p.y >= self.y && p.y <= self.bottom()
     }
 
+    /// Whether the two share any area. Rectangles that only touch along an
+    /// edge don't.
+    pub fn overlaps(&self, r: &Rect) -> bool {
+        self.x < r.right() && r.x < self.right() && self.y < r.bottom() && r.y < self.bottom()
+    }
+
     pub fn contains_rect(&self, r: &Rect) -> bool {
         r.x >= self.x && r.right() <= self.right() && r.y >= self.y && r.bottom() <= self.bottom()
     }
