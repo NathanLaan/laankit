@@ -15,6 +15,8 @@ use laankit_egui::theme::{self, ThemeState};
 use laankit_egui::titlebar::{self, TitleBar};
 use laankit_egui::toast::Toasts;
 use laankit_egui::{fonts, icons, window};
+use medialiner_core::devices::{Location, Volume};
+use medialiner_core::import::{self, Item, Options, Progress, Record};
 use medialiner_core::info::{human_size, FileInfo};
 use medialiner_core::merge;
 use medialiner_core::scan::{self, file_name, FileEntry};
@@ -24,6 +26,7 @@ use serde_json::json;
 use crate::backend::{self, Backend, Event, MergeKind, ThumbJob};
 use crate::commands::{self, Act, Focus, View};
 use crate::config::{self, Paths, Settings, THUMB_MAX, THUMB_MIN};
+use crate::overlays::import::{ImportAction, ImportState, Phase as ImportPhase, Scan};
 use crate::overlays::merge::{MergeAction, MergeState, Phase};
 use crate::overlays::settings::{SettingsAction, SettingsProps, SettingsState};
 use crate::overlays::{self, Overlay};
@@ -53,6 +56,8 @@ pub struct Launch {
     pub open: Option<PathBuf>,
     /// Tests: merges move by copying, as across drives.
     pub force_copy: bool,
+    /// Look for devices being plugged in. Off in tests, which pass their own.
+    pub watch_devices: bool,
 }
 
 /// An answer from a file dialog.
@@ -112,6 +117,17 @@ pub struct MediaLinerApp {
     last_merge: Option<PathBuf>,
     /// A merge or undo running without its dialog: (kind, done, total).
     merge_progress: Option<(MergeKind, usize, usize)>,
+    /// Whether plugging in a device opens the Import dialog.
+    offer_import: bool,
+    import_options: Options,
+    /// Devices that appeared while the app was open: a fixed drive among
+    /// them counts as one you plugged in.
+    late_devices: Vec<Location>,
+    /// Devices with photos that were plugged in while another dialog was
+    /// open: offered when it closes.
+    pending_devices: Vec<Volume>,
+    /// Whether the last import can be undone.
+    can_undo_import: bool,
     overlay: Option<Overlay>,
     palette: Option<CommandPalette>,
     registry: Registry<Act, View>,
@@ -137,8 +153,11 @@ impl MediaLinerApp {
         let backend = Backend::new(backend::Config {
             thumbs_dir: paths.thumbs_dir(),
             merges_dir: paths.merges_dir(),
+            imports_dir: paths.imports_dir(),
             force_copy: launch.force_copy,
+            watch_devices: launch.watch_devices,
         });
+        let can_undo_import = import::last(&paths.imports_dir()).is_some_and(|j| !j.deleted);
         let mut app = Self {
             paths,
             theme,
@@ -177,6 +196,14 @@ impl MediaLinerApp {
             reveal_folder: false,
             last_merge: None,
             merge_progress: None,
+            offer_import: settings.offer_import,
+            import_options: Options {
+                videos: prefs.import_videos,
+                others: prefs.import_others,
+            },
+            late_devices: Vec::new(),
+            pending_devices: Vec::new(),
+            can_undo_import,
             overlay: None,
             palette: None,
             registry,
@@ -209,7 +236,13 @@ impl MediaLinerApp {
             Some("settings") => self.apply(ctx, Act::Settings),
             Some("about") => self.apply(ctx, Act::About),
             Some("palette") => self.apply(ctx, Act::Palette),
+            Some("import") => self.apply(ctx, Act::ImportFromDevice),
             _ => {}
+        }
+        // A folder standing in for a device that has just been plugged in.
+        if let Some(dir) = std::env::var_os("LAANKIT_DEVICE").map(PathBuf::from) {
+            let key = format!("folder:{}", dir.display());
+            self.device_added(Volume::folder(&dir, &file_name(&dir), &key));
         }
     }
 
@@ -316,6 +349,39 @@ impl MediaLinerApp {
         self.focus
     }
 
+    /// A device plugged in, as the watcher would report it.
+    #[cfg(test)]
+    pub fn plug_in(&mut self, volume: Volume) {
+        self.device_added(volume);
+    }
+
+    #[cfg(test)]
+    pub fn unplug(&mut self, volume: &Volume) {
+        self.device_removed(volume);
+    }
+
+    #[cfg(test)]
+    pub fn import_dialog(&mut self) -> Option<&mut ImportState> {
+        match &mut self.overlay {
+            Some(Overlay::Import(s)) => Some(s),
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn can_undo_import(&self) -> bool {
+        self.can_undo_import
+    }
+
+    #[cfg(test)]
+    pub fn toast_texts(&self) -> Vec<String> {
+        self.toasts
+            .messages()
+            .into_iter()
+            .map(|(_, m)| m.to_owned())
+            .collect()
+    }
+
     // --- State ----------------------------------------------------------------
 
     fn view(&self) -> View {
@@ -334,6 +400,7 @@ impl MediaLinerApp {
             has_photos: !self.photos.is_empty(),
             preview_open: self.preview.is_some(),
             can_undo_merge: self.last_merge.is_some() && !self.backend.merging(),
+            can_undo_import: self.can_undo_import && !self.backend.importing(),
         }
     }
 
@@ -360,6 +427,7 @@ impl MediaLinerApp {
             folders: self.library.roots.clone(),
             expanded,
             selected_folder: self.folder.clone(),
+            offer_import: self.offer_import,
         };
         if let Err(e) = self.paths.save_settings(&s) {
             self.toasts.error(format!("Couldn't save settings: {e:#}"));
@@ -398,6 +466,12 @@ impl MediaLinerApp {
         }
         self.select_folder(folder);
         self.save_settings();
+        if let Some(Overlay::Import(state)) = &mut self.overlay {
+            state.roots = self.library.roots.clone();
+            if state.dest.is_none() {
+                state.dest = self.folder.clone();
+            }
+        }
     }
 
     fn remove_folder(&mut self, root: &Path) {
@@ -838,6 +912,285 @@ impl MediaLinerApp {
         }
     }
 
+    // --- Importing ------------------------------------------------------------
+
+    /// Whether `volume` is, holds, or is inside a folder in your list:
+    /// it's already at hand, so it isn't offered.
+    fn listed(&self, volume: &Volume) -> bool {
+        volume.path().is_some_and(|p| {
+            self.library
+                .roots
+                .iter()
+                .any(|r| r.starts_with(p) || p.starts_with(r))
+        })
+    }
+
+    fn busy_moving(&self) -> bool {
+        self.backend.merging() || self.backend.importing()
+    }
+
+    /// Opens the Import dialog on `devices`, the first chosen.
+    fn open_import(&mut self, devices: Vec<Volume>, looking: bool) {
+        if self.busy_moving() {
+            self.toasts.info("A merge or an import is still running.");
+            return;
+        }
+        let mut state = ImportState::new(
+            self.library.roots.clone(),
+            self.folder.clone(),
+            self.import_options,
+        );
+        state.looking = looking;
+        state.devices = devices;
+        self.overlay = Some(Overlay::Import(Box::new(state)));
+    }
+
+    /// Chooses the dialog's device `i` and looks at what it holds.
+    fn choose_import_device(&self, state: &mut ImportState, i: usize) {
+        state.device = i;
+        state.scan = Scan::Scanning(0);
+        if let Some(v) = state.volume() {
+            self.backend.scan_device(v.clone(), false);
+        }
+    }
+
+    fn device_added(&mut self, volume: Volume) {
+        if !self.late_devices.contains(&volume.location) {
+            self.late_devices.push(volume.location.clone());
+        }
+        if self.listed(&volume) {
+            return;
+        }
+        if matches!(self.overlay, Some(Overlay::Import(_))) {
+            let Some(Overlay::Import(mut state)) = self.overlay.take() else {
+                return;
+            };
+            let choosing = matches!(state.phase, ImportPhase::Choose);
+            if choosing && !state.devices.iter().any(|d| d.location == volume.location) {
+                state.devices.push(volume);
+                if state.devices.len() == 1 {
+                    state.looking = false;
+                    self.choose_import_device(&mut state, 0);
+                }
+            }
+            self.overlay = Some(Overlay::Import(state));
+            return;
+        }
+        if self.offer_import {
+            self.backend.scan_device(volume, true);
+        }
+    }
+
+    fn device_removed(&mut self, volume: &Volume) {
+        self.late_devices.retain(|l| *l != volume.location);
+        self.pending_devices
+            .retain(|d| d.location != volume.location);
+        if !matches!(self.overlay, Some(Overlay::Import(_))) {
+            return;
+        }
+        let Some(Overlay::Import(mut state)) = self.overlay.take() else {
+            return;
+        };
+        // A running import finds out for itself, and reports it.
+        if !matches!(state.phase, ImportPhase::Choose) {
+            self.overlay = Some(Overlay::Import(state));
+            return;
+        }
+        let chosen = state
+            .volume()
+            .is_some_and(|v| v.location == volume.location);
+        state.devices.retain(|d| d.location != volume.location);
+        if state.devices.is_empty() {
+            self.toasts.info(format!("{} was removed.", volume.name));
+            return;
+        }
+        if chosen {
+            self.choose_import_device(&mut state, 0);
+        } else if let Some(i) = state
+            .volume()
+            .map(|_| state.device.min(state.devices.len() - 1))
+        {
+            state.device = i;
+        }
+        self.overlay = Some(Overlay::Import(state));
+    }
+
+    /// The devices there now arrived, for a dialog opened by the command.
+    fn devices_listed(&mut self, devices: Vec<Volume>) {
+        let offered: Vec<Volume> = devices
+            .into_iter()
+            .filter(|v| v.removable || self.late_devices.contains(&v.location))
+            .filter(|v| !self.listed(v))
+            .collect();
+        if !matches!(self.overlay, Some(Overlay::Import(_))) {
+            return;
+        }
+        let Some(Overlay::Import(mut state)) = self.overlay.take() else {
+            return;
+        };
+        if state.looking {
+            state.looking = false;
+            for v in offered {
+                if !state.devices.iter().any(|d| d.location == v.location) {
+                    state.devices.push(v);
+                }
+            }
+            if !state.devices.is_empty() {
+                self.choose_import_device(&mut state, 0);
+            }
+        }
+        self.overlay = Some(Overlay::Import(state));
+    }
+
+    fn device_scanned(
+        &mut self,
+        volume: Volume,
+        items: Result<Vec<Item>, String>,
+        record: Option<Record>,
+        offer: bool,
+    ) {
+        if let Some(Overlay::Import(state)) = &mut self.overlay {
+            if state
+                .volume()
+                .is_some_and(|v| v.location == volume.location)
+            {
+                if matches!(state.phase, ImportPhase::Choose) {
+                    state.scanned(items, record);
+                }
+                return;
+            }
+        }
+        if !offer {
+            return;
+        }
+        let Ok(items) = items else { return };
+        // A stick of documents isn't offered.
+        if !import::worth_offering(&items) {
+            return;
+        }
+        if self.overlay.is_none() && self.palette.is_none() && !self.busy_moving() {
+            self.open_import(vec![volume], false);
+            if let Some(Overlay::Import(state)) = &mut self.overlay {
+                state.scanned(Ok(items), record);
+            }
+        } else {
+            self.toasts.info(format!(
+                "{}: {}. Import from Device (Ctrl+Shift+M) copies them.",
+                volume.name,
+                overlays::import::found_text(&items)
+            ));
+            self.pending_devices.push(volume);
+        }
+    }
+
+    /// Offers a device that was plugged in while another dialog was open.
+    fn offer_pending(&mut self) {
+        if self.pending_devices.is_empty()
+            || self.overlay.is_some()
+            || self.palette.is_some()
+            || self.busy_moving()
+        {
+            return;
+        }
+        let devices: Vec<Volume> = std::mem::take(&mut self.pending_devices)
+            .into_iter()
+            .filter(|v| v.present() && !self.listed(v))
+            .collect();
+        if devices.is_empty() {
+            return;
+        }
+        self.open_import(devices, false);
+        if let Some(Overlay::Import(mut state)) = self.overlay.take() {
+            self.choose_import_device(&mut state, 0);
+            self.overlay = Some(Overlay::Import(state));
+        }
+    }
+
+    fn refresh_after_import(&mut self) {
+        self.can_undo_import = import::last(&self.paths.imports_dir()).is_some_and(|j| !j.deleted);
+        self.children.clear();
+        self.has_children.clear();
+        self.request_listing(0.0);
+    }
+
+    fn import_done(&mut self, outcome: import::Outcome, ask_delete: bool) {
+        if !ask_delete {
+            self.backend.import_finished();
+        }
+        if let Some(Overlay::Import(state)) = &mut self.overlay {
+            state.outcome = Some(outcome);
+            state.phase = if ask_delete {
+                ImportPhase::AskDelete
+            } else {
+                ImportPhase::Done
+            };
+        }
+        self.refresh_after_import();
+    }
+
+    fn import_action(
+        &mut self,
+        ctx: &egui::Context,
+        state: &mut ImportState,
+        a: ImportAction,
+    ) -> bool {
+        match a {
+            ImportAction::Close => return false,
+            ImportAction::SelectDevice(i) => self.choose_import_device(state, i),
+            ImportAction::Options(o) => {
+                self.import_options = o;
+                self.set_prefs(json!({ "importVideos": o.videos, "importOthers": o.others }));
+            }
+            ImportAction::FolderCreated(_) => {
+                self.children.clear();
+                self.has_children.clear();
+            }
+            ImportAction::Import => {
+                let items = state.chosen();
+                if let (Some(volume), Some(dest)) = (state.volume().cloned(), state.dest.clone()) {
+                    state.phase = ImportPhase::Running {
+                        progress: Progress {
+                            total: items.len(),
+                            total_bytes: items.iter().map(|i| i.size).sum(),
+                            ..Progress::default()
+                        },
+                        cancelling: false,
+                    };
+                    self.backend
+                        .run_import(volume, items, dest, state.delete_after);
+                }
+            }
+            ImportAction::Cancel => {
+                self.backend.cancel_import();
+                if let ImportPhase::Running { cancelling, .. } = &mut state.phase {
+                    *cancelling = true;
+                }
+            }
+            ImportAction::Delete(delete) => {
+                self.backend.import_delete(delete);
+                state.phase = if delete {
+                    ImportPhase::Deleting {
+                        done: 0,
+                        total: state.outcome.as_ref().map_or(0, |o| o.copied.len()),
+                    }
+                } else {
+                    ImportPhase::Done
+                };
+            }
+            ImportAction::Done => {
+                if let Some(dest) = state.dest.clone() {
+                    if dest.is_dir() {
+                        self.select_folder(dest);
+                        self.save_settings();
+                    }
+                }
+                return false;
+            }
+            ImportAction::AddFolder => self.apply(ctx, Act::AddFolder),
+        }
+        true
+    }
+
     // --- Commands -------------------------------------------------------------
 
     fn apply(&mut self, ctx: &egui::Context, act: Act) {
@@ -923,6 +1276,20 @@ impl MediaLinerApp {
                     self.undo_merge(&j);
                 }
             }
+            Act::ImportFromDevice => {
+                self.pending_devices.clear();
+                self.open_import(Vec::new(), true);
+                if matches!(self.overlay, Some(Overlay::Import(_))) {
+                    self.backend.devices();
+                }
+            }
+            Act::UndoImport => {
+                if self.busy_moving() {
+                    self.toasts.info("A merge or an import is still running.");
+                } else {
+                    self.backend.undo_import();
+                }
+            }
             Act::OpenInFolder => {
                 if let Some(p) = self.selected.clone() {
                     self.photo_command(ctx, p, PhotoCommand::OpenInFolder);
@@ -949,9 +1316,11 @@ impl MediaLinerApp {
             tab,
             self.custom_titlebar,
             self.status_bar_visible,
+            self.offer_import,
         )));
         self.backend.cache_usage();
         self.backend.journals();
+        self.backend.import_records();
     }
 
     fn view_action(&mut self, ctx: &egui::Context, a: ViewAction) {
@@ -1088,6 +1457,78 @@ impl MediaLinerApp {
                         s.journals = Some(j);
                     }
                 }
+                Event::DeviceAdded(v) => self.device_added(v),
+                Event::DeviceRemoved(v) => self.device_removed(&v),
+                Event::Devices(list) => self.devices_listed(list),
+                Event::DeviceScanning { location, found } => {
+                    if let Some(Overlay::Import(state)) = &mut self.overlay {
+                        let chosen = state.volume().is_some_and(|v| v.location == location);
+                        if chosen && matches!(state.scan, Scan::Scanning(_)) {
+                            state.scan = Scan::Scanning(found);
+                        }
+                    }
+                }
+                Event::DeviceScanned {
+                    volume,
+                    items,
+                    record,
+                    offer,
+                } => self.device_scanned(volume, items, record, offer),
+                Event::ImportProgress(p) => {
+                    if let Some(Overlay::Import(state)) = &mut self.overlay {
+                        if let ImportPhase::Running { progress, .. } = &mut state.phase {
+                            *progress = p;
+                        }
+                    }
+                }
+                Event::ImportDone {
+                    outcome,
+                    ask_delete,
+                } => self.import_done(outcome, ask_delete),
+                Event::ImportDeleting { done, total } => {
+                    if let Some(Overlay::Import(state)) = &mut self.overlay {
+                        state.phase = ImportPhase::Deleting { done, total };
+                    }
+                }
+                Event::ImportDeleted { deleted, failed } => {
+                    self.backend.import_finished();
+                    if let Some(Overlay::Import(state)) = &mut self.overlay {
+                        state.deleted = Some((deleted, failed));
+                        state.phase = ImportPhase::Done;
+                    }
+                    self.refresh_after_import();
+                }
+                Event::ImportUndone(result) => {
+                    match result {
+                        Ok(u) => {
+                            let files =
+                                |n: usize| format!("{n} {}", if n == 1 { "file" } else { "files" });
+                            let mut text = format!(
+                                "Import undone: removed {} from {}.",
+                                files(u.removed),
+                                file_name(&u.dest)
+                            );
+                            if u.kept > 0 {
+                                text.push_str(&format!(
+                                    " {} changed since and {} kept.",
+                                    files(u.kept),
+                                    if u.kept == 1 { "was" } else { "were" }
+                                ));
+                            }
+                            self.toasts.success(text);
+                        }
+                        Err(e) => self.toasts.error(format!("Couldn't undo the import: {e}")),
+                    }
+                    self.refresh_after_import();
+                    if matches!(self.overlay, Some(Overlay::Settings(_))) {
+                        self.backend.import_records();
+                    }
+                }
+                Event::ImportRecords(records) => {
+                    if let Some(Overlay::Settings(s)) = &mut self.overlay {
+                        s.records = Some(records);
+                    }
+                }
             }
         }
     }
@@ -1128,6 +1569,7 @@ impl MediaLinerApp {
             self.add_folder(folder);
         }
         self.watch(&ctx);
+        self.offer_pending();
         self.textures.begin_frame(&ctx);
         if !ctx.egui_wants_keyboard_input() {
             let view = self.view();
@@ -1382,6 +1824,11 @@ impl MediaLinerApp {
         let top_inset = self.top_inset();
         let mut keep = true;
         match &mut overlay {
+            Overlay::Import(state) => {
+                for a in overlays::import::show(ctx, state) {
+                    keep &= self.import_action(ctx, state, a);
+                }
+            }
             Overlay::Merge(state) => {
                 for a in overlays::merge::show(ctx, state) {
                     match a {
@@ -1411,6 +1858,7 @@ impl MediaLinerApp {
                     folders: &self.library.roots,
                     merging: self.backend.merging(),
                     cache_dir: &self.paths.thumbs_dir(),
+                    can_undo_import: self.can_undo_import && !self.busy_moving(),
                 };
                 let actions =
                     overlays::settings::show(ctx, state, &mut self.theme, &props, top_inset);
@@ -1436,6 +1884,15 @@ impl MediaLinerApp {
                             self.undo_merge(&journal);
                             state.journals = None;
                         }
+                        SettingsAction::SetOfferImport(on) => {
+                            self.offer_import = on;
+                            self.save_settings();
+                        }
+                        SettingsAction::ForgetDevice(key) => {
+                            state.records = None;
+                            self.backend.forget_device(&key);
+                        }
+                        SettingsAction::UndoImport => self.apply(ctx, Act::UndoImport),
                     }
                 }
             }

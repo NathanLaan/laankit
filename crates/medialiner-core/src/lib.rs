@@ -10,12 +10,19 @@
 //! | `info`    | A photo's details for the Info pane, from the file and its EXIF data. |
 //! | `merge`   | Merging one folder into another: the plan, the moves, the journal, and undo. |
 //! | `reveal`  | Showing a file in the system file manager. |
+//! | `devices` | The drives and media devices plugged in. |
+//! | `import`  | Copying a device's photos into a folder: the copy, the record of what has been imported, and undo. |
+//! | `portable` | Windows only: drive letters, and media devices (MTP) through Windows Portable Devices. |
 
+pub mod devices;
+pub mod import;
 pub mod info;
 pub mod library;
 pub mod media;
 pub mod merge;
 pub mod natural;
+#[cfg(windows)]
+pub mod portable;
 pub mod reveal;
 pub mod scan;
 pub mod thumbs;

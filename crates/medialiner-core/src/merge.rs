@@ -130,7 +130,7 @@ fn taken(path: &Path, reserved: &HashSet<PathBuf>) -> bool {
 }
 
 /// `dir/name`, or `dir/name (2).ext`, `(3)`, … when that's taken.
-fn unique(dir: &Path, name: &str, reserved: &HashSet<PathBuf>) -> PathBuf {
+pub(crate) fn unique(dir: &Path, name: &str, reserved: &HashSet<PathBuf>) -> PathBuf {
     let first = dir.join(name);
     if !taken(&first, reserved) {
         return first;

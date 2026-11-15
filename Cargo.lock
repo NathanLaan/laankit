@@ -4139,16 +4139,18 @@ dependencies = [
  "chrono",
  "image",
  "kamadak-exif",
+ "libc",
  "log",
  "open",
  "serde",
  "serde_json",
  "tempfile",
+ "windows",
 ]
 
 [[package]]
 name = "medialiner-native"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
