@@ -1,29 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- PageLiner icon: rounded tile with an open book. Placeholder art for the
-       Phase 0 scaffold — replace with final design later. -->
+  <!-- PageLiner icon. The prototypes it was chosen from are in docs/icon-options/. -->
   <defs>
-    <clipPath id="plFrameClip">
-      <rect x="22" y="22" width="468" height="468" rx="76" ry="76"/>
-    </clipPath>
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="16" x2="0" y2="496"><stop offset="0" stop-color="#24243a"/><stop offset="1" stop-color="#1a1a28"/></linearGradient>
+    <linearGradient id="acc" gradientUnits="userSpaceOnUse" x1="96" y1="96" x2="416" y2="416"><stop offset="0" stop-color="#c4f2ba"/><stop offset="1" stop-color="#7cd389"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".16"/><stop offset=".5" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <clipPath id="clip"><rect x="16" y="16" width="480" height="480" rx="108"/></clipPath>
+    <radialGradient id="fade" gradientUnits="userSpaceOnUse" cx="256" cy="256" r="300"><stop offset=".35" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".15"/></radialGradient>
+    <mask id="fadeMask"><rect width="512" height="512" fill="url(#fade)"/></mask>
   </defs>
-
-  <rect x="22" y="22" width="468" height="468" rx="76" ry="76" fill="#1e1e2e" stroke="#11111b" stroke-width="8"/>
-
-  <g clip-path="url(#plFrameClip)">
-    <!-- Open book: two pages meeting at a center spine -->
-    <g fill="none" stroke="#89b4fa" stroke-width="18" stroke-linejoin="round" stroke-linecap="round">
-      <path d="M256 150 C 210 122, 150 122, 110 140 L 110 360 C 150 342, 210 342, 256 370 Z"/>
-      <path d="M256 150 C 302 122, 362 122, 402 140 L 402 360 C 362 342, 302 342, 256 370 Z"/>
-      <line x1="256" y1="150" x2="256" y2="370"/>
-    </g>
-    <!-- A few text lines on each page -->
-    <g stroke="#a6adc8" stroke-width="9" stroke-linecap="round">
-      <line x1="150" y1="190" x2="232" y2="200"/>
-      <line x1="150" y1="225" x2="232" y2="235"/>
-      <line x1="150" y1="260" x2="232" y2="270"/>
-      <line x1="280" y1="200" x2="362" y2="190"/>
-      <line x1="280" y1="235" x2="362" y2="225"/>
-      <line x1="280" y1="270" x2="362" y2="260"/>
-    </g>
-  </g>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#tile)"/>
+  <g clip-path="url(#clip)"><g mask="url(#fadeMask)" stroke="#3d3d57" stroke-width="3"><path d="M96 16 V496 M16 96 H496"/><path d="M176 16 V496 M16 176 H496"/><path d="M256 16 V496 M16 256 H496"/><path d="M336 16 V496 M16 336 H496"/><path d="M416 16 V496 M16 416 H496"/></g></g>
+  <rect x="19" y="19" width="474" height="474" rx="105" fill="none" stroke="url(#rim)" stroke-width="3"/>
+  <path d="M256 162 C208 130 146 130 98 150 V364 C146 344 208 344 256 378 Z" fill="url(#tile)"/>
+  <path d="M256 162 C208 130 146 130 98 150 V364 C146 344 208 344 256 378 Z" fill="#a6e3a1" fill-opacity="0.16" stroke="url(#acc)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M256 162 C304 130 366 130 414 150 V364 C366 344 304 344 256 378 Z" fill="url(#tile)"/>
+  <path d="M256 162 C304 130 366 130 414 150 V364 C366 344 304 344 256 378 Z" fill="#a6e3a1" fill-opacity="0.16" stroke="url(#acc)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M140 204 Q182 198 218 214 M140 250 Q182 244 218 260 M140 296 Q182 290 218 306" fill="none" stroke="#c4f2ba" stroke-opacity="0.8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M372 204 Q330 198 294 214 M372 250 Q330 244 294 260 M372 296 Q330 290 294 306" fill="none" stroke="#c4f2ba" stroke-opacity="0.8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

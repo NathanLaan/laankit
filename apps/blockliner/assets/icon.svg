@@ -1,34 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- BlockLiner icon: rounded tile with two boxes on a grid, joined by an
-       elbow arrow. Placeholder art for the Phase 0 scaffold; replace with
-       the final design later. -->
+  <!-- BlockLiner icon. The prototypes it was chosen from are in docs/icon-options/. -->
   <defs>
-    <clipPath id="blFrameClip">
-      <rect x="22" y="22" width="468" height="468" rx="76" ry="76"/>
-    </clipPath>
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="16" x2="0" y2="496"><stop offset="0" stop-color="#24243a"/><stop offset="1" stop-color="#1a1a28"/></linearGradient>
+    <linearGradient id="acc" gradientUnits="userSpaceOnUse" x1="96" y1="96" x2="416" y2="416"><stop offset="0" stop-color="#a9cbff"/><stop offset="1" stop-color="#6c9cf6"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".16"/><stop offset=".5" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <clipPath id="clip"><rect x="16" y="16" width="480" height="480" rx="108"/></clipPath>
+    <radialGradient id="fade" gradientUnits="userSpaceOnUse" cx="256" cy="256" r="300"><stop offset=".35" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".15"/></radialGradient>
+    <mask id="fadeMask"><rect width="512" height="512" fill="url(#fade)"/></mask>
   </defs>
-
-  <rect x="22" y="22" width="468" height="468" rx="76" ry="76" fill="#1e1e2e" stroke="#11111b" stroke-width="8"/>
-
-  <g clip-path="url(#blFrameClip)">
-    <!-- The snapping grid -->
-    <g stroke="#313244" stroke-width="4">
-      <line x1="96" y1="22" x2="96" y2="490"/>
-      <line x1="176" y1="22" x2="176" y2="490"/>
-      <line x1="256" y1="22" x2="256" y2="490"/>
-      <line x1="336" y1="22" x2="336" y2="490"/>
-      <line x1="416" y1="22" x2="416" y2="490"/>
-      <line x1="22" y1="96" x2="490" y2="96"/>
-      <line x1="22" y1="176" x2="490" y2="176"/>
-      <line x1="22" y1="256" x2="490" y2="256"/>
-      <line x1="22" y1="336" x2="490" y2="336"/>
-      <line x1="22" y1="416" x2="490" y2="416"/>
-    </g>
-    <!-- A rectangle (top left) and a rounded rectangle (bottom right) -->
-    <rect x="96" y="96" width="160" height="96" fill="#1e1e2e" stroke="#89b4fa" stroke-width="18" stroke-linejoin="round"/>
-    <rect x="256" y="320" width="160" height="96" rx="30" fill="#1e1e2e" stroke="#89b4fa" stroke-width="18"/>
-    <!-- The connector: down from the first box, across, into the second -->
-    <path d="M176 192 L176 368 L222 368" fill="none" stroke="#a6adc8" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M250 368 L214 342 L214 394 Z" fill="#a6adc8" stroke="#a6adc8" stroke-width="6" stroke-linejoin="round"/>
-  </g>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#tile)"/>
+  <g clip-path="url(#clip)"><g mask="url(#fadeMask)" stroke="#3d3d57" stroke-width="3"><path d="M96 16 V496 M16 96 H496"/><path d="M176 16 V496 M16 176 H496"/><path d="M256 16 V496 M16 256 H496"/><path d="M336 16 V496 M16 336 H496"/><path d="M416 16 V496 M16 416 H496"/></g></g>
+  <rect x="19" y="19" width="474" height="474" rx="105" fill="none" stroke="url(#rim)" stroke-width="3"/>
+  <rect x="92" y="108" width="180" height="112" rx="16" fill="url(#tile)"/>
+  <rect x="92" y="108" width="180" height="112" rx="16" fill="#89b4fa" fill-opacity="0.16" stroke="url(#acc)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M182 220 V348 H212" fill="none" stroke="#cdd6f4" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M238 348 L208 324 V372 Z" fill="#cdd6f4" stroke="#cdd6f4" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="240" y="292" width="180" height="112" rx="44" fill="url(#tile)"/>
+  <rect x="240" y="292" width="180" height="112" rx="44" fill="#89b4fa" fill-opacity="0.16" stroke="url(#acc)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

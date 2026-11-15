@@ -1,12 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- MediaLiner icon: rounded tile with two stacked photos, the front one
-       showing hills and a sun. Placeholder art; replace with the final
-       design later. -->
-  <rect x="22" y="22" width="468" height="468" rx="76" ry="76" fill="#1e1e2e" stroke="#11111b" stroke-width="8"/>
-  <!-- The photo behind -->
-  <rect x="150" y="96" width="264" height="216" rx="18" fill="none" stroke="#6c7086" stroke-width="16" stroke-linejoin="round"/>
-  <!-- The front photo -->
-  <rect x="98" y="168" width="290" height="236" rx="20" fill="#1e1e2e" stroke="#a6adc8" stroke-width="18" stroke-linejoin="round"/>
-  <circle cx="314" cy="236" r="26" fill="#f9e2af"/>
-  <path d="M120 380 L198 288 L250 344 L286 306 L366 380 Z" fill="#89b4fa" stroke="#89b4fa" stroke-width="10" stroke-linejoin="round"/>
+  <!-- MediaLiner icon. The prototypes it was chosen from are in docs/icon-options/. -->
+  <defs>
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="16" x2="0" y2="496"><stop offset="0" stop-color="#24243a"/><stop offset="1" stop-color="#1a1a28"/></linearGradient>
+    <linearGradient id="acc" gradientUnits="userSpaceOnUse" x1="96" y1="96" x2="416" y2="416"><stop offset="0" stop-color="#fbd7ee"/><stop offset="1" stop-color="#ec9ccd"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".16"/><stop offset=".5" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <clipPath id="clip"><rect x="16" y="16" width="480" height="480" rx="108"/></clipPath>
+    <radialGradient id="fade" gradientUnits="userSpaceOnUse" cx="256" cy="256" r="300"><stop offset=".35" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".15"/></radialGradient>
+    <mask id="fadeMask"><rect width="512" height="512" fill="url(#fade)"/></mask>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#tile)"/>
+  <g clip-path="url(#clip)"><g mask="url(#fadeMask)" stroke="#3d3d57" stroke-width="3"><path d="M96 16 V496 M16 96 H496"/><path d="M176 16 V496 M16 176 H496"/><path d="M256 16 V496 M16 256 H496"/><path d="M336 16 V496 M16 336 H496"/><path d="M416 16 V496 M16 416 H496"/></g></g>
+  <rect x="19" y="19" width="474" height="474" rx="105" fill="none" stroke="url(#rim)" stroke-width="3"/>
+  <rect x="160" y="106" width="252" height="200" rx="26" fill="url(#tile)"/>
+  <rect x="160" y="106" width="252" height="200" rx="26" fill="#f5c2e7" fill-opacity="0.07" stroke="#f5c2e7" stroke-opacity="0.45" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="100" y="166" width="288" height="232" rx="28" fill="url(#tile)"/>
+  <rect x="100" y="166" width="288" height="232" rx="28" fill="#f5c2e7" fill-opacity="0.16" stroke="url(#acc)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="318" cy="234" r="27" fill="#f9e2af"/>
+  <path d="M130 370 L202 286 L252 340 L288 304 L358 370 Z" fill="url(#acc)" stroke="url(#acc)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
