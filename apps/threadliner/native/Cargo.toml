@@ -1,6 +1,6 @@
 [package]
 name = "threadliner-native"
-version = "2.3.1"
+version = "2.3.2"
 description = "ThreadLiner in pure Rust: an egui UI over threadliner-core."
 edition.workspace = true
 license.workspace = true

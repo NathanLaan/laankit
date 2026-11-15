@@ -1,43 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- SVG recreation of threadliner-icon-1.png — rounded white tile with a
-       black outline, an italic orange "t" floating above three blue waves.
-
-       The frame and waves are hand-drawn vector paths; the letterform is
-       rendered with a serif/italic font stack so the glyph shape matches the
-       source design without needing per-glyph path coordinates. End-renderers
-       that don't have Bookman/Georgia available will fall back to the
-       system's default serif — visually close, but not identical. -->
-
+  <!-- ThreadLiner icon. The prototypes it was chosen from are in docs/icon-options/. -->
   <defs>
-    <!-- Tight clip so the waves don't bleed past the rounded corners. -->
-    <clipPath id="tlFrameClip">
-      <rect x="22" y="22" width="468" height="468" rx="76" ry="76"/>
-    </clipPath>
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="16" x2="0" y2="496"><stop offset="0" stop-color="#24243a"/><stop offset="1" stop-color="#1a1a28"/></linearGradient>
+    <linearGradient id="acc" gradientUnits="userSpaceOnUse" x1="96" y1="96" x2="416" y2="416"><stop offset="0" stop-color="#ffcfa8"/><stop offset="1" stop-color="#f4925c"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".16"/><stop offset=".5" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <clipPath id="clip"><rect x="16" y="16" width="480" height="480" rx="108"/></clipPath>
+    <radialGradient id="fade" gradientUnits="userSpaceOnUse" cx="256" cy="256" r="300"><stop offset=".35" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".15"/></radialGradient>
+    <mask id="fadeMask"><rect width="512" height="512" fill="url(#fade)"/></mask>
   </defs>
-
-  <!-- Rounded square: cream-white fill, black outline. -->
-  <rect x="22" y="22" width="468" height="468" rx="76" ry="76"
-        fill="#fdfaf2" stroke="#1a1a1a" stroke-width="16"/>
-
-  <!-- Italic bold "t" in feed-orange with black outline. paint-order=stroke
-       keeps the stroke from eating into the colored body of the glyph. -->
-  <text x="256" y="360"
-        font-family="'Bookman Old Style', 'Georgia', 'Times New Roman', serif" font-weight="900" font-size="380"
-        text-anchor="middle"
-        fill="#f4a82a"
-        stroke="#1a1a1a" stroke-width="28"
-        stroke-linejoin="round"
-        paint-order="stroke fill">t</text>
-
-  <!-- 
-  <g clip-path="url(#tlFrameClip)">
-    <path d="M -16 378
-             C 30 438, 122 438, 168 378
-             C 212 438, 300 438, 344 378
-             C 388 438, 482 438, 528 378
-             L 528 570 L -16 570 Z"
-          fill="#3989e5" stroke="#1a1a1a" stroke-width="14"
-          stroke-linejoin="round"/>
-  </g>
-   -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#tile)"/>
+  <g clip-path="url(#clip)"><g mask="url(#fadeMask)" stroke="#3d3d57" stroke-width="3"><path d="M96 16 V496 M16 96 H496"/><path d="M176 16 V496 M16 176 H496"/><path d="M256 16 V496 M16 256 H496"/><path d="M336 16 V496 M16 336 H496"/><path d="M416 16 V496 M16 416 H496"/></g></g>
+  <rect x="19" y="19" width="474" height="474" rx="105" fill="none" stroke="url(#rim)" stroke-width="3"/>
+  <circle cx="156" cy="356" r="38" fill="url(#acc)" stroke="url(#acc)" stroke-width="0" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M156 238 A118 118 0 0 1 274 356" fill="none" stroke="url(#acc)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M156 140 A216 216 0 0 1 372 356" fill="none" stroke="url(#acc)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
