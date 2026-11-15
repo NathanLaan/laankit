@@ -17,7 +17,7 @@
 use blockliner_core::clipboard;
 use blockliner_core::history::History;
 use blockliner_core::style::{Agreement, Colour, Style, PRESETS};
-use blockliner_core::Diagram;
+use blockliner_core::{Diagram, Order};
 use egui::Ui;
 
 use crate::canvas::view::View;
@@ -122,6 +122,7 @@ impl DiagramEditor {
             changeable: fillable,
             plain_line_selected: kinds.any_line(),
             arrow_selected: kinds.any_arrow(),
+            orderable: Order::ALL.map(|o| d.can_reorder(&self.canvas.selection, o)),
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
         }
@@ -230,6 +231,9 @@ impl DiagramEditor {
             EditAct::ResetStyle => {
                 self.canvas
                     .style_selection(&mut self.diagram, true, Style::reset)
+            }
+            EditAct::Order(order) => {
+                self.canvas.reorder(&mut self.diagram, order);
             }
             EditAct::Escape => self.canvas.escape(&mut self.diagram),
             EditAct::ZoomIn => self.canvas.zoom_step(1),
@@ -469,6 +473,7 @@ impl DiagramEditor {
             MenuAction::TextWeight(b) => EditAct::TextWeight(b),
             MenuAction::TextStyle(i) => EditAct::TextStyle(i),
             MenuAction::ResetStyle => EditAct::ResetStyle,
+            MenuAction::Order(o) => EditAct::Order(o),
             MenuAction::Delete => EditAct::Delete,
             MenuAction::SelectAll => EditAct::SelectAll,
             MenuAction::SelectShapes => EditAct::SelectShapes,
@@ -541,5 +546,60 @@ mod tests {
         ed.paste("hello");
         assert!(ed.apply(EditAct::Fill(Swatch::Custom)).is_some());
         assert!(ed.apply(EditAct::Fill(Swatch::Default)).is_none());
+    }
+
+    /// `a` and `b` overlapping, `b` in front, and a free line.
+    fn stacked() -> DiagramEditor {
+        use blockliner_core::{Connector, ConnectorKind, End, Point, Rect, Shape, ShapeKind};
+        let mut ed = editor();
+        for (id, x) in [("a", 0.0), ("b", 60.0)] {
+            let rect = Rect::new(x, 0.0, 100.0, 60.0);
+            ed.diagram
+                .shapes
+                .push(Shape::new(id, ShapeKind::Rect, id, rect));
+        }
+        ed.diagram.connectors.push(Connector::new(
+            ConnectorKind::Line,
+            End::Free(Point::new(0.0, 200.0)),
+            End::Free(Point::new(90.0, 200.0)),
+        ));
+        ed.load(ed.diagram.clone());
+        ed
+    }
+
+    fn order(ed: &DiagramEditor) -> String {
+        ed.diagram.shapes.iter().map(|s| s.id.as_str()).collect()
+    }
+
+    #[test]
+    fn a_move_in_the_stacking_order_is_one_undo_step() {
+        let mut ed = stacked();
+        assert_eq!(ed.view().orderable, [false; 4], "nothing selected");
+        ed.canvas.select_only(vec!["a".into()], vec![0]);
+        // a is behind b: it can go up and to the front, not down or back.
+        assert_eq!(ed.view().orderable, [true, true, false, false]);
+        ed.apply(EditAct::Order(Order::Up));
+        assert_eq!(order(&ed), "ba");
+        // The same shape and line are still selected.
+        assert_eq!(ed.canvas.selection, ["a"]);
+        assert_eq!(ed.canvas.lines, [0]);
+        assert_eq!(ed.view().orderable, [false, false, true, true]);
+        assert!(ed.observe());
+        // A move that's off changes nothing, and adds no undo step.
+        ed.apply(EditAct::Order(Order::Front));
+        assert!(ed.observe());
+        ed.apply(EditAct::Undo);
+        assert_eq!(order(&ed), "ab");
+        assert!(!ed.view().can_undo);
+    }
+
+    #[test]
+    fn lines_alone_have_no_stacking_order_to_change() {
+        let mut ed = stacked();
+        ed.canvas.select_only(Vec::new(), vec![0]);
+        assert!(ed.view().has_selection);
+        assert_eq!(ed.view().orderable, [false; 4]);
+        ed.apply(EditAct::Order(Order::Back));
+        assert_eq!(order(&ed), "ab");
     }
 }

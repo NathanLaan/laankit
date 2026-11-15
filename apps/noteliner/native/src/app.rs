@@ -2548,6 +2548,7 @@ impl NoteLinerApp {
                 more_shape: ed.more_shape,
                 can_undo: view.can_undo,
                 can_redo: view.can_redo,
+                orderable: view.orderable,
                 show_grid: ed.canvas.show_grid,
                 show_dimensions: ed.canvas.show_dimensions,
                 zoom: ed.canvas.view.zoom,

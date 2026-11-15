@@ -192,4 +192,17 @@ The plans in `apps/noteliner/docs/plans/` that build on Git (`plans-remote-pages
 | Q7 | PageLiner and ThreadLiner also sync with Git. Is this change for NoteLiner only? | Yes, as you asked. `laankit-core::git` stays for them. |
 | Q8 | Should the log panel stay, as Activity Log, for MCP and import messages? | Yes. Removing it would hide what an AI assistant does to your notes. |
 | Q9 | Should New Project and Open Folder become one Open Folder action, as in BlockLiner? | Yes. A new project is an empty folder you open. |
-| Q10 | What version? NoteLiner is 2.4.1, and the layers plan proposes 2.5.0. | 3.0.0, since a headline feature is removed. |
+| Q10 | What version? NoteLiner is 2.9.0. | 3.0.0, since a headline feature is removed. |
+
+## Answers
+
+Q1. Remove
+Q2. Yes.
+Q3. Yes, add files in name order. Files can be sorted/ordered by modification date.
+Q4. Yes, delete moves the file to trash.
+Q5. Yes.
+Q6. No.
+Q7. Yes.
+Q8. Yes, for MCP and import messages.
+Q9. Yes.
+Q10. Yes, 3.0.0

@@ -25,7 +25,7 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | V, R, O, L, A, J, E, T, N, or 1–9 and 0 | Select, Rectangle, Rounded Rectangle, Line, Arrow, Right-Angle Line, Right-Angle Arrow, Text, Note tool (Shift: keep the tool after each shape). The numbers follow the toolbar and show in each tool button's corner; they're physical keys, so the number row works on any layout |
 | D, H, C, S, or 4 | Diamond, Hexagon, Database (cylinder), Subroutine. They share the More Shapes button with Stadium, Circle, Double Circle, Parallelogram, Reverse Parallelogram, Trapezoid, Inverted Trapezoid, and Asymmetric (no letters; the list or the palette): 4 (or a click) picks the one it shows, the last used; its corner triangle or a right-click lists all twelve |
 | Drag a right-angle line's middle handle | Moves its middle segment across (double-click the handle: automatic again) |
-| Right-click | Selects what's under it, then a menu: Edit Label, Cut, Copy, Paste, Change Shape ▸ (shapes), Fill ▸ (shapes) and Stroke ▸ (shapes and lines; eight presets, Default, Custom…), Stroke Style ▸ (Solid, Dashed, Dotted), Stroke Weight ▸ (1px … 4px), Text Weight ▸ (Normal, Bold), Text Style ▸ (Normal, Italic), Reset Style, Right-Angle / Straight and Add / Remove Arrowhead for lines, Delete, Select All, Select All Shapes, Select All Lines, and Select All Text. On a diagram in the Project pane: Rename…, Delete…, and Open Containing Folder… (the system file manager). On a file in the Files pane: Close (its row and its tab) and Open Containing Folder… |
+| Right-click | Selects what's under it, then a menu: Edit Label, Cut, Copy, Paste, Change Shape ▸ (shapes), Fill ▸ (shapes) and Stroke ▸ (shapes and lines; eight presets, Default, Custom…), Stroke Style ▸ (Solid, Dashed, Dotted), Stroke Weight ▸ (1px … 4px), Text Weight ▸ (Normal, Bold), Text Style ▸ (Normal, Italic), Reset Style, Right-Angle / Straight and Add / Remove Arrowhead for lines, Move to Front, Move Up, Move Down, and Move to Back for shapes, Delete, Select All, Select All Shapes, Select All Lines, and Select All Text. On a diagram in the Project pane: Rename…, Delete…, and Open Containing Folder… (the system file manager). On a file in the Files pane: Close (its row and its tab) and Open Containing Folder… |
 | Drag / click (shape tool) | Draws a shape (click: the default size, 8 × 3 cells; 8 × 4 for a diamond, 6 × 4 for a database, 4 × 4 for a circle, 5 × 5 for a double circle) |
 | Double-click a shape | Edits its label (Enter commits, Shift+Enter adds a line, Esc cancels) |
 | Double-click a connector or its label, or Enter | Edits the edge label (`a -->\|"HTTPS"\| b`); empty removes it. Enter edits the single selected shape's or connector's label. A free line has no Mermaid edge to keep a label on |
@@ -44,6 +44,7 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | Ctrl+', Ctrl+E, Ctrl+I, Ctrl+J | Toggle the grid, the sidebar (the Project, Files, and Properties panes, resized with the dividers between them and reordered by dragging their headers; Toggle Files Pane is in the palette), the Properties pane (Change Shape and Change Line, then fill, stroke, stroke style, stroke weight, and text weight and style of the selection; a line's stroke is its colour), the status bar |
 | Ctrl+Shift+D | Toggle dimension lines (each shape's width and height, in the unit Settings picks for one grid mark) |
 | Ctrl+B | Toggle Bold for the selection's labels (all Bold, or all Normal when they already are) |
+| Ctrl+], Ctrl+[, Ctrl+Shift+], Ctrl+Shift+[ | Move Up, Move Down, Move to Front, Move to Back: the selected shapes in the stacking order. Up and Down step over the nearest shape that overlaps them. Also in the toolbar's Order button, which opens the four as a list |
 | Ctrl+K, Ctrl+,, Ctrl+Shift+I | Command palette, Settings, About |
 
 ## Architecture
@@ -70,9 +71,9 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | `editor`   | `DiagramEditor`: one diagram with its undo history, canvas, and active tool; runs an edit command, copy and paste, and the keys that aren't shortcuts |
 | `commands` | `EditAct` (the edit commands) and their registrations, which each app adds to its own registry |
 | `canvas`   | The grid, painting, dimension lines, pan and zoom, the tools and their gestures, and the label editor |
-| `tools`    | The tool buttons, the More Shapes list, and the tools' keys                                  |
+| `tools`    | The tool buttons, the More Shapes list, the Order button, and the tools' keys                |
 | `properties` | The Properties pane: Change Shape and Change Line (Line, Arrow, Right-Angle Line, Right-Angle Arrow) lists, the selection's Fill and Stroke (Mixed when they differ), hex fields, the Stroke Style, Stroke Weight, Text Weight, and Text Style lists, Reset Style |
-| `glyphs`   | The icons in the lists: tools, stroke styles, weights, and text styles                       |
+| `glyphs`   | The icons in the lists: tools, stroke styles, weights, text styles, and stacking-order moves |
 | `export`   | The SVG writer (labels wrapped by egui, as on the canvas) and PNG through `resvg`            |
 | `dialogs`  | The Export and Custom colour dialogs                                                         |
 | `units`    | What one grid mark measures (mm, cm, m, in, ft) and how a length reads in it                 |
@@ -81,7 +82,7 @@ The app (`apps/blockliner/native`):
 
 | Module     | What it does                                                                                |
 |------------|---------------------------------------------------------------------------------------------|
-| `main`     | The eframe window (1280 × 800, at least 800 × 640), icon, app id, the command-line path        |
+| `main`     | The eframe window (1280 × 800, at least 800 × 712, the height of the toolbar's buttons), icon, app id, the command-line path        |
 | `app`      | Owns everything but the diagram being edited, which is a `DiagramEditor`; routes commands, tab and Files actions, overlay actions, and autosave events; puts background tabs' state aside |
 | `backend`  | The folder on disk: list, read, create, rename, delete; the debounced atomic autosave; outside changes to the open tabs' files |
 | `config`   | `ui-preferences.json` in `~/.config/BlockLiner` (the platform equivalent elsewhere)           |
@@ -108,8 +109,8 @@ cargo test -p blockliner-core -p blockliner-egui -p blockliner-native
 BLOCKLINER_BLESS=1 cargo test -p blockliner-native the_svg_matches   # rewrite the golden SVG
 ```
 
-- Core: model, geometry, snapping, ids, history, layout (including 300 random graphs with no overlaps), export scope, and the Mermaid golden files in `crates/blockliner-core/tests/fixtures` with a round trip over 2,000 generated diagrams.
-- App: egui_kittest, headless: drawing and editing shapes and lines, undo, the folder and autosave, tabs and the Files pane (each tab's own undo and view, closing tabs and files, files from outside the folder, and a restart), outside changes, importing plain Mermaid, the command line, and export (a golden SVG in `tests/fixtures/export.svg`, PNG pixels, and the dialog from the keyboard to the written file). They check widgets through AccessKit and files on disk, never pixels on screen.
+- Core: model, geometry, snapping, ids, history, the stacking order (each move, what Up and Down step over, and the order saved and read back), layout (including 300 random graphs with no overlaps), export scope, and the Mermaid golden files in `crates/blockliner-core/tests/fixtures` with a round trip over 2,000 generated diagrams.
+- App: egui_kittest, headless: drawing and editing shapes and lines, undo, the stacking order (the Order button, the right-click menu, the keys, and the palette), the folder and autosave, tabs and the Files pane (each tab's own undo and view, closing tabs and files, files from outside the folder, and a restart), outside changes, importing plain Mermaid, the command line, and export (a golden SVG in `tests/fixtures/export.svg`, PNG pixels, and the dialog from the keyboard to the written file). They check widgets through AccessKit and files on disk, never pixels on screen.
 
 ## Diagnostics
 
@@ -121,6 +122,8 @@ BLOCKLINER_BLESS=1 cargo test -p blockliner-native the_svg_matches   # rewrite t
 
 ## Still to verify by hand
 
+- Ctrl+] and Ctrl+[ on a keyboard layout where the brackets need AltGr.
+- The Order button and its list in the light theme and at other scales.
 - The folder picker, the Open File dialog, and the export save dialog on Windows, macOS, and KDE.
 - The tab strip and the Files pane by eye: many tabs scrolling sideways, long names, and the light and dark themes at 100% and 200%.
 - Ctrl+W and Ctrl+Tab on desktops that use them for their own shortcuts.

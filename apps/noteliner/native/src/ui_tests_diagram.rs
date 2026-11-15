@@ -17,7 +17,7 @@ use std::sync::Arc;
 use blockliner_egui::canvas::Tool;
 use egui::accesskit::Role;
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::Harness;
 use noteliner_core::git::NoteGit;
 use noteliner_core::project::{FileKind, Project};
@@ -279,4 +279,61 @@ fn export_writes_an_svg() {
     assert!(!h.state().has_overlay());
     let svg = std::fs::read_to_string(out.join("map.svg")).unwrap();
     assert!(svg.contains("<svg") && svg.contains("API Gateway"), "{svg}");
+}
+
+#[test]
+fn the_toolbar_moves_a_shape_behind_another_and_saves_the_order() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    open_diagram(&mut h, "Map");
+    let order = |h: &H| -> Vec<String> {
+        let d = &h.state().diagram_editor().diagram;
+        d.shapes.iter().map(|s| s.id.clone()).collect()
+    };
+    // With nothing selected the four buttons are off.
+    for name in ["Move to Front", "Move Up", "Move Down", "Move to Back"] {
+        let button = h.get_by_role_and_label(Role::Button, name);
+        assert!(button.accesskit_node().is_disabled(), "{name}");
+    }
+
+    // A second box drawn over the first (40, 40, 160 by 80) is in front of
+    // it, and selected.
+    h.key_press(Key::R);
+    h.run_steps(2);
+    let (from, to) = (at(&h, 120.0, 80.0), at(&h, 280.0, 160.0));
+    draw(&mut h, from, to);
+    let before = order(&h);
+    assert_eq!(before.len(), 2);
+    assert_eq!(before[0], "api");
+    let file = project.join("map.mmd");
+    wait_for(&mut h, "the second shape on disk", {
+        let file = file.clone();
+        move |_| std::fs::read_to_string(&file).is_ok_and(|s| s.matches("@shape").count() == 2)
+    });
+    let up = h.get_by_role_and_label(Role::Button, "Move Up");
+    assert!(up.accesskit_node().is_disabled(), "already in front");
+
+    h.get_by_role_and_label(Role::Button, "Move to Back")
+        .click();
+    h.run_steps(3);
+    assert_eq!(order(&h), [before[1].clone(), "api".to_string()]);
+    // The autosave writes the new order: api's place is now the last.
+    wait_for(&mut h, "the new order on disk", {
+        let file = file.clone();
+        move |_| {
+            std::fs::read_to_string(&file).is_ok_and(|s| {
+                s.lines()
+                    .rfind(|l| l.starts_with("%% @shape "))
+                    .is_some_and(|l| l.starts_with("%% @shape api "))
+            })
+        }
+    });
+
+    // The keys work in a diagram tab, and Ctrl+Z undoes a move.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::CloseBracket);
+    h.run_steps(2);
+    assert_eq!(order(&h), before);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run_steps(2);
+    assert_eq!(order(&h), [before[1].clone(), "api".to_string()]);
 }

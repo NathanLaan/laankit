@@ -63,7 +63,7 @@ The Help pages are `assets/help-pages.json` (loaded at build time with `include_
 | `ui_tests`       | egui_kittest: new project → new file → type → autosave → rename → drag-and-drop move → delete       |
 | `ui_tests_panes` | egui_kittest: search → jump, backlinks → jump, history, tags pane / filter / editor, attachments insert and remove, MCP allow / session / deny; and a PDF export read back with hayro |
 | `ui_tests_tabs`  | egui_kittest: each tab keeps its text and undo history, closing tabs shows the neighbour, Next File reuses the active tab, and the tabs come back when the project reopens |
-| `ui_tests_diagram` | egui_kittest: New Diagram creates a `.mmd` and shows the canvas and the tools, drawing with a button and with a tool key autosaves, a tool key typed into Search doesn't draw, a note tab and a diagram tab keep their state, and Export writes an SVG |
+| `ui_tests_diagram` | egui_kittest: New Diagram creates a `.mmd` and shows the canvas and the tools, drawing with a button and with a tool key autosaves, a tool key typed into Search doesn't draw, a note tab and a diagram tab keep their state, Export writes an SVG, and the toolbar's stacking-order buttons move a shape and the new order autosaves |
 | `ui_tests_editor`| egui_kittest: typing autosaves, list Enter, `[[` completion, a pasted image becomes an attachment and its Markdown, and Ctrl+click on a wikilink; SLIDES pane insert → disk, presentation settings save, presenter open/close; reopening a project restores the last note's caret and scroll (and only that note's) |
 
 ### Editor
@@ -104,9 +104,9 @@ A file whose name ends in `.mmd` is a diagram: a Mermaid flowchart in BlockLiner
 
 While a diagram is the active tab:
 
-- The toolbar above the document shows BlockLiner's tools, Undo and Redo, the grid, the dimension lines, the zoom, and the Properties, Export, and History toggles.
+- The toolbar above the document shows BlockLiner's tools, Undo and Redo, the four stacking-order buttons (Move to Front, Move Up, Move Down, Move to Back), the grid, the dimension lines, the zoom, and the Properties, Export, and History toggles.
 - The Properties panel is to the right of the canvas (Ctrl+I), where the preview is for a note.
-- BlockLiner's edit commands apply, with the same keys: the tool keys (V, R, O, and the rest), the digits, Delete, the arrow keys, Enter, Esc, Ctrl+Z, Ctrl+Shift+Z, Ctrl+A, Ctrl+B, and copy, cut, and paste. They are registered from `blockliner_egui::commands` and wait while a text field has the keyboard.
+- BlockLiner's edit commands apply, with the same keys: the tool keys (V, R, O, and the rest), the digits, Delete, the arrow keys, Enter, Esc, Ctrl+Z, Ctrl+Shift+Z, Ctrl+A, Ctrl+B, Ctrl+] and Ctrl+[ (with Shift for the front and the back), and copy, cut, and paste. They are registered from `blockliner_egui::commands` and wait while a text field has the keyboard.
 - Ctrl+=, Ctrl+-, and Ctrl+0 zoom NoteLiner's interface, as always. Ctrl+Shift+=, Ctrl+Shift+-, and Ctrl+Shift+0 zoom the canvas.
 - Export Diagram writes a PNG or an SVG to the Downloads folder, and Save Diagram to Mermaid copies the `.mmd` there.
 

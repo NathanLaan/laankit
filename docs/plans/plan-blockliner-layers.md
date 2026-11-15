@@ -1,6 +1,36 @@
 # BlockLiner: Layers (Stacking Order) Plan
 
-Status: for review (2026-11-15). Adds four actions that change which shape is drawn in front of another: Move Up, Move Down, Move to Front, and Move to Back. They work the same in BlockLiner and in NoteLiner's diagram editor, with toolbar buttons, right-click menu items, keys, and command palette entries.
+Status: implemented (2026-11-15), BlockLiner 2.9.0 and NoteLiner 2.9.0. Adds four actions that change which shape is drawn in front of another: Move to Front, Move Up, Move Down, and Move to Back. They work the same in BlockLiner and in NoteLiner's diagram editor, with toolbar buttons, right-click menu items, keys, and command palette entries.
+
+## Decisions
+
+| # | Decision |
+|---|---|
+| Q1 | BlockLiner has one Order button that opens the four moves as a list. NoteLiner has four buttons. |
+| Q2 | Shapes only. Lines stay in front of shapes. |
+| Q3 | Move Up and Move Down step over the nearest overlapping shape. |
+| Q4 | A reorder changes the order of the node lines in the file. |
+| Q5 | Ctrl+] and Ctrl+[, with Shift for the front and the back. |
+| Q6 | Not done. See below. |
+| Q7 | Stacking order only. |
+| Q8 | BlockLiner 2.9.0 and NoteLiner 2.9.0. |
+
+## Changes during implementation
+
+| Planned | Built | Why |
+|---|---|---|
+| BlockLiner's toolbar fits at 800 by 640 with one Order button | The minimum window height is 712 px, plus the title bar's 32 px when the app draws its own | Measured: the toolbar was already a few pixels over at 640, and one more button with its divider needs 706. |
+| One generic `When` mapping for both apps (Q6) | Each app has one more arm, and a small function for the four moves | The registry takes plain function pointers, so a mapping that carries the move needs a function per move either way. NoteLiner already maps the rest through `When::holds`. |
+| A shared `order_buttons` for NoteLiner's four buttons | NoteLiner draws its own four small buttons with the shared icon (`paint_order_icon`) and key text (`order_keys`) | NoteLiner's toolbar buttons are 28 px, as its Undo and Redo are, and the shared toolbar button is 36 px. |
+| "Two overlapping shapes touch" was undefined | Rectangles that only share an edge don't overlap | Shapes snapped to the grid often sit side by side. |
+| Copy and paste keeping the stacking order was a risk to check | Read in the code, not tested | See "Not verified". |
+
+## Not verified
+
+- Copying several shapes and pasting them keeps their stacking among themselves. `clipboard::copy` takes the shapes in the diagram's order, so it should, but no test pins it.
+- The keys on a keyboard layout where the brackets need AltGr.
+- NoteLiner's four buttons by eye. They are covered by a headless test, and the same icons were checked in BlockLiner's Order list in a screenshot (dark theme).
+- The light theme and other scales.
 
 ## Summary
 
@@ -190,7 +220,7 @@ One effect outside BlockLiner: Mermaid's own layout reads the node lines in orde
 |---|---|---|
 | P1 | `Order`, `reorder`, and `can_reorder` in the model | Core tests pass |
 | P2 | The act, the view, the commands with their keys, the menu group, and the glyphs | In both apps the four keys and the right-click items reorder shapes, and one Ctrl+Z puts them back |
-| P3 | A screenshot of BlockLiner at its minimum size, then the toolbar buttons in both apps and the shared `tool_buttons` | The buttons work in both apps, are greyed when off, and BlockLiner's toolbar fits at 800 by 640 |
+| P3 | A screenshot of BlockLiner at its minimum size, then the toolbar buttons in both apps and the shared `tool_buttons` | The buttons work in both apps, are greyed when off, and BlockLiner's toolbar fits at its minimum window size |
 | P4 | UI tests and docs | The READMEs describe the actions, and the suites pass |
 
 ## Tests
@@ -222,13 +252,4 @@ One effect outside BlockLiner: Mermaid's own layout reads the node lines in orde
 
 ## Open questions
 
-| # | Question | Recommendation |
-|---|---|---|
-| Q1 | BlockLiner's side toolbar looks full at the minimum window height. One Order button that opens the four (A), four buttons with a scrolling toolbar (B), or four buttons and a taller minimum window (C)? | A in BlockLiner, and four buttons in NoteLiner, whose toolbar has the room. |
-| Q2 | Should the actions apply to lines as well as shapes? | No. Lines stay in front of shapes. Putting a line behind a shape is a larger change to the model and the file format, and is worth its own plan if you need it. |
-| Q3 | Should Move Up and Move Down step over the nearest overlapping shape, or move exactly one place in the whole order as Visio and PowerPoint do? | The nearest overlapping shape, so each press changes what you see. |
-| Q4 | A reorder changes the order of the node lines, which can change how other Mermaid tools lay the diagram out. Accept that, or keep the node lines in their first order and store the stacking order only in the `@shape` lines? | Accept it. It needs no format change, and other tools already ignore BlockLiner's positions. Keeping the first order needs a second order in the model. |
-| Q5 | Are the keys right: Ctrl+] and Ctrl+[ for Up and Down, with Shift for Front and Back? | Yes. They are the usual keys for these actions in drawing apps. |
-| Q6 | Should the two apps' `When` mappings be replaced by one generic function while this is being done? | Yes, if it turns out to be a small change. It removes one edit per app for every later diagram command. |
-| Q7 | Is stacking order what you mean by layers, or do you also want named layers? | Stacking order only, from the four actions you listed. |
-| Q8 | What versions? BlockLiner is 2.8.1 and NoteLiner is 2.4.1. | BlockLiner 2.9.0 and NoteLiner 2.5.0. |
+All answered. See Decisions.

@@ -21,6 +21,7 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - Bold and italic labels: Text Weight (Normal / Bold) and Text Style (Normal / Italic) for shape and edge labels, from the Properties pane, the right-click menu, or the palette; Ctrl+B toggles Bold. Saved as `font-weight:bold` and `font-style:italic`.
 - Reset Style: returns the selection to the theme's colours, a solid 1px stroke, and Normal text.
 - Copy and paste: Ctrl+C, Ctrl+X, and Ctrl+V, within a diagram, between diagrams, and between windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out; other text pastes as a text box.
+- Stacking order: Move to Front, Move Up, Move Down, and Move to Back put a shape in front of or behind the ones it overlaps, from the toolbar's Order button, the right-click menu, the palette, or Ctrl+] and Ctrl+[ (with Shift for the front and the back). Move Up and Move Down step over the nearest shape that overlaps the selection. Lines stay in front of shapes. The order is the order of the nodes in the file.
 - Editing: box select, nudge with the arrow keys, undo and redo, single-key tools (V, R, O, D, H, C, S, L, A, J, E, T, N, or 1–9 and 0 in toolbar order), a right-click menu, and a command palette (Ctrl+K).
 - A folder of diagrams: open any folder; its `.mmd` files are the Project pane's diagrams. Right-click one to rename it, delete it, or open its containing folder in the system file manager. Changes autosave, and edits made elsewhere (an editor, `git pull`) reload as an undoable step. Close Folder saves, closes the folder's own files, and goes back to no folder.
 - Files and tabs: the sidebar's Files pane lists every open file, from the project folder or from anywhere else (Open File, Ctrl+Shift+O). Each open file can have a tab above the canvas, with its own undo history, pan, and zoom. Closing a tab (its close button, a middle-click, or Ctrl+W) keeps the file in the Files pane; Close in a file's right-click menu removes it and closes its tab. Ctrl+Tab and Ctrl+Shift+Tab switch tabs. The files and tabs come back at the next start.
@@ -70,7 +71,7 @@ The layout block goes at the end because Mermaid front matter (`---`) must be th
 | Comment | Meaning |
 |---|---|
 | `%% blockliner <version> grid=<px>` | Format version (1) and grid size. |
-| `%% @shape <id> x= y= w= h=` | Every shape's rectangle, in model order. |
+| `%% @shape <id> x= y= w= h=` | Every shape's rectangle, in model order, which is the stacking order from back to front. |
 | `%% @edge <from>-><to>[#n] [from=<anchor>] [to=<anchor>] [route=elbow [mid=x:<n>\|y:<n>]]` | Fixed anchors and the route of the nth edge between two nodes. Written only when an anchor is fixed or the route is right-angle; otherwise the glue is dynamic and the edge straight. Keyed by endpoints, not position, so a hand-inserted edge doesn't shift the others. |
 | `%% @line <line\|arrow> from=<end> to=<end> [route=elbow [mid=…]] [stroke=<colour>] [dash=dashed\|dotted\|<dasharray>] [weight=<px>] [text=bold\|italic\|bold-italic]` | A connector with at least one free end. An end is `x,y` or `id[:anchor]`. `stroke=` is its colour, `dash=` its stroke style, `weight=` its stroke weight, and `text=` its label's weight and style. |
 

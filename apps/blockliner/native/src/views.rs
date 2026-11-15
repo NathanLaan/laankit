@@ -13,7 +13,7 @@ use laankit_egui::theme::Palette;
 use laankit_egui::toolbar::{self, ToolbarButton};
 use laankit_egui::{fonts, icons, theme};
 
-use blockliner_egui::tools::{more_shapes_button, tool_button};
+use blockliner_egui::tools::{order_menu_button, tool_buttons};
 
 use crate::canvas::Tool;
 use crate::commands::Act;
@@ -29,6 +29,8 @@ pub struct ToolbarProps {
     pub tool: Tool,
     /// The shape the More Shapes button shows and picks.
     pub more_shape: Tool,
+    /// Which stacking-order moves would move a selected shape.
+    pub orderable: [bool; 4],
     /// A folder is open.
     pub can_close_folder: bool,
     /// The Properties pane is showing.
@@ -46,22 +48,14 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps) -> Vec<Act> {
     toolbar::show(
         ui,
         |ui| {
-            for tool in Tool::ALL {
-                if tool.is_more() {
-                    // One button for the four.
-                    if tool == Tool::MORE[0] {
-                        if let Some(t) = more_shapes_button(ui, props.more_shape, props.tool) {
-                            out.push(Act::Edit(EditAct::Tool(t)));
-                        }
-                    }
-                    continue;
-                }
-                if tool_button(ui, tool, props.tool == tool) {
-                    out.push(Act::Edit(EditAct::Tool(tool)));
-                }
-                if tool == Tool::Select {
-                    toolbar::divider(ui);
-                }
+            if let Some(t) = tool_buttons(ui, props.tool, props.more_shape, toolbar::divider) {
+                out.push(Act::Edit(EditAct::Tool(t)));
+            }
+            // One button for the four moves: the column has no room for
+            // four more at the smallest window.
+            toolbar::divider(ui);
+            if let Some(order) = order_menu_button(ui, props.orderable) {
+                out.push(Act::Edit(EditAct::Order(order)));
             }
         },
         |ui| {

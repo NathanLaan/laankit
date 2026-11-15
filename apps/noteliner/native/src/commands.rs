@@ -10,6 +10,7 @@
 //! keyboard. Ctrl+=, Ctrl+- and Ctrl+0 stay NoteLiner's interface zoom; the
 //! canvas zooms with Ctrl+Shift+=, Ctrl+Shift+- and Ctrl+Shift+0.
 
+use blockliner_core::Order;
 use blockliner_egui::commands::{EditAct, EditView, When};
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
@@ -178,6 +179,16 @@ diagram_whens! {
     diagram_redoable => Redoable,
 }
 
+/// The predicate for a move in the diagram's stacking order.
+fn diagram_orderable(order: Order) -> fn(&View) -> bool {
+    match order {
+        Order::Front => |v| diagram_ready(v) && v.diagram.can_order(Order::Front),
+        Order::Up => |v| diagram_ready(v) && v.diagram.can_order(Order::Up),
+        Order::Down => |v| diagram_ready(v) && v.diagram.can_order(Order::Down),
+        Order::Back => |v| diagram_ready(v) && v.diagram.can_order(Order::Back),
+    }
+}
+
 /// The predicate for one of BlockLiner's edit commands.
 fn diagram_when(when: When) -> fn(&View) -> bool {
     match when {
@@ -192,6 +203,7 @@ fn diagram_when(when: When) -> fn(&View) -> bool {
         When::HasLine => diagram_has_line,
         When::HasPlainLine => diagram_has_plain_line,
         When::HasArrow => diagram_has_arrow,
+        When::Orderable(order) => diagram_orderable(order),
         When::Undoable => diagram_undoable,
         When::Redoable => diagram_redoable,
     }
