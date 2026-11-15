@@ -8,8 +8,6 @@
 
 use std::collections::HashMap;
 
-use serde_json::Value;
-
 use crate::diagram::DiagramStash;
 use crate::editor::NoteEditor;
 
@@ -24,7 +22,6 @@ pub enum Stashed {
 /// its frontmatter, and where the caret and scroll were.
 pub struct NoteStash {
     pub editor: NoteEditor,
-    pub frontmatter: Value,
     pub anchor: usize,
     pub head: usize,
     pub scroll: egui::Vec2,

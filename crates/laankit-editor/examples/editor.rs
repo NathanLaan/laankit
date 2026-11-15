@@ -23,7 +23,6 @@ struct App {
     name: String,
     state: EditorState,
     show_preview: bool,
-    show_history: bool,
     last_event: String,
     screenshot: Option<Screenshot>,
 }
@@ -37,13 +36,11 @@ impl eframe::App for App {
             .show(ui, |ui| {
                 let props = ToolbarProps {
                     file_name: Some(&self.name),
-                    show_history: self.show_history,
                     show_preview: self.show_preview,
                 };
                 for action in toolbar::show(ui, &mut self.state, &props) {
                     match action {
                         toolbar::ToolbarAction::TogglePreview => self.show_preview ^= true,
-                        toolbar::ToolbarAction::ToggleHistory => self.show_history ^= true,
                     }
                 }
             });
@@ -165,7 +162,6 @@ fn main() -> eframe::Result {
                 name,
                 state,
                 show_preview: false,
-                show_history: false,
                 last_event: String::new(),
                 screenshot: Screenshot::from_env(),
             }))

@@ -1,6 +1,6 @@
 //! The bar above a diagram, in the note toolbar's place: the file name,
 //! BlockLiner's tools in a row, Undo and Redo, the grid and zoom, and the
-//! Properties, Export and History toggles.
+//! Properties and Export toggles.
 
 use blockliner_core::Order;
 use blockliner_egui::canvas::Tool;
@@ -37,7 +37,6 @@ pub struct ToolbarProps<'a> {
     /// The canvas zoom; 1.0 is 100%.
     pub zoom: f32,
     pub show_properties: bool,
-    pub show_history: bool,
     /// The diagram has something to export.
     pub can_export: bool,
 }
@@ -50,7 +49,6 @@ pub enum ToolbarAction {
     ToggleDimensions,
     ToggleProperties,
     Export,
-    ToggleHistory,
 }
 
 /// Draws the toolbar across the available width. The tools scroll sideways
@@ -145,15 +143,6 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps<'_>) -> Vec<ToolbarAction> {
                 });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                if button(
-                    ui,
-                    icons::CLOCK_ROTATE_LEFT,
-                    "Toggle History (Ctrl+H)",
-                    props.show_history,
-                    true,
-                ) {
-                    out.push(ToolbarAction::ToggleHistory);
-                }
                 if button(
                     ui,
                     icons::FILE_EXPORT,

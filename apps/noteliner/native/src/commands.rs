@@ -20,6 +20,9 @@ use laankit_egui::theme::ThemeId;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Act {
     NewFile,
+    /// A new folder, in the selected folder or beside the selected note.
+    NewFolder,
+    /// Deletes the selected note or diagram, or the selected folder.
     DeleteFile,
     DuplicateFile,
     ImportDocument,
@@ -59,7 +62,6 @@ pub enum Act {
     GoToLine,
     AddTag,
     TogglePreview,
-    ToggleHistory,
     ToggleSidebar,
     ToggleToolbar,
     ToggleOutline,
@@ -73,8 +75,6 @@ pub enum Act {
     ZoomIn,
     ZoomOut,
     ZoomReset,
-    Sync,
-    ProjectSettings,
     GoHome,
     SetTheme(ThemeId),
     Settings,
@@ -91,6 +91,8 @@ pub enum Act {
 pub struct View {
     pub project_open: bool,
     pub has_selection: bool,
+    /// A folder is selected in the tree.
+    pub folder_selected: bool,
     pub is_deck: bool,
     pub tags_visible: bool,
     /// How many tabs are open.
@@ -118,6 +120,12 @@ fn project_open(v: &View) -> bool {
 
 fn has_selection(v: &View) -> bool {
     project_open(v) && v.has_selection
+}
+
+/// A note, a diagram or a folder is selected: Delete has something to
+/// delete.
+fn deletable(v: &View) -> bool {
+    project_open(v) && (v.has_selection || v.folder_selected)
 }
 
 fn has_tab(v: &View) -> bool {
@@ -319,11 +327,12 @@ pub fn registry() -> Registry<Act, View> {
             .shortcut("Ctrl+N")
             .when(project_open),
     );
+    r.register(add("file.newFolder", "New Folder...", "File", Act::NewFolder).when(project_open));
     r.register(
         add("file.delete", "Delete File", "File", Act::DeleteFile)
             .key(Binding::logical(cmd, Key::D))
             .shortcut("Ctrl+D")
-            .when(has_selection),
+            .when(deletable),
     );
     r.register(
         add(
@@ -545,16 +554,6 @@ pub fn registry() -> Registry<Act, View> {
     );
     r.register(
         view(
-            "view.toggleHistory",
-            "Toggle History",
-            Act::ToggleHistory,
-            Binding::logical(cmd, Key::H),
-            "Ctrl+H",
-        )
-        .when(project_open),
-    );
-    r.register(
-        view(
             "view.toggleSidebar",
             "Toggle Files Panel",
             Act::ToggleSidebar,
@@ -684,23 +683,6 @@ pub fn registry() -> Registry<Act, View> {
     );
 
     // Project
-    r.register(
-        add("project.sync", "Remote Sync", "Project", Act::Sync)
-            .key(Binding::physical(shift, Key::S))
-            .shortcut("Ctrl+Shift+S")
-            .when(project_open),
-    );
-    r.register(
-        add(
-            "project.settings",
-            "Project Settings",
-            "Project",
-            Act::ProjectSettings,
-        )
-        .key(Binding::physical(shift, Key::Comma))
-        .shortcut("Ctrl+Shift+,")
-        .when(project_open),
-    );
     r.register(
         add(
             "project.goHome",
@@ -875,7 +857,6 @@ mod tests {
             "Ctrl+Shift+V",
             "Ctrl+Shift++",
             "Ctrl+P",
-            "Ctrl+H",
             "Ctrl+E",
             "Ctrl+Shift+E",
             "Ctrl+Shift+O",
@@ -890,8 +871,6 @@ mod tests {
             "Ctrl+-",
             "Ctrl+0",
             "Ctrl+T",
-            "Ctrl+Shift+S",
-            "Ctrl+Shift+,",
             "Ctrl+,",
             "Ctrl+Shift+I",
             "F1",

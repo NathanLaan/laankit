@@ -2,7 +2,7 @@
 //! built with `noteliner-core` in a temp folder: search → jump to the
 //! line, backlinks → jump, the history list and an old version, the TAGS
 //! pane and tag filter, the tag editor, the MCP confirmation's three
-//! decisions, and a PDF export. Needs `git` on the PATH, like the app.
+//! decisions, and a PDF export.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -11,7 +11,6 @@ use egui::accesskit::Role;
 use egui::{Key, Modifiers};
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
-use noteliner_core::git::NoteGit;
 use noteliner_core::project::Project;
 use serde_json::json;
 
@@ -24,11 +23,9 @@ use crate::ui_tests::{file_by_name, harness, index, wait_for};
 fn fixture(dir: &Path) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let mut p = Project::new(NoteGit::new(Arc::new(|_| {})));
-        p.init(dir, None).await.unwrap();
-        p.set_git_config("Test User", "test@localhost")
-            .await
-            .unwrap();
+        std::fs::create_dir_all(dir).unwrap();
+        let mut p = Project::new();
+        p.open(dir).await.unwrap();
         let alpha = p
             .create_file(
                 "Alpha",
@@ -84,12 +81,12 @@ fn select(h: &mut Harness<'static, NoteLinerApp>, name: &str) {
 }
 
 fn close(mut h: Harness<'static, NoteLinerApp>) {
-    h.state_mut().backend().close_project(None);
+    h.state_mut().backend().close_project(Vec::new());
     wait_for(&mut h, "the close", |a| a.project_index().is_none());
 }
 
 #[test]
-fn search_backlinks_and_history() {
+fn search_and_backlinks() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut h, _) = open_project(tmp.path());
     select(&mut h, "Beta");
@@ -110,8 +107,10 @@ fn search_backlinks_and_history() {
     h.get_by_label("Line 2: find the needle here").click();
     let a2 = alpha.clone();
     wait_for(&mut h, "the jump to Alpha line 2", move |a| {
-        a.editor_file_id().as_deref() == Some(a2.as_str()) && a.editor_cursor().0 == 2
+        a.editor_file_id().as_deref() == Some(a2.as_str()) && a.editor_body_line() == 2
     });
+    // The line is the note's second: in the file it comes after the block.
+    assert!(h.state().editor_cursor().0 > 2);
 
     // BACKLINKS on Alpha: Beta's line, which jumps to Beta.
     h.state_mut().layout_mut().unwrap().show_backlinks = true;
@@ -127,22 +126,9 @@ fn search_backlinks_and_history() {
     h.get_by_label("Line 1: See [[Alpha]] for more.").click();
     let beta = id_of(&h, "Beta");
     wait_for(&mut h, "the backlink jump", move |a| {
-        a.editor_file_id().as_deref() == Some(beta.as_str()) && a.editor_cursor().0 == 1
+        a.editor_file_id().as_deref() == Some(beta.as_str()) && a.editor_body_line() == 1
     });
 
-    // HISTORY of Beta: its commit, and the note as it was.
-    h.state_mut().layout_mut().unwrap().show_history = true;
-    wait_for(&mut h, "the history", |a| !a.history().commits.is_empty());
-    let commit = h.state().history().commits[0].clone();
-    assert_eq!(commit.message, "Add Beta");
-    h.get_by_label(&format!(
-        "{} {}: {}",
-        crate::views::history::format_date(&commit.date),
-        commit.author,
-        commit.message
-    ))
-    .click();
-    wait_for(&mut h, "the old version", |a| a.history().has_content());
     close(h);
 }
 

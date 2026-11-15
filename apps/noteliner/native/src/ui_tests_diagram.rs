@@ -9,17 +9,15 @@
 //!   follows the active tab;
 //! - Export writes an SVG.
 //!
-//! Needs `git` on the PATH, like the app.
+//!
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use blockliner_egui::canvas::Tool;
 use egui::accesskit::Role;
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::Harness;
-use noteliner_core::git::NoteGit;
 use noteliner_core::project::{FileKind, Project};
 use serde_json::json;
 
@@ -38,11 +36,9 @@ const MAP: &str =
 fn fixture(dir: &Path) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let mut p = Project::new(NoteGit::new(Arc::new(|_| {})));
-        p.init(dir, None).await.unwrap();
-        p.set_git_config("Test User", "test@localhost")
-            .await
-            .unwrap();
+        std::fs::create_dir_all(dir).unwrap();
+        let mut p = Project::new();
+        p.open(dir).await.unwrap();
         p.create_file("Alpha", &json!([]), Some("Alpha text\n".into()), None)
             .await
             .unwrap();

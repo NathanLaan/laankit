@@ -1,6 +1,6 @@
 [package]
 name = "noteliner-native"
-version = "2.9.0"
+version = "3.0.0"
 description = "NoteLiner in pure Rust: an egui UI over noteliner-core."
 edition.workspace = true
 license.workspace = true
@@ -62,14 +62,14 @@ maintainer = "Nathan Laan <NathanLaan@users.noreply.github.com>"
 copyright = "2026, Nathan Laan"
 license-file = ["../../../LICENSE", "0"]
 extended-description = """\
-Outliner-style Markdown notes with git sync: a tree of notes, an editor with \
-highlighting and spell check, wikilinks, backlinks, tags, history, slides, \
-PDF/HTML export and an MCP server for AI clients."""
+Outliner-style Markdown notes in a plain folder: a tree of folders and notes, \
+an editor with highlighting and spell check, wikilinks, backlinks, tags, \
+slides, PDF/HTML export and an MCP server for AI clients."""
 section = "editors"
 priority = "optional"
 # $auto adds libc/libgcc. The rest are dlopened by winit/glutin/fontconfig, so
-# dpkg-shlibdeps can't see them; git is run for sync and history.
-depends = "$auto, git, libegl1, libgl1, libfontconfig1, libxkbcommon0, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrender1, libxkbcommon-x11-0"
+# dpkg-shlibdeps can't see them.
+depends = "$auto, libegl1, libgl1, libfontconfig1, libxkbcommon0, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrender1, libxkbcommon-x11-0"
 conflicts = "note-liner"
 replaces = "note-liner"
 provides = "note-liner"
@@ -90,7 +90,7 @@ assets = [
 [package.metadata.generate-rpm]
 name = "noteliner"
 license = "MIT"
-summary = "Outliner-style Markdown notes with git sync"
+summary = "Outliner-style Markdown notes in a plain folder"
 url = "https://github.com/NathanLaan/laankit"
 assets = [
     { source = "target/release/noteliner", dest = "/usr/bin/noteliner", mode = "755" },
@@ -107,7 +107,6 @@ assets = [
 ]
 # Sonames, not package names, so the requirements hold across RPM distros.
 [package.metadata.generate-rpm.requires]
-git = "*"
 "libEGL.so.1()(64bit)" = "*"
 "libGL.so.1()(64bit)" = "*"
 "libfontconfig.so.1()(64bit)" = "*"

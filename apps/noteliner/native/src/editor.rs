@@ -1,27 +1,37 @@
-//! The note editor: `laankit-editor`'s widget (`Editor.svelte`) wrapped with
-//! the app's autosave and status contract.
+//! The note editor: `laankit-editor`'s widget wrapped with the app's
+//! autosave, status and frontmatter contract.
 //!
-//! - **Loading.** The app calls [`NoteEditor::load`] when a note's
-//!   `file:read` arrives (body only; frontmatter stays on disk). Before
-//!   switching notes it calls [`NoteEditor::flush`] and writes what it
-//!   returns, so a pending edit lands in the note it was made in. (The
-//!   Svelte timer wrote to whatever note was selected when it fired.)
-//! - **Autosave** (`scheduleSave` in `Editor.svelte`): every edit marks the
-//!   note `Unsaved` and restarts a 500 ms timer; when it fires,
-//!   [`NoteEditor::show`] returns [`EditorAction::Save`] and the status is
-//!   `Saving` until the app reports [`NoteEditor::saved`]. Edits made while
-//!   saving keep it `Unsaved` and schedule another save.
-//! - **External changes** (`git:resetToRemote`, a history restore):
-//!   [`NoteEditor::replace`] swaps the text in when nothing is pending, as
-//!   `updateEditorContent` does. Slide edits go through
-//!   [`NoteEditor::apply_slide_edit`] (`applySlideEdit`: replaced, then
-//!   written at once).
+//! - **The whole file.** The editor holds a note's file as it is on disk:
+//!   the `---` frontmatter block at the top, then the text. What is typed in
+//!   the block is saved as typed. Everything else that reads the note (the
+//!   preview, slides, outline, word count, exports) reads [`NoteEditor::text`],
+//!   which is the text after the block, and lines given to or taken from
+//!   those are lines of that text ([`NoteEditor::scroll_to_line`],
+//!   [`NoteEditor::body_line`]).
+//! - **Frontmatter.** [`NoteEditor::frontmatter`] is the block as last read.
+//!   While the block can't be read as YAML (a half-typed line) it keeps its
+//!   last good value and [`NoteEditor::frontmatter_unreadable`] is set. When
+//!   NoteLiner changes the block itself (a tag added in the Tags pane,
+//!   Presentation Settings, a field a save put back),
+//!   [`NoteEditor::set_frontmatter`] swaps it in: not an undo step, and the
+//!   note isn't marked as edited.
+//! - **Loading.** The app calls [`NoteEditor::load`] when a note's file has
+//!   been read. Before switching notes it calls [`NoteEditor::flush`] and
+//!   writes what it returns, so a pending edit lands in the note it was made
+//!   in.
+//! - **Autosave**: every edit marks the note `Unsaved` and restarts a 500 ms
+//!   timer; when it fires, [`NoteEditor::show`] returns
+//!   [`EditorAction::Save`] and the status is `Saving` until the app reports
+//!   [`NoteEditor::saved`]. Edits made while saving keep it `Unsaved` and
+//!   schedule another save.
+//! - **Changes on disk** by another program: [`NoteEditor::replace`] swaps
+//!   the file in when nothing is pending. With an edit pending the app asks
+//!   first, and [`NoteEditor::hold`] stops the autosave until it has an
+//!   answer. Slide edits go through [`NoteEditor::apply_slide_edit`]
+//!   (replaced, then written at once).
 //! - **Status bar**: [`NoteEditor::status`], [`NoteEditor::cursor`]
-//!   (1-based line and column), [`NoteEditor::selection_len`] and the text
-//!   for word and character counts.
-//! - **Navigation**: [`NoteEditor::scroll_to_line`] (outline, backlinks,
-//!   search results, slides) moves the caret to a line and scrolls it to the
-//!   top.
+//!   (1-based line and column in the file), [`NoteEditor::selection_len`]
+//!   and the text for word and character counts.
 //! - **Everything else the widget reports** (pasted and dropped files,
 //!   Ctrl+click on links, the context menu's exports, "Add to dictionary")
 //!   comes back as [`EditorAction`]s for the app.
@@ -37,6 +47,9 @@ use laankit_editor::toolbar::{self, ToolbarAction, ToolbarProps};
 use laankit_editor::{
     Command, CursorStatus, Editor, EditorEvent, EditorPrefs, EditorState, SaveFormat, SpellChecker,
 };
+
+use noteliner_core::frontmatter::{self, Block};
+use serde_json::{json, Value};
 
 use crate::backend::ExportKind;
 
@@ -63,7 +76,7 @@ impl SaveStatus {
     }
 }
 
-/// A write for the app to send to the backend (`file:write`).
+/// A write for the app to send to the backend: the whole file.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SaveRequest {
     pub id: String,
@@ -76,7 +89,6 @@ pub struct SaveRequest {
 pub enum EditorAction {
     Save(SaveRequest),
     TogglePreview,
-    ToggleHistory,
     /// Right-click → Save to HTML / PDF / Markdown.
     Export(ExportKind),
     /// An image was pasted: save it as an attachment of `file_id`, then
@@ -117,6 +129,40 @@ pub struct NoteEditor {
     /// frame, and the text area's rect (for drops from the file tree).
     char_at_pointer: Option<usize>,
     text_rect: Option<egui::Rect>,
+    /// The frontmatter block, as of text version `front.version`.
+    front: Front,
+    /// The autosave waits (the app is asking about a change on disk).
+    held: bool,
+}
+
+/// Where the frontmatter block ends, and what it holds.
+#[derive(Clone, Debug, PartialEq)]
+struct Front {
+    /// The text version this was read from.
+    version: Option<u64>,
+    /// The byte where the note's text starts.
+    start: usize,
+    /// The lines before the note's text.
+    lines: usize,
+    /// The block as written, to notice when it changes.
+    block: String,
+    /// The block's fields: the last ones that could be read.
+    data: Value,
+    /// The block isn't YAML NoteLiner can read.
+    unreadable: bool,
+}
+
+impl Default for Front {
+    fn default() -> Self {
+        Self {
+            version: None,
+            start: 0,
+            lines: 0,
+            block: String::new(),
+            data: json!({}),
+            unreadable: false,
+        }
+    }
 }
 
 impl Default for NoteEditor {
@@ -137,6 +183,8 @@ impl Default for NoteEditor {
             },
             char_at_pointer: None,
             text_rect: None,
+            front: Front::default(),
+            held: false,
         }
     }
 }
@@ -151,7 +199,8 @@ impl NoteEditor {
         }
     }
 
-    /// A freshly read note (`selectFile`): in sync with disk.
+    /// A freshly read note, with its frontmatter: in sync with disk. The
+    /// caret starts on the note's text, below the block.
     pub fn load(&mut self, id: &str, name: &str, filename: &str, content: String) {
         self.id = Some(id.to_string());
         self.name = name.to_string();
@@ -160,11 +209,46 @@ impl NoteEditor {
         self.status = SaveStatus::Saved;
         self.dirty_since = None;
         self.saving = None;
+        self.held = false;
+        self.front = Front::default();
+        self.sync();
+        let start = self.state.text()[..self.front.start].chars().count();
+        self.state.set_cursor(&self.ctx, start, start);
+        self.state.set_scroll_offset(egui::Vec2::ZERO);
         self.caret = CursorStatus {
-            line: 1,
+            line: self.front.lines + 1,
             col: 1,
             ..Default::default()
         };
+    }
+
+    /// Reads the frontmatter block again if the text changed.
+    fn sync(&mut self) {
+        let version = self.state.version();
+        if self.front.version == Some(version) {
+            return;
+        }
+        self.front.version = Some(version);
+        let text = self.state.text();
+        let start = frontmatter::body_start(text);
+        self.front.start = start;
+        if text[..start] == self.front.block {
+            return;
+        }
+        self.front.block = text[..start].to_string();
+        self.front.lines = self.front.block.bytes().filter(|b| *b == b'\n').count();
+        match frontmatter::block(text) {
+            Block::Missing => {
+                self.front.data = json!({});
+                self.front.unreadable = false;
+            }
+            Block::Data(data) => {
+                self.front.data = frontmatter::to_json(&data);
+                self.front.unreadable = false;
+            }
+            // The last good fields stay until the block reads again.
+            Block::Unreadable => self.front.unreadable = true,
+        }
     }
 
     /// No note open (the note was deleted, or the project closed).
@@ -183,6 +267,8 @@ impl NoteEditor {
         };
         self.char_at_pointer = None;
         self.text_rect = None;
+        self.held = false;
+        self.front = Front::default();
     }
 
     /// An empty editor set up as this one (context, display preferences),
@@ -200,8 +286,108 @@ impl NoteEditor {
         self.id.as_deref()
     }
 
+    /// The note's text, without its frontmatter: what the preview, slides,
+    /// outline and counts read.
     pub fn text(&self) -> &str {
+        let text = self.state.text();
+        text.get(self.front.start..).unwrap_or(text)
+    }
+
+    /// The whole file, as the editor shows it and as it is saved.
+    pub fn file_text(&self) -> &str {
         self.state.text()
+    }
+
+    /// The frontmatter's fields, as last read.
+    pub fn frontmatter(&self) -> &Value {
+        &self.front.data
+    }
+
+    /// The frontmatter can't be read as YAML just now (a half-typed line).
+    pub fn frontmatter_unreadable(&self) -> bool {
+        self.id.is_some() && self.front.unreadable
+    }
+
+    /// The note has a `presentation:` block.
+    pub fn is_deck(&self) -> bool {
+        self.id.is_some()
+            && self
+                .front
+                .data
+                .get("presentation")
+                .is_some_and(|p| !p.is_null())
+    }
+
+    /// The note's name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// An edit is waiting to be written, or being written.
+    pub fn is_dirty(&self) -> bool {
+        self.dirty_since.is_some() || self.saving.is_some()
+    }
+
+    /// Stops (or restarts) the autosave, while the app asks what to do about
+    /// a change on disk.
+    pub fn hold(&mut self, held: bool) {
+        self.held = held;
+        if !held && self.dirty_since.is_some() {
+            self.ctx.request_repaint();
+        }
+    }
+
+    /// Replaces the frontmatter block with the one at the top of `file`
+    /// (a whole file, as NoteLiner wrote it). Not an undo step, and the note
+    /// isn't marked as edited. Returns whether the block changed.
+    pub fn set_frontmatter(&mut self, file: &str) -> bool {
+        if self.id.is_none() {
+            return false;
+        }
+        self.sync();
+        let head = &file[..frontmatter::body_start(file)];
+        let changed = self.state.replace_head(&self.ctx, self.front.start, head);
+        if changed {
+            self.sync();
+            self.ctx.request_repaint();
+        }
+        changed
+    }
+
+    /// The block, when a save of `saved` came back as `rewritten`: taken only
+    /// if the block is still the one that was saved (the user hasn't typed
+    /// in it since).
+    pub fn frontmatter_rewritten(&mut self, saved: &str, rewritten: &str) -> bool {
+        self.sync();
+        if saved[..frontmatter::body_start(saved)] != self.front.block {
+            return false;
+        }
+        self.set_frontmatter(rewritten)
+    }
+
+    /// Writes an index entry's tags into the block, as the backend does in
+    /// the file. A block that can't be read is left alone.
+    pub fn retag(&mut self, entry: &Value) -> bool {
+        self.sync();
+        let no_tags = entry["tags"].as_array().is_none_or(Vec::is_empty);
+        if self.id.is_none() || (no_tags && self.front.start == 0) {
+            return false;
+        }
+        match frontmatter::retag(self.state.text(), entry) {
+            Some(next) => self.set_frontmatter(&next),
+            None => false,
+        }
+    }
+
+    /// Sets, replaces or (with null) removes the block's `presentation:`.
+    pub fn set_presentation(&mut self, presentation: &Value) -> bool {
+        if self.id.is_none() {
+            return false;
+        }
+        match frontmatter::with_presentation(self.state.text(), presentation) {
+            Some(next) => self.set_frontmatter(&next),
+            None => false,
+        }
     }
 
     /// Bumped on every change of the text (to cache what's derived from it).
@@ -213,9 +399,15 @@ impl NoteEditor {
         self.status
     }
 
-    /// The caret: 1-based line and column.
+    /// The caret: 1-based line and column in the file, frontmatter counted.
     pub fn cursor(&self) -> (usize, usize) {
         (self.caret.line.max(1), self.caret.col.max(1))
+    }
+
+    /// The caret's line in the note's text (1-based). 0 while the caret is
+    /// in the frontmatter.
+    pub fn body_line(&self) -> usize {
+        self.caret.line.max(1).saturating_sub(self.front.lines)
     }
 
     /// Characters selected; 0 for a bare caret.
@@ -223,11 +415,15 @@ impl NoteEditor {
         self.caret.selection_len
     }
 
-    /// The selected lines (1-based, inclusive), or the caret's line.
+    /// The selected lines of the note's text (1-based, inclusive), or the
+    /// caret's line.
     pub fn selected_lines(&self) -> (usize, usize) {
-        self.caret
+        let (from, to) = self
+            .caret
             .selection_lines
-            .unwrap_or((self.caret.line.max(1), self.caret.line.max(1)))
+            .unwrap_or((self.caret.line.max(1), self.caret.line.max(1)));
+        let body = |l: usize| l.saturating_sub(self.front.lines).max(1);
+        (body(from), body(to))
     }
 
     /// The editor's display preferences (`spellCheckEnabled` and the fixed
@@ -289,35 +485,52 @@ impl NoteEditor {
         };
     }
 
-    /// The text changed outside the editor: take it unless an edit is pending.
-    /// (For an external reload such as a history restore; reset-from-remote
-    /// reloads the note instead.)
-    #[allow(dead_code)]
+    /// The file changed on disk: take it, unless an edit is pending. The
+    /// caret stays where it can, and the note is in sync with disk.
     pub fn replace(&mut self, id: &str, content: String) -> bool {
-        if self.id.as_deref() != Some(id)
-            || self.dirty_since.is_some()
-            || content == self.state.text()
-        {
+        if self.id.as_deref() != Some(id) || self.is_dirty() || content == self.state.text() {
             return false;
         }
         self.state.replace_text(&self.ctx, content);
+        self.status = SaveStatus::Saved;
+        self.sync();
+        self.ctx.request_repaint();
         true
     }
 
-    /// `applySlideEdit`: the note becomes `markdown` (one undo step), the
-    /// caret goes to `caret_line`, and the write starts at once.
+    /// Takes the file from disk over a pending edit (the user chose Reload).
+    pub fn reload(&mut self, id: &str, content: String) {
+        if self.id.as_deref() != Some(id) {
+            return;
+        }
+        self.dirty_since = None;
+        self.saving = None;
+        self.held = false;
+        self.state.replace_text(&self.ctx, content);
+        self.status = SaveStatus::Saved;
+        self.sync();
+        self.ctx.request_repaint();
+    }
+
+    /// A slide edit: the note's text becomes `markdown` (one undo step) and
+    /// its frontmatter stays, the caret goes to `caret_line` of the text,
+    /// and the write starts at once.
     pub fn apply_slide_edit(
         &mut self,
         markdown: String,
         caret_line: Option<usize>,
     ) -> Option<SaveRequest> {
         self.id.as_ref()?;
-        if markdown == self.state.text() {
+        self.sync();
+        if markdown == self.text() {
             return None;
         }
-        self.state.replace_text(&self.ctx, markdown);
+        let file = format!("{}{markdown}", self.front.block);
+        self.state.replace_text(&self.ctx, file);
+        self.sync();
         if let Some(line) = caret_line.filter(|l| *l > 0) {
-            self.state.scroll_to_line(&self.ctx, line);
+            self.state
+                .scroll_to_line(&self.ctx, line + self.front.lines);
         }
         self.dirty_since = Some(0.0);
         self.flush()
@@ -394,10 +607,29 @@ impl NoteEditor {
         }
     }
 
-    /// Move the caret to `line` (1-based), scroll it to the top and focus.
+    /// Move the caret to `line` of the note's text (1-based, the frontmatter
+    /// not counted), scroll it to the top and focus.
     pub fn scroll_to_line(&mut self, line: usize) {
-        self.state.scroll_to_line(&self.ctx, line.max(1));
+        self.sync();
+        self.state
+            .scroll_to_line(&self.ctx, line.max(1) + self.front.lines);
         self.ctx.request_repaint();
+    }
+
+    /// Where character `c` of the file was painted last frame.
+    #[cfg(test)]
+    pub fn char_rect(&mut self, c: usize) -> Option<egui::Rect> {
+        self.state.screen_rect_of(c)
+    }
+
+    /// Replaces the whole file as the user would by typing: the note is
+    /// unsaved from `now`, and the autosave follows.
+    #[cfg(test)]
+    pub fn type_file(&mut self, text: &str, now: f64) {
+        self.state.replace_text(&self.ctx, text);
+        self.status = SaveStatus::Unsaved;
+        self.dirty_since = Some(now);
+        self.sync();
     }
 
     fn request(&self) -> Option<SaveRequest> {
@@ -409,11 +641,10 @@ impl NoteEditor {
     }
 
     /// The toolbar and the text; returns what the app should do.
-    pub fn show(&mut self, ui: &mut Ui, preview_on: bool, history_on: bool) -> Vec<EditorAction> {
+    pub fn show(&mut self, ui: &mut Ui, preview_on: bool) -> Vec<EditorAction> {
         let mut out = Vec::new();
         let props = ToolbarProps {
             file_name: self.id.as_ref().map(|_| self.name.as_str()),
-            show_history: history_on,
             show_preview: preview_on,
         };
         // The toolbar centers its row in the height it's given: a top panel.
@@ -425,7 +656,6 @@ impl NoteEditor {
         for a in actions {
             out.push(match a {
                 ToolbarAction::TogglePreview => EditorAction::TogglePreview,
-                ToolbarAction::ToggleHistory => EditorAction::ToggleHistory,
             });
         }
         let now = ui.input(|i| i.time);
@@ -438,6 +668,7 @@ impl NoteEditor {
                     self.event(event, &id, now, &mut out);
                 }
                 self.caret = self.state.status(ui.ctx());
+                self.sync();
             }
             None => {
                 self.text_rect = None;
@@ -484,7 +715,7 @@ impl NoteEditor {
     /// The autosave timer: a save once the text has been still for 500 ms.
     fn due(&mut self, now: f64) -> Option<SaveRequest> {
         let since = self.dirty_since?;
-        if now - since < SAVE_DELAY_SECS || self.saving.is_some() {
+        if self.held || now - since < SAVE_DELAY_SECS || self.saving.is_some() {
             return None;
         }
         self.flush()
@@ -534,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn flush_before_switching_and_git_errors() {
+    fn flush_before_switching_and_failed_saves() {
         let mut e = editor();
         edit(&mut e, "pending", 0.0);
         let f = e.flush().unwrap();
@@ -547,11 +778,150 @@ mod tests {
     #[test]
     fn external_changes_only_replace_clean_text() {
         let mut e = editor();
-        assert!(e.replace("a", "from remote".into()));
-        assert_eq!(e.text(), "from remote");
+        assert!(e.replace("a", "from outside".into()));
+        assert_eq!(e.text(), "from outside");
         edit(&mut e, "mine", 0.0);
         assert!(!e.replace("a", "theirs".into()));
         assert!(!e.replace("b", "other".into()));
+        // While the app asks, the autosave waits; Reload takes the file.
+        e.hold(true);
+        assert_eq!(e.due(99.0), None);
+        e.reload("a", "theirs".into());
+        assert_eq!(e.text(), "theirs");
+        assert_eq!(e.status(), SaveStatus::Saved);
+        assert!(!e.is_dirty());
+        // Keep Mine: the autosave carries on.
+        edit(&mut e, "mine again", 0.0);
+        e.hold(true);
+        e.hold(false);
+        assert_eq!(e.due(1.0).unwrap().content, "mine again");
+    }
+
+    const NOTE: &str =
+        "---\ntags:\n  - a\ncreated: '2026-01-02T03:04:05.000Z'\n---\n# Title\n\nbody\n";
+
+    fn note() -> NoteEditor {
+        let mut e = NoteEditor::default();
+        e.load("a", "Alpha", "alpha.md", NOTE.into());
+        e
+    }
+
+    #[test]
+    fn the_editor_holds_the_whole_file() {
+        let mut e = note();
+        assert_eq!(e.file_text(), NOTE);
+        assert_eq!(e.text(), "# Title\n\nbody\n");
+        assert_eq!(e.frontmatter()["tags"], json!(["a"]));
+        assert!(!e.frontmatter_unreadable());
+        assert!(!e.is_deck());
+        // The caret starts on the text, below the block.
+        assert_eq!(e.cursor(), (6, 1));
+        assert_eq!(e.body_line(), 1);
+        // A save writes the whole file.
+        edit(&mut e, &format!("{NOTE}more\n"), 0.0);
+        assert_eq!(e.due(1.0).unwrap().content, format!("{NOTE}more\n"));
+
+        // A note with no frontmatter shows none.
+        let mut plain = NoteEditor::default();
+        plain.load("b", "Plain", "plain.md", "just text\n".into());
+        assert_eq!(plain.text(), "just text\n");
+        assert_eq!(plain.frontmatter(), &json!({}));
+        assert_eq!((plain.cursor(), plain.body_line()), ((1, 1), 1));
+    }
+
+    #[test]
+    fn a_half_typed_block_keeps_its_last_good_fields() {
+        let mut e = note();
+        let broken = NOTE.replace("  - a", "  - a\n  - [");
+        edit(&mut e, &broken, 0.0);
+        e.sync();
+        assert!(e.frontmatter_unreadable());
+        assert_eq!(e.frontmatter()["tags"], json!(["a"]));
+        // The text is still the note's text, not the block.
+        assert_eq!(e.text(), "# Title\n\nbody\n");
+        // NoteLiner doesn't rewrite a block it can't read.
+        assert!(!e.retag(&json!({ "tags": ["z"] })));
+        assert_eq!(e.file_text(), broken);
+        // Fixed: the new fields are read.
+        edit(&mut e, &NOTE.replace("  - a", "  - a\n  - b"), 0.0);
+        e.sync();
+        assert!(!e.frontmatter_unreadable());
+        assert_eq!(e.frontmatter()["tags"], json!(["a", "b"]));
+    }
+
+    #[test]
+    fn the_app_rewrites_the_block_without_marking_the_note_edited() {
+        let mut e = note();
+        let entry = json!({ "tags": ["a", "work"], "createdAt": "2026-01-02T03:04:05.000Z" });
+        assert!(e.retag(&entry));
+        assert_eq!(
+            e.file_text(),
+            "---\ntags:\n  - a\n  - work\ncreated: '2026-01-02T03:04:05.000Z'\n---\n# Title\n\nbody\n"
+        );
+        assert_eq!(e.status(), SaveStatus::Saved);
+        assert!(!e.is_dirty());
+        assert_eq!(e.flush(), None);
+        assert!(!e.state.can_undo());
+        assert_eq!(e.frontmatter()["tags"], json!(["a", "work"]));
+        assert!(!e.retag(&entry), "nothing to change the second time");
+
+        // Presentation Settings add and remove the deck's block.
+        assert!(e.set_presentation(&json!({ "theme": "dark" })));
+        assert!(e.is_deck());
+        assert_eq!(e.text(), "# Title\n\nbody\n");
+        assert!(e.set_presentation(&Value::Null));
+        assert!(!e.is_deck());
+        assert!(!e.is_dirty());
+
+        // A note with no block and no tags gets none.
+        let mut plain = NoteEditor::default();
+        plain.load("b", "Plain", "plain.md", "text\n".into());
+        assert!(!plain.retag(&json!({ "tags": [] })));
+        assert_eq!(plain.file_text(), "text\n");
+    }
+
+    #[test]
+    fn a_block_a_save_put_back_appears_at_the_top() {
+        let mut e = NoteEditor::default();
+        e.load("b", "Plain", "plain.md", "text".into());
+        edit(&mut e, "text!", 0.0);
+        let save = e.due(1.0).unwrap();
+        // The user keeps typing in the text while the save is out.
+        edit(&mut e, "text!!", 1.1);
+        let rewritten = "---\ntags: []\ncreated: '2026-01-02T03:04:05.000Z'\n---\ntext!";
+        e.saved("b", &save.content, true);
+        assert!(e.frontmatter_rewritten(&save.content, rewritten));
+        assert_eq!(
+            e.file_text(),
+            "---\ntags: []\ncreated: '2026-01-02T03:04:05.000Z'\n---\ntext!!"
+        );
+        assert_eq!(e.text(), "text!!");
+        // The later edit is still waiting to be saved, with the block.
+        assert_eq!(e.due(2.0).unwrap().content, e.file_text());
+
+        // A block typed in since the save went out is not overwritten.
+        let mut e = note();
+        let sent = e.file_text().to_string();
+        edit(&mut e, &NOTE.replace("  - a", "  - mine"), 0.0);
+        assert!(!e.frontmatter_rewritten(&sent, "---\ntags: []\n---\nx"));
+        assert!(e.file_text().contains("  - mine"));
+    }
+
+    #[test]
+    fn lines_given_and_taken_are_lines_of_the_text() {
+        let mut e = note();
+        // The outline's first heading is line 1 of the text, line 6 of the file.
+        e.scroll_to_line(1);
+        assert_eq!(e.state.status(&e.ctx.clone()).line, 6);
+        e.caret = e.state.status(&e.ctx.clone());
+        assert_eq!(e.body_line(), 1);
+        assert_eq!(e.selected_lines(), (1, 1));
+        e.scroll_to_line(3);
+        e.caret = e.state.status(&e.ctx.clone());
+        assert_eq!((e.cursor().0, e.body_line()), (8, 3));
+        // In the block, the caret is on no line of the text.
+        e.caret.line = 2;
+        assert_eq!(e.body_line(), 0);
     }
 
     #[test]
@@ -562,5 +932,15 @@ mod tests {
         assert_eq!(req.content, "# One\n\n---\n\n# Two\n");
         assert_eq!(e.status(), SaveStatus::Saving);
         assert_eq!(e.apply_slide_edit(e.text().to_string(), None), None);
+
+        // A deck's frontmatter stays above the slides.
+        let mut e = note();
+        let block = &NOTE[..NOTE.find("# Title").unwrap()];
+        let req = e
+            .apply_slide_edit("# One\n\n## Two\n".into(), Some(3))
+            .unwrap();
+        assert_eq!(req.content, format!("{block}# One\n\n## Two\n"));
+        assert_eq!(e.text(), "# One\n\n## Two\n");
+        assert_eq!(e.state.status(&e.ctx.clone()).line, 8);
     }
 }

@@ -3,7 +3,6 @@
 //! in the preview typeset by Typst through the app's exporter.
 
 use std::path::Path;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use egui::accesskit::Role;
@@ -12,7 +11,6 @@ use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use laankit_richtext::math::{self, MathImage, MathMode};
 use laankit_richtext::Block;
-use noteliner_core::git::NoteGit;
 use noteliner_core::project::Project;
 use serde_json::json;
 
@@ -28,11 +26,8 @@ fn open_deck(tmp: &Path) -> Harness<'static, NoteLinerApp> {
     std::fs::create_dir_all(&project).unwrap();
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let mut p = Project::new(NoteGit::new(Arc::new(|_| {})));
-        p.init(&project, None).await.unwrap();
-        p.set_git_config("Test User", "test@localhost")
-            .await
-            .unwrap();
+        let mut p = Project::new();
+        p.open(&project).await.unwrap();
         let talk = p
             .create_file("Talk", &json!([]), Some(TALK.into()), None)
             .await

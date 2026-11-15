@@ -67,15 +67,28 @@ pub struct PaneStates {
 pub struct SearchGroup {
     pub file_id: String,
     pub file_name: String,
-    /// (1-based line, the line's text).
+    /// The note's folder, shown with its name: two notes in different
+    /// folders can share a name.
+    pub folder: String,
+    /// (1-based line of the note's text, the line's text).
     pub matches: Vec<(usize, String)>,
 }
 
 impl SearchGroup {
+    /// The note's name, with its folder when it is in one.
+    pub fn label(&self) -> String {
+        if self.folder.is_empty() {
+            self.file_name.clone()
+        } else {
+            format!("{} ({})", self.file_name, self.folder)
+        }
+    }
+
     pub fn from_value(v: &Value) -> Option<Self> {
         Some(Self {
             file_id: v["fileId"].as_str()?.to_string(),
             file_name: v["fileName"].as_str().unwrap_or_default().to_string(),
+            folder: v["folder"].as_str().unwrap_or_default().to_string(),
             matches: v["matches"]
                 .as_array()?
                 .iter()
@@ -224,7 +237,7 @@ pub fn search_pane(ui: &mut Ui, state: &mut SearchState, out: &mut Vec<PaneActio
                     ui,
                     &p,
                     icons::FILE_LINES,
-                    &group.file_name,
+                    &group.label(),
                     Some(group.matches.len()),
                 );
                 for (line, text) in &group.matches {
@@ -964,6 +977,13 @@ mod tests {
         );
         assert!(!s.searching);
         assert_eq!(s.total_matches(), 1);
+        // A result shows the note's folder, when it is in one.
+        assert_eq!(s.results[0].label(), "A");
+        let in_folder = SearchGroup::from_value(
+            &json!({ "fileId": "b", "fileName": "Kickoff", "folder": "Work/Meetings", "matches": [] }),
+        )
+        .unwrap();
+        assert_eq!(in_folder.label(), "Kickoff (Work/Meetings)");
         s.query = "  ".into();
         s.edited(3.0);
         assert!(s.results.is_empty() && !s.searching);

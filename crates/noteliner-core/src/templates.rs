@@ -1,5 +1,5 @@
 //! Note templates under `_templates/` (`apps/noteliner/src/main/template-service.js`).
-//! Templates are versioned with the project but never indexed.
+//! Templates are kept with the project but never indexed.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -117,11 +117,6 @@ pub async fn save(p: &Project, name: &str, body: &str) -> Result<Value> {
     let slug = slugify(trimmed);
     let filename = format!("{}.md", if slug.is_empty() { "template" } else { &slug });
     fs::write(dir.join(&filename), body)?;
-    let root = p.dir()?.to_path_buf();
-    p.git
-        .commit(&root, &format!("Save template {trimmed}"))
-        .await?;
-    p.git.schedule_push(&root);
     Ok(json!({ "id": filename, "name": prettify(&filename) }))
 }
 

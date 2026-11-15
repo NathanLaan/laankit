@@ -83,7 +83,7 @@ On a machine without FUSE (containers, CI), set `APPIMAGE_EXTRACT_AND_RUN=1` for
 
 The binaries link only against glibc; winit, glutin, and fontconfig `dlopen` the rest, so the packages declare them explicitly:
 
-- `git` (sync, history; NoteLiner, ThreadLiner, and PageLiner shell out to it; BlockLiner's, PrintLiner's, and MediaLiner's packages don't depend on it)
+- `git` (sync, history; ThreadLiner and PageLiner shell out to it; NoteLiner's, BlockLiner's, PrintLiner's, and MediaLiner's packages don't depend on it)
 - EGL/GL (`libegl1`, `libgl1`), `libxkbcommon0`, `libfontconfig1`
 - Wayland: `libwayland-client0`, `libwayland-egl1`
 - X11: `libx11-6`, `libx11-xcb1`, `libxcursor1`, `libxi6`, `libxrender1`, `libxkbcommon-x11-0`
@@ -101,8 +101,10 @@ flatpak-builder --user --install-deps-from=flathub --force-clean \
 ```
 
 - Runtime `org.freedesktop.Platform` 25.08 with the `rust-stable` SDK extension; the build is offline from `cargo-sources.json` (flatpak-cargo-generator), which must be regenerated whenever `Cargo.lock` changes.
-- git is built as a module (the runtime doesn't ship it), pinned to git 2.51.0 by sha256.
-- Permissions: Wayland/X11, DRI, network (feeds, git sync, the update check), `--socket=ssh-auth` for git over SSH, notifications (ThreadLiner), and `--filesystem=home`. Home access is deliberate: projects and data folders are git repositories that are reopened by path from the recent lists and handed to `git`, which portal document paths (`/run/user/…/doc/…`) would break. BlockLiner's manifest has no network, SSH socket, or git module (it uses none of them), but keeps home access: its diagram folder is reopened by path and watched for outside changes.
+- For ThreadLiner and PageLiner, git is built as a module (the runtime doesn't ship it), pinned to git 2.51.0 by sha256.
+- Permissions: Wayland/X11, DRI, network (feeds, git sync, the update check), `--socket=ssh-auth` for git over SSH, notifications (ThreadLiner), and `--filesystem=home`. Home access is deliberate: projects and data folders are reopened by path from the recent lists, and the git repositories among them are handed to `git`, which portal document paths (`/run/user/…/doc/…`) would break.
+- NoteLiner's manifest has no git module and no SSH socket. It keeps the network for the update check, and home access: a project is a folder reopened by path and watched for outside changes, and deleted notes go to the trash in the home folder (`~/.local/share/Trash`). Deleting to the trash from inside the sandbox is untested; if the trash can't take a file, NoteLiner asks before deleting it for good.
+- BlockLiner's manifest has no network, SSH socket, or git module (it uses none of them), but keeps home access: its diagram folder is reopened by path and watched for outside changes.
 - Config is separate inside the sandbox (`~/.var/app/<id>/config`), so a Flatpak install doesn't share settings with a .deb/.rpm install. NoteLiner's MCP clients must run `flatpak run com.nathanlaan.noteliner --mcp-bridge`.
 
 ## Windows and macOS

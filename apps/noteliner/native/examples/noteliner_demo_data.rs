@@ -1,6 +1,6 @@
 //! Builds a throwaway NoteLiner project for screenshots and manual testing:
-//! a git repository with nested notes, tags, wikilinks, a template and an
-//! image attachment, plus `recent-projects.json` under
+//! a plain folder with notes in sub-folders, tags, wikilinks, a template and
+//! an image attachment, plus `recent-projects.json` under
 //! `$XDG_CONFIG_HOME/NoteLiner` so it shows on the open screen. Never point
 //! it at your real config.
 //!
@@ -11,9 +11,7 @@
 //! ```
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use noteliner_core::git::NoteGit;
 use noteliner_core::project::Project;
 use serde_json::json;
 
@@ -39,13 +37,10 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("set XDG_CONFIG_HOME to a temp folder first");
     };
     std::fs::create_dir_all(&dir)?;
-    let mut project = Project::new(NoteGit::new(Arc::new(|msg| println!("{msg}"))));
-    project.init(&dir, None).await?;
-    project
-        .set_git_config("Demo User", "demo@localhost")
-        .await?;
+    let mut project = Project::new();
+    project.open(&dir).await?;
 
-    let welcome = project
+    project
         .create_file(
             "Welcome",
             &json!(["guide"]),
@@ -56,13 +51,13 @@ async fn main() -> anyhow::Result<()> {
             None,
         )
         .await?;
-    let welcome_id = welcome["id"].as_str().unwrap_or_default().to_string();
+    // Notes in folders: `Work/Meetings` and `Reading`, and an empty one.
     project
         .create_file(
             "Meeting Notes",
             &json!(["work"]),
             Some("# Meeting Notes\n\n## Agenda\n\n1. Native port status\n2. Next wave\n\n### Actions\n\n- [x] Ship ThreadLiner\n- [ ] Ship NoteLiner\n".into()),
-            Some(&welcome_id),
+            Some("Work/Meetings"),
         )
         .await?;
     project
@@ -73,9 +68,10 @@ async fn main() -> anyhow::Result<()> {
                 "# Reading List\n\n> Read more.\n\n- *Chokepoint Capitalism*\n- *Red Team Blues*\n"
                     .into(),
             ),
-            Some(&welcome_id),
+            Some("Reading"),
         )
         .await?;
+    project.create_folder("Archive").await?;
     let ideas = project
         .create_file(
             "Ideas",
@@ -91,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
     let img = att["filename"].as_str().unwrap_or_default();
     let filename = ideas["filename"].as_str().unwrap_or_default().to_string();
     project
-        .write_file(
+        .write_body(
             &filename,
             &format!("# Ideas\n\nNothing tagged here, but an image:\n\n![gradient](./_attachments/{img})\n"),
         )

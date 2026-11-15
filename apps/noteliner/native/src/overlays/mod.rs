@@ -1,49 +1,69 @@
-//! The dialogs, one per Svelte modal. At most one [`Overlay`] is open at a
-//! time; each returns what the user asked for and the app calls the backend.
+//! The dialogs. At most one [`Overlay`] is open at a time; each returns
+//! what the user asked for and the app calls the backend.
 //!
-//! | Overlay                    | Svelte                                         |
+//! | Overlay                    | For                                            |
 //! |----------------------------|------------------------------------------------|
-//! | `NewProject`               | `NewProjectModal`                              |
-//! | `Setup`                    | `SetupModal`                                   |
-//! | `NewFile`                  | `NewFileModal` (New File, New Presentation, Duplicate) |
-//! | `MoveFile`                 | `MoveFileModal`                                |
-//! | `DeleteFile`, `ClearTags`, `RemoveRecent` | `DeleteFileModal`, `ClearTagsModal`, `RemoveRecentModal` |
-//! | `ProjectSettings`          | `ProjectSettingsModal`                         |
-//! | `Settings`                 | `SettingsModal` ([`settings`])                 |
-//! | `Sync`                     | `SyncModal` ([`sync`])                         |
-//! | `Help`                     | the Help window (`HelpApp.svelte`), in-app ([`help`]) |
-//! | `About`                    | desktop-ui's `AboutModal`                      |
-//! | `Busy`                     | `SyncingModal`, `ImportingModal`               |
-//! | `TagEditor`                | `TagEditorModal` ([`tags`])                    |
-//! | `RemoveAttachment`         | the Attachments panel's `confirm()`            |
+//! | `NewFile`                  | New File, New Presentation, New Diagram, Duplicate |
+//! | `NewFolder`                | New Folder                                     |
+//! | `Move`                     | Move…, for a note, a diagram or a folder       |
+//! | `DeleteFile`, `DeleteFolder`, `DeletePermanently` | the questions before deleting |
+//! | `ClearTags`, `RemoveRecent`, `RemoveAttachment`   | the other confirmations |
+//! | `Conflict`                 | a note changed on disk while it has unsaved edits |
+//! | `Settings`                 | Settings ([`settings`])                        |
+//! | `Help`                     | Help ([`help`])                                |
+//! | `About`                    | the shared About dialog                        |
+//! | `Busy`                     | "Importing …"                                  |
+//! | `TagEditor`                | the tag colours ([`tags`])                     |
 //!
 //! MCP write confirmations ([`mcp::confirm`]) queue separately, on top of
-//! whatever is open, as in `App.svelte`; the MCP walkthrough opens from
-//! Settings ([`mcp::walkthrough`]).
+//! whatever is open; the MCP walkthrough opens from Settings
+//! ([`mcp::walkthrough`]).
 
 pub mod help;
 pub mod mcp;
 pub mod settings;
-pub mod sync;
 pub mod tags;
 
 use std::collections::BTreeSet;
 
 use egui::RichText;
 use laankit_egui::dialog::{self, ButtonKind, Confirm, Dialog};
-use laankit_egui::{fonts, icons, settings as shell, theme};
+#[cfg(test)]
+use laankit_egui::fonts;
+use laankit_egui::{icons, settings as shell, theme};
 
+use noteliner_core::project::FolderCounts;
+use noteliner_core::tree;
+
+use crate::backend::DeleteTarget;
 use crate::config::Recent;
 use crate::model::Entry;
 
 pub enum Overlay {
-    NewProject(NewProjectForm),
-    Setup(SetupForm),
     NewFile(NewFileForm),
-    MoveFile(MoveForm),
+    NewFolder(NewFolderForm),
+    Move(MoveForm),
     DeleteFile {
         id: String,
         name: String,
+    },
+    /// Delete a folder and everything in it.
+    DeleteFolder {
+        path: String,
+        counts: FolderCounts,
+    },
+    /// The trash couldn't take it: delete it for good?
+    DeletePermanently {
+        target: DeleteTarget,
+        name: String,
+        message: String,
+    },
+    /// The note `id` changed on disk while it has unsaved edits: Reload
+    /// takes `content`, Keep Mine saves the edits over it.
+    Conflict {
+        id: String,
+        name: String,
+        content: String,
     },
     ClearTags {
         id: String,
@@ -51,9 +71,7 @@ pub enum Overlay {
         count: usize,
     },
     RemoveRecent(Recent),
-    ProjectSettings(ProjectSettingsForm),
     Settings(Box<settings::SettingsState>),
-    Sync(sync::SyncState),
     Help(Box<help::HelpState>),
     About,
     TagEditor(tags::TagEditorState),
@@ -72,7 +90,7 @@ pub enum Overlay {
     Colour(blockliner_egui::dialogs::colour::ColourState),
     /// Export Diagram: PNG or SVG, the grid, and the scale.
     ExportDiagram(blockliner_egui::dialogs::export::ExportState),
-    /// "Syncing changes to remote..." / "Importing …": no way to close it.
+    /// "Importing …": no way to close it.
     Busy {
         title: &'static str,
         message: String,
@@ -86,13 +104,16 @@ pub enum FormAction {
     Submit,
 }
 
-/// Focuses a dialog's first field when it opens (`autofocus`).
+/// Focuses a dialog's first field when it opens: on the first frame it is
+/// drawn, and again each time the dialog is opened after being closed.
 fn focus_once(ui: &egui::Ui, resp: &egui::Response) {
     let id = resp.id.with("autofocused");
-    if !ui.data(|d| d.get_temp::<bool>(id).unwrap_or(false)) {
+    let frame = ui.ctx().cumulative_frame_nr();
+    let last = ui.data(|d| d.get_temp::<u64>(id));
+    if last.is_none_or(|last| last + 1 < frame) {
         resp.request_focus();
-        ui.data_mut(|d| d.insert_temp(id, true));
     }
+    ui.data_mut(|d| d.insert_temp(id, frame));
 }
 
 fn form_buttons(ui: &mut egui::Ui, ok: &str, ready: bool) -> Option<FormAction> {
@@ -108,198 +129,16 @@ fn form_buttons(ui: &mut egui::Ui, ok: &str, ready: bool) -> Option<FormAction> 
     out
 }
 
-// --- New Project ------------------------------------------------------------
-
-/// `NewProjectModal`: location, git user name and email.
-pub struct NewProjectForm {
-    pub location: String,
-    pub name: String,
-    pub email: String,
-    pub error: Option<String>,
-}
-
-impl NewProjectForm {
-    /// The Svelte defaults: `~/docs/new-project-YYYY-MM-DD`, the user name and
-    /// `user@host`.
-    pub fn with_defaults() -> Self {
-        let (user, host, home) = crate::backend::system_info();
-        let today = chrono::Local::now().format("%Y-%m-%d");
-        Self {
-            location: home
-                .join("docs")
-                .join(format!("new-project-{today}"))
-                .display()
-                .to_string(),
-            email: format!("{user}@{host}"),
-            name: user,
-            error: None,
-        }
-    }
-
-    /// `handleOk`'s checks; `None` when the form is complete.
-    pub fn validate(&self) -> Option<&'static str> {
-        if self.location.trim().is_empty() {
-            Some("Project location is required.")
-        } else if self.name.trim().is_empty() || self.email.trim().is_empty() {
-            Some("User name and email are required.")
-        } else {
-            None
-        }
-    }
-}
-
-/// Also returns `Some(Browse)` through `browse` when the folder button is clicked.
-pub fn new_project(
-    ctx: &egui::Context,
-    form: &mut NewProjectForm,
-    browse: &mut bool,
-) -> Option<FormAction> {
-    let resp = Dialog::compact("new-project", "New Project").show(ctx, |ui| {
-        if let Some(e) = &form.error {
-            dialog::error_text(ui, e);
-            ui.add_space(8.0);
-        }
-        let mut submit = false;
-        dialog::field_label(ui, "Project Location");
-        ui.horizontal(|ui| {
-            ui.allocate_ui(egui::vec2(ui.available_width() - 44.0, 34.0), |ui| {
-                let r = dialog::text_input(ui, &mut form.location, "", true);
-                focus_once(ui, &r);
-                submit |= dialog::submitted(ui, &r);
-            });
-            if dialog::icon_button(
-                ui,
-                Some(icons::FOLDER_OPEN),
-                "",
-                ButtonKind::Secondary,
-                true,
-            )
-            .on_hover_text("Browse for folder")
-            .clicked()
-            {
-                *browse = true;
-            }
-        });
-        ui.add_space(10.0);
-        dialog::field_label(ui, "User Name");
-        let r = dialog::text_input(ui, &mut form.name, "", true);
-        submit |= dialog::submitted(ui, &r);
-        ui.add_space(10.0);
-        dialog::field_label(ui, "User Email");
-        let r = dialog::text_input(ui, &mut form.email, "", true);
-        submit |= dialog::submitted(ui, &r);
-        let out = form_buttons(ui, "OK", true);
-        if submit {
-            return Some(FormAction::Submit);
-        }
-        out
-    });
-    if resp.close {
-        return Some(FormAction::Close);
-    }
-    resp.inner
-}
-
-// --- Set Up Project ------------------------------------------------------------
-
-/// `SetupModal`: an existing folder that isn't a NoteLiner project yet.
-pub struct SetupForm {
-    pub folder: String,
-    /// Entering a URL to clone (`mode === 'remote'`).
-    pub remote: bool,
-    pub url: String,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum SetupAction {
-    Cancel,
-    /// Create a new repository (`None`) or clone this URL.
-    Setup(Option<String>),
-}
-
-pub fn setup(ctx: &egui::Context, form: &mut SetupForm) -> Option<SetupAction> {
-    let resp = Dialog::compact("setup", "Set Up Project").show(ctx, |ui| {
-        let p = theme::palette(ui.ctx());
-        ui.label(
-            RichText::new(&form.folder)
-                .font(fonts::mono(12.0))
-                .color(p.text_secondary),
-        );
-        ui.add_space(10.0);
-        let mut out = None;
-        if !form.remote {
-            ui.label(
-                RichText::new(
-                    "This folder is not a NoteLiner project. How would you like to set it up?",
-                )
-                .color(p.text_primary),
-            );
-            ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                if dialog::icon_button(
-                    ui,
-                    Some(icons::PLUS),
-                    "Create New Repository",
-                    ButtonKind::Secondary,
-                    true,
-                )
-                .clicked()
-                {
-                    out = Some(SetupAction::Setup(None));
-                }
-                if dialog::icon_button(
-                    ui,
-                    Some(icons::CLOUD_ARROW_DOWN),
-                    "Clone from Remote",
-                    ButtonKind::Secondary,
-                    true,
-                )
-                .clicked()
-                {
-                    form.remote = true;
-                }
-            });
-        } else {
-            ui.label(RichText::new("Enter the remote Git repository URL:").color(p.text_primary));
-            ui.add_space(6.0);
-            let r = dialog::text_input(ui, &mut form.url, "https://github.com/user/repo.git", true);
-            focus_once(ui, &r);
-            let url = form.url.trim().to_string();
-            if dialog::submitted(ui, &r) && !url.is_empty() {
-                out = Some(SetupAction::Setup(Some(url.clone())));
-            }
-            dialog::actions(ui, |ui| {
-                if dialog::button(ui, "Clone", ButtonKind::Primary, !url.is_empty()).clicked() {
-                    out = Some(SetupAction::Setup(Some(url.clone())));
-                }
-                if dialog::button(ui, "Back", ButtonKind::Secondary, true).clicked() {
-                    form.remote = false;
-                }
-            });
-        }
-        ui.add_space(8.0);
-        dialog::actions(ui, |ui| {
-            if dialog::button(ui, "Cancel", ButtonKind::Secondary, true).clicked() {
-                out = Some(SetupAction::Cancel);
-            }
-        });
-        out
-    });
-    if resp.close {
-        return Some(SetupAction::Cancel);
-    }
-    resp.inner
-}
-
 // --- New File / Duplicate --------------------------------------------------------
 
-/// `NewFileModal`, in New File, New Presentation or Duplicate mode.
+/// New File, New Presentation, New Diagram or Duplicate.
 pub struct NewFileForm {
     /// Duplicating this note (hides the template and type pickers).
     pub duplicate_of: Option<String>,
     pub name: String,
     pub tags: BTreeSet<String>,
-    pub parent: Option<String>,
+    /// The folder the file goes in, by path; empty for the top.
+    pub folder: String,
     /// `true` for Presentation (`fileType === 'deck'`).
     pub deck: bool,
     /// `true` for Diagram: a blank `.mmd`, with no template.
@@ -310,12 +149,13 @@ pub struct NewFileForm {
 }
 
 impl NewFileForm {
-    pub fn new(name: &str, deck: bool) -> Self {
+    /// A new file in `folder`.
+    pub fn new(name: &str, deck: bool, folder: &str) -> Self {
         Self {
             duplicate_of: None,
             name: name.to_string(),
             tags: BTreeSet::new(),
-            parent: None,
+            folder: folder.to_string(),
             deck,
             diagram: false,
             template: None,
@@ -324,10 +164,10 @@ impl NewFileForm {
     }
 
     /// New Diagram.
-    pub fn diagram(name: &str) -> Self {
+    pub fn diagram(name: &str, folder: &str) -> Self {
         Self {
             diagram: true,
-            ..Self::new(name, false)
+            ..Self::new(name, false, folder)
         }
     }
 
@@ -336,7 +176,8 @@ impl NewFileForm {
             duplicate_of: Some(source.id.clone()),
             name: format!("{}-Copy", source.name),
             tags: source.tags.iter().cloned().collect(),
-            parent: source.parent_id.clone(),
+            // The copy goes beside its source.
+            folder: source.folder.clone(),
             deck: false,
             diagram: false,
             template: None,
@@ -357,12 +198,14 @@ impl NewFileForm {
     }
 }
 
+/// The label of the project folder itself, whose path is empty.
+const TOP: &str = "(Top of the project)";
+
 pub fn new_file(
     ctx: &egui::Context,
     form: &mut NewFileForm,
-    entries: &[Entry],
+    folders: &[String],
     all_tags: &[String],
-    current: Option<&Entry>,
 ) -> Option<FormAction> {
     let duplicating = form.duplicate_of.is_some();
     let title = match (duplicating, form.deck, form.diagram) {
@@ -411,34 +254,24 @@ pub fn new_file(
         submit |= dialog::submitted(ui, &r);
         ui.add_space(10.0);
 
-        dialog::field_label(ui, "Parent");
-        ui.horizontal(|ui| {
-            let mut options: Vec<(String, String)> = vec![(String::new(), "(None)".into())];
-            for (id, name, depth) in crate::model::parent_options(entries, None) {
-                options.push((id, format!("{}{name}", "\u{a0}\u{a0}".repeat(depth))));
+        dialog::field_label(ui, "Folder");
+        {
+            let mut options: Vec<(String, String)> = vec![(String::new(), TOP.into())];
+            for (path, name, depth) in crate::model::folder_options(folders, None) {
+                options.push((path, format!("{}{name}", "\u{a0}\u{a0}".repeat(depth + 1))));
+            }
+            // A folder made a moment ago may not be listed yet.
+            if !options.iter().any(|o| o.0 == form.folder) {
+                options.push((form.folder.clone(), form.folder.clone()));
             }
             let opts: Vec<(&str, &str)> = options
                 .iter()
                 .map(|(a, b)| (a.as_str(), b.as_str()))
                 .collect();
-            ui.scope(|ui| {
-                ui.set_max_width(ui.available_width() - 120.0);
-                if let Some(v) =
-                    shell::select(ui, "Parent", &opts, form.parent.as_deref().unwrap_or(""))
-                {
-                    form.parent = (!v.is_empty()).then_some(v);
-                }
-            });
-            let label = current.map_or("No file selected in FILES".to_string(), |c| {
-                format!("Set parent to \"{}\"", c.name)
-            });
-            if dialog::button(ui, "Current File", ButtonKind::Secondary, current.is_some())
-                .on_hover_text(label)
-                .clicked()
-            {
-                form.parent = current.map(|c| c.id.clone());
+            if let Some(v) = shell::select(ui, "Folder", &opts, &form.folder) {
+                form.folder = v;
             }
-        });
+        }
 
         let visible = form.visible_templates();
         if !duplicating && !form.diagram && (!visible.is_empty() || form.deck) {
@@ -502,72 +335,173 @@ pub fn new_file(
     resp.inner
 }
 
-// --- Move File -----------------------------------------------------------------
+// --- New Folder -----------------------------------------------------------------
 
-/// `MoveFileModal`, with a searchable New Parent list.
-pub struct MoveForm {
-    pub id: String,
+/// New Folder: a name, and the folder it is made in.
+pub struct NewFolderForm {
+    /// The folder the new one goes in, by path; empty for the top.
+    pub parent: String,
     pub name: String,
-    pub current_parent: String,
-    pub parent: Option<String>,
-    /// The New Parent search text.
+}
+
+impl NewFolderForm {
+    pub fn new(parent: &str) -> Self {
+        Self {
+            parent: parent.to_string(),
+            name: String::new(),
+        }
+    }
+
+    /// The new folder's path.
+    pub fn path(&self) -> String {
+        tree::join(&self.parent, self.name.trim())
+    }
+
+    /// Why the name can't be used, if it can't: the name rules, and a
+    /// folder of that name already there (ignoring case).
+    pub fn problem(&self, folders: &[String]) -> Option<String> {
+        if self.name.trim().is_empty() {
+            return None;
+        }
+        if let Err(e) = tree::check_folder_name(&self.name) {
+            return Some(e.to_string());
+        }
+        let path = self.path().to_lowercase();
+        folders
+            .iter()
+            .any(|f| f.to_lowercase() == path)
+            .then(|| format!("A folder named {} is already there", self.name.trim()))
+    }
+}
+
+pub fn new_folder(
+    ctx: &egui::Context,
+    form: &mut NewFolderForm,
+    folders: &[String],
+) -> Option<FormAction> {
+    let resp = Dialog::compact("new-folder", "New Folder").show(ctx, |ui| {
+        let p = theme::palette(ui.ctx());
+        dialog::field_label(ui, "In");
+        ui.label(
+            RichText::new(if form.parent.is_empty() {
+                TOP
+            } else {
+                form.parent.as_str()
+            })
+            .color(p.text_primary),
+        );
+        ui.add_space(10.0);
+        dialog::field_label(ui, "Folder Name");
+        let r = dialog::text_input(ui, &mut form.name, "Untitled", true);
+        focus_once(ui, &r);
+        let submit = dialog::submitted(ui, &r);
+        let problem = form.problem(folders);
+        if let Some(problem) = &problem {
+            ui.add_space(6.0);
+            dialog::error_text(ui, problem);
+        }
+        let ready = !form.name.trim().is_empty() && problem.is_none();
+        let out = form_buttons(ui, "OK", ready);
+        if submit && ready {
+            return Some(FormAction::Submit);
+        }
+        out
+    });
+    if resp.close {
+        return Some(FormAction::Close);
+    }
+    resp.inner
+}
+
+// --- Move -------------------------------------------------------------------------
+
+/// What Move… moves.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MoveTarget {
+    /// A note or diagram, by id.
+    File(String),
+    /// A folder, by path.
+    Folder(String),
+}
+
+/// Move…, with a searchable list of folders.
+pub struct MoveForm {
+    pub target: MoveTarget,
+    pub name: String,
+    /// The folder it is in now.
+    pub current: String,
+    /// The folder chosen, by path; empty for the top.
+    pub folder: String,
+    /// The search text.
     pub query: String,
-    /// Focus the search and scroll to the chosen parent on the next frame.
+    /// Focus the search and scroll to the chosen folder on the next frame.
     reveal: bool,
 }
 
 impl MoveForm {
-    pub fn new(file: &Entry, entries: &[Entry]) -> Self {
-        let current_parent = file
-            .parent_id
-            .as_ref()
-            .and_then(|p| entries.iter().find(|e| &e.id == p))
-            .map_or("(None)".to_string(), |e| e.name.clone());
+    pub fn file(file: &Entry) -> Self {
         Self {
-            id: file.id.clone(),
+            target: MoveTarget::File(file.id.clone()),
             name: file.name.clone(),
-            current_parent,
-            parent: file.parent_id.clone(),
+            current: file.folder.clone(),
+            folder: file.folder.clone(),
             query: String::new(),
             reveal: true,
         }
     }
+
+    pub fn folder(path: &str) -> Self {
+        let parent = tree::folder_of(path).to_string();
+        Self {
+            target: MoveTarget::Folder(path.to_string()),
+            name: crate::model::folder_name(path).to_string(),
+            current: parent.clone(),
+            folder: parent,
+            query: String::new(),
+            reveal: true,
+        }
+    }
+
+    /// The folder being moved: it and the folders under it aren't offered.
+    fn excluded(&self) -> Option<&str> {
+        match &self.target {
+            MoveTarget::Folder(path) => Some(path),
+            MoveTarget::File(_) => None,
+        }
+    }
 }
 
-/// The label of the "no parent" choice, whose id is empty.
-const NO_PARENT: &str = "(None)";
-/// The height of the New Parent list.
-const PARENT_LIST_HEIGHT: f32 = 196.0;
-const PARENT_ROW_HEIGHT: f32 = 28.0;
+/// The height of the folder list.
+const FOLDER_LIST_HEIGHT: f32 = 196.0;
+const FOLDER_ROW_HEIGHT: f32 = 28.0;
 
-/// The New Parent choices as `(id, label)`: every file outside `exclude`'s
-/// subtree whose name contains `query`, ignoring case. Without a query the
-/// labels are indented as a tree; with one they are the path from the root,
-/// since the matches' parents may be filtered out.
-fn parent_matches(entries: &[Entry], exclude: &str, query: &str) -> Vec<(String, String)> {
+/// The folders to move to as `(path, label)`: every folder outside
+/// `exclude` whose name contains `query`, ignoring case, with the top of the
+/// project first. Without a query the labels are indented as a tree; with
+/// one they are the folder's path, since the matches' parents may be
+/// filtered out.
+fn folder_matches(folders: &[String], exclude: Option<&str>, query: &str) -> Vec<(String, String)> {
     let query = query.trim().to_lowercase();
     let mut out = Vec::new();
-    if NO_PARENT.to_lowercase().contains(&query) {
-        out.push((String::new(), NO_PARENT.to_string()));
+    if TOP.to_lowercase().contains(&query) {
+        out.push((String::new(), TOP.to_string()));
     }
-    let mut path: Vec<String> = Vec::new();
-    for (id, name, depth) in crate::model::parent_options(entries, Some(exclude)) {
-        path.truncate(depth);
-        path.push(name.clone());
+    for (path, name, depth) in crate::model::folder_options(folders, exclude) {
         if query.is_empty() {
-            out.push((id, format!("{}{name}", "\u{a0}\u{a0}".repeat(depth))));
+            out.push((path, format!("{}{name}", "\u{a0}\u{a0}".repeat(depth + 1))));
         } else if name.to_lowercase().contains(&query) {
-            out.push((id, path.join(" / ")));
+            let label = path.replace('/', " / ");
+            out.push((path, label));
         }
     }
     out
 }
 
-/// A row of the New Parent list.
-fn parent_row(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
+/// A row of the folder list.
+fn folder_row(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
     let p = theme::palette(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), PARENT_ROW_HEIGHT),
+        egui::vec2(ui.available_width(), FOLDER_ROW_HEIGHT),
         egui::Sense::click(),
     );
     resp.widget_info(|| {
@@ -588,29 +522,45 @@ fn parent_row(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response 
     resp
 }
 
-pub fn move_file(
+pub fn move_dialog(
     ctx: &egui::Context,
     form: &mut MoveForm,
-    entries: &[Entry],
+    folders: &[String],
 ) -> Option<FormAction> {
-    let resp = Dialog::compact("move-file", "Move File").show(ctx, |ui| {
+    let title = match form.target {
+        MoveTarget::File(_) => "Move File",
+        MoveTarget::Folder(_) => "Move Folder",
+    };
+    let resp = Dialog::compact("move-file", title).show(ctx, |ui| {
         let p = theme::palette(ui.ctx());
-        dialog::field_label(ui, "File");
+        dialog::field_label(
+            ui,
+            match form.target {
+                MoveTarget::File(_) => "File",
+                MoveTarget::Folder(_) => "Folder",
+            },
+        );
         ui.label(RichText::new(&form.name).color(p.text_primary));
         ui.add_space(10.0);
-        dialog::field_label(ui, "Current Parent");
-        ui.label(RichText::new(&form.current_parent).color(p.text_primary));
+        dialog::field_label(ui, "Current Folder");
+        ui.label(
+            RichText::new(if form.current.is_empty() {
+                TOP
+            } else {
+                form.current.as_str()
+            })
+            .color(p.text_primary),
+        );
         ui.add_space(10.0);
-        dialog::field_label(ui, "New Parent");
-        let search = dialog::text_input(ui, &mut form.query, "Search files…", true);
+        dialog::field_label(ui, "Move To");
+        let search = dialog::text_input(ui, &mut form.query, "Search folders…", true);
         let mut reveal = std::mem::take(&mut form.reveal);
         if reveal {
             search.request_focus();
         }
 
-        let matches = parent_matches(entries, &form.id, &form.query);
-        let chosen = form.parent.as_deref().unwrap_or("");
-        let mut at = matches.iter().position(|m| m.0 == chosen);
+        let matches = folder_matches(folders, form.excluded(), &form.query);
+        let mut at = matches.iter().position(|m| m.0 == form.folder);
         let mut pick = None;
         // Searching keeps a match chosen, so Enter moves to the first one.
         if at.is_none() && search.changed() {
@@ -630,7 +580,7 @@ pub fn move_file(
             });
         }
         if let Some(i) = pick {
-            form.parent = (!matches[i].0.is_empty()).then(|| matches[i].0.clone());
+            form.folder = matches[i].0.clone();
             at = Some(i);
             reveal = true;
         }
@@ -644,18 +594,18 @@ pub fn move_file(
             .inner_margin(4)
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
-                    .id_salt("move-file-parents")
-                    .max_height(PARENT_LIST_HEIGHT)
+                    .id_salt("move-file-folders")
+                    .max_height(FOLDER_LIST_HEIGHT)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
                         if matches.is_empty() {
-                            dialog::muted_text(ui, "No matching files.");
+                            dialog::muted_text(ui, "No matching folders.");
                         }
-                        for (i, (id, label)) in matches.iter().enumerate() {
-                            let row = parent_row(ui, label, at == Some(i));
+                        for (i, (path, label)) in matches.iter().enumerate() {
+                            let row = folder_row(ui, label, at == Some(i));
                             if row.clicked() {
-                                form.parent = (!id.is_empty()).then(|| id.clone());
+                                form.folder = path.clone();
                             }
                             submit |= row.double_clicked();
                             if reveal && at == Some(i) {
@@ -665,8 +615,8 @@ pub fn move_file(
                     });
             });
 
-        // The chosen parent must be one of the matches, i.e. visible.
-        let ready = at.is_some() || matches.iter().any(|m| Some(&m.0) == form.parent.as_ref());
+        // The chosen folder must be one of the matches, i.e. visible.
+        let ready = at.is_some() || matches.iter().any(|m| m.0 == form.folder);
         submit |= ui.input(|i| i.key_pressed(egui::Key::Enter));
         let out = form_buttons(ui, "OK", ready);
         if submit && ready {
@@ -688,9 +638,105 @@ pub fn delete_file(ctx: &egui::Context, name: &str) -> Option<Confirm> {
         "delete-file",
         "Delete File",
         &format!("Are you sure you want to delete \"{name}\"?"),
-        Some("This action cannot be undone."),
+        Some("The file and its attachments go to the trash."),
         "Delete",
     )
+}
+
+/// What a folder holds, in words: "3 notes, 1 diagram and 2 other files".
+pub fn counts_text(c: &FolderCounts) -> String {
+    let plural = |n: usize, w: &str| format!("{n} {w}{}", if n == 1 { "" } else { "s" });
+    let mut parts = Vec::new();
+    if c.notes > 0 {
+        parts.push(plural(c.notes, "note"));
+    }
+    if c.diagrams > 0 {
+        parts.push(plural(c.diagrams, "diagram"));
+    }
+    if c.others > 0 {
+        parts.push(plural(c.others, "other file"));
+    }
+    match parts.len() {
+        0 => "nothing".to_string(),
+        1 => parts.remove(0),
+        _ => {
+            let last = parts.pop().unwrap_or_default();
+            format!("{} and {last}", parts.join(", "))
+        }
+    }
+}
+
+/// The question before a folder is deleted, with what is inside it.
+pub fn delete_folder(ctx: &egui::Context, path: &str, counts: &FolderCounts) -> Option<Confirm> {
+    let name = crate::model::folder_name(path);
+    let empty = counts.notes + counts.diagrams + counts.others == 0;
+    dialog::confirm(
+        ctx,
+        "delete-folder",
+        "Delete Folder",
+        &format!("Are you sure you want to delete the folder \"{name}\"?"),
+        Some(&if empty {
+            "The folder is empty. It goes to the trash.".to_string()
+        } else {
+            format!(
+                "It holds {}. The folder and everything in it go to the trash.",
+                counts_text(counts)
+            )
+        }),
+        "Delete",
+    )
+}
+
+/// The trash couldn't take it: ask before removing anything.
+pub fn delete_permanently(ctx: &egui::Context, name: &str, message: &str) -> Option<Confirm> {
+    dialog::confirm(
+        ctx,
+        "delete-permanently",
+        "Delete Permanently?",
+        &format!("\"{name}\" can't be moved to the trash. Delete it permanently?"),
+        Some(&format!("{message}\nThis action cannot be undone.")),
+        "Delete Permanently",
+    )
+}
+
+/// What the user chose for a note that changed on disk under their edits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConflictAction {
+    /// Take the file from disk; the unsaved edits are dropped.
+    Reload,
+    /// Save the edits over the file on disk.
+    KeepMine,
+}
+
+/// A note changed on disk while it has unsaved edits. There is no way to
+/// close this without choosing: nothing is lost without asking.
+pub fn conflict(ctx: &egui::Context, name: &str) -> Option<ConflictAction> {
+    Dialog::compact("file-conflict", "File Changed on Disk")
+        .show(ctx, |ui| {
+            let p = theme::palette(ui.ctx());
+            ui.label(
+                RichText::new(format!(
+                    "\"{name}\" was changed by another program, and you have unsaved edits."
+                ))
+                .color(p.text_primary),
+            );
+            ui.add_space(6.0);
+            dialog::muted_text(
+                ui,
+                "Reload takes the file from disk and drops your edits. Keep Mine saves your edits over it.",
+            );
+            let mut out = None;
+            dialog::actions(ui, |ui| {
+                if dialog::button(ui, "Keep Mine", ButtonKind::Primary, true).clicked() {
+                    out = Some(ConflictAction::KeepMine);
+                }
+                if dialog::button(ui, "Reload", ButtonKind::Secondary, true).clicked() {
+                    out = Some(ConflictAction::Reload);
+                }
+            });
+            out
+        })
+        .inner
 }
 
 pub fn clear_tags(ctx: &egui::Context, name: &str, count: usize) -> Option<Confirm> {
@@ -721,97 +767,9 @@ pub fn remove_recent(ctx: &egui::Context, r: &Recent) -> Option<Confirm> {
     )
 }
 
-// --- Project Settings ----------------------------------------------------------
-
-/// `ProjectSettingsModal`: the project folder and the repo's git identity.
-#[derive(Default)]
-pub struct ProjectSettingsForm {
-    pub folder: String,
-    pub name: String,
-    pub email: String,
-    pub error: Option<String>,
-    /// Opened because a commit needs an identity (`required`).
-    pub required: bool,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ProjectSettingsAction {
-    Close,
-    Save,
-    OpenFolder,
-}
-
-pub fn project_settings(
-    ctx: &egui::Context,
-    form: &mut ProjectSettingsForm,
-    top_inset: f32,
-) -> Option<ProjectSettingsAction> {
-    let resp = Dialog::full("project-settings", "Project Settings")
-        .size(dialog::Size::Full { top_inset })
-        .show(ctx, |ui| {
-            let p = theme::palette(ui.ctx());
-            let mut out = None;
-            if form.required {
-                ui.label(
-                    RichText::new("Git requires a name and email to save changes. These are stored in the local repository config.")
-                        .color(p.accent),
-                );
-                ui.add_space(12.0);
-            }
-            dialog::field_label(ui, "Project Location");
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(&form.folder).font(fonts::mono(12.0)).color(p.text_secondary));
-                if dialog::icon_button(ui, Some(icons::FOLDER_OPEN), "", ButtonKind::Secondary, true)
-                    .on_hover_text("Open in file manager")
-                    .clicked()
-                {
-                    out = Some(ProjectSettingsAction::OpenFolder);
-                }
-            });
-            ui.add_space(16.0);
-            dialog::field_label(ui, "Git Configuration");
-            if let Some(e) = &form.error {
-                dialog::error_text(ui, e);
-                ui.add_space(6.0);
-            }
-            ui.label(RichText::new("User Name").size(12.0).color(p.text_secondary));
-            let r = dialog::text_input(ui, &mut form.name, "Your Name", true);
-            focus_once(ui, &r);
-            let mut submit = dialog::submitted(ui, &r);
-            ui.add_space(8.0);
-            ui.label(RichText::new("User Email").size(12.0).color(p.text_secondary));
-            let r = dialog::text_input(ui, &mut form.email, "you@example.com", true);
-            submit |= dialog::submitted(ui, &r);
-            dialog::actions(ui, |ui| {
-                if dialog::button(ui, "OK", ButtonKind::Primary, true).clicked() {
-                    submit = true;
-                }
-            });
-            if submit {
-                out = Some(ProjectSettingsAction::Save);
-            }
-            out
-        });
-    if resp.close {
-        return Some(ProjectSettingsAction::Close);
-    }
-    resp.inner
-}
-
-impl ProjectSettingsForm {
-    /// `handleSave`'s check.
-    pub fn validate(&mut self) -> bool {
-        if self.name.trim().is_empty() || self.email.trim().is_empty() {
-            self.error = Some("Both name and email are required.".into());
-            return false;
-        }
-        true
-    }
-}
-
 // --- Busy -----------------------------------------------------------------------
 
-/// `SyncingModal` / `ImportingModal`: a spinner and a message, no close.
+/// "Importing …": a spinner and a message, no close.
 pub fn busy(ctx: &egui::Context, title: &str, message: &str) {
     Dialog::compact(("busy", title), title).show(ctx, |ui| {
         ui.horizontal(|ui| {
@@ -828,7 +786,7 @@ pub fn remove_attachment(ctx: &egui::Context, name: &str) -> Option<Confirm> {
         "remove-attachment",
         "Remove Attachment",
         &format!("Remove \"{name}\"?"),
-        Some("The file is deleted from the project's _attachments folder."),
+        Some("The file goes to the trash."),
         "Remove",
     )
 }
@@ -838,80 +796,116 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_project_validation() {
-        let mut f = NewProjectForm {
-            location: " ".into(),
-            name: "n".into(),
-            email: "e".into(),
-            error: None,
-        };
-        assert_eq!(f.validate(), Some("Project location is required."));
-        f.location = "/tmp/x".into();
-        f.email.clear();
-        assert_eq!(f.validate(), Some("User name and email are required."));
-        f.email = "e@h".into();
-        assert_eq!(f.validate(), None);
-    }
-
-    #[test]
     fn duplicate_defaults() {
         let e = Entry {
             id: "a".into(),
             name: "Alpha".into(),
             tags: vec!["x".into()],
-            parent_id: Some("p".into()),
+            filename: "Work/alpha.md".into(),
+            folder: "Work".into(),
             ..Default::default()
         };
         let f = NewFileForm::duplicate(&e);
         assert_eq!(f.name, "Alpha-Copy");
         assert!(f.tags.contains("x"));
-        assert_eq!(f.parent.as_deref(), Some("p"));
+        // The copy goes beside its source.
+        assert_eq!(f.folder, "Work");
+        assert_eq!(NewFileForm::diagram("", "Work/Sub").folder, "Work/Sub");
     }
 
-    fn entry(id: &str, name: &str, parent: Option<&str>) -> Entry {
-        Entry {
-            id: id.into(),
-            name: name.into(),
-            parent_id: parent.map(Into::into),
-            ..Default::default()
-        }
-    }
-
-    /// Projects ─ Garden ─ Tomatoes, and Recipes; moving Recipes.
-    fn tree() -> Vec<Entry> {
-        vec![
-            entry("p", "Projects", None),
-            entry("g", "Garden", Some("p")),
-            entry("t", "Tomatoes", Some("g")),
-            entry("r", "Recipes", None),
+    /// Projects ─ Garden ─ Tomatoes, and Recipes.
+    fn folders() -> Vec<String> {
+        [
+            "Projects",
+            "Projects/Garden",
+            "Projects/Garden/Tomatoes",
+            "Recipes",
         ]
+        .map(String::from)
+        .to_vec()
     }
 
     #[test]
-    fn parent_search() {
-        let entries = tree();
-        let labels = |q: &str, exclude: &str| -> Vec<String> {
-            parent_matches(&entries, exclude, q)
+    fn folder_search() {
+        let folders = folders();
+        let labels = |q: &str, exclude: Option<&str>| -> Vec<String> {
+            folder_matches(&folders, exclude, q)
                 .into_iter()
                 .map(|m| m.1)
                 .collect()
         };
-        // No query: the tree, indented, without the moved file.
+        // No query: the tree, indented under the top of the project.
         assert_eq!(
-            labels("", "r"),
+            labels("", None),
             [
-                "(None)",
-                "Projects",
-                "\u{a0}\u{a0}Garden",
-                "\u{a0}\u{a0}\u{a0}\u{a0}Tomatoes"
+                TOP,
+                "\u{a0}\u{a0}Projects",
+                "\u{a0}\u{a0}\u{a0}\u{a0}Garden",
+                "\u{a0}\u{a0}\u{a0}\u{a0}\u{a0}\u{a0}Tomatoes",
+                "\u{a0}\u{a0}Recipes"
             ]
         );
         // A query matches names, ignoring case, and labels them by path.
-        assert_eq!(labels(" TOMA ", "r"), ["Projects / Garden / Tomatoes"]);
-        assert_eq!(labels("none", "r"), ["(None)"]);
-        assert!(labels("zzz", "r").is_empty());
-        // The moved file's subtree is never offered.
-        assert!(labels("tom", "p").is_empty());
+        assert_eq!(labels(" TOMA ", None), ["Projects / Garden / Tomatoes"]);
+        assert_eq!(labels("top", None), [TOP]);
+        assert!(labels("zzz", None).is_empty());
+        // A moved folder, and the folders under it, are never offered.
+        assert!(labels("tom", Some("Projects")).is_empty());
+        assert_eq!(labels("", Some("Projects/Garden")).len(), 3);
+    }
+
+    #[test]
+    fn move_forms_start_where_the_thing_is() {
+        let e = Entry {
+            id: "a".into(),
+            name: "Alpha".into(),
+            folder: "Work".into(),
+            ..Default::default()
+        };
+        let f = MoveForm::file(&e);
+        assert_eq!((f.current.as_str(), f.folder.as_str()), ("Work", "Work"));
+        assert_eq!(f.excluded(), None);
+        let f = MoveForm::folder("Projects/Garden");
+        assert_eq!(f.name, "Garden");
+        assert_eq!(f.current, "Projects");
+        assert_eq!(f.excluded(), Some("Projects/Garden"));
+        assert_eq!(MoveForm::folder("Recipes").current, "");
+    }
+
+    #[test]
+    fn new_folder_names() {
+        let folders = folders();
+        let form = |parent: &str, name: &str| NewFolderForm {
+            parent: parent.into(),
+            name: name.into(),
+        };
+        assert_eq!(form("Projects", " Shed ").path(), "Projects/Shed");
+        assert_eq!(form("", "Shed").path(), "Shed");
+        assert_eq!(form("", "").problem(&folders), None);
+        assert_eq!(form("", "Shed").problem(&folders), None);
+        // The name rules, and a folder already there, ignoring case.
+        for bad in [".hidden", "_x", "a/b", "what?", ".."] {
+            assert!(form("", bad).problem(&folders).is_some(), "{bad}");
+        }
+        assert!(form("", "recipes").problem(&folders).is_some());
+        assert!(form("Projects", "GARDEN").problem(&folders).is_some());
+        assert!(form("Recipes", "Garden").problem(&folders).is_none());
+    }
+
+    #[test]
+    fn folder_counts_in_words() {
+        let c = |notes, diagrams, others| FolderCounts {
+            notes,
+            diagrams,
+            others,
+        };
+        assert_eq!(counts_text(&c(0, 0, 0)), "nothing");
+        assert_eq!(counts_text(&c(1, 0, 0)), "1 note");
+        assert_eq!(counts_text(&c(3, 1, 0)), "3 notes and 1 diagram");
+        assert_eq!(
+            counts_text(&c(3, 1, 2)),
+            "3 notes, 1 diagram and 2 other files"
+        );
     }
 
     #[test]
@@ -920,28 +914,32 @@ mod tests {
 
         struct State {
             form: MoveForm,
-            entries: Vec<Entry>,
+            folders: Vec<String>,
             action: Option<FormAction>,
         }
-        let entries = tree();
-        let form = MoveForm::new(&entries[3], &entries);
+        let folders = folders();
+        let form = MoveForm::folder("Recipes");
         let mut h = egui_kittest::Harness::builder()
             .with_context_setup(fonts::install)
             .with_size(egui::vec2(800.0, 700.0))
             .build_ui_state(
                 |ui, s: &mut State| {
-                    if let Some(a) = move_file(ui.ctx(), &mut s.form, &s.entries) {
+                    if let Some(a) = move_dialog(ui.ctx(), &mut s.form, &s.folders) {
                         s.action = Some(a);
                     }
                 },
                 State {
                     form,
-                    entries,
+                    folders,
                     action: None,
                 },
             );
         h.run_steps(3);
         assert!(h.query_by_label_contains("Tomatoes").is_some());
+        // The folder being moved isn't in the list.
+        assert!(h
+            .query_by_role_and_label(egui::accesskit::Role::ListBoxOption, "\u{a0}\u{a0}Recipes")
+            .is_none());
 
         // The search is focused when the dialog opens.
         h.get_by_role(egui::accesskit::Role::TextInput)
@@ -949,7 +947,7 @@ mod tests {
         h.run_steps(3);
         assert!(h.query_by_label("Projects / Garden").is_some());
         assert!(h.query_by_label_contains("Tomatoes").is_none());
-        assert_eq!(h.state().form.parent.as_deref(), Some("g"));
+        assert_eq!(h.state().form.folder, "Projects/Garden");
 
         h.key_press(egui::Key::Enter);
         h.run_steps(2);

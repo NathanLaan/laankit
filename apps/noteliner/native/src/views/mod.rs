@@ -3,14 +3,12 @@
 
 pub mod attachments;
 pub mod diagram;
-pub mod history;
 pub mod panes;
 pub mod preview;
 pub mod sidebar;
 pub mod tree;
 
 use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui};
-use laankit_core::git::SyncStatus;
 use laankit_egui::theme::{self, Palette};
 use laankit_egui::{fonts, icons};
 
@@ -25,13 +23,13 @@ pub const LOG_CAP: usize = 1000;
 /// What the user did on the open screen.
 #[derive(Clone, Debug, PartialEq)]
 pub enum OpenAction {
-    NewProject,
     OpenFolder,
     OpenRecent(String),
     RemoveRecent(Recent),
 }
 
-/// `OpenScreen.svelte`: the title, New / Open Project, and recent projects.
+/// The open screen: the title, Open Folder, and the recent projects. A new
+/// project is an empty folder you open.
 pub fn open_screen(ui: &mut Ui, recent: &[Recent]) -> Option<OpenAction> {
     let p = theme::palette(ui.ctx());
     let mut out = None;
@@ -56,10 +54,7 @@ pub fn open_screen(ui: &mut Ui, recent: &[Recent]) -> Option<OpenAction> {
                     ui.add_space(28.0);
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 10.0;
-                        if action_button(ui, &p, icons::PLUS, "New Project").clicked() {
-                            out = Some(OpenAction::NewProject);
-                        }
-                        if action_button(ui, &p, icons::FOLDER_OPEN, "Open Project").clicked() {
+                        if action_button(ui, &p, icons::FOLDER_OPEN, "Open Folder").clicked() {
                             out = Some(OpenAction::OpenFolder);
                         }
                     });
@@ -203,46 +198,21 @@ pub struct StatusProps<'a> {
     /// place on the canvas. Shown in place of the note's counts.
     pub diagram: Option<(f32, Option<egui::Pos2>)>,
     pub mcp_running: bool,
-    pub branch: Option<&'a str>,
-    pub sync: Option<&'a SyncStatus>,
+    /// The open note's frontmatter can't be read as YAML just now.
+    pub frontmatter_unreadable: bool,
 }
 
 const GREEN: Color32 = Color32::from_rgb(0x4c, 0xaf, 0x50);
-const BLUE: Color32 = Color32::from_rgb(0x42, 0x8b, 0xe8);
 const ORANGE: Color32 = Color32::from_rgb(0xf0, 0x9a, 0x2b);
 const GREY: Color32 = Color32::from_gray(0x88);
-
-/// `syncDotClass`.
-fn sync_dot(s: Option<&SyncStatus>) -> Color32 {
-    match s {
-        Some(SyncStatus::Synced) => GREEN,
-        Some(SyncStatus::Ahead { .. }) => BLUE,
-        Some(SyncStatus::Behind { .. }) => ORANGE,
-        Some(SyncStatus::Diverged { .. } | SyncStatus::Error { .. }) => laankit_egui::toast::DANGER,
-        _ => GREY,
-    }
-}
-
-/// `syncLabel`.
-pub fn sync_label(s: Option<&SyncStatus>) -> String {
-    match s {
-        Some(SyncStatus::Synced) => "Synced".into(),
-        Some(SyncStatus::Ahead { count }) => format!("↑{count}"),
-        Some(SyncStatus::Behind { count }) => format!("↓{count}"),
-        Some(SyncStatus::Diverged { ahead, behind }) => format!("↑{ahead} ↓{behind}"),
-        Some(SyncStatus::NoUpstream) => "No upstream".into(),
-        Some(SyncStatus::Error { .. }) => "Sync error".into(),
-        _ => String::new(),
-    }
-}
 
 /// Word count as `/\S+/g` counts it.
 pub fn word_count(text: &str) -> usize {
     text.split_whitespace().count()
 }
 
-/// Draws the status bar; returns `true` when the branch chip was clicked.
-pub fn status_bar(ui: &mut Ui, s: &StatusProps<'_>) -> bool {
+/// Draws the status bar.
+pub fn status_bar(ui: &mut Ui, s: &StatusProps<'_>) {
     let p = theme::palette(ui.ctx());
     let rect = ui.max_rect();
     ui.painter().rect_filled(rect, 0.0, p.bg_surface);
@@ -277,6 +247,9 @@ pub fn status_bar(ui: &mut Ui, s: &StatusProps<'_>) -> bool {
                 };
                 seg(ui, status.label(), p.text_secondary, Some(dot));
                 seg(ui, name, p.text_secondary, None);
+                if s.frontmatter_unreadable {
+                    seg(ui, "Frontmatter can't be read", ORANGE, Some(ORANGE));
+                }
             }
             None => seg(ui, "No file selected", p.text_muted, None),
         }
@@ -293,47 +266,8 @@ pub fn status_bar(ui: &mut Ui, s: &StatusProps<'_>) -> bool {
         );
     }
 
-    // Right, laid out from the right edge: branch chip, MCP, then the note's details.
+    // Right, laid out from the right edge: MCP, then the note's details.
     let mut right = rect.right() - 8.0;
-    let mut clicked = false;
-    if let Some(branch) = s.branch {
-        let label = sync_label(s.sync);
-        let text = if label.is_empty() {
-            branch.to_string()
-        } else {
-            format!("{branch}  {label}")
-        };
-        let galley = ui
-            .painter()
-            .layout_no_wrap(text, font.clone(), p.text_secondary);
-        let w = galley.size().x + 36.0;
-        let chip = Rect::from_min_max(
-            pos2(right - w, rect.top() + 2.0),
-            pos2(right, rect.bottom() - 2.0),
-        );
-        let resp = ui.interact(chip, ui.scope_id().with("branch-chip"), Sense::click());
-        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Remote Sync"));
-        if resp.hovered() {
-            ui.painter()
-                .rect_filled(chip, CornerRadius::same(3), p.bg_item_hover);
-        }
-        ui.painter().text(
-            pos2(chip.left() + 10.0, y),
-            Align2::CENTER_CENTER,
-            icons::CODE_BRANCH,
-            icons::font(10.0),
-            p.text_secondary,
-        );
-        ui.painter()
-            .circle_filled(pos2(chip.right() - 8.0, y), 4.0, sync_dot(s.sync));
-        ui.painter().galley(
-            pos2(chip.left() + 20.0, y - galley.size().y / 2.0),
-            galley,
-            p.text_secondary,
-        );
-        clicked = resp.on_hover_text("Open Remote Sync").clicked();
-        right = chip.left() - 12.0;
-    }
     let mut seg_right = |ui: &Ui, text: String, color: Color32| {
         let r = ui.painter().text(
             pos2(right, y),
@@ -383,7 +317,6 @@ pub fn status_bar(ui: &mut Ui, s: &StatusProps<'_>) -> bool {
             if s.spell_check { GREEN } else { GREY },
         );
     }
-    clicked
 }
 
 /// One line of the Log panel.
@@ -400,7 +333,8 @@ pub enum LogAction {
     Close,
 }
 
-/// `LogPanel.svelte`: "Sync Log", newest at the bottom, auto-scrolled.
+/// The Activity Log: MCP activity and import notes, newest at the bottom,
+/// auto-scrolled.
 pub fn log_panel(ui: &mut Ui, lines: &[LogLine]) -> Option<LogAction> {
     let p = theme::palette(ui.ctx());
     let mut out = None;
@@ -412,7 +346,7 @@ pub fn log_panel(ui: &mut Ui, lines: &[LogLine]) -> Option<LogAction> {
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(
-                    fonts::weight("Sync Log", fonts::SEMIBOLD)
+                    fonts::weight("Activity Log", fonts::SEMIBOLD)
                         .size(12.0)
                         .color(p.text_secondary),
                 );
@@ -445,7 +379,7 @@ pub fn log_panel(ui: &mut Ui, lines: &[LogLine]) -> Option<LogAction> {
                 .show(ui, |ui| {
                     if lines.is_empty() {
                         ui.label(
-                            RichText::new("No sync activity yet.")
+                            RichText::new("No activity yet.")
                                 .size(12.0)
                                 .color(p.text_muted),
                         );
@@ -501,14 +435,5 @@ mod tests {
     #[test]
     fn counts_and_labels() {
         assert_eq!(word_count("  one two\nthree "), 3);
-        assert_eq!(sync_label(Some(&SyncStatus::Ahead { count: 2 })), "↑2");
-        assert_eq!(
-            sync_label(Some(&SyncStatus::Diverged {
-                ahead: 1,
-                behind: 3
-            })),
-            "↑1 ↓3"
-        );
-        assert_eq!(sync_label(None), "");
     }
 }

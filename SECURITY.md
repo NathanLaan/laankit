@@ -25,14 +25,15 @@ Understanding how LaanKit handles data and the network makes it clearer what is 
 
 ### Local-first by design
 
-- Your data lives on your own machine, in files you control: a git repository for NoteLiner, ThreadLiner, and PageLiner, any folder of Mermaid files for BlockLiner, and your own photo folders for MediaLiner. If you configure a git remote, syncing pushes to your remote with your credentials. LaanKit operates no servers and has no accounts.
-- LaanKit shells out to the system `git` CLI, so it uses your existing SSH keys and git configuration. It does not store or manage credentials itself.
+- Your data lives on your own machine, in files you control: any folder of Markdown notes for NoteLiner, a git repository for ThreadLiner and PageLiner, any folder of Mermaid files for BlockLiner, and your own photo folders for MediaLiner. If you configure a git remote in ThreadLiner or PageLiner, syncing pushes to your remote with your credentials. LaanKit operates no servers and has no accounts.
+- ThreadLiner and PageLiner shell out to the system `git` CLI, so they use your existing SSH keys and git configuration. LaanKit does not store or manage credentials itself.
+- NoteLiner runs no `git` command and does not sync. A project that is a git repository opens as any folder does, and NoteLiner never reads or changes `.git`. Notes, folders, and attachments you delete go to the system's trash.
 
 ### Network use
 
 Network access is limited and user-initiated:
 
-- Git sync: push/pull to the remote you configure (NoteLiner, ThreadLiner, and PageLiner).
+- Git sync: push/pull to the remote you configure (ThreadLiner and PageLiner).
 - Feed fetching: ThreadLiner retrieves the RSS/Atom/JSON feeds you subscribe to.
 - Update check: a check for new releases at launch.
 - Bambu Lab cloud: PrintLiner signs in to your Bambu Lab account and reads your printers' status from Bambu Lab's servers (REST over HTTPS, and MQTT over TLS with Mozilla's root certificates). It only reads status; the one message it publishes asks a printer for its full report.
@@ -50,7 +51,9 @@ NoteLiner can expose the open project to local AI assistants over the Model Cont
 - It binds no TCP port. It listens on a user-scoped Unix domain socket (`chmod 0600`); there is no remote transport.
 - It only ever exposes the currently open project; switching projects tears the server down before new data is reachable.
 - Write tools can require per-call confirmation (*Allow once* / *for the session* / *Deny*) and can be disabled per tool. Writes go through the same save path as the UI and are size-capped.
-- Every MCP call is logged in the app's Log panel.
+- Every folder path a tool takes is checked: it can't be absolute, hold `..`, or name a folder NoteLiner skips (one whose name starts with `.` or `_`), so a tool can't reach outside the project or into `.git`.
+- A note a tool deletes goes to the system's trash, and a tool can only delete a folder that is empty.
+- Every MCP call is logged in the app's Activity Log.
 
 The MCP server is not available on Windows yet (it requires a Unix socket).
 

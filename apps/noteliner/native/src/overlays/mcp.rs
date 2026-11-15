@@ -175,13 +175,13 @@ pub fn walkthrough(
             let p = theme::palette(ui.ctx());
             let now = ui.input(|i| i.time);
             ui.label(RichText::new(
-                "NoteLiner can expose the currently-open project to external AI assistants (Claude Code, Claude Desktop, Cursor, ...) so they can list, read, search, and write notes. Every write goes through the normal save path and is committed to git automatically.",
+                "NoteLiner can expose the currently-open project to external AI assistants (Claude Code, Claude Desktop, Cursor, ...) so they can list, read, search, and write notes. Every write goes through the normal save path, and a deleted note goes to the trash.",
             ).color(p.text_primary));
             heading(ui, "How it works");
             for (n, text) in [
                 "NoteLiner listens on a private local socket while a project is open.",
                 "Your AI client launches `noteliner --mcp-bridge`, which pipes its stdio into that socket.",
-                "The client calls tools (list_notes, create_note, ...) — you see every operation in the Sync Log.",
+                "The client calls tools (list_notes, create_note, ...) — you see every operation in the Activity Log.",
             ]
             .iter()
             .enumerate()

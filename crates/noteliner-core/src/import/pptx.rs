@@ -84,13 +84,18 @@ fn rel_id(n: Node, local: &str) -> Option<String> {
     n.attribute((REL_NS, local)).map(str::to_string)
 }
 
-pub async fn import(project: &mut Project, bytes: &[u8], stem: &str) -> Result<Value> {
+pub async fn import(
+    project: &mut Project,
+    bytes: &[u8],
+    stem: &str,
+    folder: Option<&str>,
+) -> Result<Value> {
     let mut pkg = Package::open(bytes).map_err(|e| anyhow!("Not a valid .pptx archive: {e}"))?;
     if !pkg.has("ppt/presentation.xml") {
         bail!("Not a valid .pptx file (missing ppt/presentation.xml)");
     }
     let entry = project
-        .create_file(stem, &json!([]), Some(String::new()), None)
+        .create_file(stem, &json!([]), Some(String::new()), folder)
         .await?;
     let file_id = entry["id"].as_str().unwrap_or("").to_string();
     let mut stats = Stats::default();
@@ -117,7 +122,7 @@ pub async fn import(project: &mut Project, bytes: &[u8], stem: &str) -> Result<V
     }
     let markdown = finish(&tidy(&out.join("\n")));
     let filename = entry["filename"].as_str().unwrap_or("").to_string();
-    project.write_file(&filename, &markdown).await?;
+    project.write_body(&filename, &markdown).await?;
     Ok(json!({ "entry": entry, "stats": stats_json(&stats, false) }))
 }
 
