@@ -7,7 +7,6 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - Run, build, install: see the [root README](../../README.md).
 - The native app in depth: see [`native/README.md`](native/README.md).
 - How it fits together: [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
-- The plan it was built from: [`docs/plans/plan-medialiner.md`](../../docs/plans/plan-medialiner.md).
 
 ## Features
 

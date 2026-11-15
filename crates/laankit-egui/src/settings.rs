@@ -414,8 +414,11 @@ pub fn select(
     picked.filter(|v| v != selected)
 }
 
+/// The tallest a select's list gets (ten rows) before it scrolls.
+const DROPDOWN_MAX_HEIGHT: f32 = 280.0;
+
 /// `.theme-select` / `.scale-select`: the closed select, opening a popup
-/// list below it.
+/// list below it. A long list scrolls.
 fn dropdown(ui: &mut Ui, p: &Palette, label: &str, current: &str, options: impl FnOnce(&mut Ui)) {
     let (rect, resp) =
         ui.allocate_exact_size(vec2(ui.available_width(), CONTROL_HEIGHT), Sense::click());
@@ -454,10 +457,27 @@ fn dropdown(ui: &mut Ui, p: &Palette, label: &str, current: &str, options: impl 
     );
     egui::Popup::menu(&resp)
         .width(rect.width())
-        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        // A click on the scroll bar must not close the list, so the popup
+        // only closes itself on a click outside; a click on a row closes it
+        // below.
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .show(|ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
-            options(ui);
+            let out = egui::ScrollArea::vertical()
+                .max_height(DROPDOWN_MAX_HEIGHT)
+                .auto_shrink([false, true])
+                .show(ui, options);
+            // `open`: the click that opened the list is not a pick.
+            let on_row = open
+                && ui.input(|i| {
+                    i.pointer.primary_clicked()
+                        && i.pointer
+                            .interact_pos()
+                            .is_some_and(|pos| out.inner_rect.contains(pos))
+                });
+            if on_row {
+                ui.close();
+            }
         });
 }
 

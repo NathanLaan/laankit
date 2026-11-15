@@ -659,3 +659,78 @@ fn changes_made_by_other_programs() {
     assert_eq!(h.state().tab_ids().len(), 1);
     close(h);
 }
+
+/// Forty folders, so the New File dialog's Folder list is taller than the
+/// window.
+fn many_folders(dir: &Path) {
+    for i in 1..=40 {
+        std::fs::create_dir_all(dir.join(format!("Folder {i:02}"))).unwrap();
+    }
+}
+
+#[test]
+fn a_long_folder_list_scrolls_in_the_new_file_dialog() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), many_folders, 0);
+    wait_for(&mut h, "the folders", |a| a.folders().len() == 40);
+    act(&mut h, Act::NewFile);
+    h.get_by_role_and_label(Role::ComboBox, "Folder").click();
+    h.run_steps(3);
+
+    // The list is no taller than ten rows, and stays on the screen.
+    let screen = h.ctx.content_rect();
+    let first = h
+        .get_by_role_and_label(Role::ListBoxOption, "(Top of the project)")
+        .rect();
+    assert!(screen.contains_rect(first), "{first:?}");
+    let last = |h: &H| {
+        h.get_all_by_role(Role::ListBoxOption)
+            .find(|n| {
+                n.accesskit_node()
+                    .label()
+                    .is_some_and(|l| l.trim() == "Folder 40")
+            })
+            .expect("the last folder")
+            .rect()
+    };
+    assert!(
+        last(&h).top() > first.top() + 280.0,
+        "the last row is out of view"
+    );
+
+    // The wheel brings the last folder into view, and the list stays open.
+    h.hover_at(first.center());
+    for _ in 0..12 {
+        h.event(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -200.0),
+            source: egui::MouseWheelSource::Unknown,
+            phase: egui::TouchPhase::Move,
+            modifiers: Modifiers::NONE,
+        });
+        h.run_steps(2);
+    }
+    let rect = last(&h);
+    assert!(
+        rect.bottom() <= first.top() + 281.0,
+        "{rect:?} from {first:?}"
+    );
+    h.get_all_by_role(Role::ListBoxOption)
+        .find(|n| {
+            n.accesskit_node()
+                .label()
+                .is_some_and(|l| l.trim() == "Folder 40")
+        })
+        .unwrap()
+        .click();
+    h.run_steps(3);
+    // Picking a row closes the list.
+    assert!(h.query_by_role(Role::ListBoxOption).is_none());
+
+    name_and_ok(&mut h, "Deep");
+    let p = project.clone();
+    wait_for(&mut h, "the note in the last folder", move |_| {
+        p.join("Folder 40/deep.md").exists()
+    });
+    close(h);
+}
