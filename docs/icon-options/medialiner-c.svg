@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- MediaLiner icon, option C (Solid). Review candidate. -->
+  <defs>
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="16" x2="0" y2="496"><stop offset="0" stop-color="#3c374d"/><stop offset="1" stop-color="#201e2c"/></linearGradient>
+    <linearGradient id="acc" gradientUnits="userSpaceOnUse" x1="96" y1="96" x2="416" y2="416"><stop offset="0" stop-color="#fbd7ee"/><stop offset="1" stop-color="#ec9ccd"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".16"/><stop offset=".5" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <clipPath id="clip"><rect x="16" y="16" width="480" height="480" rx="108"/></clipPath>
+    <radialGradient id="fade" gradientUnits="userSpaceOnUse" cx="256" cy="256" r="300"><stop offset=".35" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".15"/></radialGradient>
+    <mask id="fadeMask"><rect width="512" height="512" fill="url(#fade)"/></mask>
+    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="256" cy="230" r="260"><stop offset="0" stop-color="#f5c2e7" stop-opacity=".16"/><stop offset="1" stop-color="#f5c2e7" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#tile)"/>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#glow)"/>
+  <rect x="19" y="19" width="474" height="474" rx="105" fill="none" stroke="url(#rim)" stroke-width="3"/>
+  <rect x="160" y="106" width="252" height="200" rx="26" fill="#f5c2e7" fill-opacity="0.42"/>
+  <rect x="100" y="166" width="288" height="232" rx="28" fill="url(#tile)" stroke="url(#tile)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="100" y="166" width="288" height="232" rx="28" fill="url(#acc)"/>
+  <circle cx="318" cy="234" r="27" fill="#fffaf0"/>
+  <path opacity="0.85" d="M130 370 L202 286 L252 340 L288 304 L358 370 Z" fill="#1b1a25" stroke="#1b1a25" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

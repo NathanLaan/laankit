@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- NoteLiner icon, option B (Glass). Review candidate. -->
+  <defs>
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="16" x2="0" y2="496"><stop offset="0" stop-color="#262639"/><stop offset="1" stop-color="#171724"/></linearGradient>
+    <linearGradient id="acc" gradientUnits="userSpaceOnUse" x1="96" y1="96" x2="416" y2="416"><stop offset="0" stop-color="#e0c4ff"/><stop offset="1" stop-color="#b088f0"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".16"/><stop offset=".5" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <clipPath id="clip"><rect x="16" y="16" width="480" height="480" rx="108"/></clipPath>
+    <radialGradient id="fade" gradientUnits="userSpaceOnUse" cx="256" cy="256" r="300"><stop offset=".35" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".15"/></radialGradient>
+    <mask id="fadeMask"><rect width="512" height="512" fill="url(#fade)"/></mask>
+    <pattern id="dots" x="36" y="36" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="3" fill="#45475a"/></pattern>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#tile)"/>
+  <g clip-path="url(#clip)"><rect width="512" height="512" fill="url(#dots)" mask="url(#fadeMask)"/></g>
+  <rect x="19" y="19" width="474" height="474" rx="105" fill="none" stroke="url(#rim)" stroke-width="3"/>
+  <path d="M132 204 V328 Q132 352 156 352 H170 M132 232 Q132 256 156 256 H170" fill="none" stroke="#cdd6f4" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="132" cy="160" r="24" fill="url(#acc)" stroke="url(#acc)" stroke-width="0" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M196 160 H386" fill="none" stroke="url(#acc)" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="206" cy="256" r="20" fill="url(#acc)" stroke="url(#acc)" stroke-width="0" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M262 256 H386" fill="none" stroke="url(#acc)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="206" cy="352" r="20" fill="url(#acc)" stroke="url(#acc)" stroke-width="0" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M262 352 H338" fill="none" stroke="url(#acc)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
