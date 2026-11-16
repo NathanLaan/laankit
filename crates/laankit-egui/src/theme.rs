@@ -1,4 +1,4 @@
-//! The desktop-ui theme system, natively: the six themes, the UI scale steps,
+//! The desktop-ui theme system, natively: the seven themes, the UI scale steps,
 //! and how they map onto egui's `Visuals` and zoom factor.
 //!
 //! The palettes are generated from `packages/desktop-ui/src/theme/index.svelte.js`
@@ -108,16 +108,18 @@ pub enum ThemeId {
     Light,
     LightPurple,
     LightMulberry,
+    LightRasberryson,
 }
 
 impl ThemeId {
-    pub const ALL: [ThemeId; 6] = [
+    pub const ALL: [ThemeId; 7] = [
         ThemeId::Midnight,
         ThemeId::Dark,
         ThemeId::DarkPurple,
         ThemeId::Light,
         ThemeId::LightPurple,
         ThemeId::LightMulberry,
+        ThemeId::LightRasberryson,
     ];
 
     /// The id the Svelte builds store (`midnight`, `darkPurple`, …).
@@ -129,6 +131,7 @@ impl ThemeId {
             ThemeId::Light => "light",
             ThemeId::LightPurple => "lightPurple",
             ThemeId::LightMulberry => "lightMulberry",
+            ThemeId::LightRasberryson => "lightRasberryson",
         }
     }
 
@@ -140,6 +143,7 @@ impl ThemeId {
             ThemeId::Light => "Light",
             ThemeId::LightPurple => "Light-Purple",
             ThemeId::LightMulberry => "Light-Mulberry",
+            ThemeId::LightRasberryson => "Light-Rasberryson",
         }
     }
 
@@ -155,6 +159,7 @@ impl ThemeId {
             ThemeId::Light => &LIGHT,
             ThemeId::LightPurple => &LIGHT_PURPLE,
             ThemeId::LightMulberry => &LIGHT_MULBERRY,
+            ThemeId::LightRasberryson => &LIGHT_RASBERRYSON,
         }
     }
 }
@@ -492,6 +497,38 @@ const LIGHT_MULBERRY: Palette = Palette {
     input_bg: hex(0xf0f0f0),
     input_border: hex(0xd4d4d4),
     input_border_focus: hex(0x7e0d4f),
+    modal_overlay: rgba(0, 0, 0, 76),
+    code_bg: hex(0xe8e8e8),
+    pre_bg: hex(0xf0f0f0),
+    blockquote_border: hex(0xd4d4d4),
+    tag_bg: hex(0xe0e0e0),
+};
+const LIGHT_RASBERRYSON: Palette = Palette {
+    dark: false,
+    bg_base: hex(0xf5f5f5),
+    bg_surface: hex(0xffffff),
+    bg_overlay: hex(0xe8e8e8),
+    bg_button: hex(0xe0e0e0),
+    bg_button_hover: hex(0xd0d0d0),
+    bg_selected: rgba(212, 38, 78, 26),
+    bg_drag_over: rgba(212, 38, 78, 31),
+    bg_item_hover: rgba(0, 0, 0, 10),
+    border: hex(0xd4d4d4),
+    border_hover: hex(0xb0b0b0),
+    text_primary: hex(0x1a1a1a),
+    text_secondary: hex(0x555555),
+    text_tertiary: hex(0x333333),
+    text_muted: hex(0x888888),
+    text_faint: hex(0xbbbbbb),
+    accent: hex(0xd4264e),
+    accent_hover: hex(0xc4163e),
+    accent_on: hex(0xffffff),
+    scrollbar_track: hex(0xf0f0f0),
+    scrollbar_thumb: hex(0xc0c0c0),
+    scrollbar_thumb_hover: hex(0xa0a0a0),
+    input_bg: hex(0xf0f0f0),
+    input_border: hex(0xd4d4d4),
+    input_border_focus: hex(0xd4264e),
     modal_overlay: rgba(0, 0, 0, 76),
     code_bg: hex(0xe8e8e8),
     pre_bg: hex(0xf0f0f0),

@@ -34,7 +34,7 @@ save(view.position());
 | `RichView` selection and marks          | `selection(&doc) -> Option<Selection>`, `select`, `clear_selection`; `set_marks(Vec<Mark>)`, `marks` |
 | `RichOutput`                            | Clicked links (`Action::Open`), scroll offset, viewport and content height (for paging), `clicked_mark`, `selection_changed` |
 | `Position`                              | Block + character offset, counted through the block's text parts (`Block::text_parts`, `Block::part_text`); ordered |
-| `RichStyle`                             | Size, face, column width, line height and colours; `from_ctx`/`from_palette` follow the six themes |
+| `RichStyle`                             | Size, face, column width, line height and colours; `from_ctx`/`from_palette` follow the seven themes |
 | `Resolver`                              | `image(ctx, src) -> Option<uri>` and `link(target) -> LinkAction` (`Open`, `Anchor`, `Ignore`) |
 | `WebResolver`                           | `http(s)` images through egui_extras' HTTP loader, `data:` images decoded once           |
 | `BundleResolver::new(scope, read)`      | Images read from a bundle (the EPUB zip) on first use and registered as `bytes://scope/path` |
@@ -46,7 +46,7 @@ What comrak (NoteLiner's preview, through `noteliner_core::export::markdown_to_h
 
 - **Task lists.** An `<input type="checkbox">` at the very start of a list item becomes a span with `Style::checkbox = Some(checked)` and the text `[ ]` or `[x]`, so copying gives task syntax and renderers that don't draw boxes (slides) still show the state. The view lays both out as the same three characters (checked and unchecked boxes line up) and draws a theme-coloured box over them: an outline (`check_border`), or a filled box (`check_fill`) with a tick (`check_mark`). Read-only, as in the Svelte preview. Any other `<input>` is dropped.
 - **Table alignment.** `align` or CSS `text-align` on a `th`/`td` (CSS wins), else the column header's, as `Style::cell_align` on the cell's spans (kept off `Block::Table` so code matching on its fields still compiles). Cells are aligned within their column.
-- **`<mark>`.** `Style::mark`: a yellow highlight with dark text (`mark_bg`, `mark_text`), as a browser draws it, readable in all six themes.
+- **`<mark>`.** `Style::mark`: a yellow highlight with dark text (`mark_bg`, `mark_text`), as a browser draws it, readable in all seven themes.
 - **`<kbd>`.** `Style::kbd` (and `code`): monospace in a key cap, a filled, outlined frame (`code_bg`, `kbd_border`) drawn under the glyphs.
 
 Articles (`from_article_html`) stay as strict as before: the sanitizer's allow-list (ThreadLiner's DOMPurify one) has no `input`, `mark` or `kbd`, so their text is kept unstyled.

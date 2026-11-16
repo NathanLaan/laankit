@@ -3,7 +3,7 @@
 //!
 //! | Module         | desktop-ui equivalent                                                  |
 //! |----------------|------------------------------------------------------------------------|
-//! | `theme`        | `theme/index.svelte.js`: the six themes and the UI scale               |
+//! | `theme`        | `theme/index.svelte.js`: the seven themes and the UI scale               |
 //! | `fonts`        | the system font stack, plus bundled faces and glyph fallback           |
 //! | `window`       | window controls and `-webkit-app-region: drag`, for undecorated windows |
 //! | `titlebar`     | `TitleBar.svelte`                                                      |
