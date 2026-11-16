@@ -1,7 +1,7 @@
 //! The bar above the editor (`.editor-toolbar` in `Editor.svelte`): the file
 //! name, the list buttons (highlighted when the caret's lines are already
-//! that kind of list), "Indent as Sub-list", and the History and Preview
-//! toggles, which the host handles.
+//! that kind of list), "Indent as Sub-list", and the Preview toggle, which
+//! the host handles.
 
 use egui::{vec2, Align, Frame, Layout, Margin, RichText, Sense, Stroke, Ui};
 use laankit_egui::{fonts, icons, theme};
@@ -19,15 +19,12 @@ const BUTTON: f32 = 28.0;
 pub struct ToolbarProps<'a> {
     /// The open note's name; `None` shows "No file selected".
     pub file_name: Option<&'a str>,
-    pub show_history: bool,
     pub show_preview: bool,
 }
 
 /// A toolbar button for the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolbarAction {
-    /// Ctrl+H.
-    ToggleHistory,
     /// Ctrl+P.
     TogglePreview,
 }
@@ -67,14 +64,6 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, props: &ToolbarProps<'_>) -> V
                     props.show_preview,
                 ) {
                     out.push(ToolbarAction::TogglePreview);
-                }
-                if button(
-                    ui,
-                    icons::CLOCK_ROTATE_LEFT,
-                    "Toggle History (Ctrl+H)",
-                    props.show_history,
-                ) {
-                    out.push(ToolbarAction::ToggleHistory);
                 }
                 let (r, _) = ui.allocate_exact_size(vec2(5.0, 18.0), Sense::hover());
                 ui.painter()

@@ -783,7 +783,10 @@ fn whole(doc: &Document) -> Option<(Position, Position)> {
 fn selected_text(doc: &Document, start: Position, end: Position) -> String {
     let mut out = Vec::new();
     let blocks = doc.blocks.iter().enumerate();
-    for (b, block) in blocks.skip(start.block).take_while(|(b, _)| *b <= end.block) {
+    for (b, block) in blocks
+        .skip(start.block)
+        .take_while(|(b, _)| *b <= end.block)
+    {
         let text = block.part_text();
         let from = if b == start.block { start.offset } else { 0 };
         let to = if b == end.block {

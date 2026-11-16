@@ -30,6 +30,8 @@ mod ui_tests_diagram;
 #[cfg(test)]
 mod ui_tests_editor;
 #[cfg(test)]
+mod ui_tests_folders;
+#[cfg(test)]
 mod ui_tests_panes;
 #[cfg(test)]
 mod ui_tests_present;

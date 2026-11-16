@@ -1,12 +1,12 @@
 # LaanKit
 
-LaanKit is a set of desktop apps that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), and stores its data as plain files you control: a git repository for the notes, feed, and library apps, any folder for BlockLiner, the app's own folders for PrintLiner, and your photo folders, where they are, for MediaLiner.
+LaanKit is a set of desktop apps that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), and stores its data as plain files you control: any folder of Markdown notes for NoteLiner, a git repository for the feed and library apps, any folder for BlockLiner, the app's own folders for PrintLiner, and your photo folders, where they are, for MediaLiner.
 
 ## Apps
 
 | App | Binary | What it is |
 |-----|--------|------------|
-| NoteLiner   | `noteliner`   | Outliner-style Markdown notes: a tree of notes with editor, preview, tags, wikilinks, backlinks, slides, PDF export, and an optional MCP server for AI clients. |
+| NoteLiner   | `noteliner`   | Outliner-style Markdown notes: a folder of notes and sub-folders with editor, preview, tags, wikilinks, backlinks, slides, PDF export, and an optional MCP server for AI clients. |
 | ThreadLiner | `threadliner` | RSS reader (RSS 2.0, Atom, JSON Feed) with git-synced JSON. |
 | PageLiner   | `pageliner`   | EPUB/PDF e-reader and document library with bookmarks, highlights, and reading-position persistence. |
 | BlockLiner  | `blockliner`  | Visio-style diagram editor for software components and architecture, saved as Mermaid flowcharts, with PNG/SVG export. |
@@ -40,7 +40,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for how these fit together, and [`SECUR
 ## Prerequisites
 
 - Rust 1.92+ (install with [`rustup`](https://rustup.rs)).
-- `git` on the `PATH` at runtime. NoteLiner, ThreadLiner, and PageLiner shell out to it for sync and history. BlockLiner, PrintLiner, and MediaLiner don't use git.
+- `git` on the `PATH` at runtime, for ThreadLiner and PageLiner, which shell out to it for sync and history. NoteLiner, BlockLiner, PrintLiner, and MediaLiner don't use git.
 - Linux build libraries:
 
   ```bash
@@ -108,7 +108,7 @@ Pre-built packages for Linux, Windows, and macOS are attached to each [GitHub re
 - Windows: run the `_x64-setup.exe` installer (per-user, no admin). Current builds are unsigned, so SmartScreen warns on first run: More info → Run anyway.
 - macOS: open the `.dmg` and drag the app to `/Applications`. Current builds are unsigned, so the first launch is blocked: right-click → Open → Open, or `xattr -d com.apple.quarantine /Applications/<App>.app`.
 
-`git` must be installed on the target machine for sync and history to work (not needed for BlockLiner, PrintLiner, or MediaLiner).
+`git` must be installed on the target machine for sync and history to work in ThreadLiner and PageLiner. NoteLiner, BlockLiner, PrintLiner, and MediaLiner don't need it.
 
 ## Uninstall
 
@@ -141,6 +141,34 @@ cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 UI tests run headless via [`egui_kittest`](https://github.com/emilk/egui): they drive widgets through AccessKit and never open a real window. See each app's `ui_tests*` modules.
+
+### Displays trial
+
+NoteLiner can present on a display you choose when two or more are connected. The headless tests only check which command NoteLiner sends, so whether a desktop moves the window has to be checked by hand. The displays trial is a small program for that. It opens a window, lists the displays the system reports, and puts the window full screen on the one you pick.
+
+```bash
+cargo run -p noteliner-slides --example displays
+```
+
+| Key | Does |
+|---|---|
+| `1` to `9` | Full screen on that display |
+| `D` | Full screen on the next display |
+| `F` | Out of full screen |
+| `Escape` | Quit |
+
+The window shows each display's number, size, and name, and marks the one the window is on. Every change is also printed to the terminal with the time: the list of displays, the window's display and position, and each command sent. The list is read again each second, so you can unplug a display while it runs.
+
+Run it with two displays connected on each desktop you care about (GNOME and KDE on Wayland, X11, Windows, and macOS), and check these:
+
+- The window goes to the display you asked for.
+- It moves straight from one display to another without leaving full screen first.
+- `F` returns it to the display and size it had.
+- The names are ones you can recognize.
+- The small line of text is sharp on a display with a different scale.
+- Unplugging the display it is on moves it to the other one.
+
+The questions it answers are U1 to U7 in [docs/plans/plan-noteliner-present-display.md](docs/plans/plan-noteliner-present-display.md). The trial has not been run on two displays yet.
 
 ## Icons
 

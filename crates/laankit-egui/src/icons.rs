@@ -52,6 +52,7 @@ pub const CIRCLE: &str = "\u{f111}";
 pub const CIRCLE_CHECK: &str = "\u{f058}";
 pub const CIRCLE_INFO: &str = "\u{f05a}";
 pub const CIRCLE_PLAY: &str = "\u{f144}";
+pub const DISPLAY: &str = "\u{e163}";
 pub const CIRCLE_QUESTION: &str = "\u{f059}";
 pub const CLOCK_ROTATE_LEFT: &str = "\u{f1da}";
 pub const CLONE: &str = "\u{f24d}";

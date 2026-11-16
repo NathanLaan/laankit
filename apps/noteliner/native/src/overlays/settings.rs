@@ -38,6 +38,8 @@ pub struct SettingsState {
     pub custom_titlebar: bool,
     /// As the window was built (a change needs a restart).
     pub custom_titlebar_initial: bool,
+    /// The open project's folder, shown with a button to open it.
+    pub project_folder: Option<String>,
     pub write_frontmatter: bool,
     pub spell_check: bool,
     pub mcp_enabled: bool,
@@ -64,6 +66,7 @@ impl SettingsState {
             tab: tab.to_string(),
             custom_titlebar: prefs.custom_titlebar,
             custom_titlebar_initial: built_with_titlebar,
+            project_folder: None,
             write_frontmatter: prefs.write_frontmatter,
             spell_check: prefs.spell_check,
             mcp_enabled: prefs.mcp_enabled,
@@ -83,6 +86,8 @@ impl SettingsState {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SettingsAction {
+    /// Open the project folder in the file manager.
+    OpenProjectFolder,
     Close,
     /// Theme or scale changed (already applied): persist it.
     ThemeChanged,
@@ -164,6 +169,35 @@ fn ui_tab(
     theme_state: &mut ThemeState,
     out: &mut Vec<SettingsAction>,
 ) {
+    if let Some(folder) = &state.project_folder {
+        settings::setting_group(
+            ui,
+            "Project",
+            Some("A project is a folder of notes. NoteLiner keeps its index in noteliner.json there."),
+            |ui| {
+                let p = theme::palette(ui.ctx());
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(folder)
+                            .font(fonts::mono(12.0))
+                            .color(p.text_secondary),
+                    );
+                    if dialog::icon_button(
+                        ui,
+                        Some(laankit_egui::icons::FOLDER_OPEN),
+                        "",
+                        ButtonKind::Secondary,
+                        true,
+                    )
+                    .on_hover_text("Open in file manager")
+                    .clicked()
+                    {
+                        out.push(SettingsAction::OpenProjectFolder);
+                    }
+                });
+            },
+        );
+    }
     settings::setting_group(ui, "Theme", None, |ui| {
         if settings::theme_list(ui, theme_state) {
             out.push(SettingsAction::ThemeChanged);
@@ -196,7 +230,7 @@ fn ui_tab(
     settings::setting_group(
         ui,
         "Storage",
-        Some("Mirrors id, name, and tags into a YAML block at the top of each note so external tools can read them. Applies to future saves; files are reconciled on next project open."),
+        Some("Keeps each note's tags and created date in a YAML block at the top of its file, so other tools can read them. With this off, NoteLiner adds and changes nothing in the block."),
         |ui| {
             if settings::toggle_option(
                 ui,
@@ -215,9 +249,10 @@ fn ui_tab(
     settings::setting_group(
         ui,
         "Editor",
-        Some("Underlines misspelled words in the editor. Toggle with F7. (The native editor's spell checker arrives with laankit-editor; the setting is shared with the other builds.)"),
+        Some("Underlines misspelled words in the editor. Toggle with F7."),
         |ui| {
-            if settings::toggle_option(ui, "Check spelling", &mut state.spell_check, true).changed() {
+            if settings::toggle_option(ui, "Check spelling", &mut state.spell_check, true).changed()
+            {
                 out.push(SettingsAction::SetPrefs(
                     json!({ "spellCheckEnabled": state.spell_check }),
                 ));
@@ -301,7 +336,7 @@ fn mcp_tab(ui: &mut egui::Ui, state: &mut SettingsState, out: &mut Vec<SettingsA
     settings::setting_group(
         ui,
         "Model Context Protocol Server",
-        Some("Lets external AI assistants (Claude Code, Claude Desktop, Cursor) list, read, search, and write notes in the currently-open project. All writes go through the normal save path and are committed to git. The server is local-only — no network port is opened."),
+        Some("Lets external AI assistants (Claude Code, Claude Desktop, Cursor) list, read, search, and write notes in the currently-open project. All writes go through the normal save path. The server is local-only: no network port is opened."),
         |ui| {
             let mut on = state.mcp_enabled;
             if settings::toggle_option(ui, "Enable MCP server", &mut on, true).changed() {

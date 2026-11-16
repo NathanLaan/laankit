@@ -105,6 +105,50 @@ impl History {
         }
     }
 
+    /// The host replaced the first `old_len` bytes of the text with
+    /// `new_len` bytes, outside the history (see
+    /// `EditorState::replace_head`). Steps after that part move with it. A
+    /// step that changed that part can no longer be undone, so it and the
+    /// steps before it are dropped. `old_chars` and `new_chars` are the same
+    /// lengths in characters, for the cursors.
+    pub fn rebase_head(
+        &mut self,
+        old_len: usize,
+        new_len: usize,
+        old_chars: usize,
+        new_chars: usize,
+    ) {
+        let moved = |c: usize| {
+            if c >= old_chars {
+                c - old_chars + new_chars
+            } else {
+                c.min(new_chars)
+            }
+        };
+        let rebase = |step: &mut Step| {
+            step.at = step.at - old_len + new_len;
+            step.before = (moved(step.before.0), moved(step.before.1));
+            step.after = (moved(step.after.0), moved(step.after.1));
+            step.typing = false;
+        };
+        let drop = self
+            .undos
+            .iter()
+            .rposition(|s| s.at < old_len)
+            .map_or(0, |i| i + 1);
+        for _ in 0..drop {
+            if let Some(old) = self.undos.pop_front() {
+                self.bytes -= old.bytes();
+            }
+        }
+        self.undos.iter_mut().for_each(rebase);
+        if self.redos.iter().any(|s| s.at < old_len) {
+            self.redos.clear();
+        } else {
+            self.redos.iter_mut().for_each(rebase);
+        }
+    }
+
     /// Joins `step` into the last one when it continues the same typing run.
     fn join(&mut self, step: &Step) -> bool {
         let Some(last) = self.undos.back_mut() else {
@@ -258,6 +302,37 @@ mod tests {
         }
         assert!(h.bytes() <= MAX_BYTES, "{}", h.bytes());
         assert!(h.can_undo());
+    }
+
+    #[test]
+    fn a_replaced_head_moves_later_steps_and_drops_its_own() {
+        let mut h = History::default();
+        let mut text = String::from("HEAD|body");
+        // One step in the head, then two in the body.
+        typed(&mut h, &mut text, 2, "x", 0.0);
+        typed(&mut h, &mut text, 10, "1", 5.0);
+        typed(&mut h, &mut text, 11, "2", 10.0);
+        assert_eq!(text, "HExAD|body12");
+        // The host swaps the six-byte head for a longer one.
+        text.replace_range(..6, "LONGER HEAD|");
+        h.rebase_head(6, 12, 6, 12);
+        assert_eq!(h.undo(&mut text), Some((17, 17)));
+        assert_eq!(text, "LONGER HEAD|body1");
+        assert_eq!(h.undo(&mut text), Some((16, 16)));
+        assert_eq!(text, "LONGER HEAD|body");
+        // The step inside the old head is gone.
+        assert_eq!(h.undo(&mut text), None);
+        assert_eq!(h.redo(&mut text), Some((17, 17)));
+        assert_eq!(text, "LONGER HEAD|body1");
+
+        // A head that appears where there was none.
+        let mut h = History::default();
+        let mut text = String::from("ab");
+        typed(&mut h, &mut text, 2, "c", 0.0);
+        text.insert_str(0, "---\n");
+        h.rebase_head(0, 4, 0, 4);
+        assert_eq!(h.undo(&mut text), Some((6, 6)));
+        assert_eq!(text, "---\nab");
     }
 
     #[test]

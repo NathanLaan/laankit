@@ -5,6 +5,10 @@
 
 use blockliner_egui::{canvas, export, properties, units};
 
+// Tests record a folder to open and never start a file manager.
+#[cfg(test)]
+use open as _;
+
 mod app;
 mod backend;
 mod commands;

@@ -75,14 +75,14 @@ The host owns the note text, its frontmatter and all I/O. The widgets read the c
 | SLIDES pane: rename (double-click or menu), drag to reorder, context menu (every item) | Done | |
 | Deck preview: scaled slides, number rail, notes below, follows the caret, click to jump | Done | |
 | Presentation Settings dialog                                   | Done      | Levels 4–6 from frontmatter are shown as "custom" |
-| Full-screen presenter                                          | Native addition | Keys, click to advance, S for notes, counter |
+| Full-screen presenter                                          | Native addition | Keys, click to advance, S for notes, counter, controls on mouse movement (Previous, Next, Exit), F11 to present in a window |
 | Speaker view in a second window                                | Native addition | `Presenter::with_speaker_view(true)`: current and next slide, notes (rendered, with math), timer (T / R), clock; keys work in both windows; "Swap displays" (X); see below |
 
 ## Speaker view
 
 `Presenter::new(start).with_speaker_view(true)` adds a second native window (an egui *immediate* viewport, drawn from the same `Presenter` in the same frame, so both windows always show the same slide without shared state behind locks). It shows the current slide, the next slide (or "End of presentation"), the current slide's notes as rendered Markdown, an elapsed timer (starts with the presentation; T pauses or resumes, R resets) and the clock, with Previous/Next/Swap/End buttons. Every navigation key works in either window; Escape in either ends.
 
-egui can't list monitors or tell which one a window is on, so the audience window goes full screen where it is and the speaker window opens beside it as a normal window. Drag it to the presenter's screen, or press **X** ("Swap displays") to move the full-screen audience window to the speaker window's monitor and the speaker window to the audience window's old place (needs window positions, which Wayland doesn't report: there it does nothing). Ending restores the main window's position and full-screen state; closing the speaker window keeps presenting. Without multi-viewport support (tests, or a backend without it) the speaker view is a panel over the audience view. Every viewport command sent is in `Presenter::commands_sent()`, which the tests check. Tests: `tests/speaker.rs` (headless) and the presenter unit tests.
+The host lists the displays (`Presenter::set_displays`, read from the window; `examples/displays.rs` is a trial program that prints them). With two or more, `Presenter::with_display(index)` starts full screen on a chosen one, and **D**, or the display button on the controls and in the speaker window, moves to the next (`ViewportCommand::SetMonitor`, reported to the host as `PresenterAction::DisplayChosen`). Without a chosen display the audience window goes full screen where it is. The speaker window opens beside it as a normal window. Drag it to the presenter's screen, or press **X** ("Swap displays") to move the full-screen audience window to the speaker window's monitor and the speaker window to the audience window's old place (needs window positions, which Wayland doesn't report: there it does nothing). Ending restores the main window's position and full-screen state; closing the speaker window keeps presenting. Without multi-viewport support (tests, or a backend without it) the speaker view is a panel over the audience view. Every viewport command sent is in `Presenter::commands_sent()`, which the tests check. Tests: `tests/speaker.rs` (headless) and the presenter unit tests.
 
 ## Tests
 
@@ -90,4 +90,4 @@ egui can't list monitors or tell which one a window is on, so the audience windo
 
 - Unit tests for parsing, edits, colours and the renderer's geometry.
 - `tests/differential.rs`: the JS comparison above.
-- `tests/widgets.rs` (egui_kittest): pane click → jump, context-menu Move Up, drag to reorder, double-click and menu rename, deck-preview click, settings Save/Cancel, presenter keys/click/notes/Escape, and every sample slide rendered at 40, 104, 640 and 1920 px.
+- `tests/widgets.rs` (egui_kittest): pane click → jump, context-menu Move Up, drag to reorder, double-click and menu rename, deck-preview click, settings Save/Cancel, presenter keys/click/notes/Escape, the presenter's controls (shown on mouse movement, hidden after three seconds) and F11, and every sample slide rendered at 40, 104, 640 and 1920 px.

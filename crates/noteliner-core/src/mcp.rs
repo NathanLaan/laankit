@@ -1,7 +1,8 @@
 //! Local MCP server: JSON-RPC 2.0 over a user-only Unix socket, reached
 //! by MCP clients through `noteliner --mcp-bridge` (stdio ↔ socket).
-//! Port of `apps/noteliner/src/main/mcp-service.js`; the tool, resource, and prompt
-//! surface is unchanged.
+//!
+//! The tools read and write a note's text without its frontmatter. Folders
+//! are paths from the project folder, with `/` between the parts.
 
 use std::collections::HashSet;
 use std::future::Future;
@@ -18,6 +19,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::task::JoinSet;
 
 use crate::project::{check_diagram, entry_kind, FileKind};
+use crate::tree;
 use crate::workspace::Shared;
 
 pub const PROTOCOL_VERSION: &str = "2024-11-05";
@@ -32,17 +34,22 @@ const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 const INTERNAL_ERROR: i64 = -32603;
 
-pub const WRITE_TOOLS: [&str; 7] = [
+pub const WRITE_TOOLS: [&str; 11] = [
     "create_note",
     "update_note",
     "delete_note",
     "rename_note",
+    "move_note",
     "set_tags",
     "add_attachment",
     "remove_attachment",
+    "create_folder",
+    "rename_folder",
+    "delete_folder",
 ];
-pub const READ_TOOLS: [&str; 6] = [
+pub const READ_TOOLS: [&str; 7] = [
     "list_notes",
+    "list_folders",
     "read_note",
     "search",
     "get_backlinks",
@@ -59,6 +66,9 @@ pub trait McpHost: Send + Sync + 'static {
     fn prefs(&self) -> (bool, Vec<String>);
     /// Ask the user; resolves to "allow" | "session" | "deny".
     fn confirm(&self, tool: &str, summary: &str, args: &Value) -> ConfirmFuture;
+    /// A tool changed the project: the app shows the new tree, and reloads
+    /// an open note the tool wrote.
+    fn project_changed(&self) {}
 }
 
 /// Error surfaced to the model as a tool result (`isError: true`).
@@ -321,6 +331,9 @@ impl McpServer {
         Ok(match res {
             Ok(v) => {
                 self.host.log(format!("[MCP] {name} ok"));
+                if WRITE_TOOLS.contains(&name) {
+                    self.host.project_changed();
+                }
                 v
             }
             Err(ToolError(msg)) => {
@@ -384,7 +397,7 @@ impl McpServer {
                             "id": f["id"], "name": f["name"], "filename": f["filename"],
                             "kind": entry_kind(f),
                             "tags": if f["tags"].is_array() { f["tags"].clone() } else { json!([]) },
-                            "parentId": if f["parentId"].is_null() || f["parentId"] == "" { Value::Null } else { f["parentId"].clone() },
+                            "folder": tree::folder_of(s(&f["filename"])),
                         })
                     })
                     .collect();
@@ -394,7 +407,7 @@ impl McpServer {
             }
             "read_note" => {
                 let entry = resolve(&ws)?;
-                let body = ws.project.read_file(s(&entry["filename"]))?;
+                let body = ws.project.read_body(s(&entry["filename"]))?;
                 self.host.log(format!(
                     "[MCP] read_note id={} bytes={}",
                     s(&entry["id"]),
@@ -435,24 +448,13 @@ impl McpServer {
                         None => return Err(tool_err("\"kind\" must be \"note\" or \"diagram\".")),
                     },
                 };
+                // A folder that doesn't exist is created.
+                let folder = folder_arg(args, "folder")?;
                 let entry = ws
                     .project
-                    .create(kind, name.trim(), &tags, body, None)
+                    .create(kind, name.trim(), &tags, body, folder.as_deref())
                     .await?;
                 let entry_id = s(&entry["id"]).to_string();
-                if let Some(parent) = str_arg("parentId") {
-                    if ws.project.find(&parent).is_none() {
-                        return Err(tool_err(format!("No parent note with id \"{parent}\".")));
-                    }
-                    let mut index = ws.project.index.clone().unwrap();
-                    if let Some(f) = index["files"]
-                        .as_array_mut()
-                        .and_then(|fs| fs.iter_mut().find(|f| f["id"] == entry_id.as_str()))
-                    {
-                        f["parentId"] = json!(parent);
-                    }
-                    ws.project.save_index(index).await?;
-                }
                 ws.rebuild_links();
                 self.host.log(format!(
                     "[MCP] create_note name=\"{name}\" -> id={entry_id}"
@@ -478,7 +480,7 @@ impl McpServer {
                 if FileKind::of_entry(&entry) == FileKind::Diagram {
                     check_diagram(body).map_err(|e| tool_err(e.to_string()))?;
                 }
-                ws.project.write_file(s(&entry["filename"]), body).await?;
+                ws.project.write_body(s(&entry["filename"]), body).await?;
                 ws.scan_links(s(&entry["id"]));
                 self.host.log(format!(
                     "[MCP] update_note id={} bytes={}",
@@ -493,7 +495,8 @@ impl McpServer {
             }
             "delete_note" => {
                 let entry = resolve(&ws)?;
-                ws.project.delete_file(s(&entry["id"])).await?;
+                // To the trash; a note is never deleted for good from here.
+                ws.project.delete_file(s(&entry["id"]), false).await?;
                 ws.links.remove_file(s(&entry["id"]));
                 ws.rebuild_links();
                 self.host
@@ -527,6 +530,81 @@ impl McpServer {
                     s(&updated["name"]),
                     s(&updated["filename"])
                 )))
+            }
+            "move_note" => {
+                let folder = folder_arg(args, "folder")?.unwrap_or_default();
+                let entry = resolve(&ws)?;
+                let moved = ws
+                    .project
+                    .move_file(s(&entry["id"]), &folder)
+                    .await?
+                    .unwrap_or(entry.clone());
+                self.host.log(format!(
+                    "[MCP] move_note id={} -> \"{folder}\"",
+                    s(&entry["id"])
+                ));
+                Ok(text_result(&format!(
+                    "Moved \"{}\" (filename: {}).",
+                    s(&moved["name"]),
+                    s(&moved["filename"])
+                )))
+            }
+            "list_folders" => {
+                let folders: Vec<Value> = ws
+                    .project
+                    .folders()
+                    .iter()
+                    .map(|path| {
+                        let notes = ws
+                            .project
+                            .files()
+                            .iter()
+                            .filter(|f| tree::folder_of(s(&f["filename"])) == path)
+                            .count();
+                        json!({ "path": path, "notes": notes })
+                    })
+                    .collect();
+                self.host
+                    .log(format!("[MCP] list_folders -> {} results", folders.len()));
+                Ok(json_result(&json!(folders)))
+            }
+            "create_folder" => {
+                let Some(path) = folder_arg(args, "path")?.filter(|p| !p.is_empty()) else {
+                    return Err(tool_err("\"path\" is required."));
+                };
+                let made = ws.project.create_folder(&path).await?;
+                self.host.log(format!("[MCP] create_folder \"{made}\""));
+                Ok(text_result(&format!("Created folder \"{made}\".")))
+            }
+            "rename_folder" => {
+                let Some(path) = folder_arg(args, "path")?.filter(|p| !p.is_empty()) else {
+                    return Err(tool_err("\"path\" is required."));
+                };
+                let Some(new_name) = str_arg("newName") else {
+                    return Err(tool_err("\"newName\" is required."));
+                };
+                let to = ws.project.rename_folder(&path, &new_name).await?;
+                self.host
+                    .log(format!("[MCP] rename_folder \"{path}\" -> \"{to}\""));
+                Ok(text_result(&format!("Renamed folder to \"{to}\".")))
+            }
+            "delete_folder" => {
+                let Some(path) = folder_arg(args, "path")?.filter(|p| !p.is_empty()) else {
+                    return Err(tool_err("\"path\" is required."));
+                };
+                if !ws.project.folders().contains(&path) {
+                    return Err(tool_err(format!("No folder at \"{path}\".")));
+                }
+                // Only an empty folder: notes are deleted one by one.
+                let counts = ws.project.folder_counts(&path);
+                if counts.notes + counts.diagrams + counts.others > 0 {
+                    return Err(tool_err(format!(
+                        "Folder \"{path}\" isn't empty. Delete or move what is in it first."
+                    )));
+                }
+                ws.project.delete_folder(&path, false).await?;
+                self.host.log(format!("[MCP] delete_folder \"{path}\""));
+                Ok(text_result(&format!("Deleted folder \"{path}\".")))
             }
             "set_tags" => {
                 let Some(tags) = args.get("tags").and_then(Value::as_array) else {
@@ -689,7 +767,7 @@ impl McpServer {
         let mut resources = vec![json!({
             "uri": "noteliner://index",
             "name": "Project index",
-            "description": "noteliner.json — id, name, filename, tags, parentId, attachments for every note.",
+            "description": "noteliner.json: id, name, filename (the path from the project folder), tags and attachments for every note.",
             "mimeType": "application/json",
         })];
         for f in ws.project.files() {
@@ -737,7 +815,7 @@ impl McpServer {
                 .ok_or_else(|| tool_err(format!("No note with id \"{id}\".")))?;
             let body = ws
                 .project
-                .read_file(s(&entry["filename"]))
+                .read_body(s(&entry["filename"]))
                 .map_err(ToolError::from)?;
             return Ok(
                 json!({ "contents": [{ "uri": uri, "mimeType": mime_of(entry), "text": body }] }),
@@ -751,10 +829,11 @@ impl McpServer {
             if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
                 return Err(tool_err("Invalid attachment filename.").into());
             }
+            // The attachment is beside the note that has it.
             let path = ws
                 .project
-                .attachment_path(&filename)
-                .map_err(ToolError::from)?;
+                .find_attachment(&filename)
+                .ok_or_else(|| tool_err("Attachment not found."))?;
             let data = std::fs::read(path).map_err(|_| tool_err("Attachment not found."))?;
             let blob = base64::engine::general_purpose::STANDARD.encode(data);
             return Ok(
@@ -829,7 +908,7 @@ impl McpServer {
                 let entry = resolve_by_id_or_name(&ws, arg("note").as_deref())?;
                 let body = ws
                     .project
-                    .read_file(s(&entry["filename"]))
+                    .read_body(s(&entry["filename"]))
                     .map_err(ToolError::from)?;
                 if name == "summarize_note" {
                     Ok(format!(
@@ -865,6 +944,19 @@ fn s(v: &Value) -> &str {
 /// JS `string.length` (UTF-16 units), used in log and result text.
 fn js_len(s: &str) -> usize {
     s.encode_utf16().count()
+}
+
+/// A folder argument: a path from the project folder, checked the way
+/// `Project::file_path` checks one. It can't be absolute or hold `..`, and it
+/// can't name a folder NoteLiner skips. `None` when the argument is absent.
+fn folder_arg(args: &Value, key: &str) -> Result<Option<String>, ToolError> {
+    let path = match args.get(key) {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::String(p)) => p.trim().trim_end_matches('/').to_string(),
+        Some(_) => return Err(tool_err(format!("\"{key}\" must be a string."))),
+    };
+    tree::check_folder_path(&path).map_err(|e| tool_err(e.to_string()))?;
+    Ok(Some(path))
 }
 
 fn text_result(text: &str) -> Value {
@@ -986,6 +1078,24 @@ fn summarize(name: &str, args: &Value) -> String {
                 .unwrap_or("(unspecified)")
         ),
         "set_tags" => format!("Set tags on \"{}\" to [{}]", target(), list(&args["tags"])),
+        "move_note" => format!(
+            "Move \"{}\" to folder \"{}\"",
+            target(),
+            args["folder"].as_str().unwrap_or("")
+        ),
+        "create_folder" => format!(
+            "Create folder \"{}\"",
+            args["path"].as_str().unwrap_or("(unspecified)")
+        ),
+        "rename_folder" => format!(
+            "Rename folder \"{}\" to \"{}\"",
+            args["path"].as_str().unwrap_or("(unspecified)"),
+            args["newName"].as_str().unwrap_or("(unspecified)")
+        ),
+        "delete_folder" => format!(
+            "Delete folder \"{}\"",
+            args["path"].as_str().unwrap_or("(unspecified)")
+        ),
         "add_attachment" => format!(
             "Attach \"{}\" to \"{}\"",
             args["filename"]
@@ -1036,18 +1146,28 @@ pub fn tool_definitions() -> Value {
         o
     };
     json!([
-        { "name": "list_notes", "description": "List every note and diagram in the open NoteLiner project. Returns id, name, filename, kind (note, deck or diagram), tags, parentId.",
+        { "name": "list_notes", "description": "List every note and diagram in the open NoteLiner project. Returns id, name, filename, kind (note, deck or diagram), tags, and folder (the note's path from the project folder, empty at the top).",
+          "inputSchema": obj(json!({}), None) },
+        { "name": "list_folders", "description": "List every folder in the project, with its path from the project folder and the number of notes in it.",
           "inputSchema": obj(json!({}), None) },
         { "name": "read_note", "description": "Read the markdown body of a note, or the Mermaid flowchart of a diagram, by id or by name.",
           "inputSchema": obj(json!({ "id": { "type": "string", "description": "Note id (preferred)." }, "name": { "type": "string", "description": "Note name (case-insensitive)." } }), None) },
-        { "name": "create_note", "description": "Create a new note, or a diagram with kind \"diagram\". Auto-commits to git via the standard project write path.",
-          "inputSchema": obj(json!({ "name": { "type": "string" }, "body": { "type": "string", "description": "Markdown body, or a Mermaid flowchart for a diagram. Optional." }, "kind": { "type": "string", "enum": ["note", "diagram"], "description": "Optional; a note by default." }, "tags": { "type": "array", "items": { "type": "string" } }, "parentId": { "type": "string", "description": "Optional parent note id for hierarchical placement." } }), Some(json!(["name"]))) },
-        { "name": "update_note", "description": "Replace the markdown body of an existing note, or the Mermaid flowchart of a diagram (refused if it isn't a flowchart BlockLiner can read). Auto-commits.",
+        { "name": "create_note", "description": "Create a new note, or a diagram with kind \"diagram\".",
+          "inputSchema": obj(json!({ "name": { "type": "string" }, "body": { "type": "string", "description": "Markdown body, or a Mermaid flowchart for a diagram. Optional." }, "kind": { "type": "string", "enum": ["note", "diagram"], "description": "Optional; a note by default." }, "tags": { "type": "array", "items": { "type": "string" } }, "folder": { "type": "string", "description": "Optional folder to put the note in, as a path from the project folder such as \"work/meetings\". A folder that doesn't exist is created." } }), Some(json!(["name"]))) },
+        { "name": "update_note", "description": "Replace the markdown body of an existing note, or the Mermaid flowchart of a diagram (refused if it isn't a flowchart BlockLiner can read). A note's frontmatter is kept.",
           "inputSchema": obj(id_name_schema(json!({ "body": { "type": "string" } })), Some(json!(["body"]))) },
-        { "name": "delete_note", "description": "Delete a note. Children of the deleted note are re-parented to its parent.",
+        { "name": "delete_note", "description": "Delete a note. Its file and its attachments go to the system's trash.",
           "inputSchema": obj(id_name_schema(json!({})), None) },
         { "name": "rename_note", "description": "Change the human-visible name of a note. The filename is re-slugged.",
           "inputSchema": obj(json!({ "id": { "type": "string" }, "name": { "type": "string", "description": "Current name (used when id is absent)." }, "newName": { "type": "string" } }), Some(json!(["newName"]))) },
+        { "name": "move_note", "description": "Move a note or diagram to a folder. Its attachments move with it.",
+          "inputSchema": obj(id_name_schema(json!({ "folder": { "type": "string", "description": "The folder's path from the project folder; empty for the top. A folder that doesn't exist is created." } })), Some(json!(["folder"]))) },
+        { "name": "create_folder", "description": "Create a folder at a path from the project folder.",
+          "inputSchema": obj(json!({ "path": { "type": "string" } }), Some(json!(["path"]))) },
+        { "name": "rename_folder", "description": "Rename a folder. The notes in it keep their ids, tags and attachments.",
+          "inputSchema": obj(json!({ "path": { "type": "string", "description": "The folder's path from the project folder." }, "newName": { "type": "string" } }), Some(json!(["path", "newName"]))) },
+        { "name": "delete_folder", "description": "Delete an empty folder. A folder that still has notes or other files in it is refused.",
+          "inputSchema": obj(json!({ "path": { "type": "string" } }), Some(json!(["path"]))) },
         { "name": "set_tags", "description": "Replace the tag list on a note.",
           "inputSchema": obj(id_name_schema(json!({ "tags": { "type": "array", "items": { "type": "string" } } })), Some(json!(["tags"]))) },
         { "name": "search", "description": "Full-text search across note bodies. Returns hits with line numbers.",
@@ -1151,12 +1271,27 @@ fn mime_of(entry: &Value) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::NoteGit;
-    use crate::project::Project;
+    use crate::project::{folder_trash, Project};
     use crate::workspace::Workspace;
 
-    struct TestHost;
+    /// A project in `dir`, whose deleted files go to `dir/../trash`.
+    async fn open(dir: &Path) -> Project {
+        std::fs::create_dir_all(dir).unwrap();
+        let mut p = Project::new();
+        p.trash = folder_trash(dir.parent().unwrap().join("trash"));
+        p.open(dir).await.unwrap();
+        p
+    }
+
+    #[derive(Default)]
+    struct TestHost {
+        changes: std::sync::atomic::AtomicUsize,
+    }
     impl McpHost for TestHost {
+        fn project_changed(&self) {
+            self.changes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
         fn log(&self, _msg: String) {}
         fn prefs(&self) -> (bool, Vec<String>) {
             (false, vec!["list_attachments".into()])
@@ -1176,13 +1311,9 @@ mod tests {
     #[tokio::test]
     async fn diagrams_through_the_tools() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut p = Project::new(NoteGit::new(Arc::new(|_| {})));
-        p.git.git.init(tmp.path()).await.unwrap();
-        p.path = Some(tmp.path().to_path_buf());
-        p.set_git_config("T", "t@x").await.unwrap();
-        p.open(tmp.path()).await.unwrap();
-        let ws = Workspace::new(p);
-        let server = McpServer::new(ws.clone(), Arc::new(TestHost), "9.9.9");
+        let dir = tmp.path().join("notes");
+        let ws = Workspace::new(open(&dir).await);
+        let server = McpServer::new(ws.clone(), Arc::new(TestHost::default()), "9.9.9");
         let call = |name: &str, args: Value| json!({ "jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": { "name": name, "arguments": args } });
         let text = |v: &Value| {
             v["result"]["content"][0]["text"]
@@ -1220,7 +1351,7 @@ mod tests {
         )
         .await;
         assert_eq!(ok["result"]["isError"], false, "{ok}");
-        let file = tmp.path().join("map.mmd");
+        let file = dir.join("map.mmd");
         assert_eq!(std::fs::read_to_string(&file).unwrap(), flow);
         let refused = rpc(
             &server,
@@ -1245,7 +1376,7 @@ mod tests {
         )
         .await;
         assert_eq!(renamed["result"]["isError"], false, "{renamed}");
-        assert!(tmp.path().join("big-map.mmd").exists());
+        assert!(dir.join("big-map.mmd").exists());
 
         // The resource is Mermaid.
         let resources = rpc(
@@ -1273,13 +1404,10 @@ mod tests {
     #[tokio::test]
     async fn protocol_and_tools() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut p = Project::new(NoteGit::new(Arc::new(|_| {})));
-        p.git.git.init(tmp.path()).await.unwrap();
-        p.path = Some(tmp.path().to_path_buf());
-        p.set_git_config("T", "t@x").await.unwrap();
-        p.open(tmp.path()).await.unwrap();
-        let ws = Workspace::new(p);
-        let server = McpServer::new(ws.clone(), Arc::new(TestHost), "9.9.9");
+        let dir = tmp.path().join("notes");
+        let ws = Workspace::new(open(&dir).await);
+        let host = Arc::new(TestHost::default());
+        let server = McpServer::new(ws.clone(), host.clone(), "9.9.9");
 
         let init = rpc(
             &server,
@@ -1312,7 +1440,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .len(),
-            13
+            18
         );
 
         let call = |name: &str, args: Value| json!({ "jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": { "name": name, "arguments": args } });
@@ -1359,6 +1487,46 @@ mod tests {
         let read = rpc(&server, call("read_note", json!({ "name": "alpha" }))).await;
         assert_eq!(read["result"]["content"][0]["text"], "see [[Beta]]\n");
 
+        // An update replaces the text and keeps the frontmatter.
+        let before = std::fs::read_to_string(dir.join("alpha.md")).unwrap();
+        let block = crate::frontmatter::split(&before)
+            .unwrap()
+            .block
+            .to_string();
+        assert!(block.contains("- t1"), "{block}");
+        let changes = host.changes.load(std::sync::atomic::Ordering::SeqCst);
+        rpc(
+            &server,
+            call(
+                "update_note",
+                json!({ "name": "Alpha", "body": "now see [[Beta]]" }),
+            ),
+        )
+        .await;
+        assert_eq!(
+            std::fs::read_to_string(dir.join("alpha.md")).unwrap(),
+            format!("{block}now see [[Beta]]\n")
+        );
+        // A write tells the app; a read doesn't.
+        assert_eq!(
+            host.changes.load(std::sync::atomic::Ordering::SeqCst),
+            changes + 1
+        );
+        // Setting tags rewrites the tags line of the note's file.
+        rpc(
+            &server,
+            call("set_tags", json!({ "name": "Alpha", "tags": ["t9"] })),
+        )
+        .await;
+        let raw = std::fs::read_to_string(dir.join("alpha.md")).unwrap();
+        assert!(raw.starts_with("---\ntags:\n  - t9\ncreated: "), "{raw}");
+        assert!(raw.ends_with("---\nnow see [[Beta]]\n"), "{raw}");
+        rpc(
+            &server,
+            call("set_tags", json!({ "name": "Alpha", "tags": ["t1"] })),
+        )
+        .await;
+
         let res = rpc(
             &server,
             json!({ "jsonrpc": "2.0", "id": 5, "method": "resources/list" }),
@@ -1369,17 +1537,154 @@ mod tests {
         assert!(prompt["result"]["messages"][0]["content"]["text"]
             .as_str()
             .unwrap()
-            .contains("--- BEGIN NOTE BODY ---\nsee [[Beta]]"));
+            .contains("--- BEGIN NOTE BODY ---\nnow see [[Beta]]"));
         let bad = rpc(&server, json!({ "jsonrpc": "2.0", "id": 7, "method": "prompts/get", "params": { "name": "meeting_note" } })).await;
         assert_eq!(bad["error"]["code"], INVALID_PARAMS);
+    }
+
+    #[tokio::test]
+    async fn folders_through_the_tools() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("notes");
+        let ws = Workspace::new(open(&dir).await);
+        let server = McpServer::new(ws.clone(), Arc::new(TestHost::default()), "1");
+        let call = |name: &str, args: Value| json!({ "jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": { "name": name, "arguments": args } });
+        let text = |v: &Value| {
+            v["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        let ok = |v: &Value| v["result"]["isError"] == false;
+
+        // A note in a folder that isn't there yet: the folder is made.
+        let made = rpc(
+            &server,
+            call(
+                "create_note",
+                json!({ "name": "Kickoff", "body": "hi", "folder": "work/meetings" }),
+            ),
+        )
+        .await;
+        assert!(ok(&made), "{made}");
+        assert!(text(&made).contains("filename: work/meetings/kickoff.md"));
+        assert!(dir.join("work/meetings/kickoff.md").exists());
+        let notes: Value =
+            serde_json::from_str(&text(&rpc(&server, call("list_notes", json!({}))).await))
+                .unwrap();
+        assert_eq!(notes[0]["folder"], "work/meetings");
+        assert!(notes[0].get("parentId").is_none());
+
+        // Every path is checked: no `..`, no absolute path, no skipped folder.
+        for bad in [
+            "../out",
+            "/etc",
+            "work/../..",
+            "_attachments",
+            ".git",
+            "a\\b",
+        ] {
+            for (tool, args) in [
+                ("create_note", json!({ "name": "X", "folder": bad })),
+                ("create_folder", json!({ "path": bad })),
+                ("move_note", json!({ "name": "Kickoff", "folder": bad })),
+                ("rename_folder", json!({ "path": bad, "newName": "x" })),
+                ("delete_folder", json!({ "path": bad })),
+            ] {
+                let r = rpc(&server, call(tool, args)).await;
+                assert_eq!(r["result"]["isError"], true, "{tool} {bad}: {r}");
+            }
+        }
+        assert!(!tmp.path().join("out").exists());
+        assert_eq!(ws.lock().await.project.files().len(), 1);
+
+        // Folders: create, list, rename.
+        assert!(ok(&rpc(
+            &server,
+            call("create_folder", json!({ "path": "archive/2025" }))
+        )
+        .await));
+        let folders: Value =
+            serde_json::from_str(&text(&rpc(&server, call("list_folders", json!({}))).await))
+                .unwrap();
+        assert_eq!(
+            folders,
+            json!([
+                { "path": "archive", "notes": 0 },
+                { "path": "archive/2025", "notes": 0 },
+                { "path": "work", "notes": 0 },
+                { "path": "work/meetings", "notes": 1 }
+            ])
+        );
+        let renamed = rpc(
+            &server,
+            call(
+                "rename_folder",
+                json!({ "path": "work/meetings", "newName": "Meetings" }),
+            ),
+        )
+        .await;
+        assert!(ok(&renamed), "{renamed}");
+        assert!(dir.join("work/Meetings/kickoff.md").exists());
+
+        // Moving a note, to a folder and to the top.
+        let moved = rpc(
+            &server,
+            call(
+                "move_note",
+                json!({ "name": "Kickoff", "folder": "archive/2025" }),
+            ),
+        )
+        .await;
+        assert!(ok(&moved), "{moved}");
+        assert!(dir.join("archive/2025/kickoff.md").exists());
+        assert!(!dir.join("work/Meetings/kickoff.md").exists());
+
+        // A folder that isn't empty can't be deleted; an empty one can.
+        let refused = rpc(&server, call("delete_folder", json!({ "path": "archive" }))).await;
+        assert_eq!(refused["result"]["isError"], true, "{refused}");
+        assert!(dir.join("archive/2025/kickoff.md").exists());
+        let missing = rpc(&server, call("delete_folder", json!({ "path": "nope" }))).await;
+        assert_eq!(missing["result"]["isError"], true);
+        assert!(ok(&rpc(
+            &server,
+            call("delete_folder", json!({ "path": "work/Meetings" }))
+        )
+        .await));
+        assert!(!dir.join("work/Meetings").exists());
+
+        // An attachment is read from beside its note.
+        let att = rpc(
+            &server,
+            call(
+                "add_attachment",
+                json!({ "name": "Kickoff", "filename": "a.txt", "dataBase64": "aGk=" }),
+            ),
+        )
+        .await;
+        let att: Value = serde_json::from_str(&text(&att)).unwrap();
+        let stored = att["filename"].as_str().unwrap();
+        assert!(dir.join("archive/2025/_attachments").join(stored).exists());
+        let got = rpc(&server, json!({ "jsonrpc": "2.0", "id": 5, "method": "resources/read", "params": { "uri": format!("noteliner://attachment/{stored}") } })).await;
+        assert_eq!(got["result"]["contents"][0]["blob"], "aGk=");
+
+        // Deleting a note sends it, and its attachment, to the trash.
+        assert!(ok(&rpc(
+            &server,
+            call("delete_note", json!({ "name": "Kickoff" }))
+        )
+        .await));
+        assert!(!dir.join("archive/2025/kickoff.md").exists());
+        assert!(tmp.path().join("trash/kickoff.md").exists());
+        assert!(tmp.path().join("trash").join(stored).exists());
     }
 
     #[cfg(unix)]
     #[tokio::test]
     async fn socket_round_trip() {
         let tmp = tempfile::tempdir().unwrap();
-        let ws = Workspace::new(Project::new(NoteGit::new(Arc::new(|_| {}))));
-        let server = McpServer::new(ws, Arc::new(TestHost), "1");
+        let ws = Workspace::new(Project::new());
+        let server = McpServer::new(ws, Arc::new(TestHost::default()), "1");
         let runtime = tmp.path().join("mcp-runtime.json");
         server.start(&runtime).await.unwrap();
         let rt: Value = serde_json::from_str(&std::fs::read_to_string(&runtime).unwrap()).unwrap();

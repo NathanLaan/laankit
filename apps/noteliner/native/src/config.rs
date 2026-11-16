@@ -50,6 +50,10 @@ pub struct Prefs {
     pub diagram_show_dimensions: bool,
     /// The last Export Diagram choices.
     pub diagram_export: export::Options,
+    /// The display to present on (`presentDisplay`): its name and size in
+    /// pixels, since its place in the system's list can change. `None`
+    /// presents on the display the window is on.
+    pub present_display: Option<(String, [u32; 2])>,
 }
 
 /// The grid sizes Settings offers for new diagrams, as BlockLiner's.
@@ -65,8 +69,9 @@ impl Default for Prefs {
             mcp_confirm_writes: false,
             mcp_disabled_tools: Vec::new(),
             spell_check: true,
-            files_sort_mode: "user".into(),
+            files_sort_mode: "name-asc".into(),
             command_recents: Vec::new(),
+            present_display: None,
             diagram_show_grid: true,
             diagram_grid_size: DEFAULT_GRID,
             diagram_grid_unit: Unit::default(),
@@ -145,9 +150,16 @@ impl Paths {
             files_sort_mode: m
                 .get("filesSortMode")
                 .and_then(Value::as_str)
-                .unwrap_or("user")
+                .unwrap_or("name-asc")
                 .to_string(),
             command_recents: strings("commandRecents"),
+            present_display: m.get("presentDisplay").and_then(|d| {
+                let side = |k: &str| d.get(k).and_then(Value::as_u64).map(|v| v as u32);
+                Some((
+                    d.get("name")?.as_str()?.to_string(),
+                    [side("width")?, side("height")?],
+                ))
+            }),
             // `diagramShowGrid !== false`: the grid shows unless switched off.
             diagram_show_grid: flag("diagramShowGrid", true),
             diagram_grid_size: m
@@ -244,7 +256,7 @@ fn defaults() -> Map<String, Value> {
         "mcpConfirmWrites": false,
         "mcpDisabledTools": [],
         "spellCheckEnabled": true,
-        "filesSortMode": "user",
+        "filesSortMode": "name-asc",
     });
     v.as_object().cloned().unwrap_or_default()
 }
@@ -263,7 +275,6 @@ pub struct Layout {
     #[serde(serialize_with = "js_number")]
     pub slides_height: f32,
     pub show_preview: bool,
-    pub show_history: bool,
     pub show_log: bool,
     pub show_status_bar: bool,
     pub show_toolbar: bool,
@@ -306,6 +317,9 @@ pub struct Layout {
     /// The active tab's file id, or empty.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub active_tab: String,
+    /// The folders that are open in the Files pane, by path.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub open_folders: Vec<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -330,7 +344,6 @@ impl Default for Layout {
             show_slides: false,
             slides_height: 220.0,
             show_preview: false,
-            show_history: false,
             show_log: false,
             show_status_bar: true,
             show_toolbar: true,
@@ -355,6 +368,7 @@ impl Default for Layout {
             last_file_position: None,
             open_tabs: Vec::new(),
             active_tab: String::new(),
+            open_folders: Vec::new(),
             extra: Map::new(),
         }
     }
@@ -471,7 +485,7 @@ mod tests {
         let (_tmp, paths) = paths();
         let p = paths.prefs();
         assert!(!p.custom_titlebar && p.write_frontmatter && p.spell_check && !p.mcp_enabled);
-        assert_eq!(p.files_sort_mode, "user");
+        assert_eq!(p.files_sort_mode, "name-asc");
     }
 
     #[test]
@@ -486,7 +500,7 @@ mod tests {
         let raw = std::fs::read_to_string(paths.ui_prefs()).unwrap();
         assert_eq!(
             raw,
-            "{\n  \"customTitlebar\": false,\n  \"writeFrontmatter\": true,\n  \"mcpEnabled\": true,\n  \"mcpConfirmWrites\": false,\n  \"mcpDisabledTools\": [],\n  \"spellCheckEnabled\": false,\n  \"filesSortMode\": \"user\",\n  \"zoom\": 2\n}"
+            "{\n  \"customTitlebar\": false,\n  \"writeFrontmatter\": true,\n  \"mcpEnabled\": true,\n  \"mcpConfirmWrites\": false,\n  \"mcpDisabledTools\": [],\n  \"spellCheckEnabled\": false,\n  \"filesSortMode\": \"name-asc\",\n  \"zoom\": 2\n}"
         );
         assert!(paths.prefs().mcp_enabled);
         assert!(!paths.prefs().spell_check);

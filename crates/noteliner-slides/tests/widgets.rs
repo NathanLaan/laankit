@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use egui::Key;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::Harness;
 use noteliner_slides::{
     parse_deck, Deck, DeckPreview, PaneAction, PassThrough, Presentation, PresentationSettings,
@@ -317,4 +317,194 @@ fn tasks_tables_and_marks_paint_in_both_slide_themes() {
             });
         h.run();
     }
+}
+
+fn presenter_harness(start: usize) -> Harness<'static, PresenterState> {
+    let state = PresenterState {
+        deck: parse_deck(MD, None),
+        presenter: Presenter::new(start),
+        actions: Vec::new(),
+    };
+    let vars = HashMap::new();
+    Harness::builder()
+        .with_size(egui::vec2(800.0, 450.0))
+        .with_context_setup(laankit_egui::fonts::install)
+        .build_ui_state(
+            move |ui, s: &mut PresenterState| {
+                let actions = s.presenter.show(ui.ctx(), &s.deck, &vars, &PassThrough);
+                s.actions.extend(actions);
+            },
+            state,
+        )
+}
+
+#[test]
+fn presenter_controls_show_on_mouse_movement_and_hide() {
+    let mut h = presenter_harness(1);
+    h.run();
+    // Nothing but the slide until the mouse moves.
+    assert!(h.query_by_label("Next slide").is_none());
+    h.hover_at(egui::pos2(100.0, 100.0));
+    h.run_steps(2);
+    assert!(
+        h.get_by_label("Previous slide")
+            .accesskit_node()
+            .is_disabled(),
+        "on the first slide"
+    );
+
+    // Next moves one slide, not two: the click is the button's alone.
+    h.get_by_label("Next slide").click();
+    h.run_steps(2);
+    assert_eq!(h.state().presenter.index(), 2);
+    h.get_by_label("Previous slide").click();
+    h.run_steps(2);
+    assert_eq!(h.state().presenter.index(), 1);
+
+    // Away from the bar, it goes after three seconds without movement.
+    h.hover_at(egui::pos2(100.0, 100.0));
+    h.run_steps(2);
+    assert!(h.query_by_label("Next slide").is_some());
+    for _ in 0..(noteliner_slides::CONTROLS_SECONDS as usize * 60 + 30) {
+        h.step();
+    }
+    assert!(h.query_by_label("Next slide").is_none());
+
+    // Exit does what Escape does.
+    h.hover_at(egui::pos2(120.0, 100.0));
+    h.run_steps(2);
+    h.get_by_label("Stop presenting").click();
+    h.run_steps(2);
+    assert_eq!(h.state().actions.last(), Some(&PresenterAction::Exit));
+}
+
+#[test]
+fn presenter_f11_leaves_and_returns_to_full_screen() {
+    use egui::{ViewportCommand, ViewportId};
+    let mut h = presenter_harness(1);
+    h.run();
+    assert!(h.state().presenter.fullscreen());
+    h.key_press(Key::F11);
+    h.run();
+    assert!(!h.state().presenter.fullscreen());
+    assert!(h.state().actions.is_empty(), "still presenting");
+    h.key_press(Key::F11);
+    h.run();
+    assert!(h.state().presenter.fullscreen());
+    let sent: Vec<_> = h
+        .state()
+        .presenter
+        .commands_sent()
+        .iter()
+        .filter(|(id, _)| *id == ViewportId::ROOT)
+        .map(|(_, c)| c.clone())
+        .collect();
+    assert_eq!(
+        sent,
+        [
+            ViewportCommand::Fullscreen(true),
+            ViewportCommand::Fullscreen(false),
+            ViewportCommand::Fullscreen(true),
+        ]
+    );
+    // Stopping in a window sends nothing more: it was not full screen before.
+    h.key_press(Key::F11);
+    h.run();
+    h.key_press(Key::Escape);
+    h.run();
+    assert_eq!(h.state().presenter.commands_sent().len(), 4);
+}
+
+fn two_displays() -> Vec<noteliner_slides::Display> {
+    vec![
+        noteliner_slides::Display {
+            index: 0,
+            name: Some("DP-1".into()),
+            size: [3840, 2160],
+            current: true,
+        },
+        noteliner_slides::Display {
+            index: 1,
+            name: None,
+            size: [1920, 1080],
+            current: false,
+        },
+    ]
+}
+
+fn root_commands(h: &Harness<'static, PresenterState>) -> Vec<egui::ViewportCommand> {
+    h.state()
+        .presenter
+        .commands_sent()
+        .iter()
+        .filter(|(id, _)| *id == egui::ViewportId::ROOT)
+        .map(|(_, c)| c.clone())
+        .collect()
+}
+
+#[test]
+fn display_labels() {
+    let d = two_displays();
+    assert_eq!(d[0].label(), "Display 1: 3840 x 2160 (DP-1)");
+    assert_eq!(d[1].label(), "Display 2: 1920 x 1080");
+}
+
+#[test]
+fn presenter_starts_on_the_chosen_display_and_d_moves_to_the_next() {
+    use egui::ViewportCommand::{Fullscreen, SetMonitor};
+    let mut h = presenter_harness(1);
+    let p = &mut h.state_mut().presenter;
+    *p = Presenter::new(1).with_display(Some(1));
+    p.set_displays(two_displays());
+    h.run();
+    assert_eq!(root_commands(&h), [SetMonitor(1)]);
+    assert_eq!(h.state().presenter.display(), Some(1));
+
+    // D wraps to the first display, and tells the host.
+    h.key_press(Key::D);
+    h.run();
+    assert_eq!(root_commands(&h), [SetMonitor(1), SetMonitor(0)]);
+    assert_eq!(
+        h.state().actions,
+        [PresenterAction::DisplayChosen(0)],
+        "still presenting"
+    );
+
+    // F11 into a window and back returns to the chosen display.
+    h.key_press(Key::F11);
+    h.run();
+    h.key_press(Key::F11);
+    h.run();
+    assert_eq!(root_commands(&h)[2..], [Fullscreen(false), SetMonitor(0)]);
+
+    // The controls offer the move too.
+    h.hover_at(egui::pos2(100.0, 100.0));
+    h.run_steps(2);
+    h.get_by_label("Next display (D)").click();
+    h.run_steps(2);
+    assert_eq!(root_commands(&h).last(), Some(&SetMonitor(1)));
+
+    h.key_press(Key::Escape);
+    h.run();
+    assert_eq!(root_commands(&h).last(), Some(&Fullscreen(false)));
+}
+
+#[test]
+fn presenter_with_one_display_offers_no_move() {
+    use egui::ViewportCommand::Fullscreen;
+    let mut h = presenter_harness(1);
+    let p = &mut h.state_mut().presenter;
+    // A remembered display that isn't connected is ignored.
+    *p = Presenter::new(1).with_display(Some(1));
+    p.set_displays(two_displays()[..1].to_vec());
+    h.run();
+    assert_eq!(root_commands(&h), [Fullscreen(true)]);
+    h.key_press(Key::D);
+    h.run();
+    assert_eq!(root_commands(&h), [Fullscreen(true)]);
+    assert!(h.state().actions.is_empty());
+    h.hover_at(egui::pos2(100.0, 100.0));
+    h.run_steps(2);
+    assert!(h.query_by_label("Next display (D)").is_none());
+    assert!(h.query_by_label("Next slide").is_some());
 }

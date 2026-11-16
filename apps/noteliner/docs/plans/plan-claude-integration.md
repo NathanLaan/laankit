@@ -6,7 +6,7 @@ Let the user write prompts inside notes and run them against Claude without leav
 
 The key architectural decision: **do not build a second vault API.** NoteLiner already exposes its project as thirteen structured tools through `McpService` (`mcp-service.js:280`), with a shipped permission model — confirm-before-write, per-tool disable, session trust (`mcp-service.js:472`). The in-app Claude runs a tool-use loop against **that same registry, in-process**. External Claude Code over the MCP socket and in-app Claude become two front doors onto one set of tools, one permission gate, and one write path.
 
-This supersedes `plan-ai-integration.md`, whose "Current State" predates the MCP server (that plan's Option E shipped as `mcp-service.js` / `bin/noteliner-mcp-bridge.js`).
+The MCP server (Option E of an earlier AI integration plan) shipped as `mcp-service.js` / `bin/noteliner-mcp-bridge.js`.
 
 ## Goals
 

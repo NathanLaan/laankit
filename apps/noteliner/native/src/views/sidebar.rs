@@ -4,7 +4,7 @@
 //!
 //! | Pane      | Drawn by                                                          |
 //! |-----------|-------------------------------------------------------------------|
-//! | FILES     | `views::tree`, with the sort select and the tag filter            |
+//! | FILES     | `views::tree`, with New Folder, the sort select and the tag filter |
 //! | OUTLINE   | [`outline`] here                                                  |
 //! | SLIDES    | `noteliner_slides::SlidesPane` (decks only)                       |
 //! | TAGS      | `views::panes::tags_pane`                                         |
@@ -23,12 +23,14 @@ use noteliner_slides::{Deck, ImageSource, SlidesPane};
 use crate::config::Layout;
 use crate::model::{Entry, SortMode};
 use crate::views::panes::{self as pane_views, PaneAction, PaneStates, TagProps};
-use crate::views::tree::{self, TreeAction, TreeState};
+use crate::views::tree::{self, TreeAction, TreeProps, TreeState};
 
 /// What the user did in the sidebar.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SidebarAction {
     Tree(TreeAction),
+    /// The FILES header's New Folder button.
+    NewFolder,
     Sort(SortMode),
     /// An outline heading: move the editor to this line.
     GoToLine(usize),
@@ -37,8 +39,11 @@ pub enum SidebarAction {
     LayoutChanged,
     /// The SEARCH, BACKLINKS or TAGS panes or the tag filter.
     Pane(PaneAction),
-    /// The SLIDES pane: jump, edit, or open the presentation settings.
+    /// The SLIDES pane: jump, edit, present from a slide, or open the
+    /// presentation settings.
     Slides(noteliner_slides::PaneAction),
+    /// The SLIDES header's Present button.
+    Present,
 }
 
 /// What the sidebar draws from.
@@ -46,13 +51,21 @@ pub struct SidebarProps<'a> {
     /// `noteliner.json` (tag palette and colours).
     pub index: &'a serde_json::Value,
     pub entries: &'a [Entry],
+    /// Every folder of the project, by path, and the ones that are open.
+    pub folders: &'a [String],
+    pub open_folders: &'a HashSet<String>,
     pub sort: SortMode,
     pub hidden_tags: &'a HashSet<String>,
     pub selected: Option<&'a str>,
-    /// The open note's text (for the outline) and caret line.
+    /// The folder selected in the tree, if one is.
+    pub selected_folder: Option<&'a str>,
+    /// The open note's text, without its frontmatter (for the outline), and
+    /// the caret's line in it.
     pub text: &'a str,
     pub cursor_line: usize,
     pub is_deck: bool,
+    /// The connected displays (for Present On in a presentation's menu).
+    pub displays: &'a [noteliner_slides::Display],
     /// The open deck, the slide holding the caret, and where its images come from.
     pub deck: Option<&'a Deck>,
     pub active_slide: Option<usize>,
@@ -111,6 +124,18 @@ pub fn show(
     };
     let sort = props.sort;
     let mut sort_pick = None;
+    let mut new_folder = false;
+    let mut present = false;
+    let tree_props = TreeProps {
+        entries: props.entries,
+        folders: props.folders,
+        open: props.open_folders,
+        sort,
+        hidden: props.hidden_tags,
+        selected: props.selected,
+        selected_folder: props.selected_folder,
+        displays: props.displays,
+    };
     let result = panes::show(
         ui,
         ui.scope_id().with("noteliner-sidebar"),
@@ -118,14 +143,7 @@ pub fn show(
         &visible,
         |ui, id| match id {
             "files" => {
-                for a in tree::show(
-                    ui,
-                    tree,
-                    props.entries,
-                    sort,
-                    props.hidden_tags,
-                    props.selected,
-                ) {
+                for a in tree::show(ui, tree, &tree_props) {
                     out.push(SidebarAction::Tree(a));
                 }
             }
@@ -161,7 +179,9 @@ pub fn show(
                 if let Some(mode) = sort_select(ui, sort) {
                     sort_pick = Some(mode);
                 }
+                new_folder |= new_folder_button(ui);
             }
+            "slides" => present |= present_button(ui),
             "tags" => pane_views::tags_header(
                 ui,
                 !all_tags.is_empty(),
@@ -182,6 +202,12 @@ pub fn show(
     if let Some(mode) = sort_pick {
         out.push(SidebarAction::Sort(mode));
     }
+    if new_folder {
+        out.push(SidebarAction::NewFolder);
+    }
+    if present {
+        out.push(SidebarAction::Present);
+    }
     if let Some(closed) = result.closed {
         out.push(SidebarAction::ClosePane(closed));
     }
@@ -195,6 +221,36 @@ pub fn show(
         out.push(SidebarAction::LayoutChanged);
     }
     out
+}
+
+/// The FILES header's New Folder button.
+fn new_folder_button(ui: &mut Ui) -> bool {
+    let p = theme::palette(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(vec2(26.0, 20.0), Sense::hover());
+    panes::header_button(
+        ui,
+        &p,
+        egui::Id::unique("noteliner-new-folder-btn"),
+        rect,
+        icons::FOLDER_PLUS,
+        "New Folder",
+    )
+    .clicked()
+}
+
+/// The SLIDES header's Present button.
+fn present_button(ui: &mut Ui) -> bool {
+    let p = theme::palette(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(vec2(26.0, 20.0), Sense::hover());
+    panes::header_button(
+        ui,
+        &p,
+        egui::Id::unique("noteliner-slides-present-btn"),
+        rect,
+        icons::CIRCLE_PLAY,
+        "Present",
+    )
+    .clicked()
 }
 
 /// The FILES header's sort select (`pane-header-select`): a compact

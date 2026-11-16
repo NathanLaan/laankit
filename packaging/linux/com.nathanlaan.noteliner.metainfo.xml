@@ -4,18 +4,18 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>NoteLiner</name>
-  <summary>Outliner-style Markdown notes with git sync</summary>
+  <summary>Outliner-style Markdown notes in a plain folder</summary>
   <developer id="com.nathanlaan">
     <name>Nathan Laan</name>
   </developer>
   <description>
     <p>
-      NoteLiner organizes Markdown notes in a tree. Every change is saved and
-      committed to a git repository, and synced to a remote when you set one.
+      NoteLiner organizes Markdown notes in folders. A project is a plain
+      folder of files that you open and edit, and deleted notes go to the trash.
     </p>
     <ul>
       <li>A Markdown editor with highlighting, list editing, find and spell check</li>
-      <li>Wikilinks, backlinks, tags, search and per-note history</li>
+      <li>Folders, wikilinks, backlinks, tags and search</li>
       <li>Attachments, templates, DOCX/PPTX import and PDF/HTML export</li>
       <li>Slides from notes, with a full-screen presenter</li>
       <li>An MCP server so AI clients can read and edit notes, with confirmation</li>
@@ -29,6 +29,8 @@
   <url type="bugtracker">https://github.com/NathanLaan/laankit/issues</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="3.1.0" date="2026-11-15"/>
+    <release version="3.0.0" date="2026-11-15"/>
     <release version="2.9.0" date="2026-11-15"/>
     <release version="2.4.1" date="2026-11-14"/>
     <release version="2.4.0" date="2026-11-13"/>

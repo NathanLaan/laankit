@@ -136,7 +136,7 @@ for event in out.events { /* see the contract below */ }
 |------------------------------------------------------------|----------|-------|
 | Markdown highlighting                                      | Done     | Line scanner: headings, emphasis, code, links, wikilinks, lists, tasks, quotes, tables, frontmatter |
 | Code-language highlighting inside fences (`codeLanguages`) | Done     | `syntect`'s ~75 bundled syntaxes (75 in all; no TypeScript, TOML, Svelte or PowerShell); aliases such as `shell`, `py3`, `yml`; One Dark / CodeMirror default colours (`SyntaxColors` in `highlight.rs`). Loads in the background, fences are one colour until then |
-| Theme colours                                              | Done     | Derived from the six themes' palettes (CodeMirror used One Dark / a light theme) |
+| Theme colours                                              | Done     | Derived from the seven themes' palettes (CodeMirror used One Dark / a light theme) |
 | Line numbers, active line                                  | Done     | |
 | Soft wrap (`lineWrapping`)                                 | Done     | `EditorPrefs::wrap` |
 | Fold gutter                                                | Done (core) | Headings, fences, list items with nested lines; Ctrl/Cmd+Shift+[ / ] |

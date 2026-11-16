@@ -1,6 +1,6 @@
 # Architecture
 
-LaanKit is a set of six desktop apps, NoteLiner, ThreadLiner, PageLiner, BlockLiner, PrintLiner, and MediaLiner, that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), with no webview and no JavaScript. Each app stores its data as plain files you control: a git repository for NoteLiner, ThreadLiner, and PageLiner, any folder of Mermaid files for BlockLiner, the app's own folders for PrintLiner, and your photo folders, where they are, for MediaLiner.
+LaanKit is a set of six desktop apps, NoteLiner, ThreadLiner, PageLiner, BlockLiner, PrintLiner, and MediaLiner, that share one UI and backend foundation. Every app is built in pure `Rust`, using [egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe), with no webview and no JavaScript. Each app stores its data as plain files you control: any folder of Markdown notes for NoteLiner, a git repository for ThreadLiner and PageLiner, any folder of Mermaid files for BlockLiner, the app's own folders for PrintLiner, and your photo folders, where they are, for MediaLiner.
 
 This document explains how the pieces fit together. For packaging and releases, see [`docs/packaging.md`](docs/packaging.md). For the security model, see [`SECURITY.md`](SECURITY.md).
 
@@ -25,7 +25,7 @@ Dependencies only point down. The UI crates never reach into an app's backend, a
 
 ### `laankit-core`
 
-The backend shared by the apps, with no UI framework. BlockLiner uses `paths`, `json`, and `debounce`, and PrintLiner and MediaLiner `paths` and `json`; none of them uses `git`.
+The backend shared by the apps, with no UI framework. ThreadLiner and PageLiner use all of it. NoteLiner and BlockLiner use `paths`, `json`, and `debounce`, and PrintLiner and MediaLiner `paths` and `json`; none of those four uses `git`.
 
 | Module | What it does |
 |--------|--------------|
@@ -79,12 +79,12 @@ Each `apps/<app>/native` crate is an eframe program:
 |--------|--------------|
 | `main`     | Sets up the window (size, icon, app id, and the optional custom title bar) and the `persistence_path` for eframe's own state. NoteLiner's `main` also handles `--mcp-bridge`. |
 | `app`      | Owns all of the UI state, and handles three kinds of input: backend events, commands (keyboard, palette, and menus), and view actions. |
-| `backend`  | Runs a tokio runtime around the app's core. The UI sends requests over channels, and the backend replies with `Event`s. This keeps git and file work off the UI thread. |
+| `backend`  | Runs a tokio runtime around the app's core. The UI sends requests over channels, and the backend replies with `Event`s. This keeps file and network work off the UI thread. |
 | `views`, `overlays` | The panels (tree, panes, preview, and status bar) and the dialogs. |
 
 ### NoteLiner's MCP server
 
-NoteLiner can share the open project with AI assistants over the [Model Context Protocol](https://modelcontextprotocol.io). It is off by default and only works locally. It doesn't open a TCP port. Instead it listens on a Unix domain socket that only your user can reach, and AI clients connect through the bridge built into the app (`noteliner --mcp-bridge`), which finds the socket through a runtime file. Changes from an AI client are saved the same way as changes in the UI, so they are committed to git too. You can ask to confirm each change, and allow or deny each tool. See [`apps/noteliner/README.md`](apps/noteliner/README.md) and [`apps/noteliner/native/README.md`](apps/noteliner/native/README.md).
+NoteLiner can share the open project with AI assistants over the [Model Context Protocol](https://modelcontextprotocol.io). It is off by default and only works locally. It doesn't open a TCP port. Instead it listens on a Unix domain socket that only your user can reach, and AI clients connect through the bridge built into the app (`noteliner --mcp-bridge`), which finds the socket through a runtime file. Changes from an AI client are saved the same way as changes in the UI, and a note an AI client deletes goes to the system's trash. You can ask to confirm each change, and allow or deny each tool. See [`apps/noteliner/README.md`](apps/noteliner/README.md) and [`apps/noteliner/native/README.md`](apps/noteliner/native/README.md).
 
 ## Settings and state across platforms
 

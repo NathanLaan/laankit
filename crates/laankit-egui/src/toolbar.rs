@@ -19,6 +19,7 @@ const BUTTON_RADIUS: u8 = 6;
 const ICON_SIZE: f32 = 16.0;
 /// `gap: 4px`.
 const GAP: f32 = 4.0;
+const DIVIDER_HEIGHT: f32 = 5.0;
 /// `padding: 8px 0`.
 const PADDING: i8 = 8;
 
@@ -71,6 +72,20 @@ impl<'a> ToolbarButton<'a> {
     }
 }
 
+fn limit_id() -> Id {
+    Id::unique("laankit-toolbar-top-limit")
+}
+
+/// Whether the top group has room for `buttons` more buttons (and a divider)
+/// above the bottom group. Call it inside [`show`]'s `top`: the toolbar
+/// doesn't scroll, so an app leaves out buttons that are only offered for
+/// some documents when the window is too short for them.
+pub fn fits(ui: &Ui, buttons: usize) -> bool {
+    let limit: f32 = ui.data(|d| d.get_temp(limit_id())).unwrap_or(f32::INFINITY);
+    let needed = DIVIDER_HEIGHT + GAP + buttons as f32 * (BUTTON_SIZE + GAP);
+    ui.cursor().top() + needed <= limit
+}
+
 /// Draws the toolbar at the left of `ui`: `top` from the top down, then the
 /// spacer, then `bottom` against the bottom edge.
 pub fn show(ui: &mut Ui, top: impl FnOnce(&mut Ui), bottom: impl FnOnce(&mut Ui)) {
@@ -85,6 +100,10 @@ pub fn show(ui: &mut Ui, top: impl FnOnce(&mut Ui), bottom: impl FnOnce(&mut Ui)
         )
         .show(ui, |ui| {
             let full = ui.max_rect();
+            // The bottom group keeps its natural order: it is placed by last frame's height.
+            let height_id = Id::unique("laankit-toolbar-bottom-height");
+            let last: f32 = ui.data(|d| d.get_temp(height_id)).unwrap_or(0.0);
+            ui.data_mut(|d| d.insert_temp(limit_id(), full.bottom() - last));
             let column = |ui: &mut Ui| {
                 ui.spacing_mut().item_spacing.y = GAP;
             };
@@ -97,9 +116,6 @@ pub fn show(ui: &mut Ui, top: impl FnOnce(&mut Ui), bottom: impl FnOnce(&mut Ui)
                     top(ui);
                 },
             );
-            // The bottom group keeps its natural order: it is placed by last frame's height.
-            let height_id = Id::unique("laankit-toolbar-bottom-height");
-            let last: f32 = ui.data(|d| d.get_temp(height_id)).unwrap_or(0.0);
             let rect = Rect::from_min_max(
                 egui::pos2(full.left(), (full.bottom() - last).max(full.top())),
                 full.max,
@@ -168,7 +184,7 @@ pub fn button(ui: &mut Ui, b: ToolbarButton<'_>) -> Response {
 /// `ToolbarDivider`: a 24 px hairline.
 pub fn divider(ui: &mut Ui) {
     let p = theme::palette(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(vec2(24.0, 5.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(24.0, DIVIDER_HEIGHT), Sense::hover());
     ui.painter()
         .hline(rect.x_range(), rect.center().y, Stroke::new(1.0, p.border));
 }

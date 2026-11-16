@@ -1,4 +1,4 @@
-//! Sizes and colours for the renderer, built from the active LaanKit theme so all six themes work.
+//! Sizes and colours for the renderer, built from the active LaanKit theme so all seven themes work.
 
 use egui::Color32;
 use laankit_egui::theme::{self, Palette};

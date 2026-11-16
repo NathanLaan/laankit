@@ -25,7 +25,8 @@ pub struct Stats {
     pub warnings: Vec<String>,
 }
 
-pub async fn import(project: &mut Project, source: &Path) -> Result<Value> {
+/// Imports `source` as a note in `folder` (the project folder for `None`).
+pub async fn import(project: &mut Project, source: &Path, folder: Option<&str>) -> Result<Value> {
     if !source.is_absolute() {
         bail!("Invalid source path");
     }
@@ -52,9 +53,9 @@ pub async fn import(project: &mut Project, source: &Path) -> Result<Value> {
         .to_string();
     let bytes = fs::read(source)?;
     if ext == ".docx" {
-        docx::import(project, &bytes, &stem).await
+        docx::import(project, &bytes, &stem, folder).await
     } else {
-        pptx::import(project, &bytes, &stem).await
+        pptx::import(project, &bytes, &stem, folder).await
     }
 }
 
@@ -256,18 +257,14 @@ pub(crate) fn stats_json(stats: &Stats, docx: bool) -> Value {
 #[tokio::test]
 #[ignore]
 async fn import_diff() {
-    use std::sync::Arc;
     let src =
         std::path::PathBuf::from(std::env::var("IMPORT_DIFF_FILE").expect("IMPORT_DIFF_FILE"));
     let tmp = tempfile::tempdir().unwrap();
-    let mut p = Project::new(crate::git::NoteGit::new(Arc::new(|_| {})));
-    p.git.git.init(tmp.path()).await.unwrap();
-    p.path = Some(tmp.path().to_path_buf());
-    p.set_git_config("T", "t@x").await.unwrap();
+    let mut p = Project::new();
     p.open(tmp.path()).await.unwrap();
-    let res = import(&mut p, &src).await.unwrap();
+    let res = import(&mut p, &src, None).await.unwrap();
     let body = p
-        .read_file(res["entry"]["filename"].as_str().unwrap())
+        .read_body(res["entry"]["filename"].as_str().unwrap())
         .unwrap();
     // Name attachments att-1, att-2… like the JS reference stub.
     let mut n = 0;

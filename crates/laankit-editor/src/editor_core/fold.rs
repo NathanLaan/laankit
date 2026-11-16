@@ -190,6 +190,20 @@ impl Folds {
         out
     }
 
+    /// The lines before `from` were replaced by `delta` more (or fewer)
+    /// lines: folds from `from` on move, and folds that start before it open.
+    pub fn shift_from(&mut self, from: usize, delta: isize) {
+        if self.ranges.is_empty() || (delta == 0 && self.ranges.iter().all(|&(s, _)| s >= from)) {
+            return;
+        }
+        self.ranges.retain(|&(s, _)| s >= from);
+        for r in &mut self.ranges {
+            r.0 = (r.0 as isize + delta).max(0) as usize;
+            r.1 = (r.1 as isize + delta).max(0) as usize;
+        }
+        self.rev += 1;
+    }
+
     /// Moves the folds along with an edit that replaced old lines
     /// `first ..= old_last` with new lines `first ..= new_last`, ending at old
     /// byte `old_end` (`line_start` maps an old line to its first byte). A

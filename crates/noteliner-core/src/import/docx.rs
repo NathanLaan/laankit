@@ -689,10 +689,15 @@ fn html_path(
     Path::Para
 }
 
-pub async fn import(project: &mut Project, bytes: &[u8], stem: &str) -> Result<Value> {
+pub async fn import(
+    project: &mut Project,
+    bytes: &[u8],
+    stem: &str,
+    folder: Option<&str>,
+) -> Result<Value> {
     let mut pkg = Package::open(bytes).map_err(|e| anyhow!("Conversion failed: {e}"))?;
     let entry = project
-        .create_file(stem, &json!([]), Some(String::new()), None)
+        .create_file(stem, &json!([]), Some(String::new()), folder)
         .await?;
     let file_id = entry["id"].as_str().unwrap_or("").to_string();
     let mut stats = Stats::default();
@@ -701,7 +706,7 @@ pub async fn import(project: &mut Project, bytes: &[u8], stem: &str) -> Result<V
         .await
         .map_err(|e| anyhow!("Conversion failed: {e}"))?;
     let filename = entry["filename"].as_str().unwrap_or("").to_string();
-    project.write_file(&filename, &markdown).await?;
+    project.write_body(&filename, &markdown).await?;
     Ok(json!({ "entry": entry, "stats": stats_json(&stats, true) }))
 }
 

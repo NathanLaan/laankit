@@ -1,15 +1,15 @@
 //! Drives the app headlessly (egui_kittest) through the main flow, against a
-//! temp config folder and a temp project: new project → new file → type →
-//! autosave hits disk → rename → move via drag-and-drop → delete, checking
-//! the files and `noteliner.json` on disk at each step. Needs `git` on the
-//! PATH, like the app.
+//! temp config folder and a temp project: open a plain folder → new file →
+//! type → autosave hits disk → rename → new folder → move via drag-and-drop →
+//! delete, checking the files and `noteliner.json` on disk at each step. No
+//! `git` is run, and the test passes with none on the `PATH`.
 
 use std::path::Path;
 use std::time::Duration;
 
 use egui::accesskit::Role;
 use egui::{Key, Modifiers};
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::Harness;
 use serde_json::Value;
 
@@ -90,29 +90,76 @@ fn new_file(h: &mut Harness<'static, NoteLinerApp>, name: &str) {
     });
 }
 
+/// The names of the tree's rows, in display order.
+pub(crate) fn tree_rows(h: &Harness<'static, NoteLinerApp>) -> Vec<String> {
+    h.query_all_by_role(Role::TreeItem)
+        .map(|n| n.accesskit_node().label().unwrap_or_default())
+        .collect()
+}
+
+/// Drags the tree row `from` onto the tree row `to`.
+pub(crate) fn drag_row(h: &mut Harness<'static, NoteLinerApp>, from: &str, to: &str) {
+    h.run_steps(2);
+    let from = h
+        .get_by_role_and_label(Role::TreeItem, from)
+        .rect()
+        .center();
+    let to = h.get_by_role_and_label(Role::TreeItem, to).rect().center();
+    h.hover_at(from);
+    h.step();
+    h.drag_at(from);
+    h.step();
+    for i in 1..=10 {
+        let t = i as f32 / 10.0;
+        h.hover_at(from + (to - from) * t);
+        h.step();
+    }
+    h.drop_at(to);
+    h.step();
+}
+
+/// Everything the test trash holds, by file name.
+pub(crate) fn trashed(paths: &Paths) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(paths.user_data.join("trash"))
+        .map(|d| {
+            d.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
 #[test]
-fn new_project_file_type_rename_move_delete() {
+fn open_folder_file_type_rename_move_delete() {
     let tmp = tempfile::tempdir().unwrap();
     let paths = Paths {
         user_data: tmp.path().join("NoteLiner"),
     };
+    // A plain, empty folder: no repository, no index.
     let project = tmp.path().join("notes");
+    std::fs::create_dir_all(&project).unwrap();
     let mut h = harness(paths.clone());
     h.run_steps(3);
+    // One Open Folder action; New Project is gone.
+    assert!(h.query_by_label("New Project").is_none());
+    h.get_by_label("Open Folder");
 
-    // New Project: location, git name and email.
-    h.get_by_label("New Project").click();
-    h.run_steps(2);
-    replace_text(&mut h, 0, &project.display().to_string());
-    replace_text(&mut h, 1, "Test User");
-    replace_text(&mut h, 2, "test@localhost");
-    h.get_by_label("OK").click();
+    h.state_mut().open(project.clone());
     wait_for(&mut h, "the project", |a| a.project_index().is_some());
-    assert!(project.join(".git").exists());
+    // It opened with no setup dialog, and wrote only the index.
+    assert!(!h.state().has_overlay());
     assert!(project.join("noteliner.json").exists());
-    // It's now a recent project, in the Tauri host's shape.
+    assert!(!project.join(".git").exists());
+    assert_eq!(index(&project)["version"], 4);
+    // It's now a recent project.
     let recent: Vec<Value> = laankit_core::json::read(&paths.recent_path()).unwrap();
     assert_eq!(recent[0]["path"], project.display().to_string());
+    // The status bar has no branch chip, and the toolbar no Remote Sync.
+    assert!(h.query_by_label("Remote Sync").is_none());
+    assert!(h.query_by_label_contains("Remote Sync").is_none());
+    assert!(h.query_by_label_contains("Project Settings").is_none());
 
     // New File, then type into it: the autosave writes after 500 ms.
     new_file(&mut h, "First Note");
@@ -128,10 +175,19 @@ fn new_project_file_type_rename_move_delete() {
     wait_for(&mut h, "the autosave", move |_| {
         std::fs::read_to_string(&first2).is_ok_and(|s| s.contains("hello from the test"))
     });
-    // The frontmatter is still mirrored from the index.
+    // The frontmatter holds the note's tags and created date, and no id,
+    // name or updated time.
     let raw = std::fs::read_to_string(&first).unwrap();
-    assert!(raw.starts_with("---\n"), "{raw}");
-    assert!(raw.contains("name: First Note"), "{raw}");
+    assert!(raw.starts_with("---\ntags: []\ncreated: '"), "{raw}");
+    for gone in ["id:", "name:", "updated:"] {
+        assert!(!raw.contains(gone), "{gone} in {raw}");
+    }
+    // The editor shows the whole file; what was typed went into the text.
+    assert_eq!(h.state().editor_file_text(), raw);
+    assert!(h
+        .state()
+        .editor_text()
+        .starts_with("hello from the test # First Note"));
 
     new_file(&mut h, "Second Note");
 
@@ -160,36 +216,37 @@ fn new_project_file_type_rename_move_delete() {
         renamed2.exists() && a.entries().iter().any(|e| e.name == "Renamed")
     });
     assert!(!first.exists());
+    // A rename changes nothing in the file.
+    assert_eq!(std::fs::read_to_string(&renamed).unwrap(), raw);
 
-    // Drag Second Note onto the middle of Renamed: it becomes its child.
+    // New Folder, from the FILES header. Renamed is selected, so the folder
+    // is made beside it, at the top.
+    h.get_by_label("New Folder").click();
     h.run_steps(2);
-    let from = h
-        .get_by_role_and_label(Role::TreeItem, "Second Note")
-        .rect()
-        .center();
-    let to = h
-        .get_by_role_and_label(Role::TreeItem, "Renamed")
-        .rect()
-        .center();
-    h.hover_at(from);
-    h.step();
-    h.drag_at(from);
-    h.step();
-    for i in 1..=10 {
-        let t = i as f32 / 10.0;
-        h.hover_at(from + (to - from) * t);
-        h.step();
-    }
-    h.drop_at(to);
-    h.step();
+    replace_text(&mut h, 0, "Work");
+    h.get_by_label("OK").click();
+    wait_for(&mut h, "the folder", |a| a.folders() == ["Work"]);
+    assert!(project.join("Work").is_dir());
+    assert_eq!(h.state().selected_folder().as_deref(), Some("Work"));
+    // Folders come first.
+    assert_eq!(tree_rows(&h), ["Folder Work", "Renamed", "Second Note"]);
+
+    // Drag Second Note onto the folder: its file moves there.
+    drag_row(&mut h, "Second Note", "Folder Work");
     let project2 = project.clone();
-    wait_for(&mut h, "the move on disk", move |_| {
-        let i = index(&project2);
-        file_by_name(&i, "Second Note")["parentId"] == file_by_name(&i, "Renamed")["id"]
+    wait_for(&mut h, "the move on disk", move |a| {
+        project2.join("Work/second-note.md").exists()
+            && a.entries()
+                .iter()
+                .any(|e| e.filename == "Work/second-note.md")
     });
+    assert!(!project.join("second-note.md").exists());
     let i = index(&project);
-    assert_eq!(file_by_name(&i, "Second Note")["order"], 0);
-    // Index entries keep the shape `file:create` gave them.
+    assert_eq!(
+        file_by_name(&i, "Second Note")["filename"],
+        "Work/second-note.md"
+    );
+    // Index entries have no parent and no order.
     let keys: Vec<&String> = file_by_name(&i, "Second Note")
         .as_object()
         .unwrap()
@@ -201,14 +258,19 @@ fn new_project_file_type_rename_move_delete() {
             "id",
             "name",
             "filename",
-            "parentId",
-            "order",
             "tags",
             "attachments",
             "createdAt",
             "modifiedAt"
         ]
     );
+    // The folder it was dropped on opened or not, the note is in it.
+    if !h.state().open_folders().contains(&"Work".to_string()) {
+        h.get_by_role_and_label(Role::TreeItem, "Folder Work")
+            .click();
+        h.run_steps(2);
+    }
+    assert_eq!(tree_rows(&h), ["Folder Work", "Second Note", "Renamed"]);
 
     // Delete Second Note: select it, Ctrl+D, confirm.
     h.get_by_role_and_label(Role::TreeItem, "Second Note")
@@ -223,33 +285,20 @@ fn new_project_file_type_rename_move_delete() {
     h.run_steps(3);
     assert!(h.state().has_overlay());
     h.get_by_label("Delete").click();
-    let second = project.join("second-note.md");
+    let second = project.join("Work/second-note.md");
     let second2 = second.clone();
     wait_for(&mut h, "the delete", move |a| {
         !second2.exists() && a.entries().len() == 1
     });
     assert_eq!(index(&project)["files"].as_array().unwrap().len(), 1);
+    // It went to the trash, not away.
+    assert_eq!(trashed(&paths), ["second-note.md"]);
     // Its tab closed: the other note's tab is shown.
     let renamed_id = h.state().entries()[0].id.clone();
     assert_eq!(h.state().selected(), Some(renamed_id));
 
-    // Every change was committed.
-    let log = std::process::Command::new("git")
-        .args(["log", "--oneline"])
-        .current_dir(&project)
-        .output()
-        .unwrap();
-    let log = String::from_utf8_lossy(&log.stdout);
-    for msg in [
-        "Add First Note",
-        "Update first-note.md",
-        "Rename first-note.md to renamed.md",
-        "Update index",
-        "Delete Second Note",
-    ] {
-        assert!(log.contains(msg), "missing commit {msg:?} in:\n{log}");
-    }
-    // Close the project so the push flush and MCP stop run.
-    h.state_mut().backend().close_project(None);
+    // Nothing here made a repository.
+    assert!(!project.join(".git").exists());
+    h.state_mut().backend().close_project(Vec::new());
     wait_for(&mut h, "the close", |a| a.project_index().is_none());
 }

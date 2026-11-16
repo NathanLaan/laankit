@@ -1,14 +1,15 @@
 //! The app: owns the backend, the open project, the editor, the panels and
-//! the open dialog; routes backend events, commands and view actions. The
-//! equivalent of `App.svelte` plus `stores/project.svelte.js` and
-//! `stores/log.svelte.js`.
+//! the open dialog; routes backend events, commands and view actions.
+//!
+//! A project is a folder. The tree in the Files pane is its sub-folders,
+//! with the notes and diagrams in them, and the backend holds the index that
+//! counts: the copy here is replaced whenever the folders change.
 
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use egui::{Frame, Ui};
-use laankit_core::git::SyncStatus;
 use laankit_editor::attachment_markdown;
 use laankit_egui::about::{AboutAction, AboutIcon, AboutModal, UpdateStatus};
 use laankit_egui::commands::{Recents, Registry};
@@ -28,7 +29,7 @@ use noteliner_slides::{
 };
 use serde_json::{json, Value};
 
-use crate::backend::{self, Backend, Event, ExportKind, McpConfirm, Op, Outcome};
+use crate::backend::{self, Backend, DeleteTarget, Event, ExportKind, McpConfirm};
 use crate::commands::{self, Act, View};
 use crate::config::{LastFilePosition, Layout, Paths, Prefs, Recent};
 use crate::deck::{self, DeckState, SlideImages};
@@ -42,20 +43,17 @@ use crate::diagram::DiagramDoc;
 use crate::editor::{EditorAction, NoteEditor};
 use crate::model::{self, Entry, SortMode};
 use crate::overlays::settings::{SettingsAction, SettingsState};
-use crate::overlays::sync::{SyncAction, SyncState};
 use crate::overlays::{
-    self, FormAction, MoveForm, NewFileForm, NewProjectForm, Overlay, ProjectSettingsAction,
-    ProjectSettingsForm, SetupAction, SetupForm,
+    self, ConflictAction, FormAction, MoveForm, MoveTarget, NewFileForm, NewFolderForm, Overlay,
 };
 use crate::spell;
 use crate::tabs::{NoteStash, Stashed, Tabs};
 use crate::views::attachments::{self, AttachmentAction};
 use crate::views::diagram::{self as diagram_view, ToolbarAction as DiagramToolbarAction};
-use crate::views::history::{self, HistoryAction, HistoryState};
 use crate::views::panes::{PaneAction, PaneStates};
 use crate::views::preview::{DeckProps, Preview, PreviewAction};
 use crate::views::sidebar::{self, SidebarAction, SidebarProps};
-use crate::views::tree::{ContextAction, TreeAction, TreeState};
+use crate::views::tree::{ContextAction, FolderAction, Item, TreeAction, TreeState};
 use crate::views::{self, LogLine, OpenAction, StatusProps};
 
 /// eframe storage keys (the Svelte build's `noteliner-theme` /
@@ -65,6 +63,9 @@ const THEME_KEY: &str = "noteliner-theme";
 const ZOOM_COOLDOWN_SECS: f64 = 0.2;
 /// Window bounds are saved after a second of quiet (`bounds_saver`).
 const BOUNDS_DEBOUNCE_SECS: f64 = 1.0;
+/// How often the project folder is checked for changes made by other
+/// programs, while the window has the focus.
+const CHECK_SECS: f64 = 3.0;
 /// eframe's own window-geometry key, which NoteLiner keeps blank (see `save`).
 const EFRAME_WINDOW_KEY: &str = "window";
 const DESCRIPTION: &str = "An outliner-style note-taking application built with Rust and egui.";
@@ -80,19 +81,28 @@ struct Diagnostics {
     file: Option<String>,
 }
 
-/// The open project (`projectState` while `isOpen`).
+/// The open project.
 struct Project {
     folder: PathBuf,
-    /// `noteliner.json` as the backend gave it; edited in place and sent
-    /// back whole (`project:saveIndex`).
+    /// `noteliner.json` as the backend gave it. Tag changes are made here
+    /// and sent back; everything else comes from the backend.
     index: Value,
     entries: Vec<Entry>,
+    /// Every folder under the project, by path.
+    folders: Vec<String>,
+    /// The folders that are open in the Files pane.
+    open_folders: HashSet<String>,
+    /// The open note or diagram: the active tab.
     selected: Option<String>,
-    /// The selected note's frontmatter (`file:getFrontmatter`).
-    frontmatter: Value,
+    /// The folder selected in the tree. It takes the highlight from the open
+    /// note, and new files and folders go in it.
+    selected_folder: Option<String>,
     layout: Layout,
     /// The layout as last saved, to notice changes.
     saved_layout: Layout,
+    /// Tag changes sent to the backend and not yet answered: until they
+    /// are, the tags here are newer than the backend's.
+    pending_index_saves: usize,
 }
 
 impl Project {
@@ -108,17 +118,54 @@ impl Project {
         self.entry(self.selected.as_deref()?)
     }
 
-    /// `isDeck`: the open note has a `presentation:` block.
-    fn is_deck(&self) -> bool {
-        self.selected.is_some()
-            && self
-                .frontmatter
-                .get("presentation")
-                .is_some_and(|p| !p.is_null())
+    /// The index entry of `id`, as the backend has it.
+    fn entry_value(&self, id: &str) -> Option<&Value> {
+        self.index["files"]
+            .as_array()?
+            .iter()
+            .find(|f| f["id"].as_str() == Some(id))
     }
 
+    /// The open note's attachments: `_attachments/` in its own folder.
     fn attachments_dir(&self) -> PathBuf {
-        self.folder.join(noteliner_core::project::ATTACHMENTS_DIR)
+        let folder = self.selected_entry().map_or("", |e| e.folder.as_str());
+        self.folder
+            .join(folder)
+            .join(noteliner_core::project::ATTACHMENTS_DIR)
+    }
+
+    /// Where a new file or folder goes: the selected folder, or beside the
+    /// selected note, or the top of the project with nothing selected.
+    fn target_folder(&self) -> String {
+        match &self.selected_folder {
+            Some(folder) => folder.clone(),
+            None => self
+                .selected_entry()
+                .map(|e| e.folder.clone())
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Opens `folder` and the folders above it, so what is in it shows.
+    fn reveal_folder(&mut self, folder: &str) {
+        let mut path = folder;
+        while !path.is_empty() {
+            self.open_folders.insert(path.to_string());
+            path = noteliner_core::tree::folder_of(path);
+        }
+    }
+
+    /// Lists `folder` and the folders above it, until the backend's list
+    /// arrives (a note was made in a folder that is new).
+    fn note_folder(&mut self, folder: &str) {
+        let mut path = folder;
+        while !path.is_empty() {
+            if !self.folders.iter().any(|f| f == path) {
+                self.folders.push(path.to_string());
+            }
+            path = noteliner_core::tree::folder_of(path);
+        }
+        self.folders.sort();
     }
 }
 
@@ -131,8 +178,6 @@ enum Picked {
         file_id: String,
         paths: Vec<PathBuf>,
     },
-    /// The New Project form's folder.
-    NewProjectLocation(PathBuf),
 }
 
 pub struct NoteLinerApp {
@@ -150,7 +195,6 @@ pub struct NoteLinerApp {
     hidden_tags: HashSet<String>,
     /// SEARCH, BACKLINKS and TAGS view state, and the tag filter.
     panes: PaneStates,
-    history: HistoryState,
     /// A line to put the caret on once this note has loaded (search,
     /// backlinks).
     pending_line: Option<(String, usize)>,
@@ -174,6 +218,13 @@ pub struct NoteLinerApp {
     tabs: Tabs,
     /// The open deck and the slides widgets.
     deck: DeckState,
+    /// A deck picked with Present in the FILES pane that is still loading:
+    /// its id, and whether the speaker view was asked for.
+    present_when_open: Option<(String, bool, DisplayPick)>,
+    /// The connected displays, read from the window about once a second.
+    displays: Vec<noteliner_slides::Display>,
+    /// When they were last read (egui's clock).
+    displays_read: f64,
     /// A note being converted to a presentation: open its settings once done
     /// (`handleConvertToPresentation`).
     pending_convert: Option<String>,
@@ -190,8 +241,16 @@ pub struct NoteLinerApp {
     tree: TreeState,
     recent: Vec<Recent>,
     log: Vec<LogLine>,
-    branch: Option<String>,
-    sync: Option<SyncStatus>,
+    /// When the project folder was last checked for outside changes, and
+    /// whether the window had the focus then.
+    last_check: f64,
+    was_focused: bool,
+    /// An open note that changed on disk under unsaved edits, waiting for
+    /// the dialog that is open to close: (id, the file on disk).
+    pending_conflict: Option<(String, String)>,
+    /// The time of the last frame, for edits made by tests.
+    #[cfg(test)]
+    test_time: f64,
     mcp_running: bool,
     mcp_queue: VecDeque<McpConfirm>,
     overlay: Option<Overlay>,
@@ -237,7 +296,6 @@ impl NoteLinerApp {
             opening: false,
             hidden_tags: HashSet::new(),
             panes: PaneStates::default(),
-            history: HistoryState::default(),
             pending_line: None,
             pending_position: None,
             mcp_details: false,
@@ -250,6 +308,9 @@ impl NoteLinerApp {
             diagram_export_dir: None,
             tabs: Tabs::default(),
             deck: DeckState::default(),
+            present_when_open: None,
+            displays: Vec::new(),
+            displays_read: f64::NEG_INFINITY,
             pending_convert: None,
             pending_settings: None,
             spell: spell::Loader::default(),
@@ -260,8 +321,11 @@ impl NoteLinerApp {
             tree: TreeState::default(),
             recent,
             log: Vec::new(),
-            branch: None,
-            sync: None,
+            last_check: 0.0,
+            was_focused: true,
+            pending_conflict: None,
+            #[cfg(test)]
+            test_time: 0.0,
             mcp_running: false,
             mcp_queue: VecDeque::new(),
             overlay: None,
@@ -330,6 +394,63 @@ impl NoteLinerApp {
         self.project.as_ref()?.selected.clone()
     }
 
+    /// The project's folders, by path.
+    #[cfg(test)]
+    pub fn folders(&self) -> Vec<String> {
+        self.project
+            .as_ref()
+            .map(|p| p.folders.clone())
+            .unwrap_or_default()
+    }
+
+    /// The folder selected in the tree.
+    #[cfg(test)]
+    pub fn selected_folder(&self) -> Option<String> {
+        self.project.as_ref()?.selected_folder.clone()
+    }
+
+    /// The folders that are open in the tree, sorted.
+    #[cfg(test)]
+    pub fn open_folders(&self) -> Vec<String> {
+        let mut open: Vec<String> = self
+            .project
+            .as_ref()
+            .map(|p| p.open_folders.iter().cloned().collect())
+            .unwrap_or_default();
+        open.sort();
+        open
+    }
+
+    /// The open note's file as the editor holds it, frontmatter included.
+    #[cfg(test)]
+    pub fn editor_file_text(&self) -> String {
+        self.editor.file_text().to_string()
+    }
+
+    #[cfg(test)]
+    pub fn editor_status(&self) -> crate::editor::SaveStatus {
+        self.editor.status()
+    }
+
+    /// Replaces the open note's whole file as if it had been typed: the
+    /// note is unsaved, and the autosave follows.
+    #[cfg(test)]
+    pub fn edit_file_for_test(&mut self, text: &str) {
+        let now = self.editor_time();
+        self.editor.type_file(text, now);
+    }
+
+    #[cfg(test)]
+    fn editor_time(&self) -> f64 {
+        self.test_time
+    }
+
+    /// Looks for changes made outside the app now, as the timer would.
+    #[cfg(test)]
+    pub fn check_now(&mut self) {
+        self.check(false);
+    }
+
     /// The diagram on the canvas: the open diagram's id, if one is loaded.
     #[cfg(test)]
     pub fn diagram_file_id(&self) -> Option<String> {
@@ -378,6 +499,18 @@ impl NoteLinerApp {
         self.editor.cursor()
     }
 
+    /// Where character `c` of the open file is on screen.
+    #[cfg(test)]
+    pub fn editor_char_rect(&mut self, c: usize) -> Option<egui::Rect> {
+        self.editor.char_rect(c)
+    }
+
+    /// The caret's line in the note's text, the frontmatter not counted.
+    #[cfg(test)]
+    pub fn editor_body_line(&self) -> usize {
+        self.editor.body_line()
+    }
+
     /// The open note's caret (anchor, head) and scroll offset.
     #[cfg(test)]
     pub fn editor_view(&self) -> Option<(usize, usize, egui::Vec2)> {
@@ -410,6 +543,29 @@ impl NoteLinerApp {
         self.deck.presenter.is_some()
     }
 
+    /// The connected displays, as a window would report them.
+    #[cfg(test)]
+    pub fn set_displays_for_test(&mut self, displays: Vec<noteliner_slides::Display>) {
+        self.displays = displays;
+    }
+
+    /// The display the presentation was sent to, and the remembered one.
+    #[cfg(test)]
+    pub fn presenting_display(&self) -> Option<usize> {
+        self.deck.presenter.as_ref().and_then(|p| p.display())
+    }
+
+    #[cfg(test)]
+    pub fn remembered_display_for_test(&self) -> Option<(String, [u32; 2])> {
+        self.prefs.present_display.clone()
+    }
+
+    /// The slide on screen while presenting (1-based).
+    #[cfg(test)]
+    pub fn presenting_slide(&self) -> Option<usize> {
+        self.deck.presenter.as_ref().map(|p| p.index())
+    }
+
     #[cfg(test)]
     pub fn speaker_view_open(&self) -> bool {
         self.deck
@@ -429,11 +585,6 @@ impl NoteLinerApp {
     }
 
     #[cfg(test)]
-    pub fn history(&self) -> &HistoryState {
-        &self.history
-    }
-
-    #[cfg(test)]
     pub fn push_mcp_confirm(&mut self, req: McpConfirm) {
         self.mcp_queue.push_back(req);
     }
@@ -448,7 +599,9 @@ impl NoteLinerApp {
         View {
             project_open: p.is_some(),
             has_selection: p.is_some_and(|p| p.selected.is_some()),
-            is_deck: p.is_some_and(Project::is_deck),
+            folder_selected: p.is_some_and(|p| p.selected_folder.is_some()),
+            is_deck: self.is_deck(),
+            displays: self.displays.len(),
             tags_visible: p.is_some_and(|p| p.layout.show_tags),
             tabs: self.tabs.len(),
             is_diagram: self.diagram_active(),
@@ -459,6 +612,12 @@ impl NoteLinerApp {
                 || self.palette.is_some()
                 || !self.mcp_queue.is_empty(),
         }
+    }
+
+    /// The open note has a `presentation:` block in its frontmatter.
+    fn is_deck(&self) -> bool {
+        let selected = self.project.as_ref().and_then(|p| p.selected.as_deref());
+        selected.is_some() && selected == self.editor.file_id() && self.editor.is_deck()
     }
 
     /// The active tab is a diagram, loaded on the canvas.
@@ -494,16 +653,9 @@ impl NoteLinerApp {
             Event::ProjectOpened {
                 folder,
                 index,
-                needs_git_config,
-            } => self.project_opened(ctx, folder, index, needs_git_config),
-            Event::NeedsSetup(folder) => {
-                self.opening = false;
-                self.overlay = Some(Overlay::Setup(SetupForm {
-                    folder: folder.display().to_string(),
-                    remote: false,
-                    url: String::new(),
-                }));
-            }
+                folders,
+                truncated,
+            } => self.project_opened(ctx, folder, index, folders, truncated),
             Event::OpenFailed(message) => {
                 self.opening = false;
                 self.toasts
@@ -516,22 +668,16 @@ impl NoteLinerApp {
                 self.tabs.clear();
                 self.hidden_tags.clear();
                 self.panes = PaneStates::default();
-                self.history = HistoryState::default();
                 self.pending_line = None;
                 self.pending_position = None;
-                self.branch = None;
-                self.sync = None;
+                self.pending_conflict = None;
                 self.recent = self.backend.recent();
                 if matches!(self.overlay, Some(Overlay::Busy { .. })) {
                     self.overlay = None;
                 }
                 self.backend.mcp_status();
             }
-            Event::FileLoaded {
-                id,
-                content,
-                frontmatter,
-            } => {
+            Event::FileLoaded { id, content } => {
                 let Some(p) = &mut self.project else { return };
                 if p.selected.as_deref() != Some(id.as_str()) {
                     return;
@@ -555,7 +701,6 @@ impl NoteLinerApp {
                     self.open_from_env(ctx);
                     return;
                 }
-                p.frontmatter = frontmatter;
                 if let Some(e) = p.entry(&id) {
                     self.editor.load(&id, &e.name, &e.filename, content);
                 }
@@ -582,10 +727,10 @@ impl NoteLinerApp {
             Event::Saved {
                 id,
                 content,
-                outcome,
+                result,
                 entry,
             } => {
-                let ok = outcome == Outcome::Ok(());
+                let ok = result.is_ok();
                 self.editor.saved(&id, &content, ok);
                 for e in self.tabs.editors_mut() {
                     e.saved(&id, &content, ok);
@@ -593,6 +738,20 @@ impl NoteLinerApp {
                 self.diagram.saved(&id);
                 for d in self.tabs.diagrams_mut() {
                     d.saved(&id);
+                }
+                // A field the save put back into the frontmatter shows in the
+                // editor, unless the block was typed in since.
+                if let Ok(written) = &result {
+                    if let Some(rewritten) = &written.rewritten {
+                        if self.editor.file_id() == Some(id.as_str()) {
+                            self.editor.frontmatter_rewritten(&content, rewritten);
+                        }
+                        for e in self.tabs.editors_mut() {
+                            if e.file_id() == Some(id.as_str()) {
+                                e.frontmatter_rewritten(&content, rewritten);
+                            }
+                        }
+                    }
                 }
                 if let (Some(p), Some(entry)) = (&mut self.project, entry) {
                     model::update_file(
@@ -603,12 +762,20 @@ impl NoteLinerApp {
                     if entry.get("deck").is_none() {
                         remove_key(&mut p.index, &id, "deck");
                     }
+                    // Tags typed in the frontmatter are the note's tags. A tag
+                    // change of the app's own that isn't saved yet is newer.
+                    if p.pending_index_saves == 0 && entry["tags"].is_array() {
+                        model::update_file(&mut p.index, &id, &json!({ "tags": entry["tags"] }));
+                        for tag in entry["tags"].as_array().into_iter().flatten() {
+                            if let Some(tag) = tag.as_str() {
+                                model::add_to_palette(&mut p.index, tag);
+                            }
+                        }
+                    }
                     p.refresh();
                 }
-                match outcome {
-                    Outcome::Ok(()) => {}
-                    Outcome::GitConfigRequired => self.git_config_required(),
-                    Outcome::Err(e) => self.toasts.error(format!("Couldn't save: {e}")),
+                if let Err(e) = result {
+                    self.toasts.error(format!("Couldn't save: {e}"));
                 }
             }
             Event::Created(entry) => self.created(entry),
@@ -635,37 +802,59 @@ impl NoteLinerApp {
             }
             Event::Deleted(id) => {
                 let Some(p) = &mut self.project else { return };
-                // Children move up to the deleted note's parent, as the backend did.
-                let parent = p.entry(&id).and_then(|e| e.parent_id.clone());
-                if let Some(files) = p.index["files"].as_array_mut() {
-                    for f in files.iter_mut() {
-                        if f["parentId"].as_str() == Some(id.as_str()) {
-                            f["parentId"] = json!(parent);
-                        }
-                    }
-                }
                 model::remove_file(&mut p.index, &id);
                 p.refresh();
-                // Its tab closes; the edits of a deleted note aren't written.
-                let active = p.selected.as_deref() == Some(id.as_str());
-                if active {
-                    p.selected = None;
-                    p.frontmatter = json!({});
-                    self.editor.clear();
-                    self.diagram.clear();
-                }
-                let next = self.tabs.close(&id);
-                if let Some(next) = next.filter(|_| active) {
-                    self.select(next);
+                self.forget_tab(&id);
+            }
+            Event::DeleteFailed { target, message } => {
+                let name = self.project.as_ref().map(|p| match &target {
+                    DeleteTarget::File(id) => {
+                        p.entry(id).map(|e| e.name.clone()).unwrap_or_default()
+                    }
+                    DeleteTarget::Folder(path) => model::folder_name(path).to_string(),
+                });
+                if let Some(name) = name {
+                    self.overlay = Some(Overlay::DeletePermanently {
+                        target,
+                        name,
+                        message,
+                    });
                 }
             }
-            Event::IndexSaved(outcome) => match outcome {
-                Outcome::Ok(()) => {}
-                Outcome::GitConfigRequired => self.git_config_required(),
-                Outcome::Err(e) => self.toasts.error(format!("Couldn't save the index: {e}")),
-            },
+            Event::Tree { index, folders } => self.tree_changed(index, folders),
+            Event::FolderCreated(path) => {
+                if let Some(p) = &mut self.project {
+                    p.reveal_folder(noteliner_core::tree::folder_of(&path));
+                    p.selected_folder = Some(path);
+                }
+            }
+            Event::FolderMoved { from, to } => {
+                let Some(p) = &mut self.project else { return };
+                let moved = |path: &str| format!("{to}{}", &path[from.len()..]);
+                let under = |path: &str| noteliner_core::tree::is_under(path, &from);
+                p.open_folders = p
+                    .open_folders
+                    .iter()
+                    .map(|f| if under(f) { moved(f) } else { f.clone() })
+                    .collect();
+                if let Some(f) = p.selected_folder.as_ref().filter(|f| under(f)) {
+                    p.selected_folder = Some(moved(f));
+                }
+                // The folder it was moved into opens, to show it.
+                p.reveal_folder(noteliner_core::tree::folder_of(&to));
+            }
+            Event::FileChanged { id, content } => self.file_changed(id, content),
+            Event::McpChanged => self.check(true),
+            Event::IndexSaved(result) => {
+                if let Some(p) = &mut self.project {
+                    p.pending_index_saves = p.pending_index_saves.saturating_sub(1);
+                }
+                if let Err(e) = result {
+                    self.toasts.error(format!("Couldn't save the tags: {e}"));
+                }
+            }
             Event::Presentation { id, outcome } => match outcome {
-                Outcome::Ok(presentation) => {
+                Ok(presentation) => {
                     let turned_off = presentation.is_null();
                     let converted =
                         !turned_off && self.pending_convert.as_deref() == Some(id.as_str());
@@ -676,30 +865,15 @@ impl NoteLinerApp {
                     if from_settings {
                         self.overlay = None;
                     }
+                    // The block in the open editor follows the file.
+                    self.presentation_into_editors(&id, &presentation);
                     let Some(p) = &mut self.project else { return };
-                    // A background tab's frontmatter is stale: read it again
-                    // when it's shown.
-                    if p.selected.as_deref() != Some(id.as_str()) {
-                        self.tabs.take(&id);
-                    }
                     if presentation.is_null() {
                         remove_key(&mut p.index, &id, "deck");
                     } else {
                         model::update_file(&mut p.index, &id, &json!({ "deck": true }));
                     }
-                    if p.selected.as_deref() == Some(id.as_str()) {
-                        if !p.frontmatter.is_object() {
-                            p.frontmatter = json!({});
-                        }
-                        if presentation.is_null() {
-                            if let Some(m) = p.frontmatter.as_object_mut() {
-                                m.remove("presentation");
-                            }
-                        } else {
-                            p.frontmatter["presentation"] = presentation;
-                        }
-                    }
-                    // `handleConvertToNote` hides the SLIDES pane.
+                    // Converting to a note hides the SLIDES pane.
                     if turned_off && p.selected.as_deref() == Some(id.as_str()) {
                         p.layout.show_slides = false;
                     }
@@ -713,17 +887,7 @@ impl NoteLinerApp {
                         self.open_presentation_settings();
                     }
                 }
-                Outcome::GitConfigRequired => {
-                    self.pending_convert = None;
-                    if let Some(Overlay::PresentationSettings { dialog, .. }) = &mut self.overlay {
-                        dialog.saving = false;
-                        dialog.error =
-                            Some("Set your git name and email in Project Settings first.".into());
-                    } else {
-                        self.git_config_required();
-                    }
-                }
-                Outcome::Err(e) => {
+                Err(e) => {
                     self.pending_convert = None;
                     if let Some(Overlay::PresentationSettings { dialog, .. }) = &mut self.overlay {
                         dialog.saving = false;
@@ -736,57 +900,6 @@ impl NoteLinerApp {
             Event::Templates(list) => {
                 if let Some(Overlay::NewFile(form)) = &mut self.overlay {
                     form.templates = list;
-                }
-            }
-            Event::GitConfig { name, email } => {
-                if let Some(Overlay::ProjectSettings(form)) = &mut self.overlay {
-                    if form.name.is_empty() {
-                        form.name = name;
-                    }
-                    if form.email.is_empty() {
-                        form.email = email;
-                    }
-                }
-            }
-            Event::GitState {
-                branch,
-                remote,
-                sync,
-            } => {
-                self.branch = branch.clone();
-                self.sync = sync.clone();
-                if let Some(Overlay::Sync(s)) = &mut self.overlay {
-                    s.loading = false;
-                    s.branch = branch;
-                    let url = remote.unwrap_or_default();
-                    if s.saved_url != url || s.remote_input.is_empty() {
-                        s.remote_input = url.clone();
-                    }
-                    s.saved_url = url;
-                    s.status = sync;
-                }
-            }
-            Event::GitDone { op, result } => {
-                if let Some(Overlay::Sync(s)) = &mut self.overlay {
-                    s.finish(op, &result);
-                    if result.is_ok() && op != Op::Disconnect {
-                        s.status = None;
-                    }
-                } else if let Err(e) = result {
-                    self.toasts.error(e);
-                }
-            }
-            Event::IndexReloaded(index) => {
-                // `projectState.load`: the selection resets.
-                if let Some(p) = &mut self.project {
-                    p.index = index;
-                    model::normalize_index(&mut p.index);
-                    p.refresh();
-                    p.selected = None;
-                    p.frontmatter = json!({});
-                    self.editor.clear();
-                    self.diagram.clear();
-                    self.tabs.clear();
                 }
             }
             Event::Mcp(status) => {
@@ -873,9 +986,6 @@ impl NoteLinerApp {
             Event::Backlinks { id, links } => self.panes.backlinks.arrived(&id, &links),
             // `[[` completion is built from the index (as `wikilinkCompletions` is).
             Event::NoteNames(_) => {}
-            Event::History { filename, entries } => self.history.loaded(&filename, entries),
-            Event::HistoryContent { hash, content } => self.history.content_loaded(&hash, content),
-            Event::GitConfigRequired => self.git_config_required(),
             Event::Error(message) => self.toasts.error(message),
         }
     }
@@ -891,19 +1001,18 @@ impl NoteLinerApp {
         }
     }
 
-    /// `loadProject`: the index, the saved layout and window bounds.
+    /// A folder was opened: the index, the folders, the saved layout and
+    /// window bounds.
     fn project_opened(
         &mut self,
         ctx: &egui::Context,
         folder: PathBuf,
         mut index: Value,
-        needs: bool,
+        folders: Vec<String>,
+        truncated: bool,
     ) {
         self.opening = false;
-        if matches!(
-            self.overlay,
-            Some(Overlay::Setup(_) | Overlay::NewProject(_) | Overlay::Busy { .. })
-        ) {
+        if matches!(self.overlay, Some(Overlay::Busy { .. })) {
             self.overlay = None;
         }
         model::normalize_index(&mut index);
@@ -911,14 +1020,23 @@ impl NoteLinerApp {
         self.backend.add_recent(&folder);
         self.recent = self.backend.recent();
         self.restore_bounds(ctx, &folder);
+        let open_folders = layout
+            .open_folders
+            .iter()
+            .filter(|f| folders.contains(f))
+            .cloned()
+            .collect();
         let mut project = Project {
             folder,
             index,
             entries: Vec::new(),
+            folders,
+            open_folders,
             selected: None,
-            frontmatter: json!({}),
+            selected_folder: None,
             saved_layout: layout.clone(),
             layout,
+            pending_index_saves: 0,
         };
         project.refresh();
         // The tabs that were open, less the files that are gone.
@@ -944,6 +1062,8 @@ impl NoteLinerApp {
         self.diagram.clear();
         self.tabs.restore(open);
         self.pending_position = None;
+        self.pending_conflict = None;
+        self.last_check = ctx.input(|i| i.time);
         // Reopen the note that was open, where it was left.
         if let Some(pos) = last {
             let id = pos.file_id.clone();
@@ -952,15 +1072,238 @@ impl NoteLinerApp {
         } else if let Some(id) = active {
             self.select(id);
         }
-        self.backend.git_state();
         self.backend.mcp_status();
-        if needs {
-            self.git_config_required();
+        if truncated {
+            let message = format!(
+                "This folder has more than {} files. NoteLiner stopped reading it, so some notes are missing.",
+                noteliner_core::tree::MAX_FILES
+            );
+            self.log_line(message.clone());
+            self.toasts.error(message);
         }
         self.open_from_env(ctx);
     }
 
-    /// `projectState.addFile` + `selectFile`.
+    /// The index and folders changed in the backend: a folder was added,
+    /// renamed, moved or deleted, a note was moved, another program changed
+    /// the folder, or an AI assistant wrote to the project. Open notes
+    /// follow their files; a tab whose file is gone closes.
+    fn tree_changed(&mut self, mut index: Value, folders: Vec<String>) {
+        let Some(p) = &mut self.project else { return };
+        model::normalize_index(&mut index);
+        // Tag changes on their way to the backend are newer than its tags.
+        if p.pending_index_saves > 0 {
+            for key in ["tagMeta", "tagPalette"] {
+                index[key] = p.index[key].clone();
+            }
+            if let Some(files) = index["files"].as_array_mut() {
+                for f in files {
+                    let mine = f["id"].as_str().and_then(|id| p.entry_value(id));
+                    if let Some(mine) = mine {
+                        f["tags"] = mine["tags"].clone();
+                    }
+                }
+            }
+        }
+        let before = std::mem::replace(&mut p.index, index);
+        p.folders = folders;
+        p.refresh();
+        let known = p.folders.clone();
+        p.open_folders.retain(|f| known.contains(f));
+        if p.selected_folder
+            .as_ref()
+            .is_some_and(|f| !known.contains(f))
+        {
+            p.selected_folder = None;
+        }
+        // Open tabs follow a renamed or moved file.
+        let mut gone = Vec::new();
+        for id in self.tabs.order().to_vec() {
+            match p.entry(&id) {
+                Some(e) => {
+                    self.editor.renamed(&id, &e.name, &e.filename);
+                    for t in self.tabs.editors_mut() {
+                        t.renamed(&id, &e.name, &e.filename);
+                    }
+                    self.diagram.renamed(&id, &e.name, &e.filename);
+                    for d in self.tabs.diagrams_mut() {
+                        d.renamed(&id, &e.name, &e.filename);
+                    }
+                }
+                None => gone.push(id),
+            }
+        }
+        self.link_key = None;
+        for id in gone {
+            // A removed note with unsaved edits is written again, so nothing
+            // typed is lost; any other tab of a removed file closes.
+            let pending = if self.editor.file_id() == Some(id.as_str()) {
+                self.editor.flush()
+            } else if self.diagram.file_id() == Some(id.as_str()) {
+                self.diagram.flush()
+            } else {
+                None
+            };
+            let entry = before["files"]
+                .as_array()
+                .and_then(|fs| fs.iter().find(|f| f["id"].as_str() == Some(id.as_str())))
+                .cloned();
+            match (pending, entry) {
+                (Some(save), Some(entry)) => {
+                    self.toasts.info(format!(
+                        "“{}” was removed by another program. Your unsaved edits were saved to it again.",
+                        entry["name"].as_str().unwrap_or_default()
+                    ));
+                    if let Some(p) = &mut self.project {
+                        model::add_file(&mut p.index, entry.clone());
+                        p.refresh();
+                    }
+                    self.backend.write_file_restoring(
+                        save.id,
+                        save.filename,
+                        save.content,
+                        Some(entry),
+                    );
+                }
+                _ => self.forget_tab(&id),
+            }
+        }
+    }
+
+    /// Closes the tab of a file that is gone, without writing it. The active
+    /// tab's neighbour is shown in its place.
+    fn forget_tab(&mut self, id: &str) {
+        let Some(p) = &mut self.project else { return };
+        let active = p.selected.as_deref() == Some(id);
+        if active {
+            p.selected = None;
+            self.editor.clear();
+            self.diagram.clear();
+        }
+        let next = self.tabs.close(id);
+        if let Some(next) = next.filter(|_| active) {
+            self.select(next);
+        }
+    }
+
+    /// An open file was changed on disk by another program (or by an AI
+    /// assistant). With no unsaved edits it reloads. With unsaved edits they
+    /// stay, and a dialog offers Reload and Keep Mine.
+    fn file_changed(&mut self, id: String, content: String) {
+        let Some(p) = &self.project else { return };
+        let Some(entry) = p.entry(&id).cloned() else {
+            return;
+        };
+        if self.diagram.file_id() == Some(id.as_str()) {
+            // A diagram being edited keeps the user's version.
+            if self.diagram.is_dirty() {
+                self.log_line(format!(
+                    "“{}” changed on disk while it was being edited. Your version was kept.",
+                    entry.name
+                ));
+            } else if let Err(e) = self
+                .diagram
+                .load(&id, &entry.name, &entry.filename, &content)
+            {
+                self.toasts
+                    .error(format!("Couldn't reload “{}”: {e}", entry.name));
+            }
+            return;
+        }
+        if self.editor.file_id() == Some(id.as_str()) {
+            if self.editor.file_text() == content {
+                return;
+            }
+            if !self.editor.is_dirty() {
+                self.editor.replace(&id, content);
+                return;
+            }
+            // Nothing is written over the change until the user has chosen.
+            self.editor.hold(true);
+            self.pending_conflict = Some((id, content));
+            return;
+        }
+        // A background tab has no unsaved edits: a note takes the file, and
+        // a diagram is read again when its tab is shown.
+        let mut taken = false;
+        for e in self.tabs.editors_mut() {
+            if e.file_id() == Some(id.as_str()) {
+                e.replace(&id, content.clone());
+                taken = true;
+            }
+        }
+        if !taken {
+            self.tabs.take(&id);
+        }
+    }
+
+    /// Looks for changes made by other programs: in the folders, and in the
+    /// files of the open tabs.
+    fn check(&mut self, tree: bool) {
+        let Some(p) = &self.project else { return };
+        let open: Vec<(String, String)> = self
+            .tabs
+            .order()
+            .iter()
+            .filter_map(|id| p.entry(id).map(|e| (e.id.clone(), e.filename.clone())))
+            .collect();
+        self.backend.check(open, tree);
+    }
+
+    /// The check runs while the window has the focus, every few seconds, and
+    /// when the window regains the focus.
+    fn watch(&mut self, ctx: &egui::Context) {
+        if self.project.is_none() || self.opening {
+            return;
+        }
+        let (focused, now) = ctx.input(|i| (i.focused, i.time));
+        let regained = focused && !self.was_focused;
+        self.was_focused = focused;
+        if !focused {
+            return;
+        }
+        if regained || now - self.last_check >= CHECK_SECS {
+            self.last_check = now;
+            self.check(false);
+        }
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(CHECK_SECS));
+    }
+
+    /// Sets a note's `presentation:` block in the editor that has the note
+    /// open, as the backend set it in the file.
+    fn presentation_into_editors(&mut self, id: &str, presentation: &Value) {
+        if self.editor.file_id() == Some(id) {
+            self.editor.set_presentation(presentation);
+        }
+        for e in self.tabs.editors_mut() {
+            if e.file_id() == Some(id) {
+                e.set_presentation(presentation);
+            }
+        }
+    }
+
+    /// Writes the index's tags into the frontmatter of the notes that are
+    /// open, as the backend writes them into the files. Not an undo step,
+    /// and the note isn't marked as edited.
+    fn tags_into_editors(&mut self) {
+        if !self.prefs.write_frontmatter {
+            return;
+        }
+        let Some(p) = &self.project else { return };
+        if let Some(entry) = self.editor.file_id().and_then(|id| p.entry_value(id)) {
+            let entry = entry.clone();
+            self.editor.retag(&entry);
+        }
+        for e in self.tabs.editors_mut() {
+            if let Some(entry) = e.file_id().and_then(|id| p.entry_value(id)) {
+                let entry = entry.clone();
+                e.retag(&entry);
+            }
+        }
+    }
+
+    /// A note or diagram was made: it joins the tree, its folder opens, and
+    /// it is shown.
     fn created(&mut self, entry: Value) {
         let Some(p) = &mut self.project else { return };
         let id = entry["id"].as_str().unwrap_or_default().to_string();
@@ -970,6 +1313,10 @@ impl NoteLinerApp {
             model::update_file(&mut p.index, &id, &entry);
         }
         p.refresh();
+        if let Some(folder) = p.entry(&id).map(|e| e.folder.clone()) {
+            p.note_folder(&folder);
+            p.reveal_folder(&folder);
+        }
         self.select(id);
     }
 
@@ -999,20 +1346,8 @@ impl NoteLinerApp {
                 }
                 self.created(entry);
             }
-            Err(e) if e == "git_config_required" => self.git_config_required(),
             Err(e) => self.log_line(format!("Import failed: {e}")),
         }
-    }
-
-    /// A commit needs a git identity: Project Settings, marked required.
-    fn git_config_required(&mut self) {
-        let Some(p) = &self.project else { return };
-        self.overlay = Some(Overlay::ProjectSettings(ProjectSettingsForm {
-            folder: p.folder.display().to_string(),
-            required: true,
-            ..Default::default()
-        }));
-        self.backend.git_config();
     }
 
     // --- Projects and notes -------------------------------------------------------
@@ -1043,11 +1378,6 @@ impl NoteLinerApp {
             Picked::Attachments { file_id, paths } => {
                 for path in paths {
                     self.attach_file(&file_id, &path, false);
-                }
-            }
-            Picked::NewProjectLocation(folder) => {
-                if let Some(Overlay::NewProject(form)) = &mut self.overlay {
-                    form.location = folder.display().to_string();
                 }
             }
         }
@@ -1093,12 +1423,10 @@ impl NoteLinerApp {
                         ));
                     }
                     let editor = std::mem::replace(&mut self.editor, fresh);
-                    let frontmatter = std::mem::replace(&mut p.frontmatter, json!({}));
                     self.tabs.put(
                         &left,
                         Stashed::Note(Box::new(NoteStash {
                             editor,
-                            frontmatter,
                             anchor,
                             head,
                             scroll,
@@ -1108,28 +1436,26 @@ impl NoteLinerApp {
             }
         }
         p.selected = Some(id.clone());
+        // The open note has the tree's highlight again.
+        p.selected_folder = None;
         self.link_key = None;
         match self.tabs.take(&id) {
             Some(Stashed::Note(note)) => {
                 let NoteStash {
                     editor,
-                    frontmatter,
                     anchor,
                     head,
                     scroll,
                 } = *note;
                 self.editor = editor;
                 self.diagram.clear();
-                p.frontmatter = frontmatter;
                 self.editor.place_view(anchor, head, scroll);
             }
             Some(Stashed::Diagram(diagram)) => {
-                p.frontmatter = json!({});
                 self.editor.clear();
                 self.diagram.restore(*diagram);
             }
             None => {
-                p.frontmatter = json!({});
                 self.editor.clear();
                 self.diagram.clear();
                 self.backend.read_file(id, entry.filename);
@@ -1161,7 +1487,6 @@ impl NoteLinerApp {
         let Some(p) = &mut self.project else { return };
         if active {
             p.selected = None;
-            p.frontmatter = json!({});
             self.editor.clear();
             self.diagram.clear();
         }
@@ -1182,14 +1507,14 @@ impl NoteLinerApp {
     /// `selectPrevFile` / `selectNextFile`.
     fn step(&mut self, delta: i32) {
         let Some(p) = &self.project else { return };
-        let list = model::flat_list(&p.entries, self.sort, &self.hidden_tags);
+        let list = model::flat_list(&p.entries, &p.folders, self.sort, &self.hidden_tags);
         if list.is_empty() {
             return;
         }
         let next = match p
             .selected
             .as_deref()
-            .and_then(|s| list.iter().position(|(e, _)| e.id == s))
+            .and_then(|s| list.iter().position(|e| e.id == s))
         {
             None => Some(0),
             Some(i) if delta < 0 && i > 0 => Some(i - 1),
@@ -1197,28 +1522,30 @@ impl NoteLinerApp {
             _ => None,
         };
         if let Some(i) = next {
-            let id = list[i].0.id.clone();
+            let id = list[i].id.clone();
             self.show_file(id, true);
         }
     }
 
-    /// Saves the index after a tree edit (`project:saveIndex`).
+    /// Saves a tag change: the tags and their colours go to the backend, and
+    /// the tags line of an open note's frontmatter is rewritten.
     fn index_changed(&mut self) {
         if let Some(p) = &mut self.project {
             p.refresh();
+            p.pending_index_saves += 1;
             self.backend.save_index(p.index.clone());
         }
+        self.tags_into_editors();
     }
 
-    /// `handleGoHome`: save the layout, flush, close.
+    /// Closes the project: saves the layout, writes the pending edits.
     fn go_home(&mut self) {
         let Some(p) = &self.project else { return };
         self.backend.save_layout(&p.folder, p.layout.to_value());
-        let pending = self.editor.flush().or_else(|| self.diagram.flush());
-        self.overlay = Some(Overlay::Busy {
-            title: "Syncing",
-            message: "Syncing changes to remote...".into(),
-        });
+        let pending = [self.editor.flush(), self.diagram.flush()]
+            .into_iter()
+            .flatten()
+            .collect();
         self.backend.close_project(pending);
     }
 
@@ -1340,7 +1667,7 @@ impl NoteLinerApp {
             return;
         }
         let value = if on {
-            // `handleConvertToPresentation` selects the note first.
+            // Converting to a presentation selects the note first.
             if p.selected.as_deref() != Some(id.as_str()) {
                 self.select(id.clone());
             }
@@ -1349,7 +1676,15 @@ impl NoteLinerApp {
         } else {
             Value::Null
         };
-        self.backend.set_presentation(id, filename, value);
+        self.send_presentation(id, filename, value);
+    }
+
+    /// Sets a note's `presentation:` block: in the editor that has it open,
+    /// so a save from there carries it, and in the file.
+    fn send_presentation(&mut self, id: String, filename: String, presentation: Value) {
+        self.flush_active();
+        self.presentation_into_editors(&id, &presentation);
+        self.backend.set_presentation(id, filename, presentation);
     }
 
     /// "Presentation Settings" for note `id`: selects it first if needed.
@@ -1368,7 +1703,11 @@ impl NoteLinerApp {
     fn open_presentation_settings(&mut self) {
         let Some(p) = &self.project else { return };
         let Some(e) = p.selected_entry() else { return };
-        let Some(config) = normalize_presentation(p.frontmatter.get("presentation")) else {
+        if self.editor.file_id() != Some(e.id.as_str()) {
+            return;
+        }
+        let Some(config) = normalize_presentation(self.editor.frontmatter().get("presentation"))
+        else {
             return;
         };
         self.overlay = Some(Overlay::PresentationSettings {
@@ -1382,11 +1721,11 @@ impl NoteLinerApp {
 
     /// Re-parses the open deck when its text or `presentation:` block changed.
     fn update_deck(&mut self) {
-        let presentation = self
-            .project
-            .as_ref()
-            .filter(|p| p.is_deck())
-            .and_then(|p| p.frontmatter.get("presentation"));
+        let presentation = if self.is_deck() {
+            self.editor.frontmatter().get("presentation")
+        } else {
+            None
+        };
         self.deck.update(
             self.editor.file_id(),
             self.editor.version(),
@@ -1409,7 +1748,7 @@ impl NoteLinerApp {
         let Some(deck) = self.deck.deck().cloned() else {
             return;
         };
-        let line = self.editor.cursor().0;
+        let line = self.editor.body_line().max(1);
         let active = self.deck.active(line);
         let edit = match act {
             Act::NewSlide => {
@@ -1440,8 +1779,131 @@ impl NoteLinerApp {
         self.apply_slide_edit(result);
     }
 
+    /// Starts presenting the open deck at slide `start` (1-based), or at the
+    /// caret's slide.
+    fn start_presenting(&mut self, start: Option<usize>, speaker: bool, pick: DisplayPick) {
+        self.present_when_open = None;
+        self.update_deck();
+        let Some(total) = self.deck.deck().map(|d| d.slides.len()) else {
+            return;
+        };
+        if total == 0 {
+            return;
+        }
+        let start = start
+            .or_else(|| self.deck.active(self.editor.body_line().max(1)))
+            .unwrap_or(1)
+            .clamp(1, total);
+        let display = match pick {
+            DisplayPick::Remembered => self.remembered_display(),
+            DisplayPick::Index(i) => {
+                self.remember_display(Some(i));
+                self.displays.iter().any(|d| d.index == i).then_some(i)
+            }
+            DisplayPick::Window => {
+                self.remember_display(None);
+                None
+            }
+        };
+        let mut presenter = noteliner_slides::Presenter::new(start)
+            .with_speaker_view(speaker)
+            .with_display(display);
+        presenter.set_displays(self.displays.clone());
+        self.deck.presenter = Some(presenter);
+        self.palette = None;
+    }
+
+    /// The remembered display's place in the list, if it is connected and
+    /// there is more than one display.
+    fn remembered_display(&self) -> Option<usize> {
+        let (name, size) = self.prefs.present_display.as_ref()?;
+        if self.displays.len() < 2 {
+            return None;
+        }
+        self.displays
+            .iter()
+            .find(|d| d.name.as_deref().unwrap_or_default() == name && d.size == *size)
+            .map(|d| d.index)
+    }
+
+    /// Saves the display at `index` as the one to present on (by its name
+    /// and size, since its place in the list can change), or forgets it.
+    fn remember_display(&mut self, index: Option<usize>) {
+        let pick = match index {
+            Some(i) => match self.displays.iter().find(|d| d.index == i) {
+                Some(d) => Some((d.name.clone().unwrap_or_default(), d.size)),
+                None => return,
+            },
+            None => None,
+        };
+        if self.prefs.present_display == pick {
+            return;
+        }
+        let value = match &pick {
+            Some((name, [w, h])) => json!({ "name": name, "width": w, "height": h }),
+            None => Value::Null,
+        };
+        self.prefs.present_display = pick;
+        self.backend.set_prefs(json!({ "presentDisplay": value }));
+    }
+
+    /// Reads the displays from the window, about once a second: a display
+    /// can be plugged in or unplugged at any time. Headless (tests), there
+    /// is no window and the list is left as it is.
+    fn read_displays(&mut self, ctx: &egui::Context, frame: &eframe::Frame) {
+        let now = ctx.input(|i| i.time);
+        if now - self.displays_read < 1.0 {
+            return;
+        }
+        self.displays_read = now;
+        let Some(window) = frame.winit_window() else {
+            return;
+        };
+        let current = window.current_monitor();
+        self.displays = window
+            .available_monitors()
+            .enumerate()
+            .map(|(index, m)| noteliner_slides::Display {
+                index,
+                name: m.name(),
+                size: [m.size().width, m.size().height],
+                current: current.as_ref() == Some(&m),
+            })
+            .collect();
+    }
+
+    /// Present from a deck's menu in the FILES pane: at once if it is the
+    /// open note, or once it has loaded.
+    fn present_file(&mut self, id: String, speaker: bool, pick: DisplayPick) {
+        if self.editor.file_id() == Some(id.as_str()) && self.is_deck() {
+            self.start_presenting(None, speaker, pick);
+        } else {
+            self.select(id.clone());
+            self.present_when_open = Some((id, speaker, pick));
+        }
+    }
+
+    /// Starts the presentation asked for from the FILES pane once its deck
+    /// is in the editor; forgets it if another note was opened instead.
+    fn present_pending(&mut self) {
+        let Some((id, speaker, pick)) = self.present_when_open.clone() else {
+            return;
+        };
+        let selected = self.project.as_ref().and_then(|p| p.selected.as_deref());
+        if selected != Some(id.as_str()) {
+            self.present_when_open = None;
+        } else if self.editor.file_id() == Some(id.as_str()) {
+            // Loaded: a note that isn't a deck has nothing to present.
+            if self.is_deck() {
+                self.start_presenting(None, speaker, pick);
+            }
+            self.present_when_open = None;
+        }
+    }
+
     /// The presenter, over everything, while presenting.
     fn present(&mut self, ctx: &egui::Context) {
+        self.present_pending();
         let Some(mut presenter) = self.deck.presenter.take() else {
             return;
         };
@@ -1459,8 +1921,10 @@ impl NoteLinerApp {
             dir: self.project.as_ref().map(Project::attachments_dir),
         };
         let mut keep = true;
+        presenter.set_displays(self.displays.clone());
         for a in presenter.show(ctx, &deck, &deck::vars(&name), &images) {
             match a {
+                PresenterAction::DisplayChosen(i) => self.remember_display(Some(i)),
                 PresenterAction::Changed(i) => {
                     if let Some(s) = deck.slides.iter().find(|s| s.index == i) {
                         self.editor.scroll_to_line(s.source_range.from_line);
@@ -1525,12 +1989,9 @@ impl NoteLinerApp {
             }
             return;
         }
-        let file = target.trim_start_matches("./");
-        let id = p
-            .entries
-            .iter()
-            .find(|e| e.filename == file || e.name == file)
-            .map(|e| e.id.clone());
+        // A link to a note is a path from the open note's folder.
+        let from = p.selected_entry().map_or("", |e| e.folder.as_str());
+        let id = link_target(&p.entries, from, target).map(|e| e.id.clone());
         match id {
             Some(id) => self.select(id),
             None => self
@@ -1549,7 +2010,14 @@ impl NoteLinerApp {
         });
         match id {
             Some(id) => self.select(id),
-            None => self.overlay = Some(Overlay::NewFile(NewFileForm::new(name, false))),
+            None => {
+                let folder = self
+                    .project
+                    .as_ref()
+                    .map(Project::target_folder)
+                    .unwrap_or_default();
+                self.overlay = Some(Overlay::NewFile(NewFileForm::new(name, false, &folder)));
+            }
         }
     }
 
@@ -1584,7 +2052,8 @@ impl NoteLinerApp {
         });
     }
 
-    /// Imports the document picked in [`Self::import_dialog`].
+    /// Imports the document picked in [`Self::import_dialog`], as a note in
+    /// the selected folder.
     fn import(&mut self, path: PathBuf) {
         let name = path
             .file_name()
@@ -1594,7 +2063,8 @@ impl NoteLinerApp {
             title: "Importing",
             message: format!("Importing {name}..."),
         });
-        self.backend.import(path);
+        let folder = self.project.as_ref().map(Project::target_folder);
+        self.backend.import(path, folder);
     }
 
     // --- Commands --------------------------------------------------------------
@@ -1606,16 +2076,29 @@ impl NoteLinerApp {
         );
         match act {
             Act::NewFile | Act::NewPresentation => {
-                if self.project.is_some() {
+                if let Some(p) = &self.project {
                     self.overlay = Some(Overlay::NewFile(NewFileForm::new(
                         "",
                         act == Act::NewPresentation,
+                        &p.target_folder(),
                     )));
                     self.backend.list_templates();
                 }
             }
+            Act::NewFolder => {
+                if let Some(p) = &self.project {
+                    self.overlay = Some(Overlay::NewFolder(NewFolderForm::new(&p.target_folder())));
+                }
+            }
             Act::DeleteFile => {
-                if let Some(e) = self.project.as_ref().and_then(Project::selected_entry) {
+                // A selected folder is what Delete deletes.
+                let folder = self
+                    .project
+                    .as_ref()
+                    .and_then(|p| p.selected_folder.clone());
+                if let Some(path) = folder {
+                    self.folder_action(FolderAction::Delete, path);
+                } else if let Some(e) = self.project.as_ref().and_then(Project::selected_entry) {
                     self.overlay = Some(Overlay::DeleteFile {
                         id: e.id.clone(),
                         name: e.name.clone(),
@@ -1645,8 +2128,11 @@ impl NoteLinerApp {
             Act::NextTab => self.step_tab(1),
             Act::PreviousTab => self.step_tab(-1),
             Act::NewDiagram => {
-                if self.project.is_some() {
-                    self.overlay = Some(Overlay::NewFile(NewFileForm::diagram("")));
+                if let Some(p) = &self.project {
+                    self.overlay = Some(Overlay::NewFile(NewFileForm::diagram(
+                        "",
+                        &p.target_folder(),
+                    )));
                     self.backend.list_templates();
                 }
             }
@@ -1684,15 +2170,18 @@ impl NoteLinerApp {
             | Act::MoveSlideUp
             | Act::MoveSlideDown
             | Act::ToggleSpeakerNotes => self.slide_command(act),
-            Act::Present | Act::PresentWithSpeakerView => {
-                self.update_deck();
-                if self.deck.deck().is_some_and(|d| !d.slides.is_empty()) {
-                    let start = self.deck.active(self.editor.cursor().0).unwrap_or(1);
-                    let speaker = act == Act::PresentWithSpeakerView;
-                    self.deck.presenter =
-                        Some(noteliner_slides::Presenter::new(start).with_speaker_view(speaker));
-                    self.palette = None;
-                }
+            Act::Present => self.start_presenting(None, false, DisplayPick::Remembered),
+            Act::PresentWithSpeakerView => {
+                self.start_presenting(None, true, DisplayPick::Remembered);
+            }
+            Act::PresentFromStart => {
+                self.start_presenting(Some(1), false, DisplayPick::Remembered);
+            }
+            Act::PresentOnDisplay(i) => {
+                self.start_presenting(None, false, DisplayPick::Index(i));
+            }
+            Act::PresentOnWindowDisplay => {
+                self.start_presenting(None, false, DisplayPick::Window);
             }
             Act::AddTag => {
                 // `triggerTagAction('add')`: the TAGS pane's input (shown first
@@ -1703,7 +2192,6 @@ impl NoteLinerApp {
                 }
             }
             Act::TogglePreview => self.toggle(|l| l.show_preview = !l.show_preview),
-            Act::ToggleHistory => self.toggle(|l| l.show_history = !l.show_history),
             Act::ToggleSidebar => self.toggle(|l| l.show_sidebar = !l.show_sidebar),
             Act::ToggleToolbar => self.toggle(|l| l.show_toolbar = !l.show_toolbar),
             Act::ToggleOutline => self.toggle(|l| l.show_outline = !l.show_outline),
@@ -1732,28 +2220,15 @@ impl NoteLinerApp {
             Act::ZoomOut => self.theme.zoom_out(),
             Act::ZoomReset => self.theme.zoom_reset(),
             Act::SetTheme(t) => self.theme.theme = t,
-            Act::Sync => {
-                if self.project.is_some() {
-                    self.overlay = Some(Overlay::Sync(SyncState::new()));
-                    self.backend.git_state();
-                }
-            }
-            Act::ProjectSettings => {
-                if let Some(p) = &self.project {
-                    self.overlay = Some(Overlay::ProjectSettings(ProjectSettingsForm {
-                        folder: p.folder.display().to_string(),
-                        ..Default::default()
-                    }));
-                    self.backend.git_config();
-                }
-            }
             Act::GoHome => self.go_home(),
             Act::Settings => {
-                self.overlay = Some(Overlay::Settings(Box::new(SettingsState::new(
-                    "ui",
-                    &self.backend.paths().prefs(),
-                    self.custom_titlebar,
-                ))));
+                let mut state =
+                    SettingsState::new("ui", &self.backend.paths().prefs(), self.custom_titlebar);
+                state.project_folder = self
+                    .project
+                    .as_ref()
+                    .map(|p| p.folder.display().to_string());
+                self.overlay = Some(Overlay::Settings(Box::new(state)));
                 self.backend.mcp_status();
             }
             Act::About => self.overlay = Some(Overlay::About),
@@ -1782,10 +2257,13 @@ impl NoteLinerApp {
     fn context_action(&mut self, action: ContextAction, id: String) {
         match action {
             ContextAction::OpenInFileSystem => {
-                if let Some(p) = &self.project {
-                    if let Err(e) = open::that_detached(&p.folder) {
-                        self.toasts.error(format!("Couldn't open the folder: {e}"));
-                    }
+                // The folder the note is in.
+                let folder = self
+                    .project
+                    .as_ref()
+                    .and_then(|p| p.entry(&id).map(|e| e.folder.clone()));
+                if let Some(folder) = folder {
+                    self.folder_action(FolderAction::OpenInFileSystem, folder);
                 }
             }
             ContextAction::Preview => self.toggle(|l| l.show_preview = !l.show_preview),
@@ -1806,16 +2284,19 @@ impl NoteLinerApp {
             ContextAction::ConvertToPresentation => self.set_presentation(Some(id), true),
             ContextAction::ConvertToNote => self.set_presentation(Some(id), false),
             ContextAction::PresentationSettings => self.presentation_settings_for(id),
+            ContextAction::Present => self.present_file(id, false, DisplayPick::Remembered),
+            ContextAction::PresentWithSpeakerView => {
+                self.present_file(id, true, DisplayPick::Remembered);
+            }
+            ContextAction::PresentOn(i) => self.present_file(id, false, DisplayPick::Index(i)),
             ContextAction::Duplicate => {
                 if let Some(e) = self.project.as_ref().and_then(|p| p.entry(&id)) {
                     self.overlay = Some(Overlay::NewFile(NewFileForm::duplicate(e)));
                 }
             }
             ContextAction::Move => {
-                if let Some(p) = &self.project {
-                    if let Some(e) = p.entry(&id) {
-                        self.overlay = Some(Overlay::MoveFile(MoveForm::new(e, &p.entries)));
-                    }
+                if let Some(e) = self.project.as_ref().and_then(|p| p.entry(&id)) {
+                    self.overlay = Some(Overlay::Move(MoveForm::file(e)));
                 }
             }
             ContextAction::ClearTags => {
@@ -1840,11 +2321,73 @@ impl NoteLinerApp {
         }
     }
 
+    /// A folder's menu, the menu of the empty part of the tree (`path` is
+    /// empty: the project folder), and Delete with a folder selected.
+    fn folder_action(&mut self, action: FolderAction, path: String) {
+        let Some(p) = &self.project else { return };
+        match action {
+            FolderAction::NewFile => {
+                self.overlay = Some(Overlay::NewFile(NewFileForm::new("", false, &path)));
+                self.backend.list_templates();
+            }
+            FolderAction::NewDiagram => {
+                self.overlay = Some(Overlay::NewFile(NewFileForm::diagram("", &path)));
+                self.backend.list_templates();
+            }
+            FolderAction::NewFolder => {
+                self.overlay = Some(Overlay::NewFolder(NewFolderForm::new(&path)));
+            }
+            FolderAction::Move => {
+                if !path.is_empty() {
+                    self.overlay = Some(Overlay::Move(MoveForm::folder(&path)));
+                }
+            }
+            FolderAction::OpenInFileSystem => {
+                if let Err(e) = open::that_detached(p.folder.join(&path)) {
+                    self.toasts.error(format!("Couldn't open the folder: {e}"));
+                }
+            }
+            FolderAction::Delete => {
+                if !path.is_empty() {
+                    // Asks first, with what is inside.
+                    let counts = noteliner_core::project::folder_counts(&p.folder.join(&path));
+                    self.overlay = Some(Overlay::DeleteFolder { path, counts });
+                }
+            }
+        }
+    }
+
+    /// Moves a note, a diagram or a folder into `into`. Edits waiting to be
+    /// saved are written first, as switching tabs does.
+    fn move_item(&mut self, item: Item, into: String) {
+        self.flush_active();
+        match item {
+            Item::File(id) => self.backend.move_file(id, into),
+            Item::Folder(path) => self.backend.move_folder(path, into),
+        }
+    }
+
+    /// The pending edits of the notes in `folder` are dropped: the folder is
+    /// being deleted.
+    fn drop_edits_under(&mut self, folder: &str) {
+        let Some(p) = &self.project else { return };
+        let inside = |id: Option<&str>| {
+            id.and_then(|id| p.entry(id))
+                .is_some_and(|e| noteliner_core::tree::is_under(&e.filename, folder))
+        };
+        if inside(self.editor.file_id()) {
+            let _ = self.editor.flush();
+        }
+        if inside(self.diagram.file_id()) {
+            let _ = self.diagram.flush();
+        }
+    }
+
     fn open_from_env(&mut self, ctx: &egui::Context) {
         if let (Some(p), Some(file)) = (&self.project, self.diagnostics.file.clone()) {
-            let list = model::flat_list(&p.entries, self.sort, &self.hidden_tags);
+            let list = model::flat_list(&p.entries, &p.folders, self.sort, &self.hidden_tags);
             let id = match file.parse::<usize>() {
-                Ok(i) => list.get(i).map(|(e, _)| e.id.clone()),
+                Ok(i) => list.get(i).map(|e| e.id.clone()),
                 Err(_) => p
                     .entries
                     .iter()
@@ -1873,15 +2416,11 @@ impl NoteLinerApp {
                     }
                 }
             }
-            "sync" => self.apply(ctx, Act::Sync),
             "about" => self.apply(ctx, Act::About),
             "help" => self.apply(ctx, Act::Help),
             "palette" => self.apply(ctx, Act::Palette),
             "new-file" => self.apply(ctx, Act::NewFile),
-            "new-project" => {
-                self.overlay = Some(Overlay::NewProject(NewProjectForm::with_defaults()))
-            }
-            "project-settings" => self.apply(ctx, Act::ProjectSettings),
+            "new-folder" => self.apply(ctx, Act::NewFolder),
             "move" => {
                 if let Some(id) = self.project.as_ref().and_then(|p| p.selected.clone()) {
                     self.context_action(ContextAction::Move, id);
@@ -1903,7 +2442,6 @@ impl NoteLinerApp {
             }
             "tags" => self.toggle(|l| l.show_tags = true),
             "backlinks" => self.toggle(|l| l.show_backlinks = true),
-            "history" => self.toggle(|l| l.show_history = true),
             "attachments" => self.toggle(|l| l.show_attachments = true),
             "tag-filter" => self.panes.filter_open = true,
             "tag-editor" => self.overlay = Some(Overlay::TagEditor(Default::default())),
@@ -1970,7 +2508,12 @@ impl NoteLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
+        #[cfg(test)]
+        {
+            self.test_time = ctx.input(|i| i.time);
+        }
         self.handle_events(&ctx);
+        self.watch(&ctx);
         self.picked();
         self.editor_took_drop = false;
         self.update_editor_inputs();
@@ -2070,7 +2613,7 @@ impl NoteLinerApp {
             .as_ref()
             .map(|p| p.layout.clone())
             .unwrap_or_default();
-        let is_deck = self.project.as_ref().is_some_and(Project::is_deck);
+        let is_deck = self.is_deck();
         let update_ready = matches!(self.update, UpdateStatus::Available { .. });
         let mut acts = Vec::new();
         let mut bottom_acts = Vec::new();
@@ -2135,31 +2678,6 @@ impl NoteLinerApp {
                     ) {
                         acts.push(Act::ToggleOutline);
                     }
-                    if is_deck
-                        && b(
-                            ui,
-                            icons::PERSON_CHALKBOARD,
-                            "Slides (Ctrl+Shift+G)",
-                            l.show_slides,
-                            false,
-                        )
-                    {
-                        acts.push(Act::ToggleSlides);
-                    }
-                    if is_deck && b(ui, icons::CIRCLE_PLAY, "Present (F5)", false, false) {
-                        acts.push(Act::Present);
-                    }
-                    if is_deck
-                        && b(
-                            ui,
-                            icons::PERSON_CHALKBOARD,
-                            "Present with Speaker View (Alt+F5)",
-                            false,
-                            false,
-                        )
-                    {
-                        acts.push(Act::PresentWithSpeakerView);
-                    }
                     if b(ui, icons::TAG, "Tags (Ctrl+Shift+T)", l.show_tags, false) {
                         acts.push(Act::ToggleTags);
                     }
@@ -2191,20 +2709,43 @@ impl NoteLinerApp {
                     ) {
                         acts.push(Act::ToggleBacklinks);
                     }
+                    // Context buttons: the ones only some documents have.
+                    // They always come after the standard buttons above,
+                    // which every document has, so those never move.
+                    if is_deck {
+                        let context: [(&str, &str, bool, Act); 3] = [
+                            (
+                                icons::PERSON_CHALKBOARD,
+                                "Slides (Ctrl+Shift+G)",
+                                l.show_slides,
+                                Act::ToggleSlides,
+                            ),
+                            (icons::CIRCLE_PLAY, "Present (F5)", false, Act::Present),
+                            (
+                                icons::DISPLAY,
+                                "Present with Speaker View (Alt+F5)",
+                                false,
+                                Act::PresentWithSpeakerView,
+                            ),
+                        ];
+                        // The toolbar doesn't scroll: what doesn't fit above
+                        // the bottom group is left out (the keys still work).
+                        let room = (1..=context.len())
+                            .rev()
+                            .find(|n| toolbar::fits(ui, *n))
+                            .unwrap_or(0);
+                        if room > 0 {
+                            toolbar::divider(ui);
+                        }
+                        for (glyph, title, active, act) in context.into_iter().take(room) {
+                            if b(ui, glyph, title, active, false) {
+                                acts.push(act);
+                            }
+                        }
+                    }
                 }
             },
             |ui| {
-                if open
-                    && b(
-                        ui,
-                        icons::CLOUD_ARROW_UP,
-                        "Remote Sync (Ctrl+Shift+S)",
-                        false,
-                        false,
-                    )
-                {
-                    bottom_acts.push(Act::Sync);
-                }
                 if b(ui, icons::TERMINAL, "Show Log (Ctrl+L)", l.show_log, !open) {
                     bottom_acts.push(Act::ToggleLog);
                 }
@@ -2218,17 +2759,6 @@ impl NoteLinerApp {
                     bottom_acts.push(Act::ToggleStatusBar);
                 }
                 toolbar::divider(ui);
-                if open
-                    && b(
-                        ui,
-                        icons::SLIDERS,
-                        "Project Settings (Ctrl+Shift+,)",
-                        false,
-                        false,
-                    )
-                {
-                    bottom_acts.push(Act::ProjectSettings);
-                }
                 if b(ui, icons::GEAR, "Settings (Ctrl+,)", false, false) {
                     bottom_acts.push(Act::Settings);
                 }
@@ -2255,8 +2785,6 @@ impl NoteLinerApp {
     }
 
     fn status_bar(&mut self, ui: &mut Ui) {
-        let ctx = ui.ctx().clone();
-        let mut open_sync = false;
         let p = self.project.as_ref();
         let diagram_on = self.diagram_active();
         let note = p.and_then(Project::selected_entry).map(|e| {
@@ -2275,8 +2803,8 @@ impl NoteLinerApp {
             cursor: self.editor.cursor(),
             selection_len: self.editor.selection_len(),
             spell_check: self.prefs.spell_check,
-            deck: if p.is_some_and(Project::is_deck) {
-                self.deck.status(self.editor.cursor().0)
+            deck: if self.is_deck() {
+                self.deck.status(self.editor.body_line().max(1))
             } else {
                 None
             },
@@ -2285,18 +2813,14 @@ impl NoteLinerApp {
                 (canvas.view.zoom, canvas.pointer)
             }),
             mcp_running: self.mcp_running,
-            branch: self.branch.as_deref(),
-            sync: self.sync.as_ref(),
+            frontmatter_unreadable: !diagram_on && self.editor.frontmatter_unreadable(),
         };
         egui::Panel::bottom("noteliner-status")
             .exact_size(views::STATUS_BAR_HEIGHT)
             .resizable(false)
             .show_separator_line(false)
             .frame(Frame::NONE)
-            .show(ui, |ui| open_sync = views::status_bar(ui, &props));
-        if open_sync {
-            self.apply(&ctx, Act::Sync);
-        }
+            .show(ui, |ui| views::status_bar(ui, &props));
     }
 
     fn main_view(&mut self, ui: &mut Ui) {
@@ -2319,9 +2843,6 @@ impl NoteLinerApp {
                     action = views::open_screen(ui, &self.recent);
                 });
             match action {
-                Some(OpenAction::NewProject) => {
-                    self.overlay = Some(Overlay::NewProject(NewProjectForm::with_defaults()))
-                }
                 Some(OpenAction::OpenFolder) => self.pick_folder(),
                 Some(OpenAction::OpenRecent(path)) => self.open_folder(PathBuf::from(path)),
                 Some(OpenAction::RemoveRecent(r)) => self.overlay = Some(Overlay::RemoveRecent(r)),
@@ -2335,7 +2856,6 @@ impl NoteLinerApp {
         let mut sidebar_actions = Vec::new();
         let mut preview_actions = Vec::new();
         let mut editor_actions = Vec::new();
-        let mut history_actions = Vec::new();
         let mut attachment_actions = Vec::new();
         let mut log_action = None;
         // A note dragged from FILES: captured before the tree forgets it on release.
@@ -2344,18 +2864,20 @@ impl NoteLinerApp {
             ctx: ctx.clone(),
             dir: self.project.as_ref().map(Project::attachments_dir),
         };
-        let caret_line = self.editor.cursor().0;
-        let active_slide = self.deck.active(caret_line);
+        // The caret's line in the note's text: 0 while it is in the
+        // frontmatter, which is under no heading and on the first slide.
+        let caret_line = self.editor.body_line();
+        let active_slide = self.deck.active(caret_line.max(1));
+        let is_deck = self.is_deck();
         let Some(p) = self.project.as_mut() else {
             return;
         };
-        let is_deck = p.is_deck();
         let note_name = p
             .selected_entry()
             .map(|e| e.name.clone())
             .unwrap_or_default();
 
-        // BACKLINKS and HISTORY follow the selection while they're shown.
+        // BACKLINKS follows the selection while it's shown.
         if p.layout.show_backlinks {
             let files = p.entries.len();
             if let Some(id) = self.panes.backlinks.stale(p.selected.as_deref(), files) {
@@ -2365,15 +2887,6 @@ impl NoteLinerApp {
             // Reopening the pane loads afresh, as remounting it does.
             self.panes.backlinks.invalidate();
         }
-        if p.layout.show_history {
-            let filename = p.selected_entry().map(|e| e.filename.clone());
-            if let Some(HistoryAction::Load(f)) = self.history.follow(filename.as_deref()) {
-                self.backend.history(f);
-            }
-        } else {
-            self.history.invalidate();
-        }
-
         if p.layout.show_log {
             let resp = egui::Panel::bottom("noteliner-log")
                 .resizable(true)
@@ -2399,12 +2912,16 @@ impl NoteLinerApp {
                     let props = SidebarProps {
                         index: &p.index,
                         entries: &p.entries,
+                        folders: &p.folders,
+                        open_folders: &p.open_folders,
                         sort: self.sort,
                         hidden_tags: &self.hidden_tags,
                         selected: p.selected.as_deref(),
+                        selected_folder: p.selected_folder.as_deref(),
                         text: self.editor.text(),
                         cursor_line: caret_line,
                         is_deck,
+                        displays: &self.displays,
                         deck: parsed,
                         active_slide,
                         images: &slide_images,
@@ -2527,16 +3044,7 @@ impl NoteLinerApp {
             preview_actions = resp.inner;
             remember_size(&mut p.layout.preview_width, resp.response.rect.width());
         }
-        if p.layout.show_history {
-            let dir = p.attachments_dir();
-            history_actions = egui::Panel::right("noteliner-history")
-                .resizable(true)
-                .default_size(320.0)
-                .frame(Frame::NONE.fill(pal.bg_surface))
-                .show(ui, |ui| history::show(ui, &mut self.history, Some(dir)))
-                .inner;
-        }
-        let (preview_on, history_on) = (p.layout.show_preview, p.layout.show_history);
+        let preview_on = p.layout.show_preview;
         let mut diagram_actions = Vec::new();
         let mut diagram_menu = None;
         if diagram_on {
@@ -2553,7 +3061,6 @@ impl NoteLinerApp {
                 show_dimensions: ed.canvas.show_dimensions,
                 zoom: ed.canvas.view.zoom,
                 show_properties: p.layout.show_properties,
-                show_history: history_on,
                 can_export: !(ed.diagram.shapes.is_empty() && ed.diagram.connectors.is_empty()),
             };
             // No dialog or text field has the keyboard: Space may pan.
@@ -2576,7 +3083,7 @@ impl NoteLinerApp {
             egui::CentralPanel::default()
                 .frame(Frame::NONE.fill(pal.bg_base))
                 .show(ui, |ui| {
-                    editor_actions = self.editor.show(ui, preview_on, history_on);
+                    editor_actions = self.editor.show(ui, preview_on);
                 });
         }
 
@@ -2587,9 +3094,11 @@ impl NoteLinerApp {
                 ctx.input(|i| (i.pointer.any_released(), i.pointer.interact_pos(), i.time));
             if released {
                 if let Some(at) = self.editor.drop_target(pointer) {
+                    // The link is a path from the open note's folder.
                     let link = self.project.as_ref().and_then(|p| {
+                        let from = p.selected_entry().map_or("", |e| e.folder.as_str());
                         p.entry(&dragged)
-                            .map(|e| format!("[{}](./{})", e.name, e.filename))
+                            .map(|e| format!("[{}]({})", e.name, relative_link(from, &e.filename)))
                     });
                     if let Some(link) = link {
                         self.editor.insert_at(at, &link, now);
@@ -2607,7 +3116,6 @@ impl NoteLinerApp {
                 DiagramToolbarAction::ToggleDimensions => self.apply(&ctx, Act::ToggleDimensions),
                 DiagramToolbarAction::ToggleProperties => self.apply(&ctx, Act::ToggleProperties),
                 DiagramToolbarAction::Export => self.apply(&ctx, Act::ExportDiagram),
-                DiagramToolbarAction::ToggleHistory => self.apply(&ctx, Act::ToggleHistory),
             }
         }
         if let Some(act) = diagram_menu {
@@ -2648,16 +3156,6 @@ impl NoteLinerApp {
             self.sidebar_action(a);
         }
 
-        for a in history_actions {
-            match a {
-                HistoryAction::Close => self.toggle(|l| l.show_history = false),
-                HistoryAction::Load(f) => self.backend.history(f),
-                HistoryAction::LoadContent { hash, filename } => {
-                    self.backend.history_content(hash, filename)
-                }
-                HistoryAction::OpenUrl(url) => ctx.open_url(egui::OpenUrl::new_tab(url)),
-            }
-        }
         for a in attachment_actions {
             self.attachment_action(&ctx, a);
         }
@@ -2670,7 +3168,6 @@ impl NoteLinerApp {
                     self.backend.write_file(req.id, req.filename, req.content)
                 }
                 EditorAction::TogglePreview => self.apply(&ctx, Act::TogglePreview),
-                EditorAction::ToggleHistory => self.apply(&ctx, Act::ToggleHistory),
                 EditorAction::Export(kind) => self.export(kind, None),
                 EditorAction::PasteImage { file_id, image } => self.paste_image(file_id, &image),
                 EditorAction::AttachFiles { file_id, paths } => {
@@ -2701,31 +3198,55 @@ impl NoteLinerApp {
             SidebarAction::Slides(a) => match a {
                 noteliner_slides::PaneAction::Jump { line } => self.editor.scroll_to_line(line),
                 noteliner_slides::PaneAction::Edit(result) => self.apply_slide_edit(result),
+                noteliner_slides::PaneAction::Present { index } => {
+                    self.start_presenting(Some(index), false, DisplayPick::Remembered);
+                }
                 noteliner_slides::PaneAction::OpenSettings => {
                     if let Some(id) = self.project.as_ref().and_then(|p| p.selected.clone()) {
                         self.presentation_settings_for(id);
                     }
                 }
             },
+            SidebarAction::Present => {
+                self.start_presenting(None, false, DisplayPick::Remembered);
+            }
             SidebarAction::Tree(t) => match t {
-                TreeAction::Select(id) => self.select(id),
-                TreeAction::Rename { id, name } => self.backend.rename_file(id, name),
-                TreeAction::Drop {
-                    dragged,
-                    target,
-                    pos,
-                } => {
-                    let changed = self
-                        .project
-                        .as_mut()
-                        .is_some_and(|p| model::apply_drop(&mut p.index, &dragged, &target, pos));
-                    if changed {
-                        self.index_changed();
+                TreeAction::Select(id) => {
+                    // A click on the open note takes the highlight back from
+                    // a selected folder.
+                    if let Some(p) = &mut self.project {
+                        p.selected_folder = None;
+                    }
+                    self.select(id);
+                }
+                TreeAction::SelectFolder(path) => {
+                    if let Some(p) = &mut self.project {
+                        p.selected_folder = Some(path);
                     }
                 }
+                TreeAction::ToggleFolder(path) => {
+                    if let Some(p) = &mut self.project {
+                        if !p.open_folders.remove(&path) {
+                            p.open_folders.insert(path);
+                        }
+                    }
+                }
+                TreeAction::Rename { id, name } => self.backend.rename_file(id, name),
+                TreeAction::RenameFolder { path, name } => {
+                    // Edits waiting to be saved are written first.
+                    self.flush_active();
+                    self.backend.rename_folder(path, name);
+                }
+                TreeAction::Drop { dragged, into } => self.move_item(dragged, into),
                 TreeAction::Context(a, id) => self.context_action(a, id),
+                TreeAction::FolderContext(a, path) => self.folder_action(a, path),
                 TreeAction::Step(d) => self.step(d),
             },
+            SidebarAction::NewFolder => {
+                if let Some(p) = &self.project {
+                    self.overlay = Some(Overlay::NewFolder(NewFolderForm::new(&p.target_folder())));
+                }
+            }
             SidebarAction::Sort(mode) => {
                 self.sort = mode;
                 self.backend
@@ -2916,6 +3437,17 @@ impl NoteLinerApp {
         if p.layout.active_tab != active {
             p.layout.active_tab = active.to_string();
         }
+        // The open folders, by path.
+        if p.layout.open_folders.len() != p.open_folders.len()
+            || p.layout
+                .open_folders
+                .iter()
+                .any(|f| !p.open_folders.contains(f))
+        {
+            let mut open: Vec<String> = p.open_folders.iter().cloned().collect();
+            open.sort();
+            p.layout.open_folders = open;
+        }
         if p.layout != p.saved_layout {
             p.saved_layout = p.layout.clone();
             self.backend.save_layout(&p.folder, p.layout.to_value());
@@ -3008,7 +3540,8 @@ impl NoteLinerApp {
             (paths, !i.raw.hovered_files.is_empty())
         });
         if !dropped.is_empty() {
-            self.backend.import_markdown(dropped);
+            let folder = self.project.as_ref().map(Project::target_folder);
+            self.backend.import_markdown(dropped, folder);
         }
         if hovering && over_editor {
             views::drop_overlay(ctx, "Drop files to attach them to the note");
@@ -3020,77 +3553,48 @@ impl NoteLinerApp {
     // --- Dialogs -----------------------------------------------------------------
 
     fn overlays(&mut self, ctx: &egui::Context) {
+        // A note that changed on disk under unsaved edits asks once the
+        // dialog that was open has closed.
+        if self.overlay.is_none() {
+            if let Some((id, content)) = self.pending_conflict.take() {
+                let name = self.editor.name().to_string();
+                if self.editor.file_id() == Some(id.as_str()) {
+                    self.overlay = Some(Overlay::Conflict { id, name, content });
+                }
+            }
+        }
         let Some(mut overlay) = self.overlay.take() else {
             return;
         };
         let top_inset = self.top_inset();
         let mut keep = true;
         match &mut overlay {
-            Overlay::NewProject(form) => {
-                let mut browse = false;
-                match overlays::new_project(ctx, form, &mut browse) {
-                    Some(FormAction::Close) => keep = false,
-                    Some(FormAction::Submit) => match form.validate() {
-                        Some(e) => form.error = Some(e.into()),
-                        None => {
-                            keep = false;
-                            self.opening = true;
-                            self.backend.new_project(
-                                PathBuf::from(form.location.trim()),
-                                form.name.trim().to_string(),
-                                form.email.trim().to_string(),
-                            );
-                        }
-                    },
-                    None => {}
-                }
-                if browse {
-                    self.dialogs.start(|| {
-                        rfd::FileDialog::new()
-                            .pick_folder()
-                            .map(Picked::NewProjectLocation)
-                    });
-                }
-            }
-            Overlay::Setup(form) => match overlays::setup(ctx, form) {
-                Some(SetupAction::Cancel) => keep = false,
-                Some(SetupAction::Setup(url)) => {
-                    keep = false;
-                    self.opening = true;
-                    self.backend.init_project(PathBuf::from(&form.folder), url);
-                }
-                None => {}
-            },
             Overlay::NewFile(form) => {
-                let (entries, tags, current) = match &self.project {
-                    Some(p) => (
-                        p.entries.clone(),
-                        model::all_tags(&p.index),
-                        p.selected_entry().cloned(),
-                    ),
-                    None => (Vec::new(), Vec::new(), None),
+                let (folders, tags) = match &self.project {
+                    Some(p) => (p.folders.clone(), model::all_tags(&p.index)),
+                    None => (Vec::new(), Vec::new()),
                 };
-                match overlays::new_file(ctx, form, &entries, &tags, current.as_ref()) {
+                match overlays::new_file(ctx, form, &folders, &tags) {
                     Some(FormAction::Close) => keep = false,
                     Some(FormAction::Submit) => {
                         keep = false;
                         let tags: Vec<String> = form.tags.iter().cloned().collect();
                         let name = form.name.trim().to_string();
+                        let folder = Some(form.folder.clone());
                         match &form.duplicate_of {
-                            Some(source) => self.backend.duplicate_file(
-                                source.clone(),
-                                name,
-                                tags,
-                                form.parent.clone(),
-                            ),
-                            None if form.diagram => {
-                                self.backend.create_diagram(name, tags, form.parent.clone())
+                            Some(source) => {
+                                // The copy is of the file on disk: write a
+                                // pending edit first.
+                                self.flush_active();
+                                self.backend
+                                    .duplicate_file(source.clone(), name, tags, folder)
                             }
+                            None if form.diagram => self.backend.create_diagram(name, tags, folder),
                             None => self.backend.create_file(
                                 name,
                                 tags,
                                 form.template.clone(),
-                                form.parent.clone(),
+                                folder,
                                 form.deck,
                             ),
                         }
@@ -3098,21 +3602,37 @@ impl NoteLinerApp {
                     None => {}
                 }
             }
-            Overlay::MoveFile(form) => {
-                let entries = self
+            Overlay::NewFolder(form) => {
+                let folders = self
                     .project
                     .as_ref()
-                    .map(|p| p.entries.clone())
+                    .map(|p| p.folders.clone())
                     .unwrap_or_default();
-                match overlays::move_file(ctx, form, &entries) {
+                match overlays::new_folder(ctx, form, &folders) {
                     Some(FormAction::Close) => keep = false,
                     Some(FormAction::Submit) => {
                         keep = false;
-                        let changed = self.project.as_mut().is_some_and(|p| {
-                            model::move_to(&mut p.index, &form.id, form.parent.as_deref())
-                        });
-                        if changed {
-                            self.index_changed();
+                        self.backend.create_folder(form.path());
+                    }
+                    None => {}
+                }
+            }
+            Overlay::Move(form) => {
+                let folders = self
+                    .project
+                    .as_ref()
+                    .map(|p| p.folders.clone())
+                    .unwrap_or_default();
+                match overlays::move_dialog(ctx, form, &folders) {
+                    Some(FormAction::Close) => keep = false,
+                    Some(FormAction::Submit) => {
+                        keep = false;
+                        if form.folder != form.current {
+                            let item = match &form.target {
+                                MoveTarget::File(id) => Item::File(id.clone()),
+                                MoveTarget::Folder(path) => Item::Folder(path.clone()),
+                            };
+                            self.move_item(item, form.folder.clone());
                         }
                     }
                     None => {}
@@ -3147,9 +3667,57 @@ impl NoteLinerApp {
                     if self.diagram.file_id() == Some(id.as_str()) {
                         let _ = self.diagram.flush();
                     }
-                    self.backend.delete_file(id.clone());
+                    self.backend.delete_file(id.clone(), false);
                 }
                 Some(Confirm::No) => keep = false,
+                None => {}
+            },
+            Overlay::DeleteFolder { path, counts } => {
+                match overlays::delete_folder(ctx, path, counts) {
+                    Some(Confirm::Yes) => {
+                        keep = false;
+                        // The tabs of the notes inside close when the
+                        // folder is gone; their pending edits are dropped.
+                        self.drop_edits_under(path);
+                        self.backend.delete_folder(path.clone(), false);
+                    }
+                    Some(Confirm::No) => keep = false,
+                    None => {}
+                }
+            }
+            Overlay::DeletePermanently {
+                target,
+                name,
+                message,
+            } => match overlays::delete_permanently(ctx, name, message) {
+                Some(Confirm::Yes) => {
+                    keep = false;
+                    match target {
+                        DeleteTarget::File(id) => self.backend.delete_file(id.clone(), true),
+                        DeleteTarget::Folder(path) => {
+                            self.backend.delete_folder(path.clone(), true)
+                        }
+                    }
+                }
+                Some(Confirm::No) => keep = false,
+                None => {}
+            },
+            Overlay::Conflict { id, name, content } => match overlays::conflict(ctx, name) {
+                Some(ConflictAction::Reload) => {
+                    keep = false;
+                    self.editor.reload(id, std::mem::take(content));
+                }
+                Some(ConflictAction::KeepMine) => {
+                    keep = false;
+                    // The edits are saved over the file on disk.
+                    self.editor.hold(false);
+                    if self.editor.file_id() == Some(id.as_str()) {
+                        if let Some(save) = self.editor.flush() {
+                            self.backend
+                                .write_file(save.id, save.filename, save.content);
+                        }
+                    }
+                }
                 None => {}
             },
             Overlay::ClearTags { id, name, count } => match overlays::clear_tags(ctx, name, *count)
@@ -3176,26 +3744,6 @@ impl NoteLinerApp {
                 Some(Confirm::No) => keep = false,
                 None => {}
             },
-            Overlay::ProjectSettings(form) => {
-                match overlays::project_settings(ctx, form, top_inset) {
-                    Some(ProjectSettingsAction::Close) => keep = false,
-                    Some(ProjectSettingsAction::Save) => {
-                        if form.validate() {
-                            keep = false;
-                            self.backend.set_git_config(
-                                form.name.trim().to_string(),
-                                form.email.trim().to_string(),
-                            );
-                        }
-                    }
-                    Some(ProjectSettingsAction::OpenFolder) => {
-                        if let Err(e) = open::that_detached(&form.folder) {
-                            self.toasts.error(format!("Couldn't open the folder: {e}"));
-                        }
-                    }
-                    None => {}
-                }
-            }
             Overlay::Settings(state) => {
                 for a in crate::overlays::settings::show(ctx, state, &mut self.theme, top_inset) {
                     match a {
@@ -3208,45 +3756,17 @@ impl NoteLinerApp {
                             self.diagram.set_prefs(&self.prefs);
                         }
                         SettingsAction::RefreshMcp => self.backend.mcp_status(),
+                        SettingsAction::OpenProjectFolder => {
+                            if let Some(p) = &self.project {
+                                if let Err(e) = open::that_detached(&p.folder) {
+                                    self.toasts.error(format!("Couldn't open the folder: {e}"));
+                                }
+                            }
+                        }
                         SettingsAction::Restart => restart(ctx),
                     }
                 }
             }
-            Overlay::Sync(state) => match crate::overlays::sync::show(ctx, state, top_inset) {
-                Some(SyncAction::Close) => {
-                    keep = false;
-                    self.backend.git_state();
-                }
-                Some(SyncAction::RefreshStatus) => {
-                    state.status = None;
-                    self.backend.git_state();
-                }
-                Some(SyncAction::Connect(url)) => {
-                    state.start(Op::Connect, "Connecting...");
-                    self.backend.git_op(Op::Connect, Some(url));
-                }
-                Some(SyncAction::Disconnect) => {
-                    state.start(Op::Disconnect, "Disconnecting...");
-                    self.backend.git_op(Op::Disconnect, None);
-                }
-                Some(SyncAction::Pull) => {
-                    state.start(Op::Pull, "Pulling...");
-                    self.backend.git_op(Op::Pull, None);
-                }
-                Some(SyncAction::PullRebase) => {
-                    state.start(Op::PullRebase, "Pulling & rebasing...");
-                    self.backend.git_op(Op::PullRebase, None);
-                }
-                Some(SyncAction::Push) => {
-                    state.start(Op::Push, "Pushing...");
-                    self.backend.git_op(Op::Push, None);
-                }
-                Some(SyncAction::Reset) => {
-                    state.start(Op::Reset, "Resetting...");
-                    self.backend.git_op(Op::Reset, None);
-                }
-                None => {}
-            },
             Overlay::Help(state) => {
                 if crate::overlays::help::show(ctx, state, top_inset) {
                     keep = false;
@@ -3303,11 +3823,8 @@ impl NoteLinerApp {
                     SettingsOutcome::Save(presentation) => {
                         dialog.error = None;
                         dialog.saving = true;
-                        self.backend.set_presentation(
-                            id.clone(),
-                            filename.clone(),
-                            presentation.to_json(),
-                        );
+                        let (id, filename) = (id.clone(), filename.clone());
+                        self.send_presentation(id, filename, presentation.to_json());
                     }
                 }
             }
@@ -3436,7 +3953,7 @@ impl NoteLinerApp {
         eframe::set_value(storage, THEME_KEY, &self.theme);
     }
 
-    /// On quit: write the pending edit and the layout, flush the push.
+    /// On quit: write the pending edit and the layout.
     pub fn shutdown(&mut self) {
         for save in [self.editor.flush(), self.diagram.flush()]
             .into_iter()
@@ -3454,7 +3971,8 @@ impl NoteLinerApp {
 }
 
 impl eframe::App for NoteLinerApp {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
+        self.read_displays(ui.ctx(), frame);
         self.show(ui);
     }
 
@@ -3472,6 +3990,17 @@ impl eframe::App for NoteLinerApp {
     }
 }
 
+/// Which display a presentation starts on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DisplayPick {
+    /// The one remembered in the prefs, if it is connected; else the window's.
+    Remembered,
+    /// This one (its place in the system's list), which is then remembered.
+    Index(usize),
+    /// The one the window is on, forgetting the remembered one.
+    Window,
+}
+
 /// Keeps a resizable panel's size in the layout once the drag settles.
 fn remember_size(stored: &mut f32, actual: f32) {
     if actual > 0.0 && (actual - *stored).abs() > 0.5 {
@@ -3487,6 +4016,58 @@ fn remove_key(index: &mut Value, id: &str, key: &str) {
             }
         }
     }
+}
+
+/// The path of the file at `to` as a link from a note in the folder `from`:
+/// `./kickoff.md` beside it, `../archive/old.md` elsewhere.
+fn relative_link(from: &str, to: &str) -> String {
+    let from: Vec<&str> = from.split('/').filter(|s| !s.is_empty()).collect();
+    let to: Vec<&str> = to.split('/').filter(|s| !s.is_empty()).collect();
+    let dirs = to.len().saturating_sub(1);
+    let shared = from
+        .iter()
+        .zip(to.iter().take(dirs))
+        .take_while(|(a, b)| a == b)
+        .count();
+    let mut parts: Vec<&str> = vec![".."; from.len() - shared];
+    parts.extend(&to[shared..]);
+    if from.len() == shared {
+        format!("./{}", parts.join("/"))
+    } else {
+        parts.join("/")
+    }
+}
+
+/// The note a Markdown link in a note of the folder `from` points at: its
+/// path from that folder, or (as links were written when every note was at
+/// the top) its path from the project folder, its file name, or its name.
+fn link_target<'a>(entries: &'a [Entry], from: &str, target: &str) -> Option<&'a Entry> {
+    let target = target.split(['#', '?']).next().unwrap_or(target);
+    let mut parts: Vec<&str> = from.split('/').filter(|s| !s.is_empty()).collect();
+    let mut escaped = false;
+    for part in target.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => escaped |= parts.pop().is_none(),
+            p => parts.push(p),
+        }
+    }
+    let resolved = parts.join("/");
+    let plain = target.trim_start_matches("./");
+    entries
+        .iter()
+        .find(|e| !escaped && e.filename == resolved)
+        .or_else(|| entries.iter().find(|e| e.filename == plain))
+        .or_else(|| {
+            let mut named = entries
+                .iter()
+                .filter(|e| noteliner_core::tree::file_name(&e.filename) == plain);
+            match (named.next(), named.next()) {
+                (Some(e), None) => Some(e),
+                _ => None,
+            }
+        })
+        .or_else(|| entries.iter().find(|e| e.name == plain))
 }
 
 /// `shortPath`: `.../parent/name` for long paths.
@@ -3516,6 +4097,45 @@ fn restart(ctx: &egui::Context) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn links_between_folders() {
+        assert_eq!(relative_link("", "a.md"), "./a.md");
+        assert_eq!(relative_link("work", "work/a.md"), "./a.md");
+        assert_eq!(relative_link("", "work/a.md"), "./work/a.md");
+        assert_eq!(relative_link("work", "a.md"), "../a.md");
+        assert_eq!(
+            relative_link("work/meetings", "archive/a.md"),
+            "../../archive/a.md"
+        );
+        assert_eq!(relative_link("work/meetings", "work/a.md"), "../a.md");
+        assert_eq!(
+            relative_link("work", "work/meetings/a.md"),
+            "./meetings/a.md"
+        );
+
+        let index = json!({ "files": [
+            { "id": "top", "name": "Top", "filename": "a.md" },
+            { "id": "work", "name": "Work A", "filename": "work/a.md" },
+            { "id": "deep", "name": "Deep", "filename": "work/meetings/kickoff.md" }
+        ]});
+        let entries = model::entries(&index);
+        let to =
+            |from: &str, target: &str| link_target(&entries, from, target).map(|e| e.id.as_str());
+        // A path from the note's own folder comes first.
+        assert_eq!(to("work", "./a.md"), Some("work"));
+        assert_eq!(to("", "./a.md"), Some("top"));
+        assert_eq!(to("work", "../a.md"), Some("top"));
+        assert_eq!(to("work", "./meetings/kickoff.md"), Some("deep"));
+        assert_eq!(to("work/meetings", "../../a.md"), Some("top"));
+        // Then a path from the project folder, a file name, and a name.
+        assert_eq!(to("work/meetings", "./a.md"), Some("top"));
+        assert_eq!(to("", "kickoff.md"), Some("deep"));
+        assert_eq!(to("", "Deep"), Some("deep"));
+        assert_eq!(to("", "./nope.md"), None);
+        // A path that leaves the project points at nothing.
+        assert_eq!(to("", "../../a.md"), None);
+    }
 
     #[test]
     fn short_paths() {

@@ -151,6 +151,7 @@ impl eframe::App for DeckApp {
                         }
                     }
                     PresenterAction::Exit => keep = false,
+                    PresenterAction::DisplayChosen(_) => {}
                 }
             }
             if keep {
@@ -210,6 +211,7 @@ impl eframe::App for DeckApp {
                     }
                 }
                 PaneAction::OpenSettings => self.open_settings(),
+                PaneAction::Present { index } => self.presenter = Some(Presenter::new(index)),
             }
         }
 

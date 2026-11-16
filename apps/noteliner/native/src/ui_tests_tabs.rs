@@ -7,16 +7,14 @@
 //! - Next File reuses the active tab;
 //! - the tabs and the active tab come back when the project reopens.
 //!
-//! Needs `git` on the PATH, like the app.
+//!
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use egui::accesskit::Role;
 use egui::{Event, Key, Modifiers};
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
-use noteliner_core::git::NoteGit;
 use noteliner_core::project::Project;
 use serde_json::json;
 
@@ -29,11 +27,9 @@ use crate::ui_tests::{harness, wait_for};
 fn fixture(dir: &Path) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let mut p = Project::new(NoteGit::new(Arc::new(|_| {})));
-        p.init(dir, None).await.unwrap();
-        p.set_git_config("Test User", "test@localhost")
-            .await
-            .unwrap();
+        std::fs::create_dir_all(dir).unwrap();
+        let mut p = Project::new();
+        p.open(dir).await.unwrap();
         for name in ["Alpha", "Beta", "Gamma"] {
             p.create_file(name, &json!([]), Some(format!("{name} text\n")), None)
                 .await

@@ -308,6 +308,58 @@ impl EditorState {
         self.apply_edit(ctx, (anchor, head), edit, 0.0);
     }
 
+    /// Replaces the first `old_len` bytes of the text with `head`, for a
+    /// part of the file the host maintains (NoteLiner's frontmatter block).
+    /// It is not an undo step and emits no [`crate::EditorEvent::Changed`].
+    /// The caret stays on the text it was on, and the view holds its place
+    /// when the head gains or loses lines. Returns whether the text changed.
+    pub fn replace_head(&mut self, ctx: &egui::Context, old_len: usize, head: &str) -> bool {
+        if old_len > self.text.len()
+            || !self.text.is_char_boundary(old_len)
+            || self.text[..old_len] == *head
+        {
+            return false;
+        }
+        let (anchor, cursor) = self.cursor(ctx);
+        let old_head = self.text[..old_len].to_string();
+        let (old_chars, new_chars) = (chars_in(&old_head), chars_in(head));
+        let lines = |s: &str| s.bytes().filter(|b| *b == b'\n').count();
+        let (old_lines, new_lines) = (lines(&old_head), lines(head));
+        self.text.replace_range(..old_len, head);
+        // Typing not yet recorded as a step keeps its diff when it is all
+        // after the head.
+        if self.recorded.starts_with(&old_head) {
+            self.recorded.replace_range(..old_len, head);
+        } else {
+            self.recorded.clone_from(&self.text);
+        }
+        self.version += 1;
+        self.history
+            .rebase_head(old_len, head.len(), old_chars, new_chars);
+        self.completion = None;
+        self.core
+            .folds
+            .shift_from(old_lines, new_lines as isize - old_lines as isize);
+        let moved = |c: usize| {
+            if c >= old_chars {
+                c - old_chars + new_chars
+            } else {
+                c.min(new_chars)
+            }
+        };
+        self.set_cursor(ctx, moved(anchor), moved(cursor));
+        self.reveal = None;
+        // No fonts before the first frame: nothing is on screen to hold.
+        if new_lines != old_lines && ctx.cumulative_pass_nr() > 0 {
+            let row =
+                ctx.fonts_mut(|f| f.row_height(&egui::FontId::proportional(self.prefs.font_size)));
+            let dy = (new_lines as f32 - old_lines as f32) * row;
+            let at = self.scroll_request.unwrap_or(self.scroll_offset);
+            self.scroll_request = Some(egui::vec2(at.x, (at.y + dy).max(0.0)));
+        }
+        true
+    }
+
     pub fn prefs(&self) -> EditorPrefs {
         self.prefs
     }

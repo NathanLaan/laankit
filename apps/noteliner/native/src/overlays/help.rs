@@ -1,11 +1,8 @@
-//! Help (`HelpApp.svelte`). The Svelte builds open it in a second window;
-//! here it's a full-size dialog with the same pages: an index grouped by
-//! section with a search box (non-matching pages are greyed out), and the
-//! page's Markdown rendered by `laankit-richtext`.
+//! Help: a full-size dialog with an index grouped by section, a search box
+//! (non-matching pages are greyed out), and the page's Markdown rendered by
+//! `laankit-richtext`.
 //!
-//! The pages are `assets/help-pages.json`, generated from the Svelte build's
-//! `lib/helpContent.js` by `scripts/gen-help.mjs`, so both builds stay in
-//! step (a test checks the file is current when Node is available).
+//! The pages are `assets/help-pages.json`; edit that file to change them.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -25,7 +22,7 @@ pub struct HelpPage {
     pub body: String,
 }
 
-/// The pages, in the Svelte order.
+/// The pages, in the file's order.
 pub static PAGES: LazyLock<Vec<HelpPage>> = LazyLock::new(|| {
     serde_json::from_str(include_str!("../../assets/help-pages.json")).unwrap_or_default()
 });

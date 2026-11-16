@@ -42,6 +42,8 @@ pub enum PaneAction {
     Edit(EditResult),
     /// "Presentation Settings…" from the context menu.
     OpenSettings,
+    /// "Present from This Slide" from the context menu (1-based).
+    Present { index: usize },
 }
 
 /// The SLIDES pane: one row per slide with a live thumbnail; click to jump,
@@ -279,6 +281,10 @@ impl SlidesPane {
         let edit = |e: SlideEdit, out: &mut Vec<PaneAction>| {
             out.push(PaneAction::Edit(e.apply(markdown, deck)));
         };
+        if menu_item(ui, icons::CIRCLE_PLAY, "Present from This Slide", true) {
+            out.push(PaneAction::Present { index });
+        }
+        ui.separator();
         if menu_item(ui, icons::PLUS, "New Slide Below", true) {
             edit(
                 SlideEdit::Insert {

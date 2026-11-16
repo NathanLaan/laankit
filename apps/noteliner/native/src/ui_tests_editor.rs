@@ -9,7 +9,7 @@
 //!   once), the settings dialog saves the `presentation:` block, and the
 //!   presenter opens and closes (headless: no real window goes full screen).
 //!
-//! Needs `git` on the PATH, like the app.
+//!
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -18,7 +18,6 @@ use egui::accesskit::Role;
 use egui::{ColorImage, Event, Key, Modifiers, PointerButton};
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
-use noteliner_core::git::NoteGit;
 use noteliner_core::project::Project;
 use serde_json::json;
 
@@ -32,11 +31,9 @@ const TALK: &str = "## One\n\nHello\n\n## Two\n\nWorld\n";
 fn fixture(dir: &Path) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let mut p = Project::new(NoteGit::new(Arc::new(|_| {})));
-        p.init(dir, None).await.unwrap();
-        p.set_git_config("Test User", "test@localhost")
-            .await
-            .unwrap();
+        std::fs::create_dir_all(dir).unwrap();
+        let mut p = Project::new();
+        p.open(dir).await.unwrap();
         p.create_file("Alpha", &json!([]), Some(String::new()), None)
             .await
             .unwrap();
@@ -165,8 +162,14 @@ fn editor_lists_completion_paste_and_links() {
 
     // Ctrl+click on `[[Alpha]]` in Beta opens Alpha.
     select(&mut h, "Beta");
-    let rect = h.get_by_role(Role::MultilineTextInput).rect();
-    let at = rect.min + egui::vec2(14.0, 8.0);
+    // The link is on the first line of the text, below the frontmatter.
+    h.run_steps(2);
+    let link = h.state().editor_file_text().find("[[Alpha]]").unwrap() + 3;
+    let at = h
+        .state_mut()
+        .editor_char_rect(link)
+        .expect("the link is on screen")
+        .center();
     h.event(Event::PointerMoved(at));
     h.step();
     // egui reads Ctrl from the input state, not from the click event.
@@ -238,11 +241,9 @@ fn slides_pane_settings_and_presenter() {
 fn two_notes(dir: &Path) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let mut p = Project::new(NoteGit::new(Arc::new(|_| {})));
-        p.init(dir, None).await.unwrap();
-        p.set_git_config("Test User", "test@localhost")
-            .await
-            .unwrap();
+        std::fs::create_dir_all(dir).unwrap();
+        let mut p = Project::new();
+        p.open(dir).await.unwrap();
         let long: String = (1..=300).map(|i| format!("line {i}\n")).collect();
         p.create_file("Long", &json!([]), Some(long), None)
             .await
@@ -275,7 +276,9 @@ fn reopening_restores_the_last_notes_caret_and_scroll() {
     // Leave Long with the caret on line 200 (char 1394) and scrolled there.
     let mut h = reopen(&user_data, &project);
     select(&mut h, "Long");
-    let caret = (1..200).map(|i| format!("line {i}\n").len()).sum::<usize>() + 2;
+    // The caret counts from the start of the file, frontmatter included.
+    let block = h.state().editor_file_text().len() - h.state().editor_text().len();
+    let caret = block + (1..200).map(|i| format!("line {i}\n").len()).sum::<usize>() + 2;
     h.state_mut()
         .set_editor_view(caret, caret, egui::vec2(0.0, 3000.0));
     h.run_steps(4);
@@ -296,12 +299,15 @@ fn reopening_restores_the_last_notes_caret_and_scroll() {
     // Within half a row: text layout can differ by a pixel or two between
     // platforms (3002.2 on a CI runner, 3000 here).
     assert!((scroll.y - 3000.0).abs() < 10.0, "{scroll:?}");
-    assert_eq!(h.state().editor_cursor(), (200, 3));
+    assert_eq!(h.state().editor_body_line(), 200);
+    assert_eq!(h.state().editor_cursor().1, 3);
 
     // Only the last note is remembered: after switching to Short, reopening
     // opens Short at its own place, and Long's is gone.
     select(&mut h, "Short");
-    h.state_mut().set_editor_view(5, 5, egui::Vec2::ZERO);
+    let block = h.state().editor_file_text().len() - h.state().editor_text().len();
+    h.state_mut()
+        .set_editor_view(block + 5, block + 5, egui::Vec2::ZERO);
     h.run_steps(4);
     h.state_mut().shutdown();
     drop(h);
@@ -311,10 +317,12 @@ fn reopening_restores_the_last_notes_caret_and_scroll() {
         a.editor_file_id().as_deref() == Some(short.as_str())
     });
     h.run_steps(4);
-    assert_eq!(h.state().editor_cursor(), (1, 6));
+    assert_eq!(h.state().editor_body_line(), 1);
+    assert_eq!(h.state().editor_cursor().1, 6);
     let saved = std::fs::read_to_string(user_data.join("window-state.json")).unwrap();
     assert_eq!(saved.matches("lastFilePosition").count(), 1, "{saved}");
     select(&mut h, "Long");
     h.run_steps(2);
-    assert_eq!(h.state().editor_cursor(), (1, 1), "Long opens at the top");
+    assert_eq!(h.state().editor_body_line(), 1, "Long opens at the top");
+    assert_eq!(h.state().editor_cursor().1, 1);
 }

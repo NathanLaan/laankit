@@ -3,7 +3,7 @@
 //!
 //! | Module         | desktop-ui equivalent                                                  |
 //! |----------------|------------------------------------------------------------------------|
-//! | `theme`        | `theme/index.svelte.js`: the six themes and the UI scale               |
+//! | `theme`        | `theme/index.svelte.js`: the seven themes and the UI scale               |
 //! | `fonts`        | the system font stack, plus bundled faces and glyph fallback           |
 //! | `window`       | window controls and `-webkit-app-region: drag`, for undecorated windows |
 //! | `titlebar`     | `TitleBar.svelte`                                                      |
@@ -21,6 +21,9 @@
 //! | `tree`         | a tree of rows (folders), with drag and drop and a right-click menu    |
 //! | `not_ported`   | the "not in the native build yet" panel                                |
 //! | `diagnostics`  | `LAANKIT_SCREENSHOT` and friends                                        |
+
+// Depended on for its `system_fonts` feature, which every app then gets.
+use eframe as _;
 
 pub mod about;
 pub mod commands;

@@ -20,6 +20,9 @@ use laankit_egui::theme::ThemeId;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Act {
     NewFile,
+    /// A new folder, in the selected folder or beside the selected note.
+    NewFolder,
+    /// Deletes the selected note or diagram, or the selected folder.
     DeleteFile,
     DuplicateFile,
     ImportDocument,
@@ -55,11 +58,18 @@ pub enum Act {
     Present,
     /// Presenting with the speaker view in a second window (a native addition).
     PresentWithSpeakerView,
+    /// Presenting from slide 1, wherever the caret is.
+    PresentFromStart,
+    /// Presenting on the display at this place in the system's list, which
+    /// is then remembered.
+    PresentOnDisplay(usize),
+    /// Presenting on the display the window is on, and forgetting the
+    /// remembered one.
+    PresentOnWindowDisplay,
     /// The editor's Go to line bar (CodeMirror's `Mod-Alt-g`).
     GoToLine,
     AddTag,
     TogglePreview,
-    ToggleHistory,
     ToggleSidebar,
     ToggleToolbar,
     ToggleOutline,
@@ -73,8 +83,6 @@ pub enum Act {
     ZoomIn,
     ZoomOut,
     ZoomReset,
-    Sync,
-    ProjectSettings,
     GoHome,
     SetTheme(ThemeId),
     Settings,
@@ -91,7 +99,11 @@ pub enum Act {
 pub struct View {
     pub project_open: bool,
     pub has_selection: bool,
+    /// A folder is selected in the tree.
+    pub folder_selected: bool,
     pub is_deck: bool,
+    /// How many displays are connected (0 when unknown).
+    pub displays: usize,
     pub tags_visible: bool,
     /// How many tabs are open.
     pub tabs: usize,
@@ -118,6 +130,12 @@ fn project_open(v: &View) -> bool {
 
 fn has_selection(v: &View) -> bool {
     project_open(v) && v.has_selection
+}
+
+/// A note, a diagram or a folder is selected: Delete has something to
+/// delete.
+fn deletable(v: &View) -> bool {
+    project_open(v) && (v.has_selection || v.folder_selected)
 }
 
 fn has_tab(v: &View) -> bool {
@@ -319,11 +337,12 @@ pub fn registry() -> Registry<Act, View> {
             .shortcut("Ctrl+N")
             .when(project_open),
     );
+    r.register(add("file.newFolder", "New Folder...", "File", Act::NewFolder).when(project_open));
     r.register(
         add("file.delete", "Delete File", "File", Act::DeleteFile)
             .key(Binding::logical(cmd, Key::D))
             .shortcut("Ctrl+D")
-            .when(has_selection),
+            .when(deletable),
     );
     r.register(
         add(
@@ -499,6 +518,47 @@ pub fn registry() -> Registry<Act, View> {
             .shortcut("F5")
             .when(is_deck),
     );
+    // Shift+F5 here starts at slide 1, since F5 starts at the caret's slide.
+    r.register(
+        add(
+            "deck.presentFromStart",
+            "Present from the First Slide",
+            "Presentation",
+            Act::PresentFromStart,
+        )
+        .key(Binding::logical(Modifiers::SHIFT, Key::F5))
+        .shortcut("Shift+F5")
+        .when(is_deck),
+    );
+    // Offered only with two or more displays connected. The palette's
+    // entries are fixed, so the first four displays get one each.
+    r.register(
+        add(
+            "deck.presentOnWindowDisplay",
+            "Present on This Window's Display",
+            "Presentation",
+            Act::PresentOnWindowDisplay,
+        )
+        .when(|v| is_deck(v) && v.displays >= 2),
+    );
+    type When = fn(&View) -> bool;
+    const ON_DISPLAY: [(&str, &str, When); 4] = [
+        ("deck.presentOnDisplay1", "Present on Display 1", |v| {
+            is_deck(v) && v.displays >= 2
+        }),
+        ("deck.presentOnDisplay2", "Present on Display 2", |v| {
+            is_deck(v) && v.displays >= 2
+        }),
+        ("deck.presentOnDisplay3", "Present on Display 3", |v| {
+            is_deck(v) && v.displays >= 3
+        }),
+        ("deck.presentOnDisplay4", "Present on Display 4", |v| {
+            is_deck(v) && v.displays >= 4
+        }),
+    ];
+    for (n, (id, title, when)) in ON_DISPLAY.into_iter().enumerate() {
+        r.register(add(id, title, "Presentation", Act::PresentOnDisplay(n)).when(when));
+    }
     // Alt+F5 is PowerPoint's "Presenter View" key.
     r.register(
         add(
@@ -542,16 +602,6 @@ pub fn registry() -> Registry<Act, View> {
             "Ctrl+P",
         )
         .when(ready),
-    );
-    r.register(
-        view(
-            "view.toggleHistory",
-            "Toggle History",
-            Act::ToggleHistory,
-            Binding::logical(cmd, Key::H),
-            "Ctrl+H",
-        )
-        .when(project_open),
     );
     r.register(
         view(
@@ -684,23 +734,6 @@ pub fn registry() -> Registry<Act, View> {
     );
 
     // Project
-    r.register(
-        add("project.sync", "Remote Sync", "Project", Act::Sync)
-            .key(Binding::physical(shift, Key::S))
-            .shortcut("Ctrl+Shift+S")
-            .when(project_open),
-    );
-    r.register(
-        add(
-            "project.settings",
-            "Project Settings",
-            "Project",
-            Act::ProjectSettings,
-        )
-        .key(Binding::physical(shift, Key::Comma))
-        .shortcut("Ctrl+Shift+,")
-        .when(project_open),
-    );
     r.register(
         add(
             "project.goHome",
@@ -875,7 +908,6 @@ mod tests {
             "Ctrl+Shift+V",
             "Ctrl+Shift++",
             "Ctrl+P",
-            "Ctrl+H",
             "Ctrl+E",
             "Ctrl+Shift+E",
             "Ctrl+Shift+O",
@@ -890,8 +922,6 @@ mod tests {
             "Ctrl+-",
             "Ctrl+0",
             "Ctrl+T",
-            "Ctrl+Shift+S",
-            "Ctrl+Shift+,",
             "Ctrl+,",
             "Ctrl+Shift+I",
             "F1",
