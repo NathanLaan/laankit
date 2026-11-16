@@ -132,6 +132,12 @@
     "body": "# Export\n\nNoteLiner can save the current note as a standalone document outside of\nthe project folder:\n\n- **Save to HTML** — fully styled HTML.\n- **Save to PDF** — a Letter page with half-inch margins.\n- **Save to Markdown** — a clean `.md` copy without frontmatter or\n  project metadata.\n\nTrigger any of these from:\n\n- the Preview pane's right-click context menu, or\n- the Files pane's right-click context menu on the selected file.\n\nAfter saving, NoteLiner opens your Downloads folder so you can pick up\nthe exported file.\n"
   },
   {
+    "id": "presenting",
+    "title": "Presenting",
+    "section": "Editing",
+    "body": "# Presenting\n\nA presentation is a note with slides. Make one with Presentation in the\nNew File dialog, or with Convert to Presentation... in a note's right-click\nmenu.\n\n## Starting\n\nWhile a presentation is open, the left toolbar shows three more buttons\nbelow Search and Backlinks: Slides, Present, and Present with Speaker View.\n\n| Action | Key | Starts at |\n|---|---|---|\n| Present | `F5` | The slide the cursor is in |\n| Present from the First Slide | `Shift+F5` | Slide 1 |\n| Present with Speaker View | `Alt+F5` | The slide the cursor is in |\n\nYou can also use:\n\n- Present in the right-click menu of a presentation in the Files pane.\n- The play button in the Slides pane's header.\n- Present from This Slide in the right-click menu of a slide in the Slides\n  pane.\n- The Command Palette (`Ctrl+K`).\n\n## While presenting\n\nThe presentation fills the screen. Move the mouse to show a small bar with\nPrevious, Next, the slide number, and Exit. It hides after three seconds.\n\n| Key | Does |\n|---|---|\n| `Right`, `Down`, `Space`, `Page Down`, `Enter`, `N`, or a click | Next slide |\n| `Left`, `Up`, `Page Up`, `Backspace`, `P` | Previous slide |\n| `Home` / `End` | First / last slide |\n| `S` | Show or hide your notes |\n| `F11` | Leave or return to full screen, still presenting |\n| `Escape` | Stop presenting |\n\n## Speaker view\n\nPresent with Speaker View opens a second window with the current slide,\nthe next slide, your notes, a timer, and the clock. Drag it to your own\nscreen, or press `X` in it to swap the two screens.\n"
+  },
+  {
     "id": "command-palette",
     "title": "Command Palette",
     "section": "App",

@@ -35,6 +35,8 @@ pub enum ContextAction {
     /// The Export dialog for a diagram (PNG or SVG).
     ExportDiagram,
     ConvertToPresentation,
+    Present,
+    PresentWithSpeakerView,
     ConvertToNote,
     PresentationSettings,
     Duplicate,
@@ -664,6 +666,17 @@ fn context_menu(ui: &mut Ui, entry: &Entry, out: &mut Vec<TreeAction>, state: &m
     if entry.is_diagram() {
         // Nothing to convert.
     } else if entry.deck {
+        if item(ui, icons::CIRCLE_PLAY, "Present", Some("F5")) {
+            act(ContextAction::Present);
+        }
+        if item(
+            ui,
+            icons::DISPLAY,
+            "Present with Speaker View",
+            Some("Alt+F5"),
+        ) {
+            act(ContextAction::PresentWithSpeakerView);
+        }
         if item(ui, icons::SLIDERS, "Presentation Settings...", None) {
             act(ContextAction::PresentationSettings);
         }

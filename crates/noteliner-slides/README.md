@@ -75,7 +75,7 @@ The host owns the note text, its frontmatter and all I/O. The widgets read the c
 | SLIDES pane: rename (double-click or menu), drag to reorder, context menu (every item) | Done | |
 | Deck preview: scaled slides, number rail, notes below, follows the caret, click to jump | Done | |
 | Presentation Settings dialog                                   | Done      | Levels 4–6 from frontmatter are shown as "custom" |
-| Full-screen presenter                                          | Native addition | Keys, click to advance, S for notes, counter |
+| Full-screen presenter                                          | Native addition | Keys, click to advance, S for notes, counter, controls on mouse movement (Previous, Next, Exit), F11 to present in a window |
 | Speaker view in a second window                                | Native addition | `Presenter::with_speaker_view(true)`: current and next slide, notes (rendered, with math), timer (T / R), clock; keys work in both windows; "Swap displays" (X); see below |
 
 ## Speaker view
@@ -90,4 +90,4 @@ egui can't list monitors or tell which one a window is on, so the audience windo
 
 - Unit tests for parsing, edits, colours and the renderer's geometry.
 - `tests/differential.rs`: the JS comparison above.
-- `tests/widgets.rs` (egui_kittest): pane click → jump, context-menu Move Up, drag to reorder, double-click and menu rename, deck-preview click, settings Save/Cancel, presenter keys/click/notes/Escape, and every sample slide rendered at 40, 104, 640 and 1920 px.
+- `tests/widgets.rs` (egui_kittest): pane click → jump, context-menu Move Up, drag to reorder, double-click and menu rename, deck-preview click, settings Save/Cancel, presenter keys/click/notes/Escape, the presenter's controls (shown on mouse movement, hidden after three seconds) and F11, and every sample slide rendered at 40, 104, 640 and 1920 px.

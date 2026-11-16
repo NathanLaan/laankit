@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use egui::accesskit::Role;
 use egui::Key;
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::Harness;
 use laankit_richtext::math::{self, MathImage, MathMode};
 use laankit_richtext::Block;
@@ -38,13 +38,19 @@ fn open_deck(tmp: &Path) -> Harness<'static, NoteLinerApp> {
         )
         .await
         .unwrap();
+        p.create_file("Plain", &json!([]), Some("# Plain\n\ntext\n".into()), None)
+            .await
+            .unwrap();
+        p.create_file("Sketch", &json!([]), None, None)
+            .await
+            .unwrap();
     });
     let mut h = harness(Paths {
         user_data: tmp.join("NoteLiner"),
     });
     h.run_steps(2);
     h.state_mut().open(project);
-    wait_for(&mut h, "the project", |a| a.entries().len() == 1);
+    wait_for(&mut h, "the project", |a| a.entries().len() == 3);
     h.get_by_role_and_label(Role::TreeItem, "Talk").click();
     wait_for(&mut h, "the deck", |a| a.deck_slides() == Some(2));
     h
@@ -54,6 +60,9 @@ fn open_deck(tmp: &Path) -> Harness<'static, NoteLinerApp> {
 fn present_with_speaker_view_and_end() {
     let tmp = tempfile::tempdir().unwrap();
     let mut h = open_deck(tmp.path());
+    // The toolbar offers both while a deck is open.
+    h.get_by_label("Present (F5)");
+    h.get_by_label("Present with Speaker View (Alt+F5)");
     let ctx = h.ctx.clone();
     h.state_mut()
         .apply_for_test(&ctx, Act::PresentWithSpeakerView);
@@ -132,4 +141,132 @@ fn math_renders_through_typst() {
         }
     };
     assert!(matches!(failed, MathImage::Unavailable), "{failed:?}");
+}
+
+fn stop(h: &mut Harness<'static, NoteLinerApp>) {
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    assert!(!h.state().presenting());
+}
+
+fn open_note(h: &mut Harness<'static, NoteLinerApp>, name: &str) {
+    h.get_by_role_and_label(Role::TreeItem, name).click();
+    let name = name.to_string();
+    wait_for(h, "the note", move |a| {
+        let id = a
+            .entries()
+            .iter()
+            .find(|e| e.name == name)
+            .map(|e| e.id.clone());
+        id.is_some() && a.editor_file_id() == id
+    });
+    h.run_steps(2);
+}
+
+/// The standard buttons keep their place whatever is open; the presentation
+/// buttons come after them, for a presentation only.
+#[test]
+fn the_toolbar_keeps_presentation_buttons_below_the_standard_ones() {
+    const STANDARD: [&str; 6] = [
+        "Files (Ctrl+E)",
+        "Outline (Ctrl+Shift+O)",
+        "Tags (Ctrl+Shift+T)",
+        "Attachments (Ctrl+Shift+A)",
+        "Search (Ctrl+F)",
+        "Backlinks (Ctrl+Shift+B)",
+    ];
+    const CONTEXT: [&str; 3] = [
+        "Slides (Ctrl+Shift+G)",
+        "Present (F5)",
+        "Present with Speaker View (Alt+F5)",
+    ];
+    let tmp = tempfile::tempdir().unwrap();
+    let mut h = open_deck(tmp.path());
+    let tops = |h: &Harness<'static, NoteLinerApp>, labels: &[&str]| -> Vec<f32> {
+        labels
+            .iter()
+            .map(|l| h.get_by_label(l).rect().top())
+            .collect()
+    };
+    let deck = tops(&h, &STANDARD);
+    assert!(deck.windows(2).all(|w| w[0] < w[1]), "{deck:?}");
+    let context = tops(&h, &CONTEXT);
+    assert!(context.windows(2).all(|w| w[0] < w[1]), "{context:?}");
+    assert!(
+        context[0] > deck[5],
+        "below Backlinks: {context:?} {deck:?}"
+    );
+
+    open_note(&mut h, "Plain");
+    assert_eq!(tops(&h, &STANDARD), deck, "a note");
+    for label in CONTEXT {
+        assert!(h.query_by_label(label).is_none(), "{label} on a note");
+    }
+}
+
+#[test]
+fn present_from_the_first_slide_the_menus_and_the_slides_pane() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut h = open_deck(tmp.path());
+    let ctx = h.ctx.clone();
+    if let Some(l) = h.state_mut().layout_mut() {
+        l.show_slides = true;
+    }
+    h.run_steps(2);
+
+    // The caret on slide 2: Present starts there, Shift+F5 at slide 1.
+    h.get_by_label("Slide 2 — Two").click();
+    h.run_steps(3);
+    h.state_mut().apply_for_test(&ctx, Act::Present);
+    h.run_steps(2);
+    assert_eq!(h.state().presenting_slide(), Some(2));
+    stop(&mut h);
+    h.key_press_modifiers(egui::Modifiers::SHIFT, Key::F5);
+    h.run_steps(2);
+    assert_eq!(h.state().presenting_slide(), Some(1));
+    stop(&mut h);
+
+    // The SLIDES pane: its header's button, and a slide's menu.
+    h.get_by_label("Present").click();
+    h.run_steps(2);
+    assert_eq!(h.state().presenting_slide(), Some(2), "the caret's slide");
+    stop(&mut h);
+    h.get_by_label("Slide 1 — One").click_secondary();
+    h.run_steps(3);
+    h.get_by_label_contains("Present from This Slide").click();
+    h.run_steps(3);
+    assert_eq!(h.state().presenting_slide(), Some(1));
+    stop(&mut h);
+
+    // The FILES pane: Present on a presentation that isn't open opens it first.
+    open_note(&mut h, "Plain");
+    assert!(!h.state().presenting());
+    h.get_by_role_and_label(Role::TreeItem, "Talk")
+        .click_secondary();
+    h.run_steps(3);
+    // The menu's item, not the toolbar's button (which names its key in brackets).
+    h.get_all_by_label_contains("Present with Speaker View")
+        .find(|n| {
+            n.accesskit_node()
+                .label()
+                .is_some_and(|l| !l.contains("(Alt+F5)"))
+        })
+        .expect("the menu item")
+        .click();
+    wait_for(&mut h, "presenting Talk", |a| a.presenting());
+    assert!(h.state().speaker_view_open());
+    stop(&mut h);
+    // A note's menu has no Present.
+    h.get_by_role_and_label(Role::TreeItem, "Plain")
+        .click_secondary();
+    h.run_steps(3);
+    assert!(h
+        .query_by_label_contains("Convert to Presentation")
+        .is_some());
+    assert!(h
+        .query_all_by_label_contains("Present with Speaker View")
+        .all(|n| n
+            .accesskit_node()
+            .label()
+            .is_some_and(|l| l.contains("(Alt+F5)"))));
 }

@@ -39,8 +39,11 @@ pub enum SidebarAction {
     LayoutChanged,
     /// The SEARCH, BACKLINKS or TAGS panes or the tag filter.
     Pane(PaneAction),
-    /// The SLIDES pane: jump, edit, or open the presentation settings.
+    /// The SLIDES pane: jump, edit, present from a slide, or open the
+    /// presentation settings.
     Slides(noteliner_slides::PaneAction),
+    /// The SLIDES header's Present button.
+    Present,
 }
 
 /// What the sidebar draws from.
@@ -120,6 +123,7 @@ pub fn show(
     let sort = props.sort;
     let mut sort_pick = None;
     let mut new_folder = false;
+    let mut present = false;
     let tree_props = TreeProps {
         entries: props.entries,
         folders: props.folders,
@@ -174,6 +178,7 @@ pub fn show(
                 }
                 new_folder |= new_folder_button(ui);
             }
+            "slides" => present |= present_button(ui),
             "tags" => pane_views::tags_header(
                 ui,
                 !all_tags.is_empty(),
@@ -196,6 +201,9 @@ pub fn show(
     }
     if new_folder {
         out.push(SidebarAction::NewFolder);
+    }
+    if present {
+        out.push(SidebarAction::Present);
     }
     if let Some(closed) = result.closed {
         out.push(SidebarAction::ClosePane(closed));
@@ -223,6 +231,21 @@ fn new_folder_button(ui: &mut Ui) -> bool {
         rect,
         icons::FOLDER_PLUS,
         "New Folder",
+    )
+    .clicked()
+}
+
+/// The SLIDES header's Present button.
+fn present_button(ui: &mut Ui) -> bool {
+    let p = theme::palette(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(vec2(26.0, 20.0), Sense::hover());
+    panes::header_button(
+        ui,
+        &p,
+        egui::Id::unique("noteliner-slides-present-btn"),
+        rect,
+        icons::CIRCLE_PLAY,
+        "Present",
     )
     .clicked()
 }

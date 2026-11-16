@@ -5,6 +5,10 @@
 //! **Audience view.** A foreground layer over the whole window, which goes
 //! full screen while presenting (and is restored after, unless it already
 //! was). Its keys are consumed so the host's shortcuts don't also fire.
+//! Moving the mouse shows a small bar of controls at the bottom (previous,
+//! next, the slide number and Exit) for [`CONTROLS_SECONDS`]; the pointer is
+//! hidden with it. F11 leaves full screen and returns to it without
+//! stopping, to present in a window.
 //!
 //! **Speaker view** ([`Presenter::with_speaker_view`]). A second native
 //! window (an egui *immediate* viewport) with the current slide, the next
@@ -32,6 +36,7 @@
 //! | S                                                 | Show or hide the notes on the audience view |
 //! | T / R                                             | Pause or resume / reset the timer (speaker view) |
 //! | X                                                 | Swap displays (speaker view) |
+//! | F11                                               | Leave or return to full screen, still presenting |
 //! | Escape                                            | Stop presenting         |
 
 use std::collections::HashMap;
@@ -65,6 +70,9 @@ const SPEAKER_SIZE: [f32; 2] = [1000.0, 640.0];
 /// At most this many viewport commands are kept in [`Presenter::commands_sent`].
 const COMMAND_LOG: usize = 64;
 
+/// How long the audience view's controls stay after the mouse last moved.
+pub const CONTROLS_SECONDS: f64 = 3.0;
+
 /// What the host should do after a frame of presenting.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PresenterAction {
@@ -85,6 +93,8 @@ pub enum Nav {
     ToggleTimer,
     ResetTimer,
     SwapDisplays,
+    /// Out of full screen, or back into it, without stopping.
+    ToggleFullscreen,
     Exit,
 }
 
@@ -175,6 +185,10 @@ pub struct Presenter {
     notes: bool,
     started: bool,
     was_fullscreen: bool,
+    /// Whether the audience window is full screen now (F11 changes it).
+    fullscreen: bool,
+    /// When the mouse last moved over the audience view (egui's clock).
+    last_move: Option<f64>,
     /// The main window's outer rect before presenting (restored after a swap).
     root_outer: Option<Rect>,
     speaker: Option<Speaker>,
@@ -189,6 +203,8 @@ impl Presenter {
             notes: false,
             started: false,
             was_fullscreen: false,
+            fullscreen: false,
+            last_move: None,
             root_outer: None,
             speaker: None,
             sent: Vec::new(),
@@ -215,6 +231,16 @@ impl Presenter {
     /// Whether the speaker notes are showing on the audience view.
     pub fn notes_visible(&self) -> bool {
         self.notes
+    }
+
+    /// Whether the audience window is full screen (F11 changes it).
+    pub fn fullscreen(&self) -> bool {
+        self.fullscreen
+    }
+
+    /// Whether the audience view's controls are showing at `now` (egui's clock).
+    pub fn controls_visible(&self, now: f64) -> bool {
+        self.last_move.is_some_and(|t| now - t < CONTROLS_SECONDS)
     }
 
     /// Whether the speaker window is open.
@@ -254,6 +280,7 @@ impl Presenter {
             if !self.was_fullscreen {
                 self.send(ctx, ViewportId::ROOT, ViewportCommand::Fullscreen(true));
             }
+            self.fullscreen = true;
             if let Some(s) = &mut self.speaker {
                 s.timer = Some(Timer::started(now));
             }
@@ -263,8 +290,27 @@ impl Presenter {
         self.index = self.index.clamp(1, total.max(1));
 
         let mut navs = read_keys(ctx, false);
-        if audience(ctx, deck, vars, images, self.index, self.notes) {
-            navs.push(Nav::Next);
+        let moved = ctx.input(|i| {
+            i.events
+                .iter()
+                .any(|e| matches!(e, egui::Event::PointerMoved(_) | egui::Event::MouseMoved(_)))
+        });
+        if moved {
+            self.last_move = Some(now);
+        }
+        let controls = self.controls_visible(now);
+        let shown = audience(ctx, deck, vars, images, self.index, self.notes, controls);
+        navs.extend(shown.navs);
+        if shown.over_controls {
+            // Resting on the bar keeps it.
+            self.last_move = Some(now);
+        }
+        if let Some(t) = self.last_move.filter(|_| controls) {
+            // Wake up to hide the bar.
+            let left = (CONTROLS_SECONDS - (now - t)).max(0.0) + 0.05;
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+        } else {
+            ctx.set_cursor_icon(egui::CursorIcon::None);
         }
         if self.speaker_view_open() {
             navs.extend(self.speaker_window(ctx, deck, vars, images, now));
@@ -312,6 +358,11 @@ impl Presenter {
                 }
             }
             Nav::SwapDisplays => self.swap_displays(ctx),
+            Nav::ToggleFullscreen => {
+                self.fullscreen = !self.fullscreen;
+                let on = self.fullscreen;
+                self.send(ctx, ViewportId::ROOT, ViewportCommand::Fullscreen(on));
+            }
             Nav::Exit => self.exit(ctx),
             _ => {}
         }
@@ -336,14 +387,17 @@ impl Presenter {
             ViewportCommand::OuterPosition(other.min),
         );
         self.send(ctx, ViewportId::ROOT, ViewportCommand::Fullscreen(true));
+        self.fullscreen = true;
         self.send(ctx, id, ViewportCommand::OuterPosition(root.min));
     }
 
     /// Stops presenting: the main window back to its place and state. The
     /// speaker window closes because it's no longer shown.
     fn exit(&mut self, ctx: &egui::Context) {
-        if !self.was_fullscreen {
-            self.send(ctx, ViewportId::ROOT, ViewportCommand::Fullscreen(false));
+        if self.fullscreen != self.was_fullscreen {
+            let was = self.was_fullscreen;
+            self.send(ctx, ViewportId::ROOT, ViewportCommand::Fullscreen(was));
+            self.fullscreen = was;
         }
         let swapped = self.speaker.as_ref().is_some_and(|s| s.swapped);
         if let (true, Some(r)) = (swapped, self.root_outer) {
@@ -454,12 +508,22 @@ fn read_keys(ctx: &egui::Context, speaker: bool) -> Vec<Nav> {
             take(&[Key::R], Nav::ResetTimer);
             take(&[Key::X], Nav::SwapDisplays);
         }
+        take(&[Key::F11], Nav::ToggleFullscreen);
         take(&[Key::Escape], Nav::Exit);
         out
     })
 }
 
-/// The audience view over the whole window; returns whether it was clicked.
+/// What happened on the audience view this frame.
+struct Shown {
+    /// A click on the slide, or a button of the controls.
+    navs: Vec<Nav>,
+    /// The pointer is on the controls.
+    over_controls: bool,
+}
+
+/// The audience view over the whole window. `controls` draws the bar of
+/// buttons at the bottom.
 fn audience(
     ctx: &egui::Context,
     deck: &Deck,
@@ -467,7 +531,8 @@ fn audience(
     images: &dyn ImageSource,
     index: usize,
     notes: bool,
-) -> bool {
+    controls: bool,
+) -> Shown {
     let total = deck.slides.len();
     let screen = ctx.content_rect();
     egui::Area::new(Id::unique("noteliner-presenter"))
@@ -524,9 +589,137 @@ fn audience(
                     format!("Slide {} of {total}", index.min(total)),
                 )
             });
-            resp.clicked()
+            // Drawn after the slide's own response, so a click on a button
+            // is the button's and doesn't also move to the next slide.
+            let mut shown = Shown {
+                navs: Vec::new(),
+                over_controls: false,
+            };
+            if controls {
+                shown = controls_bar(ui, rect, index.min(total), total);
+            }
+            if resp.clicked() {
+                shown.navs.push(Nav::Next);
+            }
+            shown
         })
         .inner
+}
+
+/// The audience view's controls: previous, the slide number, next and Exit,
+/// in a bar at the bottom centre of `screen`.
+fn controls_bar(ui: &mut Ui, screen: Rect, index: usize, total: usize) -> Shown {
+    const HEIGHT: f32 = 40.0;
+    const BUTTON: f32 = 40.0;
+    const COUNTER: f32 = 84.0;
+    const EXIT: f32 = 84.0;
+    let width = BUTTON * 2.0 + COUNTER + EXIT + 9.0;
+    let bar = Rect::from_center_size(
+        pos2(screen.center().x, screen.bottom() - HEIGHT * 0.5 - 24.0),
+        vec2(width, HEIGHT),
+    );
+    let ink = Color32::from_gray(235);
+    let painter = ui.painter().clone();
+    painter.rect(
+        bar,
+        8.0,
+        Color32::from_black_alpha(215),
+        egui::Stroke::new(1.0, Color32::from_white_alpha(40)),
+        egui::StrokeKind::Inside,
+    );
+    let mut navs = Vec::new();
+    let button = |ui: &mut Ui, rect: Rect, label: &str, enabled: bool| {
+        let sense = if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        };
+        let resp = ui.interact(
+            rect,
+            Id::unique(("noteliner-presenter-control", label)),
+            sense,
+        );
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
+        if enabled && resp.hovered() {
+            ui.painter()
+                .rect_filled(rect.shrink(3.0), 6.0, Color32::from_white_alpha(36));
+        }
+        resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+            .clicked()
+    };
+    let dim = |on: bool| if on { ink } else { ink.gamma_multiply(0.35) };
+
+    let mut x = bar.left();
+    let mut cell = |w: f32| {
+        let r = Rect::from_min_size(pos2(x, bar.top()), vec2(w, HEIGHT));
+        x += w;
+        r
+    };
+    let previous = cell(BUTTON);
+    let counter = cell(COUNTER);
+    let next = cell(BUTTON);
+    let divider = cell(9.0);
+    let exit = cell(EXIT);
+
+    let can_back = index > 1;
+    let can_next = index < total;
+    if button(ui, previous, "Previous slide", can_back) {
+        navs.push(Nav::Previous);
+    }
+    if button(ui, next, "Next slide", can_next) {
+        navs.push(Nav::Next);
+    }
+    if button(ui, exit, "Stop presenting", true) {
+        navs.push(Nav::Exit);
+    }
+    let icon = laankit_egui::icons::font(14.0);
+    painter.text(
+        previous.center(),
+        Align2::CENTER_CENTER,
+        laankit_egui::icons::CHEVRON_LEFT,
+        icon.clone(),
+        dim(can_back),
+    );
+    painter.text(
+        counter.center(),
+        Align2::CENTER_CENTER,
+        format!("{index} / {total}"),
+        FontId::proportional(15.0),
+        ink,
+    );
+    painter.text(
+        next.center(),
+        Align2::CENTER_CENTER,
+        laankit_egui::icons::CHEVRON_RIGHT,
+        icon.clone(),
+        dim(can_next),
+    );
+    painter.vline(
+        divider.center().x,
+        bar.y_range().shrink(9.0),
+        egui::Stroke::new(1.0, Color32::from_white_alpha(50)),
+    );
+    painter.text(
+        pos2(exit.left() + 14.0, exit.center().y),
+        Align2::LEFT_CENTER,
+        laankit_egui::icons::XMARK,
+        icon,
+        ink,
+    );
+    painter.text(
+        pos2(exit.left() + 34.0, exit.center().y),
+        Align2::LEFT_CENTER,
+        "Exit",
+        FontId::proportional(15.0),
+        ink,
+    );
+    let over_controls = ui
+        .input(|i| i.pointer.hover_pos())
+        .is_some_and(|p| bar.contains(p));
+    Shown {
+        navs,
+        over_controls,
+    }
 }
 
 /// The largest rect of `aspect` (height / width) centred in `area`.

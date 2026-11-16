@@ -58,6 +58,8 @@ pub enum Act {
     Present,
     /// Presenting with the speaker view in a second window (a native addition).
     PresentWithSpeakerView,
+    /// Presenting from slide 1, wherever the caret is.
+    PresentFromStart,
     /// The editor's Go to line bar (CodeMirror's `Mod-Alt-g`).
     GoToLine,
     AddTag,
@@ -507,6 +509,18 @@ pub fn registry() -> Registry<Act, View> {
             .key(Binding::logical(Modifiers::NONE, Key::F5))
             .shortcut("F5")
             .when(is_deck),
+    );
+    // Shift+F5 here starts at slide 1, since F5 starts at the caret's slide.
+    r.register(
+        add(
+            "deck.presentFromStart",
+            "Present from the First Slide",
+            "Presentation",
+            Act::PresentFromStart,
+        )
+        .key(Binding::logical(Modifiers::SHIFT, Key::F5))
+        .shortcut("Shift+F5")
+        .when(is_deck),
     );
     // Alt+F5 is PowerPoint's "Presenter View" key.
     r.register(

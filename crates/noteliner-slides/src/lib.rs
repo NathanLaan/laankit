@@ -27,6 +27,6 @@ pub use deck::{
 };
 pub use edits::{Direction, EditResult, SlideEdit};
 pub use pane::{DeckPreview, PaneAction, SlidesPane};
-pub use presenter::{Nav, Presenter, PresenterAction, Timer};
+pub use presenter::{Nav, Presenter, PresenterAction, Timer, CONTROLS_SECONDS};
 pub use render::{ImageSource, PassThrough, SlideTheme, SlideView};
 pub use settings::{PresentationSettings, SettingsOutcome};

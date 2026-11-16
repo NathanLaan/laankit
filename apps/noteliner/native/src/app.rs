@@ -218,6 +218,9 @@ pub struct NoteLinerApp {
     tabs: Tabs,
     /// The open deck and the slides widgets.
     deck: DeckState,
+    /// A deck picked with Present in the FILES pane that is still loading:
+    /// its id, and whether the speaker view was asked for.
+    present_when_open: Option<(String, bool)>,
     /// A note being converted to a presentation: open its settings once done
     /// (`handleConvertToPresentation`).
     pending_convert: Option<String>,
@@ -301,6 +304,7 @@ impl NoteLinerApp {
             diagram_export_dir: None,
             tabs: Tabs::default(),
             deck: DeckState::default(),
+            present_when_open: None,
             pending_convert: None,
             pending_settings: None,
             spell: spell::Loader::default(),
@@ -531,6 +535,12 @@ impl NoteLinerApp {
     #[cfg(test)]
     pub fn presenting(&self) -> bool {
         self.deck.presenter.is_some()
+    }
+
+    /// The slide on screen while presenting (1-based).
+    #[cfg(test)]
+    pub fn presenting_slide(&self) -> Option<usize> {
+        self.deck.presenter.as_ref().map(|p| p.index())
     }
 
     #[cfg(test)]
@@ -1745,8 +1755,58 @@ impl NoteLinerApp {
         self.apply_slide_edit(result);
     }
 
+    /// Starts presenting the open deck at slide `start` (1-based), or at the
+    /// caret's slide.
+    fn start_presenting(&mut self, start: Option<usize>, speaker: bool) {
+        self.present_when_open = None;
+        self.update_deck();
+        let Some(total) = self.deck.deck().map(|d| d.slides.len()) else {
+            return;
+        };
+        if total == 0 {
+            return;
+        }
+        let start = start
+            .or_else(|| self.deck.active(self.editor.body_line().max(1)))
+            .unwrap_or(1)
+            .clamp(1, total);
+        self.deck.presenter =
+            Some(noteliner_slides::Presenter::new(start).with_speaker_view(speaker));
+        self.palette = None;
+    }
+
+    /// Present from a deck's menu in the FILES pane: at once if it is the
+    /// open note, or once it has loaded.
+    fn present_file(&mut self, id: String, speaker: bool) {
+        if self.editor.file_id() == Some(id.as_str()) && self.is_deck() {
+            self.start_presenting(None, speaker);
+        } else {
+            self.select(id.clone());
+            self.present_when_open = Some((id, speaker));
+        }
+    }
+
+    /// Starts the presentation asked for from the FILES pane once its deck
+    /// is in the editor; forgets it if another note was opened instead.
+    fn present_pending(&mut self) {
+        let Some((id, speaker)) = self.present_when_open.clone() else {
+            return;
+        };
+        let selected = self.project.as_ref().and_then(|p| p.selected.as_deref());
+        if selected != Some(id.as_str()) {
+            self.present_when_open = None;
+        } else if self.editor.file_id() == Some(id.as_str()) {
+            // Loaded: a note that isn't a deck has nothing to present.
+            if self.is_deck() {
+                self.start_presenting(None, speaker);
+            }
+            self.present_when_open = None;
+        }
+    }
+
     /// The presenter, over everything, while presenting.
     fn present(&mut self, ctx: &egui::Context) {
+        self.present_pending();
         let Some(mut presenter) = self.deck.presenter.take() else {
             return;
         };
@@ -2011,19 +2071,9 @@ impl NoteLinerApp {
             | Act::MoveSlideUp
             | Act::MoveSlideDown
             | Act::ToggleSpeakerNotes => self.slide_command(act),
-            Act::Present | Act::PresentWithSpeakerView => {
-                self.update_deck();
-                if self.deck.deck().is_some_and(|d| !d.slides.is_empty()) {
-                    let start = self
-                        .deck
-                        .active(self.editor.body_line().max(1))
-                        .unwrap_or(1);
-                    let speaker = act == Act::PresentWithSpeakerView;
-                    self.deck.presenter =
-                        Some(noteliner_slides::Presenter::new(start).with_speaker_view(speaker));
-                    self.palette = None;
-                }
-            }
+            Act::Present => self.start_presenting(None, false),
+            Act::PresentWithSpeakerView => self.start_presenting(None, true),
+            Act::PresentFromStart => self.start_presenting(Some(1), false),
             Act::AddTag => {
                 // `triggerTagAction('add')`: the TAGS pane's input (shown first
                 // if it's hidden).
@@ -2125,6 +2175,8 @@ impl NoteLinerApp {
             ContextAction::ConvertToPresentation => self.set_presentation(Some(id), true),
             ContextAction::ConvertToNote => self.set_presentation(Some(id), false),
             ContextAction::PresentationSettings => self.presentation_settings_for(id),
+            ContextAction::Present => self.present_file(id, false),
+            ContextAction::PresentWithSpeakerView => self.present_file(id, true),
             ContextAction::Duplicate => {
                 if let Some(e) = self.project.as_ref().and_then(|p| p.entry(&id)) {
                     self.overlay = Some(Overlay::NewFile(NewFileForm::duplicate(e)));
@@ -2514,31 +2566,6 @@ impl NoteLinerApp {
                     ) {
                         acts.push(Act::ToggleOutline);
                     }
-                    if is_deck
-                        && b(
-                            ui,
-                            icons::PERSON_CHALKBOARD,
-                            "Slides (Ctrl+Shift+G)",
-                            l.show_slides,
-                            false,
-                        )
-                    {
-                        acts.push(Act::ToggleSlides);
-                    }
-                    if is_deck && b(ui, icons::CIRCLE_PLAY, "Present (F5)", false, false) {
-                        acts.push(Act::Present);
-                    }
-                    if is_deck
-                        && b(
-                            ui,
-                            icons::PERSON_CHALKBOARD,
-                            "Present with Speaker View (Alt+F5)",
-                            false,
-                            false,
-                        )
-                    {
-                        acts.push(Act::PresentWithSpeakerView);
-                    }
                     if b(ui, icons::TAG, "Tags (Ctrl+Shift+T)", l.show_tags, false) {
                         acts.push(Act::ToggleTags);
                     }
@@ -2569,6 +2596,40 @@ impl NoteLinerApp {
                         false,
                     ) {
                         acts.push(Act::ToggleBacklinks);
+                    }
+                    // Context buttons: the ones only some documents have.
+                    // They always come after the standard buttons above,
+                    // which every document has, so those never move.
+                    if is_deck {
+                        let context: [(&str, &str, bool, Act); 3] = [
+                            (
+                                icons::PERSON_CHALKBOARD,
+                                "Slides (Ctrl+Shift+G)",
+                                l.show_slides,
+                                Act::ToggleSlides,
+                            ),
+                            (icons::CIRCLE_PLAY, "Present (F5)", false, Act::Present),
+                            (
+                                icons::DISPLAY,
+                                "Present with Speaker View (Alt+F5)",
+                                false,
+                                Act::PresentWithSpeakerView,
+                            ),
+                        ];
+                        // The toolbar doesn't scroll: what doesn't fit above
+                        // the bottom group is left out (the keys still work).
+                        let room = (1..=context.len())
+                            .rev()
+                            .find(|n| toolbar::fits(ui, *n))
+                            .unwrap_or(0);
+                        if room > 0 {
+                            toolbar::divider(ui);
+                        }
+                        for (glyph, title, active, act) in context.into_iter().take(room) {
+                            if b(ui, glyph, title, active, false) {
+                                acts.push(act);
+                            }
+                        }
                     }
                 }
             },
@@ -3024,12 +3085,16 @@ impl NoteLinerApp {
             SidebarAction::Slides(a) => match a {
                 noteliner_slides::PaneAction::Jump { line } => self.editor.scroll_to_line(line),
                 noteliner_slides::PaneAction::Edit(result) => self.apply_slide_edit(result),
+                noteliner_slides::PaneAction::Present { index } => {
+                    self.start_presenting(Some(index), false);
+                }
                 noteliner_slides::PaneAction::OpenSettings => {
                     if let Some(id) = self.project.as_ref().and_then(|p| p.selected.clone()) {
                         self.presentation_settings_for(id);
                     }
                 }
             },
+            SidebarAction::Present => self.start_presenting(None, false),
             SidebarAction::Tree(t) => match t {
                 TreeAction::Select(id) => {
                     // A click on the open note takes the highlight back from
