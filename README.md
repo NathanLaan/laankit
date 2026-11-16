@@ -142,6 +142,34 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 UI tests run headless via [`egui_kittest`](https://github.com/emilk/egui): they drive widgets through AccessKit and never open a real window. See each app's `ui_tests*` modules.
 
+### Displays trial
+
+NoteLiner can present on a display you choose when two or more are connected. The headless tests only check which command NoteLiner sends, so whether a desktop moves the window has to be checked by hand. The displays trial is a small program for that. It opens a window, lists the displays the system reports, and puts the window full screen on the one you pick.
+
+```bash
+cargo run -p noteliner-slides --example displays
+```
+
+| Key | Does |
+|---|---|
+| `1` to `9` | Full screen on that display |
+| `D` | Full screen on the next display |
+| `F` | Out of full screen |
+| `Escape` | Quit |
+
+The window shows each display's number, size, and name, and marks the one the window is on. Every change is also printed to the terminal with the time: the list of displays, the window's display and position, and each command sent. The list is read again each second, so you can unplug a display while it runs.
+
+Run it with two displays connected on each desktop you care about (GNOME and KDE on Wayland, X11, Windows, and macOS), and check these:
+
+- The window goes to the display you asked for.
+- It moves straight from one display to another without leaving full screen first.
+- `F` returns it to the display and size it had.
+- The names are ones you can recognize.
+- The small line of text is sharp on a display with a different scale.
+- Unplugging the display it is on moves it to the other one.
+
+The questions it answers are U1 to U7 in [docs/plans/plan-noteliner-present-display.md](docs/plans/plan-noteliner-present-display.md). The trial has not been run on two displays yet.
+
 ## Icons
 
 Each app's packaged icons are generated from `apps/<app>/assets/icon.png` by `cargo run -p xtask -- icons` (into the git-ignored `packaging/generated/`). The master source is `apps/<app>/assets/icon.svg`; regenerate `icon.png` from it with any SVG rasterizer, e.g. `rsvg-convert -w 512 -h 512 assets/icon.svg -o assets/icon.png`.

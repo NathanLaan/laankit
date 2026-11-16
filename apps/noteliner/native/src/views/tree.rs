@@ -37,6 +37,8 @@ pub enum ContextAction {
     ConvertToPresentation,
     Present,
     PresentWithSpeakerView,
+    /// Present on the display at this place in the system's list.
+    PresentOn(usize),
     ConvertToNote,
     PresentationSettings,
     Duplicate,
@@ -145,6 +147,9 @@ pub struct TreeProps<'a> {
     pub selected: Option<&'a str>,
     /// The selected folder, which takes the highlight from the open note.
     pub selected_folder: Option<&'a str>,
+    /// The connected displays, for a presentation's Present On items
+    /// (offered with two or more).
+    pub displays: &'a [noteliner_slides::Display],
 }
 
 /// Whether `dragged` may be dropped into the folder `into`.
@@ -301,7 +306,7 @@ pub fn show(ui: &mut Ui, state: &mut TreeState, props: &TreeProps<'_>) -> Vec<Tr
                             if !is_selected {
                                 out.push(TreeAction::Select(entry.id.clone()));
                             }
-                            context_menu(ui, entry, &mut out, state);
+                            context_menu(ui, entry, props.displays, &mut out, state);
                         });
                     }
                 }
@@ -632,7 +637,13 @@ fn folder_menu(ui: &mut Ui, path: Option<&str>, out: &mut Vec<TreeAction>, state
     }
 }
 
-fn context_menu(ui: &mut Ui, entry: &Entry, out: &mut Vec<TreeAction>, state: &mut TreeState) {
+fn context_menu(
+    ui: &mut Ui,
+    entry: &Entry,
+    displays: &[noteliner_slides::Display],
+    out: &mut Vec<TreeAction>,
+    state: &mut TreeState,
+) {
     let item = menu_item;
     let id = entry.id.clone();
     let mut act = |a: ContextAction| out.push(TreeAction::Context(a, id.clone()));
@@ -676,6 +687,14 @@ fn context_menu(ui: &mut Ui, entry: &Entry, out: &mut Vec<TreeAction>, state: &m
             Some("Alt+F5"),
         ) {
             act(ContextAction::PresentWithSpeakerView);
+        }
+        if displays.len() >= 2 {
+            for d in displays {
+                let label = format!("Present on {}", d.label());
+                if item(ui, icons::DISPLAY, &label, None) {
+                    act(ContextAction::PresentOn(d.index));
+                }
+            }
         }
         if item(ui, icons::SLIDERS, "Presentation Settings...", None) {
             act(ContextAction::PresentationSettings);
@@ -765,6 +784,7 @@ mod tests {
             hidden,
             selected: None,
             selected_folder: None,
+            displays: &[],
         }
     }
 

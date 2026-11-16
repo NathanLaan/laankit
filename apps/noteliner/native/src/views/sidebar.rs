@@ -64,6 +64,8 @@ pub struct SidebarProps<'a> {
     pub text: &'a str,
     pub cursor_line: usize,
     pub is_deck: bool,
+    /// The connected displays (for Present On in a presentation's menu).
+    pub displays: &'a [noteliner_slides::Display],
     /// The open deck, the slide holding the caret, and where its images come from.
     pub deck: Option<&'a Deck>,
     pub active_slide: Option<usize>,
@@ -132,6 +134,7 @@ pub fn show(
         hidden: props.hidden_tags,
         selected: props.selected,
         selected_folder: props.selected_folder,
+        displays: props.displays,
     };
     let result = panes::show(
         ui,

@@ -50,6 +50,10 @@ pub struct Prefs {
     pub diagram_show_dimensions: bool,
     /// The last Export Diagram choices.
     pub diagram_export: export::Options,
+    /// The display to present on (`presentDisplay`): its name and size in
+    /// pixels, since its place in the system's list can change. `None`
+    /// presents on the display the window is on.
+    pub present_display: Option<(String, [u32; 2])>,
 }
 
 /// The grid sizes Settings offers for new diagrams, as BlockLiner's.
@@ -67,6 +71,7 @@ impl Default for Prefs {
             spell_check: true,
             files_sort_mode: "name-asc".into(),
             command_recents: Vec::new(),
+            present_display: None,
             diagram_show_grid: true,
             diagram_grid_size: DEFAULT_GRID,
             diagram_grid_unit: Unit::default(),
@@ -148,6 +153,13 @@ impl Paths {
                 .unwrap_or("name-asc")
                 .to_string(),
             command_recents: strings("commandRecents"),
+            present_display: m.get("presentDisplay").and_then(|d| {
+                let side = |k: &str| d.get(k).and_then(Value::as_u64).map(|v| v as u32);
+                Some((
+                    d.get("name")?.as_str()?.to_string(),
+                    [side("width")?, side("height")?],
+                ))
+            }),
             // `diagramShowGrid !== false`: the grid shows unless switched off.
             diagram_show_grid: flag("diagramShowGrid", true),
             diagram_grid_size: m

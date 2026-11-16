@@ -60,6 +60,12 @@ pub enum Act {
     PresentWithSpeakerView,
     /// Presenting from slide 1, wherever the caret is.
     PresentFromStart,
+    /// Presenting on the display at this place in the system's list, which
+    /// is then remembered.
+    PresentOnDisplay(usize),
+    /// Presenting on the display the window is on, and forgetting the
+    /// remembered one.
+    PresentOnWindowDisplay,
     /// The editor's Go to line bar (CodeMirror's `Mod-Alt-g`).
     GoToLine,
     AddTag,
@@ -96,6 +102,8 @@ pub struct View {
     /// A folder is selected in the tree.
     pub folder_selected: bool,
     pub is_deck: bool,
+    /// How many displays are connected (0 when unknown).
+    pub displays: usize,
     pub tags_visible: bool,
     /// How many tabs are open.
     pub tabs: usize,
@@ -522,6 +530,35 @@ pub fn registry() -> Registry<Act, View> {
         .shortcut("Shift+F5")
         .when(is_deck),
     );
+    // Offered only with two or more displays connected. The palette's
+    // entries are fixed, so the first four displays get one each.
+    r.register(
+        add(
+            "deck.presentOnWindowDisplay",
+            "Present on This Window's Display",
+            "Presentation",
+            Act::PresentOnWindowDisplay,
+        )
+        .when(|v| is_deck(v) && v.displays >= 2),
+    );
+    type When = fn(&View) -> bool;
+    const ON_DISPLAY: [(&str, &str, When); 4] = [
+        ("deck.presentOnDisplay1", "Present on Display 1", |v| {
+            is_deck(v) && v.displays >= 2
+        }),
+        ("deck.presentOnDisplay2", "Present on Display 2", |v| {
+            is_deck(v) && v.displays >= 2
+        }),
+        ("deck.presentOnDisplay3", "Present on Display 3", |v| {
+            is_deck(v) && v.displays >= 3
+        }),
+        ("deck.presentOnDisplay4", "Present on Display 4", |v| {
+            is_deck(v) && v.displays >= 4
+        }),
+    ];
+    for (n, (id, title, when)) in ON_DISPLAY.into_iter().enumerate() {
+        r.register(add(id, title, "Presentation", Act::PresentOnDisplay(n)).when(when));
+    }
     // Alt+F5 is PowerPoint's "Presenter View" key.
     r.register(
         add(

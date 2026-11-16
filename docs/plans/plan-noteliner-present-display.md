@@ -1,6 +1,6 @@
 # NoteLiner: Choosing the Display to Present On Plan
 
-Status: for review (2026-11-15). Evaluates whether NoteLiner can let you pick which screen a presentation goes full screen on when the computer has more than one. The answer is yes: the libraries NoteLiner is built on can list the screens and can put a window full screen on a chosen one, on Linux (X11 and Wayland), Windows, and macOS. None of it has been run on two screens yet, so the plan starts with a short trial on a real two-screen setup before anything is built into the app.
+Status: implemented (2026-11-15) except the trial runs and the speaker window's placement, and not yet checked on two displays. See "Changes during implementation". Evaluates whether NoteLiner can let you pick which screen a presentation goes full screen on when the computer has more than one. The answer is yes: the libraries NoteLiner is built on can list the screens and can put a window full screen on a chosen one, on Linux (X11 and Wayland), Windows, and macOS. None of it has been run on two screens yet, so the plan starts with a short trial on a real two-screen setup before anything is built into the app.
 
 ## Summary
 
@@ -105,6 +105,20 @@ Stopping sends `Fullscreen(false)` as today. If the trial shows the window does 
 | Q3 | Is D the right key for the next screen? | Yes. It is free in the presenter, and X stays as Swap displays. |
 | Q4 | Should the first Present on a computer with two screens ask which one? | No. It uses the window's screen, and the controls show how to move. |
 | Q5 | Should the trial program be kept in the repository as an example? | Yes, as `crates/noteliner-slides/examples/displays.rs`. It is the quickest way to check a new desktop or a new egui version. |
+
+Q1 to Q5 went ahead on the suggested answers.
+
+## Changes during implementation
+
+| Planned | Built |
+|---|---|
+| P0 runs before anything is built, and the plan stops if `SetMonitor` works nowhere. | The trial program is written (`cargo run -p noteliner-slides --example displays`), but it has not been run on two displays, and the feature was built without its answers. U1 to U7 are still open. With one display the feature shows nothing, so it is safe to ship unverified. |
+| A Present On submenu in the FILES menu. | The displays are listed in the menu itself, below Present, as "Present on Display 1: 3840 x 2160 (DP-1)". |
+| Palette entries for each display. | The palette's entries are fixed, so there is one for each of the first four displays, named by number only, plus Present on This Window's Display. |
+| A Display list in Presentation Settings. | Not built. That dialog saves into the note, and the display is a setting of the computer. Present on This Window's Display in the palette is the way back to the default. |
+| A display button on the controls and a Display list in the speaker window that open the list. | Both are a Next display button, which is the same thing with two displays. |
+| The speaker window opens on another display. | Not built. It needs display positions in units that differ between systems, and a wrong guess puts the window off the screen. It waits for the trial. |
+| Swap displays is hidden on Wayland. | It is hidden whenever the system does not report the window's position, which is the case on Wayland. |
 
 ## Out of scope
 

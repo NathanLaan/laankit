@@ -270,3 +270,110 @@ fn present_from_the_first_slide_the_menus_and_the_slides_pane() {
             .label()
             .is_some_and(|l| l.contains("(Alt+F5)"))));
 }
+
+fn displays(n: usize) -> Vec<noteliner_slides::Display> {
+    let all = [
+        (Some("DP-1"), [3840, 2160]),
+        (Some("HDMI-A-1"), [1920, 1080]),
+        (None, [1280, 720]),
+    ];
+    all.iter()
+        .take(n)
+        .enumerate()
+        .map(|(index, (name, size))| noteliner_slides::Display {
+            index,
+            name: name.map(str::to_string),
+            size: *size,
+            current: index == 0,
+        })
+        .collect()
+}
+
+#[test]
+fn presenting_on_a_chosen_display_is_remembered() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut h = open_deck(tmp.path());
+    let ctx = h.ctx.clone();
+    let prefs = tmp.path().join("NoteLiner/ui-preferences.json");
+
+    // One display: nothing about displays is offered, and F5 is as before.
+    h.state_mut().set_displays_for_test(displays(1));
+    h.run_steps(2);
+    h.get_by_role_and_label(Role::TreeItem, "Talk")
+        .click_secondary();
+    h.run_steps(3);
+    assert!(h.query_by_label_contains("Present on Display").is_none());
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    h.state_mut().apply_for_test(&ctx, Act::PresentOnDisplay(1));
+    h.run_steps(2);
+    assert_eq!(h.state().presenting_display(), None, "not connected");
+    stop(&mut h);
+    assert_eq!(h.state().remembered_display_for_test(), None);
+
+    // Two displays: the FILES menu lists them; picking one presents there
+    // and remembers it by name and size.
+    h.state_mut().set_displays_for_test(displays(2));
+    h.run_steps(2);
+    h.get_by_role_and_label(Role::TreeItem, "Talk")
+        .click_secondary();
+    h.run_steps(3);
+    h.get_by_label_contains("Present on Display 1: 3840 x 2160 (DP-1)");
+    h.get_by_label_contains("Present on Display 2: 1920 x 1080 (HDMI-A-1)")
+        .click();
+    wait_for(&mut h, "presenting", |a| a.presenting());
+    assert_eq!(h.state().presenting_display(), Some(1));
+    stop(&mut h);
+    let remembered = Some(("HDMI-A-1".to_string(), [1920, 1080]));
+    assert_eq!(h.state().remembered_display_for_test(), remembered);
+    let saved = std::fs::read_to_string(&prefs).unwrap();
+    assert!(saved.contains("\"presentDisplay\""), "{saved}");
+    assert!(saved.contains("HDMI-A-1"), "{saved}");
+
+    // F5 now uses it; D while presenting moves and remembers the other.
+    h.state_mut().apply_for_test(&ctx, Act::Present);
+    h.run_steps(2);
+    assert_eq!(h.state().presenting_display(), Some(1));
+    h.key_press(Key::D);
+    h.run_steps(2);
+    assert_eq!(h.state().presenting_display(), Some(0));
+    stop(&mut h);
+    assert_eq!(
+        h.state().remembered_display_for_test(),
+        Some(("DP-1".to_string(), [3840, 2160]))
+    );
+
+    // The remembered display found by name after the list's order changed.
+    let mut swapped = displays(2);
+    swapped.reverse();
+    for (i, d) in swapped.iter_mut().enumerate() {
+        d.index = i;
+    }
+    h.state_mut().set_displays_for_test(swapped);
+    h.state_mut().apply_for_test(&ctx, Act::Present);
+    h.run_steps(2);
+    assert_eq!(
+        h.state().presenting_display(),
+        Some(1),
+        "DP-1 is second now"
+    );
+    stop(&mut h);
+
+    // Unplugged: F5 uses the window's display, and the choice is kept.
+    h.state_mut()
+        .set_displays_for_test(displays(2)[1..].to_vec());
+    h.state_mut().apply_for_test(&ctx, Act::Present);
+    h.run_steps(2);
+    assert_eq!(h.state().presenting_display(), None);
+    stop(&mut h);
+    assert!(h.state().remembered_display_for_test().is_some());
+
+    // This Window's Display forgets the choice.
+    h.state_mut().set_displays_for_test(displays(2));
+    h.state_mut()
+        .apply_for_test(&ctx, Act::PresentOnWindowDisplay);
+    h.run_steps(2);
+    assert_eq!(h.state().presenting_display(), None);
+    stop(&mut h);
+    assert_eq!(h.state().remembered_display_for_test(), None);
+}

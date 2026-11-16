@@ -151,6 +151,7 @@ impl eframe::App for DeckApp {
                         }
                     }
                     PresenterAction::Exit => keep = false,
+                    PresenterAction::DisplayChosen(_) => {}
                 }
             }
             if keep {

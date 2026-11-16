@@ -19,14 +19,17 @@
 //! way: a deferred viewport runs on its own schedule and would need the deck,
 //! the slide index and the timer shared behind locks.
 //!
-//! *Placement.* egui can't list monitors or say which one a window is on, so
-//! the audience window goes full screen where it is and the speaker window
-//! opens beside it as a normal window. To put each on the right display, drag
-//! the speaker window to the presenter's monitor, or press **X** (or "Swap
-//! displays") to move the full-screen audience window to the monitor the
-//! speaker window is on and the speaker window to where the audience window
-//! was. Exiting restores the main window's place and full-screen state, and
-//! closes the speaker window. Closing the speaker window keeps presenting.
+//! *Placement.* The host lists the displays ([`Presenter::set_displays`],
+//! from the window: egui itself doesn't list them). With two or more, the
+//! audience window goes full screen on the one asked for
+//! ([`Presenter::with_display`]), or on the one it is on, and **D** moves it
+//! to the next display (`ViewportCommand::SetMonitor`). The speaker window
+//! opens as a normal window: drag it to the presenter's display. Where the
+//! system reports window positions (not Wayland), **X** ("Swap displays")
+//! moves the full-screen audience window to the display the speaker window
+//! is on and the speaker window to where the audience window was. Exiting
+//! restores the main window's place and full-screen state, and closes the
+//! speaker window. Closing the speaker window keeps presenting.
 //!
 //! | Key                                               | Does                    |
 //! |---------------------------------------------------|-------------------------|
@@ -36,6 +39,7 @@
 //! | S                                                 | Show or hide the notes on the audience view |
 //! | T / R                                             | Pause or resume / reset the timer (speaker view) |
 //! | X                                                 | Swap displays (speaker view) |
+//! | D                                                 | Move to the next display (two or more displays) |
 //! | F11                                               | Leave or return to full screen, still presenting |
 //! | Escape                                            | Stop presenting         |
 
@@ -73,9 +77,37 @@ const COMMAND_LOG: usize = 64;
 /// How long the audience view's controls stay after the mouse last moved.
 pub const CONTROLS_SECONDS: f64 = 3.0;
 
+/// One of the computer's displays, as the host read it from the window.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Display {
+    /// Its place in the system's list, which `ViewportCommand::SetMonitor` takes.
+    pub index: usize,
+    /// The system's name for it (`DP-1`, `\\.\DISPLAY1`), if it has one.
+    pub name: Option<String>,
+    /// Its size in pixels.
+    pub size: [u32; 2],
+    /// The audience window is on it.
+    pub current: bool,
+}
+
+impl Display {
+    /// "Display 2: 1920 x 1080 (HDMI-A-1)".
+    pub fn label(&self) -> String {
+        let [w, h] = self.size;
+        let base = format!("Display {}: {w} x {h}", self.index + 1);
+        match self.name.as_deref().filter(|n| !n.is_empty()) {
+            Some(name) => format!("{base} ({name})"),
+            None => base,
+        }
+    }
+}
+
 /// What the host should do after a frame of presenting.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PresenterAction {
+    /// The presentation was moved to this display (its index) while
+    /// presenting; e.g. to remember the choice.
+    DisplayChosen(usize),
     /// The slide shown changed (1-based); e.g. to move the editor caret.
     Changed(usize),
     /// Stop presenting: drop the [`Presenter`].
@@ -95,6 +127,8 @@ pub enum Nav {
     SwapDisplays,
     /// Out of full screen, or back into it, without stopping.
     ToggleFullscreen,
+    /// To the next display in the list.
+    NextDisplay,
     Exit,
 }
 
@@ -189,6 +223,10 @@ pub struct Presenter {
     fullscreen: bool,
     /// When the mouse last moved over the audience view (egui's clock).
     last_move: Option<f64>,
+    /// The displays, as the host last listed them.
+    displays: Vec<Display>,
+    /// The display the audience window was sent to (an index), if it was.
+    display: Option<usize>,
     /// The main window's outer rect before presenting (restored after a swap).
     root_outer: Option<Rect>,
     speaker: Option<Speaker>,
@@ -205,6 +243,8 @@ impl Presenter {
             was_fullscreen: false,
             fullscreen: false,
             last_move: None,
+            displays: Vec::new(),
+            display: None,
             root_outer: None,
             speaker: None,
             sent: Vec::new(),
@@ -231,6 +271,63 @@ impl Presenter {
     /// Whether the speaker notes are showing on the audience view.
     pub fn notes_visible(&self) -> bool {
         self.notes
+    }
+
+    /// Goes full screen on the display at `index` rather than the one the
+    /// window is on. Ignored unless [`Self::set_displays`] lists it.
+    pub fn with_display(mut self, index: Option<usize>) -> Self {
+        self.display = index;
+        self
+    }
+
+    /// The computer's displays; call it before [`Self::show`] whenever the
+    /// list is read. With fewer than two, nothing about displays is offered.
+    pub fn set_displays(&mut self, displays: Vec<Display>) {
+        self.displays = displays;
+    }
+
+    /// The display the audience window was sent to, if it was sent to one.
+    pub fn display(&self) -> Option<usize> {
+        self.display
+    }
+
+    /// Whether there is another display to move to.
+    fn can_move(&self) -> bool {
+        self.displays.len() >= 2
+    }
+
+    /// Full screen on `self.display` if it is listed, or where the window is.
+    fn enter_fullscreen(&mut self, ctx: &egui::Context) {
+        let target = self
+            .display
+            .filter(|i| self.can_move() && self.displays.iter().any(|d| d.index == *i));
+        self.display = target;
+        match target {
+            Some(i) => self.send(ctx, ViewportId::ROOT, ViewportCommand::SetMonitor(i)),
+            None => self.send(ctx, ViewportId::ROOT, ViewportCommand::Fullscreen(true)),
+        }
+        self.fullscreen = true;
+    }
+
+    /// Moves the audience window to the display after the one it is on.
+    /// Returns the display's index.
+    fn next_display(&mut self, ctx: &egui::Context) -> Option<usize> {
+        if !self.can_move() {
+            return None;
+        }
+        let here = self
+            .display
+            .or_else(|| self.displays.iter().find(|d| d.current).map(|d| d.index));
+        let at = here.and_then(|i| self.displays.iter().position(|d| d.index == i));
+        let next = match at {
+            Some(at) => (at + 1) % self.displays.len(),
+            None => 0,
+        };
+        let index = self.displays[next].index;
+        self.display = Some(index);
+        self.send(ctx, ViewportId::ROOT, ViewportCommand::SetMonitor(index));
+        self.fullscreen = true;
+        Some(index)
     }
 
     /// Whether the audience window is full screen (F11 changes it).
@@ -277,8 +374,9 @@ impl Presenter {
             self.started = true;
             self.was_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
             self.root_outer = ctx.input(|i| i.viewport().outer_rect);
-            if !self.was_fullscreen {
-                self.send(ctx, ViewportId::ROOT, ViewportCommand::Fullscreen(true));
+            let asked = self.display.is_some();
+            if !self.was_fullscreen || asked {
+                self.enter_fullscreen(ctx);
             }
             self.fullscreen = true;
             if let Some(s) = &mut self.speaker {
@@ -299,7 +397,15 @@ impl Presenter {
             self.last_move = Some(now);
         }
         let controls = self.controls_visible(now);
-        let shown = audience(ctx, deck, vars, images, self.index, self.notes, controls);
+        let shown = audience(
+            ctx,
+            deck,
+            vars,
+            images,
+            self.index,
+            self.notes,
+            controls.then_some(self.can_move()),
+        );
         navs.extend(shown.navs);
         if shown.over_controls {
             // Resting on the bar keeps it.
@@ -315,12 +421,21 @@ impl Presenter {
         if self.speaker_view_open() {
             navs.extend(self.speaker_window(ctx, deck, vars, images, now));
         }
+        if !self.can_move() {
+            navs.retain(|n| *n != Nav::NextDisplay);
+        }
 
         for nav in navs {
             if nav == Nav::Exit {
                 self.exit(ctx);
                 out.push(PresenterAction::Exit);
                 return out;
+            }
+            if nav == Nav::NextDisplay {
+                if let Some(i) = self.next_display(ctx) {
+                    out.push(PresenterAction::DisplayChosen(i));
+                }
+                continue;
             }
             self.apply(ctx, nav, total, now);
         }
@@ -359,9 +474,15 @@ impl Presenter {
             }
             Nav::SwapDisplays => self.swap_displays(ctx),
             Nav::ToggleFullscreen => {
-                self.fullscreen = !self.fullscreen;
-                let on = self.fullscreen;
-                self.send(ctx, ViewportId::ROOT, ViewportCommand::Fullscreen(on));
+                if self.fullscreen {
+                    self.fullscreen = false;
+                    self.send(ctx, ViewportId::ROOT, ViewportCommand::Fullscreen(false));
+                } else {
+                    self.enter_fullscreen(ctx);
+                }
+            }
+            Nav::NextDisplay => {
+                self.next_display(ctx);
             }
             Nav::Exit => self.exit(ctx),
             _ => {}
@@ -432,6 +553,11 @@ impl Presenter {
             .with_min_inner_size([480.0, 320.0]);
         let index = self.index;
         let timer = self.timer();
+        let bar = SpeakerBar {
+            // Swapping needs window positions, which Wayland doesn't report.
+            swap: ctx.input(|i| i.viewport().outer_rect).is_some() || ctx.embed_viewports(),
+            next_display: self.can_move(),
+        };
         let notes = self
             .speaker
             .as_ref()
@@ -441,7 +567,7 @@ impl Presenter {
             let mut navs = read_keys(ui.ctx(), true);
             let mut notes = notes.lock().unwrap_or_else(|e| e.into_inner());
             speaker_ui(
-                ui, deck, vars, images, index, timer, now, &mut notes, &mut navs,
+                ui, deck, vars, images, index, timer, now, bar, &mut notes, &mut navs,
             );
             navs
         };
@@ -509,6 +635,7 @@ fn read_keys(ctx: &egui::Context, speaker: bool) -> Vec<Nav> {
             take(&[Key::X], Nav::SwapDisplays);
         }
         take(&[Key::F11], Nav::ToggleFullscreen);
+        take(&[Key::D], Nav::NextDisplay);
         take(&[Key::Escape], Nav::Exit);
         out
     })
@@ -523,7 +650,7 @@ struct Shown {
 }
 
 /// The audience view over the whole window. `controls` draws the bar of
-/// buttons at the bottom.
+/// buttons at the bottom, with a Next display button when it holds `true`.
 fn audience(
     ctx: &egui::Context,
     deck: &Deck,
@@ -531,7 +658,7 @@ fn audience(
     images: &dyn ImageSource,
     index: usize,
     notes: bool,
-    controls: bool,
+    controls: Option<bool>,
 ) -> Shown {
     let total = deck.slides.len();
     let screen = ctx.content_rect();
@@ -595,8 +722,8 @@ fn audience(
                 navs: Vec::new(),
                 over_controls: false,
             };
-            if controls {
-                shown = controls_bar(ui, rect, index.min(total), total);
+            if let Some(displays) = controls {
+                shown = controls_bar(ui, rect, index.min(total), total, displays);
             }
             if resp.clicked() {
                 shown.navs.push(Nav::Next);
@@ -606,14 +733,15 @@ fn audience(
         .inner
 }
 
-/// The audience view's controls: previous, the slide number, next and Exit,
-/// in a bar at the bottom centre of `screen`.
-fn controls_bar(ui: &mut Ui, screen: Rect, index: usize, total: usize) -> Shown {
+/// The audience view's controls: previous, the slide number, next, Exit and
+/// (with `displays`) Next display, in a bar at the bottom centre of `screen`.
+fn controls_bar(ui: &mut Ui, screen: Rect, index: usize, total: usize, displays: bool) -> Shown {
     const HEIGHT: f32 = 40.0;
     const BUTTON: f32 = 40.0;
     const COUNTER: f32 = 84.0;
     const EXIT: f32 = 84.0;
-    let width = BUTTON * 2.0 + COUNTER + EXIT + 9.0;
+    let display_w = if displays { BUTTON } else { 0.0 };
+    let width = BUTTON * 2.0 + COUNTER + EXIT + 9.0 + display_w;
     let bar = Rect::from_center_size(
         pos2(screen.center().x, screen.bottom() - HEIGHT * 0.5 - 24.0),
         vec2(width, HEIGHT),
@@ -659,6 +787,7 @@ fn controls_bar(ui: &mut Ui, screen: Rect, index: usize, total: usize) -> Shown 
     let counter = cell(COUNTER);
     let next = cell(BUTTON);
     let divider = cell(9.0);
+    let display = cell(display_w);
     let exit = cell(EXIT);
 
     let can_back = index > 1;
@@ -671,6 +800,18 @@ fn controls_bar(ui: &mut Ui, screen: Rect, index: usize, total: usize) -> Shown 
     }
     if button(ui, exit, "Stop presenting", true) {
         navs.push(Nav::Exit);
+    }
+    if displays {
+        if button(ui, display, "Next display (D)", true) {
+            navs.push(Nav::NextDisplay);
+        }
+        painter.text(
+            display.center(),
+            Align2::CENTER_CENTER,
+            laankit_egui::icons::DISPLAY,
+            laankit_egui::icons::font(14.0),
+            ink,
+        );
     }
     let icon = laankit_egui::icons::font(14.0);
     painter.text(
@@ -728,6 +869,13 @@ fn fit(area: Rect, aspect: f32) -> Rect {
     Rect::from_center_size(area.center(), vec2(width, width * aspect))
 }
 
+/// Which of the speaker view's optional buttons show.
+#[derive(Clone, Copy)]
+struct SpeakerBar {
+    swap: bool,
+    next_display: bool,
+}
+
 /// The speaker view: current and next slide, notes, timer and clock.
 #[allow(clippy::too_many_arguments)]
 fn speaker_ui(
@@ -738,6 +886,7 @@ fn speaker_ui(
     index: usize,
     timer: Option<Timer>,
     now: f64,
+    bar_buttons: SpeakerBar,
     notes: &mut laankit_richtext::RichView,
     navs: &mut Vec<Nav>,
 ) {
@@ -791,8 +940,11 @@ fn speaker_ui(
                 if ui.button("End (Esc)").clicked() {
                     navs.push(Nav::Exit);
                 }
-                if ui.button("Swap displays (X)").clicked() {
+                if bar_buttons.swap && ui.button("Swap displays (X)").clicked() {
                     navs.push(Nav::SwapDisplays);
+                }
+                if bar_buttons.next_display && ui.button("Next display (D)").clicked() {
+                    navs.push(Nav::NextDisplay);
                 }
                 if ui.button("Next ▶").clicked() {
                     navs.push(Nav::Next);

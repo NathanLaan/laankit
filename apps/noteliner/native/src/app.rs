@@ -220,7 +220,11 @@ pub struct NoteLinerApp {
     deck: DeckState,
     /// A deck picked with Present in the FILES pane that is still loading:
     /// its id, and whether the speaker view was asked for.
-    present_when_open: Option<(String, bool)>,
+    present_when_open: Option<(String, bool, DisplayPick)>,
+    /// The connected displays, read from the window about once a second.
+    displays: Vec<noteliner_slides::Display>,
+    /// When they were last read (egui's clock).
+    displays_read: f64,
     /// A note being converted to a presentation: open its settings once done
     /// (`handleConvertToPresentation`).
     pending_convert: Option<String>,
@@ -305,6 +309,8 @@ impl NoteLinerApp {
             tabs: Tabs::default(),
             deck: DeckState::default(),
             present_when_open: None,
+            displays: Vec::new(),
+            displays_read: f64::NEG_INFINITY,
             pending_convert: None,
             pending_settings: None,
             spell: spell::Loader::default(),
@@ -537,6 +543,23 @@ impl NoteLinerApp {
         self.deck.presenter.is_some()
     }
 
+    /// The connected displays, as a window would report them.
+    #[cfg(test)]
+    pub fn set_displays_for_test(&mut self, displays: Vec<noteliner_slides::Display>) {
+        self.displays = displays;
+    }
+
+    /// The display the presentation was sent to, and the remembered one.
+    #[cfg(test)]
+    pub fn presenting_display(&self) -> Option<usize> {
+        self.deck.presenter.as_ref().and_then(|p| p.display())
+    }
+
+    #[cfg(test)]
+    pub fn remembered_display_for_test(&self) -> Option<(String, [u32; 2])> {
+        self.prefs.present_display.clone()
+    }
+
     /// The slide on screen while presenting (1-based).
     #[cfg(test)]
     pub fn presenting_slide(&self) -> Option<usize> {
@@ -578,6 +601,7 @@ impl NoteLinerApp {
             has_selection: p.is_some_and(|p| p.selected.is_some()),
             folder_selected: p.is_some_and(|p| p.selected_folder.is_some()),
             is_deck: self.is_deck(),
+            displays: self.displays.len(),
             tags_visible: p.is_some_and(|p| p.layout.show_tags),
             tabs: self.tabs.len(),
             is_diagram: self.diagram_active(),
@@ -1757,7 +1781,7 @@ impl NoteLinerApp {
 
     /// Starts presenting the open deck at slide `start` (1-based), or at the
     /// caret's slide.
-    fn start_presenting(&mut self, start: Option<usize>, speaker: bool) {
+    fn start_presenting(&mut self, start: Option<usize>, speaker: bool, pick: DisplayPick) {
         self.present_when_open = None;
         self.update_deck();
         let Some(total) = self.deck.deck().map(|d| d.slides.len()) else {
@@ -1770,26 +1794,99 @@ impl NoteLinerApp {
             .or_else(|| self.deck.active(self.editor.body_line().max(1)))
             .unwrap_or(1)
             .clamp(1, total);
-        self.deck.presenter =
-            Some(noteliner_slides::Presenter::new(start).with_speaker_view(speaker));
+        let display = match pick {
+            DisplayPick::Remembered => self.remembered_display(),
+            DisplayPick::Index(i) => {
+                self.remember_display(Some(i));
+                self.displays.iter().any(|d| d.index == i).then_some(i)
+            }
+            DisplayPick::Window => {
+                self.remember_display(None);
+                None
+            }
+        };
+        let mut presenter = noteliner_slides::Presenter::new(start)
+            .with_speaker_view(speaker)
+            .with_display(display);
+        presenter.set_displays(self.displays.clone());
+        self.deck.presenter = Some(presenter);
         self.palette = None;
+    }
+
+    /// The remembered display's place in the list, if it is connected and
+    /// there is more than one display.
+    fn remembered_display(&self) -> Option<usize> {
+        let (name, size) = self.prefs.present_display.as_ref()?;
+        if self.displays.len() < 2 {
+            return None;
+        }
+        self.displays
+            .iter()
+            .find(|d| d.name.as_deref().unwrap_or_default() == name && d.size == *size)
+            .map(|d| d.index)
+    }
+
+    /// Saves the display at `index` as the one to present on (by its name
+    /// and size, since its place in the list can change), or forgets it.
+    fn remember_display(&mut self, index: Option<usize>) {
+        let pick = match index {
+            Some(i) => match self.displays.iter().find(|d| d.index == i) {
+                Some(d) => Some((d.name.clone().unwrap_or_default(), d.size)),
+                None => return,
+            },
+            None => None,
+        };
+        if self.prefs.present_display == pick {
+            return;
+        }
+        let value = match &pick {
+            Some((name, [w, h])) => json!({ "name": name, "width": w, "height": h }),
+            None => Value::Null,
+        };
+        self.prefs.present_display = pick;
+        self.backend.set_prefs(json!({ "presentDisplay": value }));
+    }
+
+    /// Reads the displays from the window, about once a second: a display
+    /// can be plugged in or unplugged at any time. Headless (tests), there
+    /// is no window and the list is left as it is.
+    fn read_displays(&mut self, ctx: &egui::Context, frame: &eframe::Frame) {
+        let now = ctx.input(|i| i.time);
+        if now - self.displays_read < 1.0 {
+            return;
+        }
+        self.displays_read = now;
+        let Some(window) = frame.winit_window() else {
+            return;
+        };
+        let current = window.current_monitor();
+        self.displays = window
+            .available_monitors()
+            .enumerate()
+            .map(|(index, m)| noteliner_slides::Display {
+                index,
+                name: m.name(),
+                size: [m.size().width, m.size().height],
+                current: current.as_ref() == Some(&m),
+            })
+            .collect();
     }
 
     /// Present from a deck's menu in the FILES pane: at once if it is the
     /// open note, or once it has loaded.
-    fn present_file(&mut self, id: String, speaker: bool) {
+    fn present_file(&mut self, id: String, speaker: bool, pick: DisplayPick) {
         if self.editor.file_id() == Some(id.as_str()) && self.is_deck() {
-            self.start_presenting(None, speaker);
+            self.start_presenting(None, speaker, pick);
         } else {
             self.select(id.clone());
-            self.present_when_open = Some((id, speaker));
+            self.present_when_open = Some((id, speaker, pick));
         }
     }
 
     /// Starts the presentation asked for from the FILES pane once its deck
     /// is in the editor; forgets it if another note was opened instead.
     fn present_pending(&mut self) {
-        let Some((id, speaker)) = self.present_when_open.clone() else {
+        let Some((id, speaker, pick)) = self.present_when_open.clone() else {
             return;
         };
         let selected = self.project.as_ref().and_then(|p| p.selected.as_deref());
@@ -1798,7 +1895,7 @@ impl NoteLinerApp {
         } else if self.editor.file_id() == Some(id.as_str()) {
             // Loaded: a note that isn't a deck has nothing to present.
             if self.is_deck() {
-                self.start_presenting(None, speaker);
+                self.start_presenting(None, speaker, pick);
             }
             self.present_when_open = None;
         }
@@ -1824,8 +1921,10 @@ impl NoteLinerApp {
             dir: self.project.as_ref().map(Project::attachments_dir),
         };
         let mut keep = true;
+        presenter.set_displays(self.displays.clone());
         for a in presenter.show(ctx, &deck, &deck::vars(&name), &images) {
             match a {
+                PresenterAction::DisplayChosen(i) => self.remember_display(Some(i)),
                 PresenterAction::Changed(i) => {
                     if let Some(s) = deck.slides.iter().find(|s| s.index == i) {
                         self.editor.scroll_to_line(s.source_range.from_line);
@@ -2071,9 +2170,19 @@ impl NoteLinerApp {
             | Act::MoveSlideUp
             | Act::MoveSlideDown
             | Act::ToggleSpeakerNotes => self.slide_command(act),
-            Act::Present => self.start_presenting(None, false),
-            Act::PresentWithSpeakerView => self.start_presenting(None, true),
-            Act::PresentFromStart => self.start_presenting(Some(1), false),
+            Act::Present => self.start_presenting(None, false, DisplayPick::Remembered),
+            Act::PresentWithSpeakerView => {
+                self.start_presenting(None, true, DisplayPick::Remembered);
+            }
+            Act::PresentFromStart => {
+                self.start_presenting(Some(1), false, DisplayPick::Remembered);
+            }
+            Act::PresentOnDisplay(i) => {
+                self.start_presenting(None, false, DisplayPick::Index(i));
+            }
+            Act::PresentOnWindowDisplay => {
+                self.start_presenting(None, false, DisplayPick::Window);
+            }
             Act::AddTag => {
                 // `triggerTagAction('add')`: the TAGS pane's input (shown first
                 // if it's hidden).
@@ -2175,8 +2284,11 @@ impl NoteLinerApp {
             ContextAction::ConvertToPresentation => self.set_presentation(Some(id), true),
             ContextAction::ConvertToNote => self.set_presentation(Some(id), false),
             ContextAction::PresentationSettings => self.presentation_settings_for(id),
-            ContextAction::Present => self.present_file(id, false),
-            ContextAction::PresentWithSpeakerView => self.present_file(id, true),
+            ContextAction::Present => self.present_file(id, false, DisplayPick::Remembered),
+            ContextAction::PresentWithSpeakerView => {
+                self.present_file(id, true, DisplayPick::Remembered);
+            }
+            ContextAction::PresentOn(i) => self.present_file(id, false, DisplayPick::Index(i)),
             ContextAction::Duplicate => {
                 if let Some(e) = self.project.as_ref().and_then(|p| p.entry(&id)) {
                     self.overlay = Some(Overlay::NewFile(NewFileForm::duplicate(e)));
@@ -2809,6 +2921,7 @@ impl NoteLinerApp {
                         text: self.editor.text(),
                         cursor_line: caret_line,
                         is_deck,
+                        displays: &self.displays,
                         deck: parsed,
                         active_slide,
                         images: &slide_images,
@@ -3086,7 +3199,7 @@ impl NoteLinerApp {
                 noteliner_slides::PaneAction::Jump { line } => self.editor.scroll_to_line(line),
                 noteliner_slides::PaneAction::Edit(result) => self.apply_slide_edit(result),
                 noteliner_slides::PaneAction::Present { index } => {
-                    self.start_presenting(Some(index), false);
+                    self.start_presenting(Some(index), false, DisplayPick::Remembered);
                 }
                 noteliner_slides::PaneAction::OpenSettings => {
                     if let Some(id) = self.project.as_ref().and_then(|p| p.selected.clone()) {
@@ -3094,7 +3207,9 @@ impl NoteLinerApp {
                     }
                 }
             },
-            SidebarAction::Present => self.start_presenting(None, false),
+            SidebarAction::Present => {
+                self.start_presenting(None, false, DisplayPick::Remembered);
+            }
             SidebarAction::Tree(t) => match t {
                 TreeAction::Select(id) => {
                     // A click on the open note takes the highlight back from
@@ -3856,7 +3971,8 @@ impl NoteLinerApp {
 }
 
 impl eframe::App for NoteLinerApp {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
+        self.read_displays(ui.ctx(), frame);
         self.show(ui);
     }
 
@@ -3872,6 +3988,17 @@ impl eframe::App for NoteLinerApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.shutdown();
     }
+}
+
+/// Which display a presentation starts on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DisplayPick {
+    /// The one remembered in the prefs, if it is connected; else the window's.
+    Remembered,
+    /// This one (its place in the system's list), which is then remembered.
+    Index(usize),
+    /// The one the window is on, forgetting the remembered one.
+    Window,
 }
 
 /// Keeps a resizable panel's size in the layout once the drag settles.
