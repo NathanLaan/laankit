@@ -605,7 +605,7 @@ fn menu_item(ui: &mut Ui, glyph: &str, label: &str, shortcut: Option<&str>) -> b
 fn folder_menu(ui: &mut Ui, path: Option<&str>, out: &mut Vec<TreeAction>, state: &mut TreeState) {
     let target = path.unwrap_or_default().to_string();
     let mut act = |a: FolderAction| out.push(TreeAction::FolderContext(a, target.clone()));
-    if menu_item(ui, icons::FILE_CIRCLE_PLUS, "New File...", Some("Ctrl+N")) {
+    if menu_item(ui, icons::FILE_CIRCLE_PLUS, "New Item...", Some("Ctrl+N")) {
         act(FolderAction::NewFile);
     }
     if menu_item(ui, icons::OBJECT_GROUP, "New Diagram...", None) {

@@ -44,7 +44,7 @@ use crate::editor::{EditorAction, NoteEditor};
 use crate::model::{self, Entry, SortMode};
 use crate::overlays::settings::{SettingsAction, SettingsState};
 use crate::overlays::{
-    self, ConflictAction, FormAction, MoveForm, MoveTarget, NewFileForm, NewFolderForm, Overlay,
+    self, ConflictAction, FormAction, MoveForm, MoveTarget, NewFileForm, Overlay,
 };
 use crate::spell;
 use crate::tabs::{NoteStash, Stashed, Tabs};
@@ -2087,7 +2087,8 @@ impl NoteLinerApp {
             }
             Act::NewFolder => {
                 if let Some(p) = &self.project {
-                    self.overlay = Some(Overlay::NewFolder(NewFolderForm::new(&p.target_folder())));
+                    self.overlay = Some(Overlay::NewFile(NewFileForm::folder(&p.target_folder())));
+                    self.backend.list_templates();
                 }
             }
             Act::DeleteFile => {
@@ -2335,7 +2336,8 @@ impl NoteLinerApp {
                 self.backend.list_templates();
             }
             FolderAction::NewFolder => {
-                self.overlay = Some(Overlay::NewFolder(NewFolderForm::new(&path)));
+                self.overlay = Some(Overlay::NewFile(NewFileForm::folder(&path)));
+                self.backend.list_templates();
             }
             FolderAction::Move => {
                 if !path.is_empty() {
@@ -2574,7 +2576,7 @@ impl NoteLinerApp {
                 act = Some(Act::OpenFolder);
             }
             if open {
-                if titlebar::button(ui, icons::FILE_CIRCLE_PLUS, "New File (Ctrl+N)", false)
+                if titlebar::button(ui, icons::FILE_CIRCLE_PLUS, "New Item (Ctrl+N)", false)
                     .clicked()
                 {
                     act = Some(Act::NewFile);
@@ -2643,7 +2645,7 @@ impl NoteLinerApp {
                         if b(
                             ui,
                             icons::FILE_CIRCLE_PLUS,
-                            "New File (Ctrl+N)",
+                            "New Item (Ctrl+N)",
                             false,
                             false,
                         ) {
@@ -3244,7 +3246,8 @@ impl NoteLinerApp {
             },
             SidebarAction::NewFolder => {
                 if let Some(p) = &self.project {
-                    self.overlay = Some(Overlay::NewFolder(NewFolderForm::new(&p.target_folder())));
+                    self.overlay = Some(Overlay::NewFile(NewFileForm::folder(&p.target_folder())));
+                    self.backend.list_templates();
                 }
             }
             SidebarAction::Sort(mode) => {
@@ -3589,6 +3592,7 @@ impl NoteLinerApp {
                                 self.backend
                                     .duplicate_file(source.clone(), name, tags, folder)
                             }
+                            None if form.new_folder => self.backend.create_folder(form.path()),
                             None if form.diagram => self.backend.create_diagram(name, tags, folder),
                             None => self.backend.create_file(
                                 name,
@@ -3598,21 +3602,6 @@ impl NoteLinerApp {
                                 form.deck,
                             ),
                         }
-                    }
-                    None => {}
-                }
-            }
-            Overlay::NewFolder(form) => {
-                let folders = self
-                    .project
-                    .as_ref()
-                    .map(|p| p.folders.clone())
-                    .unwrap_or_default();
-                match overlays::new_folder(ctx, form, &folders) {
-                    Some(FormAction::Close) => keep = false,
-                    Some(FormAction::Submit) => {
-                        keep = false;
-                        self.backend.create_folder(form.path());
                     }
                     None => {}
                 }

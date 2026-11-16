@@ -33,7 +33,7 @@ pub enum Act {
     CloseTab,
     NextTab,
     PreviousTab,
-    /// New File, with Diagram chosen.
+    /// New Item, with Diagram chosen.
     NewDiagram,
     /// An edit of the diagram in the active tab.
     Diagram(EditAct),
@@ -332,7 +332,7 @@ pub fn registry() -> Registry<Act, View> {
         add("file.newDiagram", "New Diagram...", "File", Act::NewDiagram).when(project_open),
     );
     r.register(
-        add("file.new", "New File", "File", Act::NewFile)
+        add("file.new", "New Item...", "File", Act::NewFile)
             .key(Binding::logical(cmd, Key::N))
             .shortcut("Ctrl+N")
             .when(project_open),

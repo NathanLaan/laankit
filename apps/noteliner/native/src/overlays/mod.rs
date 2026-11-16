@@ -3,8 +3,7 @@
 //!
 //! | Overlay                    | For                                            |
 //! |----------------------------|------------------------------------------------|
-//! | `NewFile`                  | New File, New Presentation, New Diagram, Duplicate |
-//! | `NewFolder`                | New Folder                                     |
+//! | `NewFile`                  | New Item (a note, presentation, diagram or folder), Duplicate |
 //! | `Move`                     | Move…, for a note, a diagram or a folder       |
 //! | `DeleteFile`, `DeleteFolder`, `DeletePermanently` | the questions before deleting |
 //! | `ClearTags`, `RemoveRecent`, `RemoveAttachment`   | the other confirmations |
@@ -41,7 +40,6 @@ use crate::model::Entry;
 
 pub enum Overlay {
     NewFile(NewFileForm),
-    NewFolder(NewFolderForm),
     Move(MoveForm),
     DeleteFile {
         id: String,
@@ -129,9 +127,9 @@ fn form_buttons(ui: &mut egui::Ui, ok: &str, ready: bool) -> Option<FormAction> 
     out
 }
 
-// --- New File / Duplicate --------------------------------------------------------
+// --- New Item / Duplicate --------------------------------------------------------
 
-/// New File, New Presentation, New Diagram or Duplicate.
+/// New Item (a note, a presentation, a diagram or a folder) or Duplicate.
 pub struct NewFileForm {
     /// Duplicating this note (hides the template and type pickers).
     pub duplicate_of: Option<String>,
@@ -143,6 +141,9 @@ pub struct NewFileForm {
     pub deck: bool,
     /// `true` for Diagram: a blank `.mmd`, with no template.
     pub diagram: bool,
+    /// `true` for Folder: `name` is a folder's, made in `folder`, with no
+    /// template or tags.
+    pub new_folder: bool,
     pub template: Option<String>,
     /// From `templates:list`: `{ id, name, kind }`.
     pub templates: Vec<serde_json::Value>,
@@ -158,6 +159,7 @@ impl NewFileForm {
             folder: folder.to_string(),
             deck,
             diagram: false,
+            new_folder: false,
             template: None,
             templates: Vec::new(),
         }
@@ -171,6 +173,36 @@ impl NewFileForm {
         }
     }
 
+    /// New Folder, in `parent`.
+    pub fn folder(parent: &str) -> Self {
+        Self {
+            new_folder: true,
+            ..Self::new("", false, parent)
+        }
+    }
+
+    /// The new folder's path.
+    pub fn path(&self) -> String {
+        tree::join(&self.folder, self.name.trim())
+    }
+
+    /// Why the name can't be used for a folder, if it can't: the name
+    /// rules, and a folder of that name already there (ignoring case).
+    /// Nothing for the other types, whose names are made to fit.
+    pub fn problem(&self, folders: &[String]) -> Option<String> {
+        if !self.new_folder || self.name.trim().is_empty() {
+            return None;
+        }
+        if let Err(e) = tree::check_folder_name(&self.name) {
+            return Some(e.to_string());
+        }
+        let path = self.path().to_lowercase();
+        folders
+            .iter()
+            .any(|f| f.to_lowercase() == path)
+            .then(|| format!("A folder named {} is already there", self.name.trim()))
+    }
+
     pub fn duplicate(source: &Entry) -> Self {
         Self {
             duplicate_of: Some(source.id.clone()),
@@ -180,6 +212,7 @@ impl NewFileForm {
             folder: source.folder.clone(),
             deck: false,
             diagram: false,
+            new_folder: false,
             template: None,
             templates: Vec::new(),
         }
@@ -187,7 +220,7 @@ impl NewFileForm {
 
     /// Templates of the chosen type (`visibleTemplates`).
     fn visible_templates(&self) -> Vec<&serde_json::Value> {
-        if self.diagram {
+        if self.diagram || self.new_folder {
             return Vec::new();
         }
         let kind = if self.deck { "deck" } else { "note" };
@@ -208,31 +241,32 @@ pub fn new_file(
     all_tags: &[String],
 ) -> Option<FormAction> {
     let duplicating = form.duplicate_of.is_some();
-    let title = match (duplicating, form.deck, form.diagram) {
-        (true, _, _) => "Duplicate",
-        (false, _, true) => "New Diagram",
-        (false, true, false) => "New Presentation",
-        (false, false, false) => "New File",
-    };
+    // One title whatever the type: the Type row says which is chosen.
+    let title = if duplicating { "Duplicate" } else { "New Item" };
     let resp = Dialog::compact("new-file", title).show(ctx, |ui| {
         let p = theme::palette(ui.ctx());
         let mut submit = false;
         if !duplicating {
             dialog::field_label(ui, "Type");
-            ui.horizontal(|ui| {
-                for (deck, diagram, glyph, label) in [
-                    (false, false, icons::FILE_LINES, "Note"),
-                    (true, false, icons::PERSON_CHALKBOARD, "Presentation"),
-                    (false, true, icons::OBJECT_GROUP, "Diagram"),
+            // Wrapped, so the four fit a narrow dialog at a large UI scale.
+            ui.horizontal_wrapped(|ui| {
+                for (deck, diagram, folder, glyph, label) in [
+                    (false, false, false, icons::FILE_LINES, "Note"),
+                    (true, false, false, icons::PERSON_CHALKBOARD, "Presentation"),
+                    (false, true, false, icons::OBJECT_GROUP, "Diagram"),
+                    (false, false, true, icons::FOLDER, "Folder"),
                 ] {
-                    let kind = if (form.deck, form.diagram) == (deck, diagram) {
+                    let chosen = (form.deck, form.diagram, form.new_folder);
+                    let kind = if chosen == (deck, diagram, folder) {
                         ButtonKind::Primary
                     } else {
                         ButtonKind::Secondary
                     };
+                    // The name and the folder are kept across types.
                     if dialog::icon_button(ui, Some(glyph), label, kind, true).clicked() {
                         form.deck = deck;
                         form.diagram = diagram;
+                        form.new_folder = folder;
                     }
                 }
             });
@@ -248,7 +282,7 @@ pub fn new_file(
             }
             ui.add_space(10.0);
         }
-        dialog::field_label(ui, "File Name");
+        dialog::field_label(ui, "Name");
         let r = dialog::text_input(ui, &mut form.name, "Untitled", true);
         focus_once(ui, &r);
         submit |= dialog::submitted(ui, &r);
@@ -303,7 +337,7 @@ pub fn new_file(
             }
         }
 
-        if !all_tags.is_empty() {
+        if !all_tags.is_empty() && !form.new_folder {
             ui.add_space(10.0);
             dialog::field_label(ui, "Tags");
             ui.horizontal_wrapped(|ui| {
@@ -322,79 +356,7 @@ pub fn new_file(
                 }
             });
         }
-        let ready = !form.name.trim().is_empty();
-        let out = form_buttons(ui, "OK", ready);
-        if submit && ready {
-            return Some(FormAction::Submit);
-        }
-        out
-    });
-    if resp.close {
-        return Some(FormAction::Close);
-    }
-    resp.inner
-}
-
-// --- New Folder -----------------------------------------------------------------
-
-/// New Folder: a name, and the folder it is made in.
-pub struct NewFolderForm {
-    /// The folder the new one goes in, by path; empty for the top.
-    pub parent: String,
-    pub name: String,
-}
-
-impl NewFolderForm {
-    pub fn new(parent: &str) -> Self {
-        Self {
-            parent: parent.to_string(),
-            name: String::new(),
-        }
-    }
-
-    /// The new folder's path.
-    pub fn path(&self) -> String {
-        tree::join(&self.parent, self.name.trim())
-    }
-
-    /// Why the name can't be used, if it can't: the name rules, and a
-    /// folder of that name already there (ignoring case).
-    pub fn problem(&self, folders: &[String]) -> Option<String> {
-        if self.name.trim().is_empty() {
-            return None;
-        }
-        if let Err(e) = tree::check_folder_name(&self.name) {
-            return Some(e.to_string());
-        }
-        let path = self.path().to_lowercase();
-        folders
-            .iter()
-            .any(|f| f.to_lowercase() == path)
-            .then(|| format!("A folder named {} is already there", self.name.trim()))
-    }
-}
-
-pub fn new_folder(
-    ctx: &egui::Context,
-    form: &mut NewFolderForm,
-    folders: &[String],
-) -> Option<FormAction> {
-    let resp = Dialog::compact("new-folder", "New Folder").show(ctx, |ui| {
-        let p = theme::palette(ui.ctx());
-        dialog::field_label(ui, "In");
-        ui.label(
-            RichText::new(if form.parent.is_empty() {
-                TOP
-            } else {
-                form.parent.as_str()
-            })
-            .color(p.text_primary),
-        );
-        ui.add_space(10.0);
-        dialog::field_label(ui, "Folder Name");
-        let r = dialog::text_input(ui, &mut form.name, "Untitled", true);
-        focus_once(ui, &r);
-        let submit = dialog::submitted(ui, &r);
+        // A folder's name is checked against the folder picked above.
         let problem = form.problem(folders);
         if let Some(problem) = &problem {
             ui.add_space(6.0);
@@ -875,9 +837,9 @@ mod tests {
     #[test]
     fn new_folder_names() {
         let folders = folders();
-        let form = |parent: &str, name: &str| NewFolderForm {
-            parent: parent.into(),
+        let form = |parent: &str, name: &str| NewFileForm {
             name: name.into(),
+            ..NewFileForm::folder(parent)
         };
         assert_eq!(form("Projects", " Shed ").path(), "Projects/Shed");
         assert_eq!(form("", "Shed").path(), "Shed");
@@ -890,6 +852,13 @@ mod tests {
         assert!(form("", "recipes").problem(&folders).is_some());
         assert!(form("Projects", "GARDEN").problem(&folders).is_some());
         assert!(form("Recipes", "Garden").problem(&folders).is_none());
+        // A note's name has no such rules, and a folder has no templates.
+        let mut note = form("", "recipes");
+        note.templates = vec![serde_json::json!({ "id": "t.md", "name": "T", "kind": "note" })];
+        assert!(note.visible_templates().is_empty());
+        note.new_folder = false;
+        assert_eq!(note.problem(&folders), None);
+        assert_eq!(note.visible_templates().len(), 1);
     }
 
     #[test]

@@ -74,10 +74,10 @@ pub(crate) fn file_by_name<'a>(index: &'a Value, name: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("no {name} in the index"))
 }
 
-/// Creates a note through the New File dialog and waits until it's open.
+/// Creates a note through the New Item dialog and waits until it's open.
 fn new_file(h: &mut Harness<'static, NoteLinerApp>, name: &str) {
     let before = h.state().entries().len();
-    h.get_by_label("New File (Ctrl+N)").click();
+    h.get_by_label("New Item (Ctrl+N)").click();
     h.run_steps(2);
     replace_text(h, 0, name);
     h.get_by_label("OK").click();
@@ -161,7 +161,7 @@ fn open_folder_file_type_rename_move_delete() {
     assert!(h.query_by_label_contains("Remote Sync").is_none());
     assert!(h.query_by_label_contains("Project Settings").is_none());
 
-    // New File, then type into it: the autosave writes after 500 ms.
+    // New Item, then type into it: the autosave writes after 500 ms.
     new_file(&mut h, "First Note");
     let first = project.join("first-note.md");
     assert!(first.exists());
