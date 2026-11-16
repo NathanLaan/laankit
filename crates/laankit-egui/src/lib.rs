@@ -22,6 +22,9 @@
 //! | `not_ported`   | the "not in the native build yet" panel                                |
 //! | `diagnostics`  | `LAANKIT_SCREENSHOT` and friends                                        |
 
+// Depended on for its `system_fonts` feature, which every app then gets.
+use eframe as _;
+
 pub mod about;
 pub mod commands;
 pub mod diagnostics;

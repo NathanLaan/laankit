@@ -11,6 +11,10 @@
 //! - [`svg`]: inline `<svg>`, cleaned at conversion and rasterized off the UI thread.
 //! - [`math`]: `$…$` / `$$…$$` formulas, typeset by an app-supplied [`math::MathRenderer`].
 
+// Depended on for its image loader features (`http`, `svg`, `gif`, `webp`),
+// which every app that shows rich text then gets.
+use egui_extras as _;
+
 pub mod convert;
 pub mod css;
 pub mod fonts;

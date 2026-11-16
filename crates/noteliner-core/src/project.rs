@@ -2170,7 +2170,20 @@ mod tests {
     /// it to the second.
     fn touch_dir(dir: &Path) {
         let later = SystemTime::now() + std::time::Duration::from_secs(5);
-        let f = fs::File::open(dir).unwrap();
+        let mut options = fs::File::options();
+        options.read(true);
+        // Windows opens a folder only with backup semantics, and sets its
+        // time only through a handle that may write attributes.
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            options
+                .access_mode(FILE_WRITE_ATTRIBUTES)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS);
+        }
+        let f = options.open(dir).unwrap();
         f.set_modified(later).unwrap();
     }
 
