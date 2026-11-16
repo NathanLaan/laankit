@@ -7,7 +7,7 @@
 //! its own view, then registers them with laankit-egui's registry.
 
 use blockliner_core::style::{Dash, Weight, PRESETS, WEIGHTS};
-use blockliner_core::{Order, ShapeKind};
+use blockliner_core::{HAlign, Order, ShapeKind, VAlign};
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command};
 
@@ -65,6 +65,10 @@ pub enum EditAct {
     TextStyle(bool),
     /// …and Ctrl+B: Normal when all are Bold, else all Bold.
     ToggleBold,
+    /// The selected shapes' labels to the left, centre or right…
+    AlignLabel(HAlign),
+    /// …and to the top, middle or bottom.
+    AlignLabelVertically(VAlign),
     /// Fill, stroke and text back to the theme's.
     ResetStyle,
     /// The selected shapes forward or back in the stacking order.
@@ -543,6 +547,28 @@ pub fn commands() -> Vec<EditCommand> {
         ),
     ] {
         r.register(add(id, label, "Style", act).when(stylable));
+    }
+    for h in HAlign::ALL {
+        r.register(
+            add(
+                &format!("style.labelAlign.{}", h.field()),
+                &format!("Label Alignment: {}", h.name()),
+                "Style",
+                EditAct::AlignLabel(h),
+            )
+            .when(When::Fillable),
+        );
+    }
+    for v in VAlign::ALL {
+        r.register(
+            add(
+                &format!("style.labelVerticalAlign.{}", v.field()),
+                &format!("Label Vertical Alignment: {}", v.name()),
+                "Style",
+                EditAct::AlignLabelVertically(v),
+            )
+            .when(When::Fillable),
+        );
     }
     r.register(
         add(

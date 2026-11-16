@@ -31,6 +31,6 @@ pub mod style;
 
 pub use mermaid::{read, write, ReadError};
 pub use model::{
-    Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Order, Point, Rect, Route,
-    Shape, ShapeKind,
+    Anchor, Connector, ConnectorKind, Diagram, Direction, End, HAlign, LabelAlign, Mid, Order,
+    Point, Rect, Route, Shape, ShapeKind, VAlign,
 };

@@ -9,8 +9,8 @@ use super::lex::{self, LinkKind, NodeRef, Token};
 use super::{edge_key, NOTE_CLASS, TEXT_CLASS};
 use crate::layout;
 use crate::model::{
-    Anchor, Connector, ConnectorKind, Diagram, Direction, End, Mid, Point, Rect, Route, Shape,
-    ShapeKind,
+    Anchor, Connector, ConnectorKind, Diagram, Direction, End, HAlign, LabelAlign, Mid, Point,
+    Rect, Route, Shape, ShapeKind, VAlign,
 };
 use crate::style::{Colour, Dash, Style, Weight, DASH_KEY};
 
@@ -364,7 +364,7 @@ impl Body {
         // order when BlockLiner wrote the file; new ones follow in file order.
         // Without this, nodes declared in verbatim statements would move
         // behind the others on every save.
-        let rank = |n: &Node| layout.shapes.get(&n.id).map_or(usize::MAX, |&(i, _)| i);
+        let rank = |n: &Node| layout.shapes.get(&n.id).map_or(usize::MAX, |&(i, ..)| i);
         self.nodes.sort_by_key(rank);
         let mut unplaced = Vec::new();
         for (i, n) in self.nodes.into_iter().enumerate() {
@@ -374,14 +374,12 @@ impl Body {
                 Some(NOTE_CLASS) => ShapeKind::Note,
                 _ => kind,
             };
-            let rect = layout
-                .shapes
-                .get(&n.id)
-                .map(|&(_, r)| r)
-                .unwrap_or_else(|| {
-                    unplaced.push(i);
-                    Rect::default()
-                });
+            let placed = layout.shapes.get(&n.id);
+            let align = placed.map(|&(.., a)| a).unwrap_or_default();
+            let rect = placed.map(|&(_, r, _)| r).unwrap_or_else(|| {
+                unplaced.push(i);
+                Rect::default()
+            });
             d.shapes.push(Shape {
                 id: n.id,
                 kind,
@@ -390,6 +388,7 @@ impl Body {
                 class: n.class.filter(|c| c != TEXT_CLASS && c != NOTE_CLASS),
                 external: n.external,
                 style: Style::default(),
+                align,
             });
         }
 
@@ -470,7 +469,8 @@ impl Body {
 struct Layout {
     grid: Option<f32>,
     /// Each `@shape`'s rectangle and its position among the `@shape` lines.
-    shapes: HashMap<String, (usize, Rect)>,
+    /// and where its label sits.
+    shapes: HashMap<String, (usize, Rect, LabelAlign)>,
     /// Each `@edge`'s fixed anchors and route.
     edges: HashMap<String, (Option<Anchor>, Option<Anchor>, Route)>,
     lines: Vec<Connector>,
@@ -499,8 +499,23 @@ impl Layout {
                     Some(Rect::new(n("x")?, n("y")?, n("w")?, n("h")?))
                 })();
                 if let (Some(id), Some(rect)) = (positional.first(), rect) {
+                    // An unknown value is centred, as a missing one is.
+                    let align = LabelAlign {
+                        h: fields
+                            .get("align")
+                            .and_then(|v| HAlign::parse(v))
+                            .unwrap_or_default(),
+                        v: fields
+                            .get("valign")
+                            .and_then(|v| VAlign::parse(v))
+                            .unwrap_or_default(),
+                    };
                     let order = self.shapes.len();
-                    self.shapes.entry(id.to_string()).or_insert((order, rect)).1 = rect;
+                    let entry = self
+                        .shapes
+                        .entry(id.to_string())
+                        .or_insert((order, rect, align));
+                    (entry.1, entry.2) = (rect, align);
                 }
             }
             Some("@edge") => {
@@ -588,6 +603,29 @@ fn parse_end(s: &str) -> Option<End> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn label_alignment_is_on_the_shape_line() {
+        let text = "flowchart LR\n  a[\"A\"]\n  b[\"B\"]\n  c[\"C\"]\n\n\
+                    %% blockliner 1 grid=20\n\
+                    %% @shape a x=0 y=0 w=160 h=60 align=left valign=top\n\
+                    %% @shape b x=200 y=0 w=160 h=60 valign=bottom\n\
+                    %% @shape c x=400 y=0 w=160 h=60 align=sideways\n";
+        let d = read(text).unwrap();
+        let align = |id| d.shape(id).unwrap().align;
+        assert_eq!((align("a").h, align("a").v), (HAlign::Left, VAlign::Top));
+        assert_eq!(
+            (align("b").h, align("b").v),
+            (HAlign::Center, VAlign::Bottom)
+        );
+        // A value BlockLiner doesn't know is centred, and not written back.
+        assert_eq!(align("c"), LabelAlign::default());
+        let out = crate::write(&d);
+        assert!(out.contains("%% @shape a x=0 y=0 w=160 h=60 align=left valign=top\n"));
+        assert!(out.contains("%% @shape b x=200 y=0 w=160 h=60 valign=bottom\n"));
+        assert!(out.contains("%% @shape c x=400 y=0 w=160 h=60\n"));
+        assert_eq!(read(&out).unwrap().shapes, d.shapes);
+    }
 
     #[test]
     fn splits_statements() {

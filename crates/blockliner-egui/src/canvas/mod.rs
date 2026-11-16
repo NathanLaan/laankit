@@ -33,7 +33,8 @@ use blockliner_core::style::{
     Weight, PRESETS, WEIGHTS,
 };
 use blockliner_core::{
-    Connector, ConnectorKind, Diagram, End, Order, Point, Rect as ModelRect, ShapeKind,
+    Connector, ConnectorKind, Diagram, End, HAlign, Order, Point, Rect as ModelRect, ShapeKind,
+    VAlign,
 };
 use egui::{CursorIcon, Key, PointerButton, Pos2, Rect, Sense, Ui, Vec2};
 use laankit_egui::theme;
@@ -164,6 +165,10 @@ pub struct SelectionStyle {
     /// …and the labels' Bold and Italic.
     pub bold: Agreement<bool>,
     pub italic: Agreement<bool>,
+    /// Where the selected shapes' labels sit, across and down. Lines'
+    /// labels are always on their midpoints, so they don't count.
+    pub halign: Agreement<HAlign>,
+    pub valign: Agreement<VAlign>,
     /// Selected shapes that can take colours…
     pub shapes: usize,
     /// …selected lines (a stroke only)…
@@ -278,6 +283,8 @@ impl Canvas {
                     .map(|s| s.style.italic())
                     .chain(lines.iter().map(|c| c.style.italic())),
             ),
+            halign: agreement(own.iter().map(|s| s.align.h)),
+            valign: agreement(own.iter().map(|s| s.align.v)),
             shapes: own.len(),
             lines: self.lines.len(),
             external: external.iter().map(|s| s.id.clone()).collect(),
@@ -297,6 +304,17 @@ impl Canvas {
                 if let Some(c) = d.connectors.get_mut(i) {
                     f(&mut c.style);
                 }
+            }
+        }
+    }
+
+    /// Puts the label of each selected shape BlockLiner declares on this
+    /// side (`h`) or at this height (`v`); `None` leaves that way as it is.
+    pub fn align_selection(&self, d: &mut Diagram, h: Option<HAlign>, v: Option<VAlign>) {
+        for id in &self.selection {
+            if let Some(s) = d.shape_mut(id).filter(|s| !s.external) {
+                s.align.h = h.unwrap_or(s.align.h);
+                s.align.v = v.unwrap_or(s.align.v);
             }
         }
     }

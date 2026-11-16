@@ -19,6 +19,7 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - Stroke styles: draw a shape's outline or a line solid, dashed, or dotted, from the Properties pane's Stroke Style list, the right-click menu's Stroke Style ▸, or the palette. Saved as plain Mermaid: `stroke-dasharray` in a shape's `style` line or an edge's `linkStyle`, and a dotted edge as Mermaid's own `-.->` / `-.-`. A hand-written dash pattern shows as Custom and is kept until you pick a style.
 - Stroke weight: 1px (the default, as in Mermaid), 1.5px, 2px, 2.5px, 3px, or 4px for a shape's outline or a line, from the Properties pane's Stroke Weight list, the right-click menu's Stroke Weight ▸, or the palette. Saved as `stroke-width` (the default isn't written). A hand-written `stroke-width` is now drawn; one that isn't in the list shows as Custom and is kept until you pick a weight.
 - Bold and italic labels: Text Weight (Normal / Bold) and Text Style (Normal / Italic) for shape and edge labels, from the Properties pane, the right-click menu, or the palette; Ctrl+B toggles Bold. Saved as `font-weight:bold` and `font-style:italic`.
+- Label alignment: Label Alignment (Left / Center / Right) and Vertical Alignment (Top / Middle / Bottom) for shape labels, from the Properties pane or the palette. A label is centred both ways unless you set it. The label stays inside the shape's label area, so in a diamond or a circle Top is the top of that area, not of the outline. Saved on the shape's `@shape` line. Other Mermaid tools centre the label.
 - Reset Style: returns the selection to the theme's colours, a solid 1px stroke, and Normal text.
 - Copy and paste: Ctrl+C, Ctrl+X, and Ctrl+V, within a diagram, between diagrams, and between windows. The clipboard holds Mermaid, so a copy also pastes into a README, and a flowchart copied from elsewhere pastes in laid out; other text pastes as a text box.
 - Stacking order: Move to Front, Move Up, Move Down, and Move to Back put a shape in front of or behind the ones it overlaps, from the toolbar's Order button, the right-click menu, the palette, or Ctrl+] and Ctrl+[ (with Shift for the front and the back). Move Up and Move Down step over the nearest shape that overlaps the selection. Lines stay in front of shapes. The order is the order of the nodes in the file.
@@ -64,14 +65,14 @@ flowchart LR
 %% @line arrow from=600,240 to=orders:S
 ```
 
-The layout block goes at the end because Mermaid front matter (`---`) must be the first line of the file. The Mermaid part says what each shape is, so `@shape` lines carry only geometry.
+The layout block goes at the end because Mermaid front matter (`---`) must be the first line of the file. The Mermaid part says what each shape is, so `@shape` lines carry only geometry and where the label sits.
 
 ### Layout comments
 
 | Comment | Meaning |
 |---|---|
 | `%% blockliner <version> grid=<px>` | Format version (1) and grid size. |
-| `%% @shape <id> x= y= w= h=` | Every shape's rectangle, in model order, which is the stacking order from back to front. |
+| `%% @shape <id> x= y= w= h= [align=left\|right] [valign=top\|bottom]` | Every shape's rectangle, in model order, which is the stacking order from back to front. `align` and `valign` say where its label sits, and are written only when it is not centred. |
 | `%% @edge <from>-><to>[#n] [from=<anchor>] [to=<anchor>] [route=elbow [mid=x:<n>\|y:<n>]]` | Fixed anchors and the route of the nth edge between two nodes. Written only when an anchor is fixed or the route is right-angle; otherwise the glue is dynamic and the edge straight. Keyed by endpoints, not position, so a hand-inserted edge doesn't shift the others. |
 | `%% @line <line\|arrow> from=<end> to=<end> [route=elbow [mid=…]] [stroke=<colour>] [dash=dashed\|dotted\|<dasharray>] [weight=<px>] [text=bold\|italic\|bold-italic]` | A connector with at least one free end. An end is `x,y` or `id[:anchor]`. `stroke=` is its colour, `dash=` its stroke style, `weight=` its stroke weight, and `text=` its label's weight and style. |
 

@@ -30,6 +30,8 @@ mod ui_tests_history;
 #[cfg(test)]
 mod ui_tests_import;
 #[cfg(test)]
+mod ui_tests_label_align;
+#[cfg(test)]
 mod ui_tests_labels;
 #[cfg(test)]
 mod ui_tests_lines;

@@ -21,7 +21,8 @@
 //! %% @line arrow from=600,40 to=orders:N
 //! ```
 //!
-//! - `@shape <id> x= y= w= h=`: every shape's rectangle.
+//! - `@shape <id> x= y= w= h= [align=left|right] [valign=top|bottom]`: every
+//!   shape's rectangle, and where its label sits when that isn't the centre.
 //! - `@edge <from>-><to>[#n] [from=<anchor>] [to=<anchor>] [route=elbow
 //!   [mid=x:<n>|y:<n>]]`: the anchors of the nth edge between two nodes, when
 //!   not dynamic, and its route when right-angle. Keyed by endpoints, not
