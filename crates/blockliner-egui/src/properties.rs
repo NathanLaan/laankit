@@ -2,8 +2,9 @@
 //! Shape (the selected shapes' kind) and Change Line (whether the selected
 //! lines have arrowheads), then Fill and Stroke (the current value, Default
 //! and the presets as swatches, a hex field), Stroke Style (solid, dashed or
-//! dotted), Stroke Weight (1px … 4px), Text Weight (Normal or Bold) and Text
-//! Style (Normal or Italic), plus Reset Style.
+//! dotted), Stroke Weight (1px … 4px), Text Weight (Normal or Bold), Text
+//! Style (Normal or Italic), Label Alignment (Left, Center or Right) and
+//! Vertical Alignment (Top, Middle or Bottom), plus Reset Style.
 //!
 //! A row whose shapes don't all agree shows **Mixed**: a split swatch, an
 //! empty field with a "Mixed" placeholder, and no swatch ringed. Picking a
@@ -13,7 +14,7 @@
 use blockliner_core::style::{
     Agreement, Colour, Common, Dash, DashCommon, Weight, PRESETS, WEIGHTS,
 };
-use blockliner_core::{Diagram, ShapeKind};
+use blockliner_core::{Diagram, HAlign, ShapeKind, VAlign};
 use egui::{pos2, vec2, Align2, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
 use laankit_egui::dialog::{self, ButtonKind};
 use laankit_egui::{icons, theme};
@@ -50,6 +51,10 @@ pub enum PropertiesAction {
     TextWeight(bool),
     /// Text Style: Italic (`true`) or Normal.
     TextStyle(bool),
+    /// Label Alignment: Left, Center or Right.
+    LabelAlign(HAlign),
+    /// Label Vertical Alignment: Top, Middle or Bottom.
+    LabelVerticalAlign(VAlign),
 }
 
 /// The pane's own state between frames: its two hex fields.
@@ -239,6 +244,27 @@ fn contents(
                     }
                 });
                 ui.add_space(10.0);
+                // Where the labels sit: shapes only, as lines' labels are
+                // on their midpoints.
+                ui.add_enabled_ui(props.fills(), |ui| {
+                    ui.columns(2, |cols| {
+                        let options = HAlign::ALL.map(|h| (h, Glyph::HAlign(h), h.name()));
+                        let current = &props.style.halign;
+                        if let Some(h) =
+                            align_row(&mut cols[0], "Label Alignment", current, options)
+                        {
+                            out = Some(PropertiesAction::LabelAlign(h));
+                        }
+                        let options = VAlign::ALL.map(|v| (v, Glyph::VAlign(v), v.name()));
+                        let current = &props.style.valign;
+                        if let Some(v) =
+                            align_row(&mut cols[1], "Vertical Alignment", current, options)
+                        {
+                            out = Some(PropertiesAction::LabelVerticalAlign(v));
+                        }
+                    });
+                });
+                ui.add_space(10.0);
                 if dialog::button(ui, "Reset Style", ButtonKind::Secondary, reason.is_none())
                     .clicked()
                 {
@@ -388,6 +414,37 @@ fn text_row(ui: &mut Ui, bold: bool, current: &Agreement<bool>) -> Option<bool> 
             let active = *current == Agreement::Same(value);
             if crate::glyphs::icon_row(ui, glyph, name, None, active, width).clicked() {
                 picked = Some(value);
+            }
+        }
+    });
+    picked.filter(|v| *current != Agreement::Same(*v))
+}
+
+/// Label Alignment or Vertical Alignment for the selected shapes' labels:
+/// the three `options`, with the middle one the default (or Mixed). The one
+/// picked, unless they all already have it.
+fn align_row<T: Copy + Default + PartialEq>(
+    ui: &mut Ui,
+    label: &str,
+    current: &Agreement<T>,
+    options: [(T, Glyph, &'static str); 3],
+) -> Option<T> {
+    dialog::field_label(ui, &format!("{label}:"));
+    let value = match current {
+        Agreement::Same(v) => Some(*v),
+        Agreement::None => Some(T::default()),
+        Agreement::Mixed => None,
+    };
+    let shown = options
+        .iter()
+        .find(|(v, ..)| Some(*v) == value)
+        .map(|(_, glyph, name)| (glyph.clone(), *name));
+    let mut picked = None;
+    kind_select(ui, label, shown, |ui, width| {
+        for (v, glyph, name) in options.clone() {
+            let active = *current == Agreement::Same(v);
+            if crate::glyphs::icon_row(ui, glyph, name, None, active, width).clicked() {
+                picked = Some(v);
             }
         }
     });
@@ -650,6 +707,8 @@ mod tests {
                 weight: Agreement::None,
                 bold: Agreement::None,
                 italic: Agreement::None,
+                halign: Agreement::None,
+                valign: Agreement::None,
                 shapes,
                 lines,
                 external: external.iter().map(|s| s.to_string()).collect(),

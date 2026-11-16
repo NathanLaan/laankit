@@ -228,6 +228,14 @@ impl DiagramEditor {
                 self.canvas
                     .style_selection(&mut self.diagram, true, |s| s.set_bold(!all));
             }
+            EditAct::AlignLabel(h) => {
+                self.canvas
+                    .align_selection(&mut self.diagram, Some(h), None);
+            }
+            EditAct::AlignLabelVertically(v) => {
+                self.canvas
+                    .align_selection(&mut self.diagram, None, Some(v));
+            }
             EditAct::ResetStyle => {
                 self.canvas
                     .style_selection(&mut self.diagram, true, Style::reset)
@@ -260,6 +268,8 @@ impl DiagramEditor {
             PropertiesAction::StrokeWeight(w) => EditAct::StrokeWeight(w),
             PropertiesAction::TextWeight(b) => EditAct::TextWeight(b),
             PropertiesAction::TextStyle(i) => EditAct::TextStyle(i),
+            PropertiesAction::LabelAlign(h) => EditAct::AlignLabel(h),
+            PropertiesAction::LabelVerticalAlign(v) => EditAct::AlignLabelVertically(v),
             PropertiesAction::ResetStyle => EditAct::ResetStyle,
             PropertiesAction::ChangeShape(kind) => EditAct::ChangeShape(kind),
             PropertiesAction::ChangeLine(tool) => EditAct::ChangeLine(tool),

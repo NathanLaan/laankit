@@ -221,6 +221,101 @@ impl ShapeKind {
     }
 }
 
+/// Where a shape's label sits across its label area.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum HAlign {
+    Left,
+    #[default]
+    Center,
+    Right,
+}
+
+impl HAlign {
+    pub const ALL: [HAlign; 3] = [HAlign::Left, HAlign::Center, HAlign::Right];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            HAlign::Left => "Left",
+            HAlign::Center => "Center",
+            HAlign::Right => "Right",
+        }
+    }
+
+    /// The value of `align=` on a `@shape` line.
+    pub fn field(self) -> &'static str {
+        match self {
+            HAlign::Left => "left",
+            HAlign::Center => "center",
+            HAlign::Right => "right",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|a| a.field() == s)
+    }
+
+    /// 0 for Left, 0.5 for Center, 1 for Right: how far across.
+    pub fn fraction(self) -> f32 {
+        match self {
+            HAlign::Left => 0.0,
+            HAlign::Center => 0.5,
+            HAlign::Right => 1.0,
+        }
+    }
+}
+
+/// Where a shape's label sits down its label area.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum VAlign {
+    Top,
+    #[default]
+    Middle,
+    Bottom,
+}
+
+impl VAlign {
+    pub const ALL: [VAlign; 3] = [VAlign::Top, VAlign::Middle, VAlign::Bottom];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            VAlign::Top => "Top",
+            VAlign::Middle => "Middle",
+            VAlign::Bottom => "Bottom",
+        }
+    }
+
+    /// The value of `valign=` on a `@shape` line.
+    pub fn field(self) -> &'static str {
+        match self {
+            VAlign::Top => "top",
+            VAlign::Middle => "middle",
+            VAlign::Bottom => "bottom",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|a| a.field() == s)
+    }
+
+    /// 0 for Top, 0.5 for Middle, 1 for Bottom: how far down.
+    pub fn fraction(self) -> f32 {
+        match self {
+            VAlign::Top => 0.0,
+            VAlign::Middle => 0.5,
+            VAlign::Bottom => 1.0,
+        }
+    }
+}
+
+/// Where a shape's label sits in its label area. Centred both ways unless
+/// set. Kept on the shape's `@shape` line, since Mermaid has no such
+/// setting: other Mermaid tools centre the label.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct LabelAlign {
+    pub h: HAlign,
+    pub v: VAlign,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shape {
     /// The Mermaid node id. Stable once created; the label can change freely.
@@ -238,6 +333,8 @@ pub struct Shape {
     pub external: bool,
     /// Its `style` line: fill, stroke and label colours.
     pub style: Style,
+    /// Where its label sits.
+    pub align: LabelAlign,
 }
 
 impl Shape {
@@ -255,6 +352,7 @@ impl Shape {
             class: None,
             external: false,
             style: Style::default(),
+            align: LabelAlign::default(),
         }
     }
 

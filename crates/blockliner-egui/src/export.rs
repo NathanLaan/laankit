@@ -16,7 +16,7 @@ use blockliner_core::connect::path_midpoint;
 use blockliner_core::export::Scope;
 use blockliner_core::geometry::{self, SUBROUTINE_INSET};
 use blockliner_core::style::{Dash, Style, Weight};
-use blockliner_core::{ConnectorKind, Diagram, Point, Rect, Shape, ShapeKind};
+use blockliner_core::{ConnectorKind, Diagram, HAlign, Point, Rect, Shape, ShapeKind};
 use egui::text::LayoutJob;
 use egui::{Align, Color32};
 use laankit_egui::fonts;
@@ -367,12 +367,24 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
     // In its area: inside a diamond's or hexagon's outline.
     let area = s.label_rect();
     let wrap = (area.w - 2.0 * LABEL_PAD).max(1.0);
+    // The side its lines keep to and where the block sits, inside the
+    // padded area, as the canvas places it.
+    let (h, v) = (s.align.h.fraction(), s.align.v.fraction());
+    let place = Place {
+        x: area.x + LABEL_PAD + wrap * h,
+        anchor: match s.align.h {
+            HAlign::Left => "start",
+            HAlign::Center => "middle",
+            HAlign::Right => "end",
+        },
+        y: area.y + LABEL_PAD + (area.h - 2.0 * LABEL_PAD) * v,
+        down: v,
+    };
     text(
         out,
         ctx,
         (&s.label, face(&style)),
-        area.center().x,
-        area.center().y,
+        place,
         LABEL_SIZE,
         Some(wrap),
         &label_ink,
@@ -496,23 +508,46 @@ fn edge_label(
         out,
         ctx,
         (label, face),
-        at.0,
-        at.1,
+        Place::centred(at.0, at.1),
         EDGE_LABEL_SIZE,
         None,
         INK,
     );
 }
 
-/// `label`, centred on (`cx`, `cy`) line by line, wrapped at `wrap` as the
-/// canvas wraps it: one `<tspan>` per line, in its bundled `face`.
-#[allow(clippy::too_many_arguments)]
+/// Where a block of text goes.
+#[derive(Clone, Copy)]
+struct Place {
+    /// Each line's anchor point across…
+    x: f32,
+    /// …and which part of the line is put there: `start`, `middle` or `end`.
+    anchor: &'static str,
+    /// The point down the page that the block is held against…
+    y: f32,
+    /// …and how far down the block that point is: 0 its top, 0.5 its
+    /// middle, 1 its bottom.
+    down: f32,
+}
+
+impl Place {
+    /// Centred on (`cx`, `cy`).
+    fn centred(cx: f32, cy: f32) -> Self {
+        Self {
+            x: cx,
+            anchor: "middle",
+            y: cy,
+            down: 0.5,
+        }
+    }
+}
+
+/// `label` at `place` line by line, wrapped at `wrap` as the canvas wraps
+/// it: one `<tspan>` per line, in its bundled `face`.
 fn text(
     out: &mut String,
     ctx: &egui::Context,
     (label, face): (&str, fonts::Style),
-    cx: f32,
-    cy: f32,
+    place: Place,
     size: f32,
     wrap: Option<f32>,
     fill: &str,
@@ -521,7 +556,8 @@ fn text(
         return;
     }
     let galley = layout(ctx, (label, face), size, wrap);
-    let top = cy - galley.rect.height() / 2.0 - galley.rect.top();
+    let (cx, anchor) = (place.x, place.anchor);
+    let top = place.y - galley.rect.height() * place.down - galley.rect.top();
     let weight = if face.weight.is_some() {
         r#" font-weight="bold""#
     } else {
@@ -534,7 +570,7 @@ fn text(
     };
     let _ = write!(
         out,
-        r#"<text x="{}" font-size="{}"{weight}{italic} fill="{fill}" text-anchor="middle" dominant-baseline="central">"#,
+        r#"<text x="{}" font-size="{}"{weight}{italic} fill="{fill}" text-anchor="{anchor}" dominant-baseline="central">"#,
         num(cx),
         num(size)
     );

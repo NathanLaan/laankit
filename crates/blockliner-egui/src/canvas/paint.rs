@@ -5,7 +5,9 @@ use blockliner_core::connect::path_midpoint;
 use blockliner_core::geometry::{self, Handle, DOUBLE_CIRCLE_GAP, SUBROUTINE_INSET};
 use blockliner_core::route::middle_segment;
 use blockliner_core::style::{Dash, Style, Weight};
-use blockliner_core::{Anchor, ConnectorKind, Diagram, End, Rect, Shape, ShapeKind};
+use blockliner_core::{
+    Anchor, ConnectorKind, Diagram, End, HAlign, LabelAlign, Rect, Shape, ShapeKind,
+};
 use egui::text::LayoutJob;
 use egui::{vec2, Align, Color32, CornerRadius, FontId, Painter, Pos2, Stroke, StrokeKind};
 use laankit_egui::theme::Palette;
@@ -452,7 +454,14 @@ fn shape(
             .label_rgba()
             .map(|[r, g, b, a]| Color32::from_rgba_unmultiplied(r, g, b, a))
             .unwrap_or(p.text_primary);
-        label(painter, (r, area), &s.label, label_font(zoom, &style), text);
+        label(
+            painter,
+            (r, area),
+            &s.label,
+            label_font(zoom, &style),
+            text,
+            s.align,
+        );
     }
     badge(painter, r, s, p);
 }
@@ -650,14 +659,25 @@ fn edge_label(painter: &Painter, at: Pos2, text: &str, style: &Style, zoom: f32,
     painter.galley(at - vec2(0.0, size.y / 2.0), galley, p.text_secondary);
 }
 
-/// The label, centred line by line in its `area`, wrapped to it and
-/// clipped to the shape `r`.
+/// egui's alignment for a label's lines.
+pub fn halign(h: HAlign) -> Align {
+    match h {
+        HAlign::Left => Align::LEFT,
+        HAlign::Center => Align::Center,
+        HAlign::Right => Align::RIGHT,
+    }
+}
+
+/// The label in its `area`, wrapped to it and clipped to the shape `r`.
+/// `align` says which side its lines keep to and where the block sits;
+/// centred both ways unless set.
 fn label(
     painter: &Painter,
     (r, area): (egui::Rect, egui::Rect),
     text: &str,
     font: FontId,
     color: Color32,
+    align: LabelAlign,
 ) {
     let zoom = font.size / LABEL_SIZE;
     if text.is_empty() || font.size < 4.0 {
@@ -665,9 +685,14 @@ fn label(
     }
     let wrap = (area.width() - 2.0 * LABEL_PAD * zoom).max(1.0);
     let mut job = LayoutJob::simple(text.to_owned(), font, color, wrap);
-    job.halign = Align::Center;
+    job.halign = halign(align.h);
     let galley = painter.layout_job(job);
-    let at = area.center() - galley.rect.center().to_vec2();
+    // The block's top left corner inside the padded area. In the middle
+    // the padding cancels out, so a centred label is where it always was.
+    let inner = area.shrink(LABEL_PAD * zoom);
+    let left = inner.left() + (inner.width() - galley.rect.width()) * align.h.fraction();
+    let top = inner.top() + (inner.height() - galley.rect.height()) * align.v.fraction();
+    let at = Pos2::new(left, top) - galley.rect.min.to_vec2();
     painter
         .with_clip_rect(r.intersect(painter.clip_rect()))
         .galley(at, galley, color);

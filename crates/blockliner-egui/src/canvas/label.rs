@@ -8,8 +8,8 @@
 //! An empty edge label removes it.
 
 use blockliner_core::connect::path_midpoint;
-use blockliner_core::{ids, Diagram, Rect as ModelRect};
-use egui::{vec2, Align2, Event, Frame, Key, Margin, Stroke, TextEdit, Ui};
+use blockliner_core::{ids, Diagram, LabelAlign, Rect as ModelRect};
+use egui::{vec2, Align, Align2, Event, Frame, Key, Margin, Stroke, TextEdit, Ui};
 use laankit_egui::theme;
 
 use super::{paint, pos, Canvas};
@@ -173,7 +173,7 @@ impl Canvas {
         // Where it goes, its font and its colour: inside the shape's label
         // area (so inside a diamond's outline), or centred on the
         // connector's midpoint.
-        let (area, font, ink, line) = match &edit.target {
+        let (area, font, ink, line, align) = match &edit.target {
             Target::Shape(id) => {
                 let Some(shape) = d.shape(id) else {
                     self.label = None;
@@ -192,6 +192,7 @@ impl Canvas {
                     paint::label_font(view.zoom, &shape.style),
                     ink,
                     false,
+                    shape.align,
                 )
             }
             Target::Line(i) => {
@@ -222,7 +223,7 @@ impl Canvas {
                 let width = width + font.size;
                 let centre = view.to_screen(origin, pos(at.x, at.y));
                 let screen = egui::Rect::from_center_size(centre, vec2(width, 0.0));
-                (screen, font, p.text_primary, true)
+                (screen, font, p.text_primary, true, LabelAlign::default())
             }
         };
 
@@ -274,7 +275,16 @@ impl Canvas {
                 (rows as f32 * row).min(area.height()).max(row),
             )
         };
-        let field_rect = egui::Rect::from_center_size(area.center(), size);
+        // Where the label is drawn: a centred one in the middle, as ever,
+        // and an aligned one against its side of the padded area.
+        let field_rect = if line {
+            egui::Rect::from_center_size(area.center(), size)
+        } else {
+            let inner = area.shrink(paint::LABEL_PAD * view.zoom);
+            let top = inner.top() + (inner.height() - size.y) * align.v.fraction();
+            let left = inner.center().x - size.x / 2.0;
+            egui::Rect::from_min_size(egui::pos2(left, top), size)
+        };
         if line {
             // The patch an edge label sits on, outlined while it's edited.
             let patch = field_rect.expand(paint::EDGE_LABEL_PAD * view.zoom);
@@ -291,7 +301,7 @@ impl Canvas {
             .id_salt(("blockliner-label", format!("{:?}", edit.target)))
             .font(font)
             .text_color(ink)
-            .align(Align2::CENTER_TOP)
+            .align(Align2([paint::halign(align.h), Align::TOP]))
             .frame(Frame::NONE)
             .margin(Margin::ZERO)
             .desired_rows(rows)

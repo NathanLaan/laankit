@@ -89,6 +89,10 @@ pub enum Glyph {
     /// A move in the stacking order: two overlapping squares, the moving
     /// one filled.
     Order(blockliner_core::Order),
+    /// Lines of text kept to the left, the centre or the right.
+    HAlign(blockliner_core::HAlign),
+    /// Lines of text at the top, the middle or the bottom of a box.
+    VAlign(blockliner_core::VAlign),
 }
 
 impl From<blockliner_core::Order> for Glyph {
@@ -132,6 +136,30 @@ pub fn paint_glyph(painter: &egui::Painter, glyph: &Glyph, c: Pos2, ink: Color32
             painter.line_segment(line, Stroke::new(width.min(6.0), ink));
         }
         Glyph::Order(order) => paint_order_icon(painter, *order, c, ink),
+        Glyph::HAlign(h) => {
+            // Four lines of uneven length, as a paragraph looks.
+            let stroke = Stroke::new(1.4, ink);
+            for (i, w) in [14.0_f32, 8.0, 12.0, 6.0].into_iter().enumerate() {
+                let left = c.x - 7.0 + (14.0 - w) * h.fraction();
+                let y = c.y - 6.0 + 4.0 * i as f32;
+                painter.line_segment([Pos2::new(left, y), Pos2::new(left + w, y)], stroke);
+            }
+        }
+        Glyph::VAlign(v) => {
+            // Two lines of text in a box.
+            let frame = egui::Rect::from_center_size(c, egui::vec2(14.0, 14.0));
+            painter.rect_stroke(
+                frame,
+                1.0,
+                Stroke::new(1.0, ink.gamma_multiply(0.5)),
+                egui::StrokeKind::Inside,
+            );
+            let stroke = Stroke::new(1.4, ink);
+            let top = c.y - 4.0 + 5.0 * v.fraction();
+            for y in [top, top + 3.0] {
+                painter.line_segment([Pos2::new(c.x - 4.0, y), Pos2::new(c.x + 4.0, y)], stroke);
+            }
+        }
         Glyph::Text { bold, italic } => {
             let face = laankit_egui::fonts::Style {
                 weight: bold.then_some(laankit_egui::fonts::BOLD),

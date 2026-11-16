@@ -6,7 +6,9 @@ use std::fmt::Write;
 
 use super::label::encode;
 use super::{edge_key, FORMAT_VERSION, NOTE_CLASS, NOTE_CLASS_PROPS, TEXT_CLASS};
-use crate::model::{Connector, ConnectorKind, Diagram, End, Mid, Route, Shape, ShapeKind};
+use crate::model::{
+    Connector, ConnectorKind, Diagram, End, HAlign, Mid, Route, Shape, ShapeKind, VAlign,
+};
 use crate::style::Dash;
 
 pub fn write(d: &Diagram) -> String {
@@ -67,10 +69,18 @@ pub fn write(d: &Diagram) -> String {
     );
     for s in &d.shapes {
         let r = s.rect;
+        // Where the label sits, when it isn't centred.
+        let mut align = String::new();
+        if s.align.h != HAlign::default() {
+            let _ = write!(align, " align={}", s.align.h.field());
+        }
+        if s.align.v != VAlign::default() {
+            let _ = write!(align, " valign={}", s.align.v.field());
+        }
         line(
             &mut out,
             format_args!(
-                "%% @shape {} x={} y={} w={} h={}",
+                "%% @shape {} x={} y={} w={} h={}{align}",
                 s.id,
                 num(r.x),
                 num(r.y),
