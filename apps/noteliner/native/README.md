@@ -19,7 +19,7 @@ The package is `noteliner-native`; its binary is `noteliner`, the one the releas
 - Markdown files dropped on the window become notes in the selected folder; files dropped on the editor (or pasted, including images) become attachments of the open note.
 - Presenting. F5, the toolbar's play button, "Present" in the palette, a deck's right-click menu in the Files pane, or the Slides pane's header button shows the deck full screen from the caret's slide (arrows, Space, Page Up/Down, S for speaker notes, F11 to leave and return to full screen, Escape). Shift+F5 starts at the first slide, and "Present from This Slide" in a slide's menu starts there. Moving the mouse shows a bar with Previous, Next, the slide number, and Exit for three seconds.
 - Choosing the display. The app reads the displays from the window about once a second (`read_displays`, through `eframe::Frame::winit_window`) and hands them to the presenter. With two or more, a presentation's menu in the Files pane and the palette offer "Present on Display N", D and the controls' display button move to the next display while presenting, and the choice is saved by name and size in `ui-preferences.json` (`presentDisplay`), so F5 uses it whenever that display is connected. "Present on This Window's Display" forgets it. This is not yet checked on two real displays; `cargo run -p noteliner-slides --example displays` is the trial program for that.
-- The left toolbar keeps its standard buttons (Files, Outline, Tags, Attachments, Search, Backlinks) in the same place for every file type. Buttons for one file type are context buttons and always come after them, below a divider: today those are Slides, Present, and Present with Speaker View, for a presentation. The toolbar doesn't scroll, so a context button that doesn't fit above the bottom group is left out (`toolbar::fits`). Put a new button for one file type in the context group.
+- The left toolbar keeps its standard buttons (Undo, Redo, Files, Outline, Tags, Attachments, Search, Backlinks) in the same place for every file type. Buttons for one file type are context buttons and always come after them, below a divider: today those are Slides, Present, and Present with Speaker View, for a presentation. The toolbar doesn't scroll, so a context button that doesn't fit above the bottom group is left out (`toolbar::fits`). Put a new button for one file type in the context group.
 - Spell check (F7) needs a Hunspell dictionary for your language; see "Spell checking" below.
 
 ### Trying it without touching your projects
@@ -65,7 +65,7 @@ The Help pages are `assets/help-pages.json` (loaded at build time with `include_
 | `ui_tests`       | egui_kittest: open a plain folder → new file → type → autosave → rename → new folder → drag-and-drop move → delete to the trash |
 | `ui_tests_folders` | egui_kittest: a plain folder opens with its sub-folders; New Folder from the header, a folder's menu, and the palette; New Item making a folder in the parent you pick; a new note lands in the selected folder; renaming, moving, and deleting a folder with its notes; a note opens with its frontmatter, and tags move both ways between the block and the Tags pane; a search result opens on the right line; and changes made by other programs (added, changed, moved, removed, and the Reload / Keep Mine question) |
 | `ui_tests_panes` | egui_kittest: search → jump, backlinks → jump, tags pane / filter / editor, attachments insert and remove, MCP allow / session / deny; and a PDF export read back with hayro |
-| `ui_tests_tabs`  | egui_kittest: each tab keeps its text and undo history, closing tabs shows the neighbour, Next File reuses the active tab, and the tabs come back when the project reopens |
+| `ui_tests_tabs`  | egui_kittest: each tab keeps its text and undo history, closing tabs shows the neighbour, Next File reuses the active tab, Undo and Redo work from the toolbar and from the keys without the editor, Reopen Closed Tab brings back a tab with its history, and the tabs come back when the project reopens |
 | `ui_tests_diagram` | egui_kittest: New Diagram creates a `.mmd` and shows the canvas and the tools, drawing with a button and with a tool key autosaves, a tool key typed into Search doesn't draw, a note tab and a diagram tab keep their state, Export writes an SVG, and the toolbar's stacking-order buttons move a shape and the new order autosaves |
 | `ui_tests_editor`| egui_kittest: typing autosaves, list Enter, `[[` completion, a pasted image becomes an attachment and its Markdown, and Ctrl+click on a wikilink; SLIDES pane insert → disk, presentation settings save, presenter open/close; reopening a project restores the last note's caret and scroll (and only that note's) |
 
@@ -99,9 +99,20 @@ Reopening a project opens the tabs that were open and shows the active one, with
 | Choosing a file (the tree, a search result, a link, the palette) | Opens its tab at the end of the strip, or shows the tab it has |
 | Previous File and Next File (Ctrl+PgUp, Ctrl+PgDn) | Show the file in the active tab's place, or show the tab it has |
 | Close Tab (Ctrl+W, the tab's close button, a middle-click) | Writes the pending edit and shows the tab to the right, else the one to the left |
+| Reopen Closed Tab (Ctrl+Shift+W) | Brings back the tab closed last at the end of the strip, with its state. A file deleted since is skipped, and a file changed since is reloaded as one undo step |
 | Next Tab and Previous Tab (Ctrl+Tab, Ctrl+Shift+Tab) | Step through the strip, wrapping around |
 
-A note in a background tab keeps its text, undo history, caret, and scroll. A diagram keeps its undo history and its pan and zoom. Closing a tab drops them. The layout in `window-state.json` keeps `openTabs` (the file ids in tab order) and `activeTab`; tabs whose file is gone are left out when the project reopens.
+A note in a background tab keeps its text, undo history, caret, and scroll. A diagram keeps its undo history and its pan and zoom. Closing a tab keeps them for Reopen Closed Tab, for the last ten tabs closed (`CLOSED_KEPT`).
+
+Undo and Redo are app commands (`Act::Undo` and `Act::Redo`) that go to the active tab's note editor or diagram. The left toolbar's two buttons and the palette use them. For a note, the keys are the editor's own while it has the keyboard, and the app's `edit.undo` and `edit.redo` while no text field has it. A diagram's keys are BlockLiner's `diagram.edit.undo` and `diagram.edit.redo`.
+
+| Limit | Value | Where |
+|---|---|---|
+| A note's history | 1,000 steps and 8 MiB of changed text | `laankit_editor::history` |
+| A diagram's history | 200 steps and 8 MiB, a step's size being the diagram written as text | `blockliner_core::history` |
+| All tabs together | 64 MiB (`HISTORY_BUDGET`) | `Tabs::trim_histories`, called when you switch or close a tab |
+
+Past the total, the oldest steps go from the closed tabs first, then from the background tabs, the one left longest ago first, and from the active tab last. A file changed on disk by another program is taken as one undo step, for a note and for a diagram, in the active tab and in a background one. The layout in `window-state.json` keeps `openTabs` (the file ids in tab order) and `activeTab`; tabs whose file is gone are left out when the project reopens.
 
 ### Diagrams
 

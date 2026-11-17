@@ -38,7 +38,42 @@ pub struct DiagramStash {
     open: Open,
 }
 
+/// Reads a diagram's file. An empty file gets `grid`, the preferred grid, as
+/// a new diagram does.
+fn parse(text: &str, grid: f32) -> Result<Diagram, String> {
+    let mut d = blockliner_core::read(text).map_err(|e| e.to_string())?;
+    if d.shapes.is_empty() && d.connectors.is_empty() && text.trim().is_empty() {
+        d.grid = grid;
+    }
+    Ok(d)
+}
+
 impl DiagramStash {
+    pub fn file_id(&self) -> &str {
+        &self.open.id
+    }
+
+    /// The file changed on disk while the tab was in the background: the
+    /// new diagram is one undo step. Text BlockLiner can't read is refused,
+    /// and nothing changes.
+    pub fn replace(&mut self, text: &str, grid: f32) -> Result<(), String> {
+        let d = parse(text, grid)?;
+        self.editor.replace(d.clone());
+        self.open.saved = d;
+        self.open.dirty_since = None;
+        Ok(())
+    }
+
+    /// Bytes held by the undo history.
+    pub fn history_bytes(&self) -> usize {
+        self.editor.history.bytes()
+    }
+
+    /// Drops the oldest undo steps until at most `max` bytes are held.
+    pub fn trim_history(&mut self, max: usize) {
+        self.editor.history.trim_to(max);
+    }
+
     pub fn renamed(&mut self, id: &str, name: &str, filename: &str) {
         if self.open.id == id {
             self.open.name = name.to_string();
@@ -105,11 +140,7 @@ impl DiagramDoc {
     /// A freshly read diagram: in sync with disk, with no undo history.
     /// Text BlockLiner can't read is refused, and nothing changes.
     pub fn load(&mut self, id: &str, name: &str, filename: &str, text: &str) -> Result<(), String> {
-        let mut d = blockliner_core::read(text).map_err(|e| e.to_string())?;
-        // An empty file gets the preferred grid, as a new diagram does.
-        if d.shapes.is_empty() && d.connectors.is_empty() && text.trim().is_empty() {
-            d.grid = self.grid_size;
-        }
+        let d = parse(text, self.grid_size)?;
         self.open = Some(Open {
             id: id.to_string(),
             name: name.to_string(),
@@ -120,6 +151,38 @@ impl DiagramDoc {
         });
         self.editor.load(d);
         Ok(())
+    }
+
+    /// The open diagram `id` changed on disk, with no edit pending: the new
+    /// diagram is one undo step, and the view and the history stay. Text
+    /// BlockLiner can't read is refused, and nothing changes.
+    pub fn replace(&mut self, id: &str, text: &str) -> Result<(), String> {
+        let grid = self.grid_size;
+        let Some(o) = self.open.as_mut().filter(|o| o.id == id) else {
+            return Ok(());
+        };
+        let d = parse(text, grid)?;
+        if d != self.editor.diagram {
+            self.editor.replace(d.clone());
+        }
+        o.saved = d;
+        o.dirty_since = None;
+        Ok(())
+    }
+
+    /// The grid size of a new, empty diagram.
+    pub fn grid_size(&self) -> f32 {
+        self.grid_size
+    }
+
+    /// Bytes held by the undo history.
+    pub fn history_bytes(&self) -> usize {
+        self.editor.history.bytes()
+    }
+
+    /// Drops the oldest undo steps until at most `max` bytes are held.
+    pub fn trim_history(&mut self, max: usize) {
+        self.editor.history.trim_to(max);
     }
 
     /// No diagram open.
@@ -213,6 +276,8 @@ impl DiagramDoc {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use blockliner_core::{Rect, ShapeKind};
+    use blockliner_egui::commands::EditAct;
 
     const FLOW: &str = "flowchart LR\n  a[\"Alpha\"]\n";
 
@@ -266,6 +331,51 @@ mod tests {
         let mut d = doc();
         assert!(d.load("d2", "Bad", "bad.mmd", "# A note").is_err());
         assert_eq!(d.file_id(), Some("d1"));
+    }
+
+    #[test]
+    fn a_change_on_disk_is_one_undo_step() {
+        let mut d = doc();
+        d.editor
+            .diagram
+            .add_shape(ShapeKind::Rect, Rect::new(0.0, 200.0, 80.0, 40.0), "Mine");
+        d.editor.history.observe(&d.editor.diagram);
+        let _ = d.flush();
+        d.saved("d1");
+        let mine = d.editor.diagram.clone();
+        // Another program rewrites the file.
+        let mut theirs = mine.clone();
+        theirs.add_shape(
+            ShapeKind::Rect,
+            Rect::new(200.0, 200.0, 80.0, 40.0),
+            "Theirs",
+        );
+        d.replace("d1", &blockliner_core::write(&theirs)).unwrap();
+        assert_eq!(d.editor.diagram.shapes.len(), mine.shapes.len() + 1);
+        assert_eq!(d.status(), SaveStatus::Saved, "in sync with disk");
+        assert!(d.due(0.0).is_none());
+        // Undo shows the diagram as it was, and the step before still works.
+        d.editor.apply(EditAct::Undo);
+        assert_eq!(d.editor.diagram, mine);
+        d.editor.apply(EditAct::Undo);
+        assert_eq!(d.editor.diagram.shapes.len(), mine.shapes.len() - 1);
+        // Text that isn't a diagram is refused and nothing changes.
+        let before = d.editor.diagram.clone();
+        assert!(d.replace("d1", "# A note").is_err());
+        assert_eq!(d.editor.diagram, before);
+
+        // The same for a tab in the background.
+        let mut d = doc();
+        let shapes = d.editor.diagram.shapes.len();
+        let mut stash = d.take().unwrap();
+        stash
+            .replace(&blockliner_core::write(&theirs), 10.0)
+            .unwrap();
+        assert!(stash.history_bytes() > 0);
+        d.restore(stash);
+        assert_eq!(d.editor.diagram.shapes.len(), theirs.shapes.len());
+        d.editor.apply(EditAct::Undo);
+        assert_eq!(d.editor.diagram.shapes.len(), shapes);
     }
 
     #[test]

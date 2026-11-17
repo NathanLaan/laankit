@@ -34,6 +34,16 @@ pub struct Stash {
     pub view: View,
 }
 
+impl Stash {
+    /// The diagram becomes `d` as one undo step (the file changed on disk
+    /// while its tab was in the background).
+    pub fn replace(&mut self, d: Diagram) {
+        self.history.observe(&self.diagram);
+        self.diagram = d;
+        self.history.observe(&self.diagram);
+    }
+}
+
 /// One diagram being edited.
 pub struct DiagramEditor {
     pub diagram: Diagram,
@@ -77,6 +87,15 @@ impl DiagramEditor {
         self.canvas.clear(true);
         self.history.reset(&d);
         self.diagram = d;
+    }
+
+    /// Puts `d` on the canvas as one undo step (the file changed on disk):
+    /// the selection goes, and the view and the history stay.
+    pub fn replace(&mut self, d: Diagram) {
+        self.canvas.clear(false);
+        self.history.observe(&self.diagram);
+        self.diagram = d;
+        self.history.observe(&self.diagram);
     }
 
     /// The diagram as Mermaid, for the app to write.

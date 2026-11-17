@@ -226,6 +226,11 @@ impl EditorState {
         self.history.bytes()
     }
 
+    /// Drops the oldest undo steps until at most `max` bytes are held.
+    pub fn trim_history(&mut self, max: usize) {
+        self.history.trim_to(max);
+    }
+
     /// The engine in use.
     pub fn engine(&self) -> Engine {
         self.prefs.engine

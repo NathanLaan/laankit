@@ -48,6 +48,12 @@
     "body": "# Import Document\n\n**Shortcut:** `Ctrl+Alt+I`\n\nImports an external document into the current project, converting it to\nmarkdown. Embedded images are extracted into the project's `_attachments/`\nfolder and rewritten as markdown image references.\n\nA summary line appears in the Log pane noting how many images were\nextracted and whether any tables were stripped during conversion.\n"
   },
   {
+    "id": "toolbar-undo-redo",
+    "title": "Undo and Redo",
+    "section": "Toolbar",
+    "body": "# Undo and Redo\n\nShortcuts: `Ctrl+Z` to undo, `Ctrl+Shift+Z` or `Ctrl+Y` to redo\n\nThe Undo and Redo buttons on the left toolbar act on the file in the active\ntab: a note, a presentation, or a diagram. A button is off when there is\nnothing to undo or to redo. Both are also in the Command Palette.\n\nEvery open tab has its own history, and it is kept while you work in other\ntabs. The history is held in memory, so it is gone when you quit NoteLiner.\nYour text is not: every edit is saved to the file a moment after you make\nit, and an undo is saved in the same way.\n\n- Typing without a pause is one step. A paste, a list change, and an edit\n  in the Slides pane are each one step.\n- In a diagram, a drag is one step, and so is drawing a shape and typing\n  its label.\n- When another program changes the file, the new content is one step. Undo\n  brings back what you had.\n- A tag added in the Tags pane and a change in Presentation Settings are\n  not steps. Change them back where you made them.\n- The keys work while the keyboard is in the editor, on the canvas, or\n  nowhere, for example after a click in the Slides pane. In a text field\n  of a pane or a dialog, they undo that field's typing.\n\n## Reopen Closed Tab\n\nShortcut: `Ctrl+Shift+W`\n\nBrings back the tab you closed last, with its history, cursor, and scroll.\nNoteLiner keeps the last ten tabs you closed in this project. A file that\nwas deleted since is skipped.\n\n## Limits\n\nA note keeps up to 1,000 steps and a diagram up to 200, and each keeps at\nmost 8 MiB. All tabs together keep at most 64 MiB. Past a limit the oldest\nsteps go first: from closed tabs, then from the tabs you left longest ago.\n"
+  },
+  {
     "id": "toolbar-files",
     "title": "Files Panel",
     "section": "Toolbar",
@@ -165,6 +171,6 @@
     "id": "keyboard-shortcuts",
     "title": "Keyboard Shortcuts",
     "section": "App",
-    "body": "# Keyboard Shortcuts\n\nA complete, always-up-to-date shortcut reference lives in\n**Settings → Keyboard Shortcuts**. The list is generated from the\ncommand registry, so anything the app responds to is documented there.\n\nHighlights:\n\n- `Ctrl+K` — Command Palette\n- `Ctrl+N` / `Ctrl+D` — new / delete file\n- `Ctrl+Shift+D` — duplicate file\n- `Ctrl+O` — open folder\n- `Ctrl+P` — preview\n- `Ctrl+E` / `Ctrl+Shift+E` — toggle sidebar / toolbar\n- `Ctrl+F` / `Ctrl+Shift+F` — project search / find in file\n- `Ctrl+,` — settings\n- `F2` — rename the selected note or folder\n- `Ctrl+B` / `Ctrl+I` — bold / italic (in editor)\n- `Ctrl+Shift+I` — about\n"
+    "body": "# Keyboard Shortcuts\n\nA complete, always-up-to-date shortcut reference lives in\n**Settings → Keyboard Shortcuts**. The list is generated from the\ncommand registry, so anything the app responds to is documented there.\n\nHighlights:\n\n- `Ctrl+K` — Command Palette\n- `Ctrl+N` / `Ctrl+D` — new / delete file\n- `Ctrl+Shift+D` — duplicate file\n- `Ctrl+O` — open folder\n- `Ctrl+Z` / `Ctrl+Shift+Z` — undo / redo in the active tab\n- `Ctrl+W` / `Ctrl+Shift+W` — close tab / reopen closed tab\n- `Ctrl+P` — preview\n- `Ctrl+E` / `Ctrl+Shift+E` — toggle sidebar / toolbar\n- `Ctrl+F` / `Ctrl+Shift+F` — project search / find in file\n- `Ctrl+,` — settings\n- `F2` — rename the selected note or folder\n- `Ctrl+B` / `Ctrl+I` — bold / italic (in editor)\n- `Ctrl+Shift+I` — about\n"
   }
 ]
