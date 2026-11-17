@@ -69,6 +69,17 @@ impl History {
         self.bytes
     }
 
+    /// Drops the oldest steps until at most `max` bytes are held (a host's
+    /// limit across several editors).
+    pub fn trim_to(&mut self, max: usize) {
+        while self.bytes > max {
+            match self.undos.pop_front() {
+                Some(old) => self.bytes -= old.bytes(),
+                None => break,
+            }
+        }
+    }
+
     /// Records the change from `old` to `new`. `typing` steps may join the
     /// previous step; commands never do.
     pub fn record(
@@ -302,6 +313,20 @@ mod tests {
         }
         assert!(h.bytes() <= MAX_BYTES, "{}", h.bytes());
         assert!(h.can_undo());
+    }
+
+    #[test]
+    fn trimming_drops_the_oldest_steps() {
+        let mut h = History::default();
+        let mut text = String::new();
+        typed(&mut h, &mut text, 0, "aaaa", 0.0);
+        typed(&mut h, &mut text, 4, "bb", 5.0);
+        assert_eq!(h.bytes(), 6);
+        h.trim_to(3);
+        assert_eq!(h.bytes(), 2);
+        assert_eq!(h.undo(&mut text), Some((4, 4)));
+        assert_eq!(text, "aaaa");
+        assert_eq!(h.undo(&mut text), None);
     }
 
     #[test]

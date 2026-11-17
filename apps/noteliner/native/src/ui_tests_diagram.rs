@@ -333,3 +333,36 @@ fn the_toolbar_moves_a_shape_behind_another_and_saves_the_order() {
     h.run_steps(2);
     assert_eq!(order(&h), [before[1].clone(), "api".to_string()]);
 }
+
+#[test]
+fn a_diagram_changed_on_disk_reloads_as_one_undo_step() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    let file = project.join("map.mmd");
+    let original = std::fs::read_to_string(&file).unwrap();
+    open_diagram(&mut h, "Map");
+    h.key_press(Key::R);
+    h.run_steps(2);
+    let (from, to) = (at(&h, 300.0, 200.0), at(&h, 460.0, 280.0));
+    draw(&mut h, from, to);
+    assert_eq!(shapes(&h), 2);
+    let (written, before) = (file.clone(), original.clone());
+    wait_for(&mut h, "the drawing on disk", move |a| {
+        a.diagram_status() == crate::editor::SaveStatus::Saved
+            && std::fs::read_to_string(&written).is_ok_and(|s| s != before)
+    });
+
+    // Another program puts the file back as it was.
+    std::fs::write(&file, &original).unwrap();
+    h.state_mut().check_now();
+    wait_for(&mut h, "the reload", |a| {
+        a.diagram_editor().diagram.shapes.len() == 1
+    });
+    h.run_steps(2);
+    // Undo shows the diagram as it was, and the drawing can still be undone.
+    act(&mut h, Act::Undo);
+    assert_eq!(shapes(&h), 2);
+    assert!(h.state().diagram_editor().view().can_undo);
+    act(&mut h, Act::Undo);
+    assert_eq!(shapes(&h), 1);
+}

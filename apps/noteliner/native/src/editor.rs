@@ -599,6 +599,41 @@ impl NoteEditor {
         self.ctx.request_repaint();
     }
 
+    pub fn can_undo(&self) -> bool {
+        self.id.is_some() && self.state.can_undo()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        self.id.is_some() && self.state.can_redo()
+    }
+
+    /// Undo, from outside the editor (the toolbar, the palette, or Ctrl+Z
+    /// while the editor doesn't have the keyboard). The autosave follows.
+    pub fn undo(&mut self) {
+        if self.can_undo() {
+            self.state.run(Command::Undo);
+            self.ctx.request_repaint();
+        }
+    }
+
+    /// Redo, as [`NoteEditor::undo`].
+    pub fn redo(&mut self) {
+        if self.can_redo() {
+            self.state.run(Command::Redo);
+            self.ctx.request_repaint();
+        }
+    }
+
+    /// Bytes held by the undo history.
+    pub fn history_bytes(&self) -> usize {
+        self.state.history_bytes()
+    }
+
+    /// Drops the oldest undo steps until at most `max` bytes are held.
+    pub fn trim_history(&mut self, max: usize) {
+        self.state.trim_history(max);
+    }
+
     /// Opens the editor's Go to line bar (Ctrl+Alt+G, or the palette).
     pub fn go_to_line(&mut self) {
         if self.id.is_some() {

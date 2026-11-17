@@ -5,6 +5,9 @@
 //! - Close Tab (the button and Ctrl+W) shows the neighbour, and the last one
 //!   leaves nothing open;
 //! - Next File reuses the active tab;
+//! - Undo and Redo on the toolbar, and their keys while the editor doesn't
+//!   have the keyboard;
+//! - Reopen Closed Tab brings a tab back with its undo history;
 //! - the tabs and the active tab come back when the project reopens.
 //!
 //!
@@ -13,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use egui::accesskit::Role;
 use egui::{Event, Key, Modifiers};
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::Harness;
 use noteliner_core::project::Project;
 use serde_json::json;
@@ -203,4 +206,120 @@ fn tabs_come_back_when_the_project_reopens() {
     let mut h = open(&tmp.path().join("NoteLiner"), &project);
     wait_open(&mut h, "Alpha");
     assert_eq!(tabs(&h), ["Gamma", "Alpha", "Beta"]);
+}
+
+/// Types into the open note, with the keyboard in the editor.
+fn type_text(h: &mut Harness<'static, NoteLinerApp>, text: &str) {
+    h.get_by_role(Role::MultilineTextInput).focus();
+    h.run_steps(2);
+    h.event(Event::Text(text.into()));
+    h.run_steps(2);
+}
+
+fn enabled(h: &Harness<'static, NoteLinerApp>, label: &str) -> bool {
+    !h.get_by_label(label).accesskit_node().is_disabled()
+}
+
+#[test]
+fn undo_and_redo_from_the_toolbar_and_the_keys() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    choose(&mut h, "Alpha");
+    h.run_steps(2);
+    // Nothing to undo yet: both buttons are off.
+    assert!(!enabled(&h, "Undo (Ctrl+Z)"));
+    assert!(!enabled(&h, "Redo (Ctrl+Shift+Z)"));
+
+    type_text(&mut h, "typed ");
+    assert!(h.state().editor_text().contains("typed "));
+    assert!(enabled(&h, "Undo (Ctrl+Z)"));
+    assert!(!enabled(&h, "Redo (Ctrl+Shift+Z)"));
+
+    h.get_by_label("Undo (Ctrl+Z)").click();
+    h.run_steps(4);
+    assert_eq!(h.state().editor_text(), "Alpha text\n");
+    assert!(!enabled(&h, "Undo (Ctrl+Z)"));
+    h.get_by_label("Redo (Ctrl+Shift+Z)").click();
+    h.run_steps(4);
+    assert!(h.state().editor_text().contains("typed "));
+
+    // The keys reach the note while nothing has the keyboard.
+    let ctx = h.ctx.clone();
+    ctx.memory_mut(|m| {
+        if let Some(id) = m.focused() {
+            m.surrender_focus(id);
+        }
+    });
+    h.run_steps(2);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run_steps(4);
+    assert_eq!(h.state().editor_text(), "Alpha text\n");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Y);
+    h.run_steps(4);
+    assert!(h.state().editor_text().contains("typed "));
+
+    // An undo is an edit like any other: it is saved.
+    act(&mut h, Act::Undo);
+    h.run_steps(2);
+    let alpha = project.join("alpha.md");
+    wait_for(&mut h, "the undo on disk", move |_| {
+        std::fs::read_to_string(&alpha).is_ok_and(|s| !s.contains("typed "))
+    });
+}
+
+#[test]
+fn reopen_closed_tab_brings_back_its_history() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    choose(&mut h, "Alpha");
+    type_text(&mut h, "typed ");
+    choose(&mut h, "Beta");
+    let alpha = project.join("alpha.md");
+    let on_disk = alpha.clone();
+    wait_for(&mut h, "Alpha's edit on disk", move |_| {
+        std::fs::read_to_string(&on_disk).is_ok_and(|s| s.contains("typed "))
+    });
+
+    // Close Alpha's tab, then bring it back with Ctrl+Shift+W.
+    h.get_by_role_and_label(Role::Tab, "Alpha").click();
+    wait_open(&mut h, "Alpha");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    h.run_steps(2);
+    wait_open(&mut h, "Beta");
+    assert_eq!(tabs(&h), ["Beta"]);
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::W);
+    h.run_steps(2);
+    wait_open(&mut h, "Alpha");
+    assert_eq!(tabs(&h), ["Beta", "Alpha"]);
+    assert!(h.state().editor_text().contains("typed "));
+    // Its history came back with it.
+    act(&mut h, Act::Undo);
+    h.run_steps(2);
+    assert_eq!(h.state().editor_text(), "Alpha text\n");
+    act(&mut h, Act::Redo);
+    h.run_steps(2);
+    assert!(h.state().editor_text().contains("typed "));
+    let on_disk = alpha.clone();
+    wait_for(&mut h, "the redo on disk", move |a| {
+        a.editor_status() == crate::editor::SaveStatus::Saved
+            && std::fs::read_to_string(&on_disk).is_ok_and(|s| s.contains("typed "))
+    });
+
+    // Another program changes the file while its tab is closed: reopening
+    // takes the change as one step on top of the history.
+    act(&mut h, Act::CloseTab);
+    wait_open(&mut h, "Beta");
+    std::fs::write(&alpha, "Changed elsewhere\n").unwrap();
+    act(&mut h, Act::ReopenClosedTab);
+    wait_open(&mut h, "Alpha");
+    wait_for(&mut h, "the change from disk", |a| {
+        a.editor_text() == "Changed elsewhere\n"
+    });
+    act(&mut h, Act::Undo);
+    h.run_steps(2);
+    assert!(h.state().editor_text().contains("typed "));
+
+    // Nothing more to reopen.
+    act(&mut h, Act::ReopenClosedTab);
+    assert_eq!(tabs(&h), ["Beta", "Alpha"]);
 }

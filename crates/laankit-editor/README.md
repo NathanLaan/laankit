@@ -70,6 +70,7 @@ for event in out.events { /* see the contract below */ }
 | `state.text()` / `state.version()`            | The note, and a counter bumped on every change                        |
 | `state.set_text(ctx, s)`                      | Load a note (not an edit: no `Changed`, undo cleared)                 |
 | `state.replace_text(ctx, s)`                  | Replace it as one undoable step (changed on disk while open)          |
+| `state.history_bytes()`, `state.trim_history(max)` | The undo history's size, and dropping its oldest steps down to `max` bytes (a host's limit across editors) |
 | `state.run(Command)`                          | Queue a command for the next frame (toolbar, menu, palette)           |
 | `state.cursor(ctx)` / `set_cursor(ctx, a, h)` | Caret/selection in characters (`set_cursor` scrolls it into view)     |
 | `state.scroll_offset()` / `set_scroll_offset` | Scroll position                                                       |

@@ -47,7 +47,7 @@ use crate::overlays::{
     self, ConflictAction, FormAction, MoveForm, MoveTarget, NewFileForm, Overlay,
 };
 use crate::spell;
-use crate::tabs::{NoteStash, Stashed, Tabs};
+use crate::tabs::{NoteStash, Stashed, Tabs, HISTORY_BUDGET};
 use crate::views::attachments::{self, AttachmentAction};
 use crate::views::diagram::{self as diagram_view, ToolbarAction as DiagramToolbarAction};
 use crate::views::panes::{PaneAction, PaneStates};
@@ -432,6 +432,11 @@ impl NoteLinerApp {
         self.editor.status()
     }
 
+    #[cfg(test)]
+    pub fn diagram_status(&self) -> crate::editor::SaveStatus {
+        self.diagram.status()
+    }
+
     /// Replaces the open note's whole file as if it had been typed: the
     /// note is unsaved, and the autosave follows.
     #[cfg(test)]
@@ -604,6 +609,9 @@ impl NoteLinerApp {
             displays: self.displays.len(),
             tags_visible: p.is_some_and(|p| p.layout.show_tags),
             tabs: self.tabs.len(),
+            closed_tabs: self.tabs.closed_len(),
+            note_can_undo: !self.diagram_active() && self.editor.can_undo(),
+            note_can_redo: !self.diagram_active() && self.editor.can_redo(),
             is_diagram: self.diagram_active(),
             diagram_has_content: self.diagram_has_content(),
             diagram: self.diagram.editor.view(),
@@ -1180,7 +1188,7 @@ impl NoteLinerApp {
             self.editor.clear();
             self.diagram.clear();
         }
-        let next = self.tabs.close(id);
+        let next = self.tabs.forget(id);
         if let Some(next) = next.filter(|_| active) {
             self.select(next);
         }
@@ -1201,10 +1209,7 @@ impl NoteLinerApp {
                     "“{}” changed on disk while it was being edited. Your version was kept.",
                     entry.name
                 ));
-            } else if let Err(e) = self
-                .diagram
-                .load(&id, &entry.name, &entry.filename, &content)
-            {
+            } else if let Err(e) = self.diagram.replace(&id, &content) {
                 self.toasts
                     .error(format!("Couldn't reload “{}”: {e}", entry.name));
             }
@@ -1223,16 +1228,22 @@ impl NoteLinerApp {
             self.pending_conflict = Some((id, content));
             return;
         }
-        // A background tab has no unsaved edits: a note takes the file, and
-        // a diagram is read again when its tab is shown.
-        let mut taken = false;
+        // A background tab has no unsaved edits: it takes the file as one
+        // undo step. A diagram that can't be read any more is read again
+        // when its tab is shown, which says so.
         for e in self.tabs.editors_mut() {
             if e.file_id() == Some(id.as_str()) {
                 e.replace(&id, content.clone());
-                taken = true;
             }
         }
-        if !taken {
+        let grid = self.diagram.grid_size();
+        let mut unreadable = false;
+        for d in self.tabs.diagrams_mut() {
+            if d.file_id() == id {
+                unreadable |= d.replace(&content, grid).is_err();
+            }
+        }
+        if unreadable {
             self.tabs.take(&id);
         }
     }
@@ -1405,36 +1416,14 @@ impl NoteLinerApp {
             return;
         }
         self.flush_active();
-        let Some(p) = &mut self.project else { return };
         let replaced = self.tabs.open(&id, current.as_deref().filter(|_| reuse));
         // The tab being left keeps its editor, unless this file took its place.
         if let Some(left) = current.filter(|c| *c != id && replaced.as_ref() != Some(c)) {
-            if self.diagram.file_id() == Some(left.as_str()) {
-                if let Some(stash) = self.diagram.take() {
-                    self.tabs.put(&left, Stashed::Diagram(Box::new(stash)));
-                }
-            } else if self.editor.file_id() == Some(left.as_str()) {
-                if let Some((_, anchor, head, scroll)) = self.editor.view() {
-                    // An empty editor with this one's settings takes its place.
-                    let mut fresh = self.editor.sibling();
-                    if let Some(checker) = &self.spell_checker {
-                        fresh.set_spell_checker(Some(
-                            checker.clone() as Arc<dyn laankit_editor::SpellChecker>
-                        ));
-                    }
-                    let editor = std::mem::replace(&mut self.editor, fresh);
-                    self.tabs.put(
-                        &left,
-                        Stashed::Note(Box::new(NoteStash {
-                            editor,
-                            anchor,
-                            head,
-                            scroll,
-                        })),
-                    );
-                }
+            if let Some(state) = self.stash_active(&left) {
+                self.tabs.put(&left, state);
             }
         }
+        let Some(p) = &mut self.project else { return };
         p.selected = Some(id.clone());
         // The open note has the tree's highlight again.
         p.selected_folder = None;
@@ -1461,6 +1450,64 @@ impl NoteLinerApp {
                 self.backend.read_file(id, entry.filename);
             }
         }
+        self.trim_histories();
+    }
+
+    /// Takes the state of `id`, the file in the active tab, out of the
+    /// editor or the canvas, for its tab to keep: the text or the diagram,
+    /// the undo history, and the view. An empty editor takes its place.
+    fn stash_active(&mut self, id: &str) -> Option<Stashed> {
+        if self.diagram.file_id() == Some(id) {
+            let stash = self.diagram.take()?;
+            return Some(Stashed::Diagram(Box::new(stash)));
+        }
+        if self.editor.file_id() != Some(id) {
+            return None;
+        }
+        let (_, anchor, head, scroll) = self.editor.view()?;
+        // An empty editor with this one's settings takes its place.
+        let mut fresh = self.editor.sibling();
+        if let Some(checker) = &self.spell_checker {
+            fresh.set_spell_checker(Some(
+                checker.clone() as Arc<dyn laankit_editor::SpellChecker>
+            ));
+        }
+        let editor = std::mem::replace(&mut self.editor, fresh);
+        Some(Stashed::Note(Box::new(NoteStash {
+            editor,
+            anchor,
+            head,
+            scroll,
+        })))
+    }
+
+    /// Keeps the undo histories of every tab within the memory limit: the
+    /// closed and background tabs give up their oldest steps first, and the
+    /// active tab last.
+    fn trim_histories(&mut self) {
+        let active = self.editor.history_bytes() + self.diagram.history_bytes();
+        let over = self.tabs.trim_histories(active, HISTORY_BUDGET);
+        if over == 0 {
+            return;
+        }
+        let notes = self.editor.history_bytes();
+        self.editor.trim_history(notes.saturating_sub(over));
+        let over = over.saturating_sub(notes - self.editor.history_bytes());
+        let diagrams = self.diagram.history_bytes();
+        self.diagram.trim_history(diagrams.saturating_sub(over));
+    }
+
+    /// Reopen Closed Tab: the tab closed last comes back at the end of the
+    /// strip with its undo history, caret and scroll. A file deleted since
+    /// is skipped. A file changed since is reloaded as one undo step, by
+    /// the check that follows.
+    fn reopen_closed_tab(&mut self) {
+        let Some(p) = &self.project else { return };
+        let Some(id) = self.tabs.reopen(|id| p.entry(id).is_some()) else {
+            return;
+        };
+        self.select(id);
+        self.check(false);
     }
 
     /// Writes the active tab's pending edit, a note's or a diagram's.
@@ -1483,6 +1530,10 @@ impl NoteLinerApp {
             .is_some_and(|p| p.selected.as_deref() == Some(id));
         if active {
             self.flush_active();
+            // The tab keeps its state, for Reopen Closed Tab.
+            if let Some(state) = self.stash_active(id) {
+                self.tabs.put(id, state);
+            }
         }
         let Some(p) = &mut self.project else { return };
         if active {
@@ -1494,6 +1545,7 @@ impl NoteLinerApp {
         if let Some(next) = next.filter(|_| active) {
             self.select(next);
         }
+        self.trim_histories();
     }
 
     /// Next Tab and Previous Tab.
@@ -2126,6 +2178,21 @@ impl NoteLinerApp {
                     self.close_tab(&id);
                 }
             }
+            Act::ReopenClosedTab => self.reopen_closed_tab(),
+            Act::Undo => {
+                if self.diagram_active() {
+                    self.edit_diagram(EditAct::Undo);
+                } else {
+                    self.editor.undo();
+                }
+            }
+            Act::Redo => {
+                if self.diagram_active() {
+                    self.edit_diagram(EditAct::Redo);
+                } else {
+                    self.editor.redo();
+                }
+            }
             Act::NextTab => self.step_tab(1),
             Act::PreviousTab => self.step_tab(-1),
             Act::NewDiagram => {
@@ -2616,6 +2683,12 @@ impl NoteLinerApp {
             .map(|p| p.layout.clone())
             .unwrap_or_default();
         let is_deck = self.is_deck();
+        let (can_undo, can_redo) = if self.diagram_active() {
+            let v = self.diagram.editor.view();
+            (v.can_undo, v.can_redo)
+        } else {
+            (self.editor.can_undo(), self.editor.can_redo())
+        };
         let update_ready = matches!(self.update, UpdateStatus::Available { .. });
         let mut acts = Vec::new();
         let mut bottom_acts = Vec::new();
@@ -2662,6 +2735,21 @@ impl NoteLinerApp {
                         }
                         toolbar::divider(ui);
                     }
+                    // Undo and Redo act on the active tab, a note's or a
+                    // diagram's, and are off when it has nothing to undo.
+                    if b(ui, icons::ROTATE_LEFT, "Undo (Ctrl+Z)", false, !can_undo) {
+                        acts.push(Act::Undo);
+                    }
+                    if b(
+                        ui,
+                        icons::ROTATE_RIGHT,
+                        "Redo (Ctrl+Shift+Z)",
+                        false,
+                        !can_redo,
+                    ) {
+                        acts.push(Act::Redo);
+                    }
+                    toolbar::divider(ui);
                     if b(
                         ui,
                         icons::BARS_STAGGERED,

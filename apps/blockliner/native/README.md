@@ -59,7 +59,7 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | `geometry`, `snap`, `connect` | Handles and resizing, the outlines, label areas, and anchors of the shapes that aren't boxes, grid snapping, where connector ends meet shapes, connector paths, hit-testing |
 | `route`    | Right-angle routes: candidate paths scored by shapes crossed, bends, and length (cached per geometry in `connect`) |
 | `ids`      | Mermaid ids from labels (`"Orders DB"` → `orders_db`)                                       |
-| `history`  | Undo and redo as whole-diagram snapshots                                                    |
+| `history`  | Undo and redo as whole-diagram snapshots, at most 200 steps and 8 MiB                       |
 | `export`   | Which objects an export contains, and the page around them                                  |
 | `style`    | Colours and dashes: `Colour`, `Style` (a shape's `style` line or an edge's `linkStyle`), `Dash` (solid, dashed, dotted, custom), the presets, label contrast |
 | `clipboard`| Copy and paste: the selection as a diagram (ends on shapes left behind freed), new ids and placement on paste, and plain text as a text box |

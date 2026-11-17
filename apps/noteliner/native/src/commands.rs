@@ -31,6 +31,12 @@ pub enum Act {
     PrevFile,
     NextFile,
     CloseTab,
+    /// Brings back the tab closed last, with its undo history.
+    ReopenClosedTab,
+    /// Undo in the active tab, a note's or a diagram's.
+    Undo,
+    /// Redo in the active tab.
+    Redo,
     NextTab,
     PreviousTab,
     /// New Item, with Diagram chosen.
@@ -107,6 +113,11 @@ pub struct View {
     pub tags_visible: bool,
     /// How many tabs are open.
     pub tabs: usize,
+    /// How many closed tabs could be reopened.
+    pub closed_tabs: usize,
+    /// The active tab is a note with something to undo, or to redo.
+    pub note_can_undo: bool,
+    pub note_can_redo: bool,
     /// The active tab is a diagram, loaded on the canvas.
     pub is_diagram: bool,
     /// …and it has something to export.
@@ -140,6 +151,20 @@ fn deletable(v: &View) -> bool {
 
 fn has_tab(v: &View) -> bool {
     project_open(v) && v.tabs > 0
+}
+
+fn has_closed_tab(v: &View) -> bool {
+    project_open(v) && v.closed_tabs > 0
+}
+
+/// A note is the active tab, has something to undo, and no text field has
+/// the keyboard (the editor, and any other field, undoes its own typing).
+fn note_undoable(v: &View) -> bool {
+    is_note(v) && !v.typing && v.note_can_undo
+}
+
+fn note_redoable(v: &View) -> bool {
+    is_note(v) && !v.typing && v.note_can_redo
 }
 
 fn many_tabs(v: &View) -> bool {
@@ -398,6 +423,33 @@ pub fn registry() -> Registry<Act, View> {
             .key(Binding::logical(cmd, Key::W))
             .shortcut("Ctrl+W")
             .when(has_tab),
+    );
+    r.register(
+        add(
+            "file.reopenClosedTab",
+            "Reopen Closed Tab",
+            "File",
+            Act::ReopenClosedTab,
+        )
+        .key(Binding::logical(shift, Key::W))
+        .shortcut("Ctrl+Shift+W")
+        .when(has_closed_tab),
+    );
+    // Undo and Redo for a note, while its editor doesn't have the keyboard
+    // (with it, the editor takes the same keys itself). A diagram's are
+    // BlockLiner's, registered above.
+    r.register(
+        add("edit.undo", "Undo", "Edit", Act::Undo)
+            .key(Binding::logical(cmd, Key::Z))
+            .shortcut("Ctrl+Z")
+            .when(note_undoable),
+    );
+    r.register(
+        add("edit.redo", "Redo", "Edit", Act::Redo)
+            .key(Binding::logical(shift, Key::Z))
+            .key(Binding::logical(cmd, Key::Y))
+            .shortcut("Ctrl+Shift+Z")
+            .when(note_redoable),
     );
     r.register(
         add("view.nextTab", "Next Tab", "View", Act::NextTab)
@@ -816,6 +868,44 @@ mod tests {
             .iter()
             .map(|c| c.id.clone())
             .collect()
+    }
+
+    #[test]
+    fn undo_redo_and_reopen_apply_only_when_there_is_something_to_do() {
+        let note = View {
+            project_open: true,
+            has_selection: true,
+            tabs: 1,
+            ..Default::default()
+        };
+        let none = applicable(note);
+        assert!(!none.contains(&"edit.undo".into()));
+        assert!(!none.contains(&"edit.redo".into()));
+        assert!(!none.contains(&"file.reopenClosedTab".into()));
+
+        let edited = View {
+            note_can_undo: true,
+            closed_tabs: 1,
+            ..note
+        };
+        let on = applicable(edited);
+        assert!(on.contains(&"edit.undo".into()));
+        assert!(!on.contains(&"edit.redo".into()));
+        assert!(on.contains(&"file.reopenClosedTab".into()));
+
+        // A text field has the keyboard: it undoes its own typing.
+        let typing = applicable(View {
+            typing: true,
+            ..edited
+        });
+        assert!(!typing.contains(&"edit.undo".into()));
+
+        // A diagram's Undo is BlockLiner's, not the note's.
+        let diagram = applicable(View {
+            is_diagram: true,
+            ..edited
+        });
+        assert!(!diagram.contains(&"edit.undo".into()));
     }
 
     #[test]
