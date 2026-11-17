@@ -99,7 +99,7 @@
     "id": "toolbar-settings",
     "title": "Settings",
     "section": "Toolbar",
-    "body": "# Settings\n\nShortcut: `Ctrl+,`\n\nOpens the Settings dialog:\n\n- UI: the open project's folder, theme, UI scale, custom window titlebar,\n  spell checking, and whether NoteLiner writes YAML frontmatter into `.md`\n  files.\n- Diagrams: the grid and dimension lines of the diagram canvas.\n- MCP: the local server that lets an AI assistant read and write notes.\n- Keyboard Shortcuts: a complete list of every command and its shortcut,\n  generated from the command registry, so it always matches what the app\n  responds to.\n"
+    "body": "# Settings\n\nShortcut: `Ctrl+,`\n\nOpens the Settings dialog:\n\n- UI: theme, UI scale, and custom window titlebar.\n- Project: the open project's folder, and whether NoteLiner writes YAML\n  frontmatter into `.md` files.\n- Editor: spell checking.\n- Diagrams: the grid and dimension lines of the diagram canvas.\n- MCP: the local server that lets an AI assistant read and write notes.\n- Keyboard Shortcuts: a complete list of every command and its shortcut,\n  generated from the command registry, so it always matches what the app\n  responds to.\n"
   },
   {
     "id": "toolbar-about",

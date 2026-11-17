@@ -40,7 +40,7 @@ cargo run -p noteliner-native --release          # the demo is in Recent Project
 |-------------------|-------------------------------------------------------------------------------------------|
 | `LAANKIT_PROJECT`  | Open this project folder at launch                                                        |
 | `LAANKIT_FILE`     | Then select the nth note in display order, or the note with this name                     |
-| `LAANKIT_OPEN`     | Then open `settings[:ui\|mcp\|shortcuts]`, `about`, `help`, `palette`, `new-file`, `new-folder`, `move`, `preview`, `slides`, `presentation-settings`, `present`, `log`, `search:<query>`, `tags`, `backlinks`, `attachments`, `tag-filter`, `tag-editor`, `mcp-walkthrough`, or `mcp-confirm` (a sample request) |
+| `LAANKIT_OPEN`     | Then open `settings[:ui\|project\|editor\|diagrams\|mcp\|shortcuts]`, `about`, `help`, `palette`, `new-file`, `new-folder`, `move`, `preview`, `slides`, `presentation-settings`, `present`, `log`, `search:<query>`, `tags`, `backlinks`, `attachments`, `tag-filter`, `tag-editor`, `mcp-walkthrough`, or `mcp-confirm` (a sample request) |
 
 The Help pages are `assets/help-pages.json` (loaded at build time with `include_str!`); edit that file to change the in-app Help.
 
@@ -201,7 +201,7 @@ The tables list what the Svelte builds had and where it is here. NoteLiner 3 lea
 | `Editor`                                       | Done    | `laankit-editor` on its core engine: highlighting (code fences by language), list editing with ordered-list renumbering, shortcuts, find/replace, Go to line (Ctrl+Alt+G), bracket and selection matches, `[[` completion, paste/drop attachments, spell check, several cursors (Ctrl+click, Ctrl+D, find "all", Alt+drag), folding (gutter, Ctrl+Shift+[ / ]), and notes of 50,000+ lines. Its own parity table lists what's left |
 | `Preview`                                      | Done    | comrak + laankit-richtext; wikilinks open or create notes; attachments |
 | `StatusBar`, `LogPanel`                        | Done    | Including a deck's slide and speaking time. No branch chip; the log is the Activity Log, for MCP activity and import notes |
-| `SettingsModal` (UI, MCP, Keyboard Shortcuts)  | Done    | Turning MCP on opens the walkthrough                                  |
+| `SettingsModal` (UI, Project, Editor, Diagrams, MCP, Keyboard Shortcuts) | Done    | Turning MCP on opens the walkthrough                                  |
 | `ProjectSettingsModal`, `SyncModal`, `SyncingModal` | Removed | The project's folder is shown in Settings                          |
 | `ImportingModal`                               | Done    |                                                                       |
 | `AboutModal`, Help (`HelpApp`)                 | Done    |                                                                       |
