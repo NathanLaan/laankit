@@ -60,7 +60,7 @@ Settings live in the platform config folder (`~/.config/NoteLiner` on Linux).
 ## Folders
 
 - In every folder, its folders come first, in name order. Its notes and diagrams follow, sorted by Name A-Z, Name Z-A, Last Modified, or Created.
-- New Folder is in the Files pane's header, the right-click menu of a folder or of the empty part of the tree, and the Command Palette. The folder is made inside the selected folder, or beside the selected note, or at the top with nothing selected.
+- New Item (Ctrl+N) makes a note, a presentation, a diagram, or a folder in one dialog. New Folder in the Files pane's header, in the right-click menu of a folder or of the empty part of the tree, and in the Command Palette opens it with Folder chosen. The dialog starts with the selected folder, or the folder of the selected note, or the top with nothing selected, and you can pick another.
 - Drag a note or a folder onto a folder to move it, or onto the empty part of the tree to move it to the top. Move... in the right-click menu lists the folders.
 - A note's file name is a slug of its name (`kickoff-notes.md` for "Kickoff Notes"). A folder's name is its name on disk.
 - A note's attachments are in `_attachments/` inside the note's own folder, and they move with the note. The link in the note is `./_attachments/att-1234.png` in every folder.
@@ -125,7 +125,7 @@ NoteLiner runs no `git` command, keeps no history of a note's earlier versions, 
 
 Templates are reusable note skeletons stored as plain Markdown in the project's `_templates/` directory. They are not notes, so they never appear in the tree, search, or backlinks.
 
-When a project has at least one template, the New File dialog shows a *Template* dropdown. Save as Template (Command Palette) saves the selected note's name and body as `_templates/<name>.md`. These placeholders are substituted when a note is created from a template (any other `{{…}}` is left untouched):
+When a project has at least one template, the New Item dialog shows a *Template* dropdown. Save as Template (Command Palette) saves the selected note's name and body as `_templates/<name>.md`. These placeholders are substituted when a note is created from a template (any other `{{…}}` is left untouched):
 
 | Placeholder  | Replaced with                 | Example              |
 |--------------|-------------------------------|----------------------|

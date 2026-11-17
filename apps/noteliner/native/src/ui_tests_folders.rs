@@ -670,7 +670,58 @@ fn changes_made_by_other_programs() {
     close(h);
 }
 
-/// Forty folders, so the New File dialog's Folder list is taller than the
+/// Picks `name` in the New Item dialog's Folder list.
+fn pick_parent(h: &mut H, name: &str) {
+    h.get_by_role_and_label(Role::ComboBox, "Folder").click();
+    h.run_steps(3);
+    h.get_all_by_role(Role::ListBoxOption)
+        .find(|n| n.accesskit_node().label().is_some_and(|l| l.trim() == name))
+        .expect("the folder in the list")
+        .click();
+    h.run_steps(3);
+}
+
+#[test]
+fn new_item_makes_a_folder_in_the_parent_you_pick() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), plain_folder, 4);
+
+    // Ctrl+N's dialog, with Note chosen: a name typed for it is kept when
+    // the type changes to Folder.
+    act(&mut h, Act::NewFile);
+    h.run_steps(3);
+    assert!(h.state().has_overlay(), "the New Item dialog");
+    h.get_all_by_role(Role::TextInput).next().unwrap().focus();
+    h.step();
+    h.get_all_by_role(Role::TextInput)
+        .next()
+        .unwrap()
+        .type_text("Work");
+    h.run_steps(2);
+    assert!(!h.get_by_label("OK").accesskit_node().is_disabled());
+    h.get_by_role_and_label(Role::Button, "Folder").click();
+    h.run_steps(3);
+
+    // At the top there is a Work already, so OK is off and says why.
+    assert!(h.query_by_label_contains("already there").is_some());
+    assert!(h.get_by_label("OK").accesskit_node().is_disabled());
+    // A folder has no tags.
+    assert!(h.query_by_label("Tags").is_none());
+
+    // Inside Work the name is free: the check follows the parent.
+    pick_parent(&mut h, "Work");
+    assert!(h.query_by_label_contains("already there").is_none());
+    h.get_by_label("OK").click();
+    wait_for(&mut h, "Work/Work", |a| {
+        a.folders().contains(&"Work/Work".to_string())
+    });
+    assert!(project.join("Work/Work").is_dir());
+    assert_eq!(h.state().selected_folder().as_deref(), Some("Work/Work"));
+    // No note was made of it.
+    assert!(!h.state().entries().iter().any(|e| e.name == "Work"));
+}
+
+/// Forty folders, so the New Item dialog's Folder list is taller than the
 /// window.
 fn many_folders(dir: &Path) {
     for i in 1..=40 {

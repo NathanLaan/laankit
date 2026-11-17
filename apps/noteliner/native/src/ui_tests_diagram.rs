@@ -143,7 +143,7 @@ fn new_diagram_opens_the_canvas_with_blockliners_tools() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut h, project) = open_project(tmp.path());
 
-    // New Diagram: the New File dialog with Diagram chosen.
+    // New Diagram: the New Item dialog with Diagram chosen.
     act(&mut h, Act::NewDiagram);
     assert!(h.state().has_overlay());
     h.get_by_role(Role::TextInput).type_text("Sketch");
