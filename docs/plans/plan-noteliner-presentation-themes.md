@@ -41,9 +41,9 @@ Each slide colour comes from one colour of the NoteLiner theme:
 | Slide colour | Used for | NoteLiner colour |
 |---|---|---|
 | Background | The slide | `bg_base` |
-| Text | Headings and body | `text_primary` |
+| Text | Body text | `text_primary` |
 | Muted text | A hero slide's body, the header and footer, and the slide number | `text_secondary` |
-| Accent | Links, highlights, and a checked box | `accent` |
+| Accent | The band behind a slide's title, headings off the band, links, highlights, and a checked box | `accent` |
 | Rule | The lines of the header, the footer, and tables | `border` |
 | Code background | Code and key caps | `code_bg` |
 
@@ -100,10 +100,11 @@ The Theme list shows the seven themes.
 | Not decided: the theme the New Item list starts on. | The NoteLiner theme in use. This is my choice, and it is one line to change. |
 | Not decided: a template that is already a presentation. | "(From the template)" keeps its theme. Picking a theme keeps the template's other settings and changes only the theme. |
 | Not decided: how a theme is spelled in `class=`. | Any case, with or without hyphens. |
+| Headings in the text colour, as before. | Asked for after the first build, so the themes look different from each other: a slide's headings sit on a band of the accent colour across the top, in the slide's background colour. A title slide, a quote slide, and a full-bleed slide have no band, and their headings are in the accent colour. |
 
 ## Known limits
 
-- Dark-Purple's accent has a contrast of 2.9 against its background, as it has in NoteLiner. A link on a Dark-Purple slide is hard to read. I left it, since the request was to match.
+- Dark-Purple's accent has a contrast of 2.9 against its background, as it has in NoteLiner. A link, or the heading of a title slide, is hard to read on a Dark-Purple slide. A title on its band has the same contrast, in reverse. I left it, since the request was to match.
 - In the dark themes the code background and the rule are the same colour, as they are in NoteLiner.
 - The old plan `apps/noteliner/docs/plans/plan-presentations.md` still describes Dark and Light.
 

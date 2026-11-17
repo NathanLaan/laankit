@@ -42,7 +42,7 @@ cargo run -p noteliner-native --release          # the demo is in Recent Project
 | `LAANKIT_FILE`     | Then select the nth note in display order, or the note with this name                     |
 | `LAANKIT_OPEN`     | Then open `settings[:ui\|project\|editor\|diagrams\|mcp\|shortcuts]`, `about`, `help`, `palette`, `new-file`, `new-folder`, `move`, `preview`, `slides`, `presentation-settings`, `present`, `log`, `search:<query>`, `tags`, `backlinks`, `attachments`, `tag-filter`, `tag-editor`, `mcp-walkthrough`, or `mcp-confirm` (a sample request) |
 
-The Help pages are `assets/help-pages.json` (loaded at build time with `include_str!`); edit that file to change the in-app Help.
+The Help pages are `assets/help-pages.json` (loaded at build time with `include_str!`); edit that file to change the in-app Help. Help is a window you can move, resize, and work beside, and not a dialog. Its Presentation Formatting page lists what a presentation can hold: slide breaks, layouts, the `slide:` options, speaker notes, headers, and footers.
 
 ## Architecture
 
@@ -180,7 +180,7 @@ The tables list what the Svelte builds had and where it is here. NoteLiner 3 lea
 | `ui:getPrefs`, `ui:setPrefs` and their side effects       | Done    | `writeFrontmatter` and `mcpEnabled` apply live                          |
 | `ui:spellcheck-changed`                                   | Done    | F7 and Settings; Hunspell dictionaries instead of the webview's checker (see Spell checking) |
 | `update:*`                                                | Done    | About → Check for Updates (`laankit_core::updates`)                      |
-| `help:open`                                               | Done    | In-app Help dialog instead of a second window                           |
+| `help:open`                                               | Done    | An in-app Help window that floats over the app (F1, or the toolbar's Help button); not modal |
 | `app:relaunch`                                            | Done    | After the titlebar setting                                              |
 | `--mcp-bridge`                                            | Done    | Unix only for now (see above)                                           |
 | Single instance                                           | Not yet |                                                                         |

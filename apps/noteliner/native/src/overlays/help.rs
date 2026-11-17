@@ -1,4 +1,4 @@
-//! Help: a full-size dialog with an index grouped by section, a search box
+//! Help: a floating window (not a modal dialog) with an index grouped by section, a search box
 //! (non-matching pages are greyed out), and the page's Markdown rendered by
 //! `laankit-richtext`.
 //!
@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use egui::{pos2, vec2, Align2, FontId, RichText, Sense};
-use laankit_egui::dialog::{self, Dialog, Size};
+use laankit_egui::dialog;
 use laankit_egui::theme;
 use laankit_richtext::{Document, RichStyle, RichView, WebResolver};
 use serde::Deserialize;
@@ -59,12 +59,28 @@ pub fn page_matches(page: &HelpPage, query: &str) -> bool {
         || page.section.to_lowercase().contains(&q)
 }
 
-/// Draws Help; returns `true` when it should close.
-pub fn show(ctx: &egui::Context, state: &mut HelpState, top_inset: f32) -> bool {
+/// Draws Help as a window that floats over the app: it can be moved and
+/// resized, and the app behind it stays in use. Returns `true` when it
+/// should close.
+pub fn show(ctx: &egui::Context, state: &mut HelpState) -> bool {
     let p = theme::palette(ctx);
-    let resp = Dialog::full("help", "NoteLiner Help")
-        .size(Size::Full { top_inset })
+    let screen = ctx.content_rect();
+    let size = vec2(
+        (screen.width() - 120.0).clamp(360.0, 860.0),
+        (screen.height() - 120.0).clamp(280.0, 640.0),
+    );
+    let mut open = true;
+    egui::Window::new("NoteLiner Help")
+        .id(egui::Id::unique("noteliner-help"))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(true)
+        .default_size(size)
+        .min_size(vec2(360.0, 240.0))
+        .default_pos(screen.right_top() + vec2(-size.x - 24.0, 48.0))
         .show(ctx, |ui| {
+            // The index and the page share whatever size the window has.
+            ui.set_min_size(ui.available_size());
             let full = ui.available_rect_before_wrap();
             let left_w = (full.width() * 0.3).clamp(200.0, 340.0);
             let index_rect = egui::Rect::from_min_size(full.min, vec2(left_w, full.height()));
@@ -169,7 +185,7 @@ pub fn show(ctx: &egui::Context, state: &mut HelpState, top_inset: f32) -> bool 
                 }
             });
         });
-    resp.close
+    !open
 }
 
 #[cfg(test)]
@@ -180,6 +196,12 @@ mod tests {
     fn pages_load_and_search() {
         assert!(PAGES.len() > 20, "help-pages.json is missing pages");
         assert_eq!(PAGES[0].id, "overview");
+        // The page on how a presentation is written, by what is on it.
+        let formatting = PAGES.iter().find(|pg| pg.id == "presentation-formatting");
+        let body = &formatting.expect("the page").body;
+        for needle in ["<!-- notes", "layout=", "bg=", "{{page}}", "slideLevel"] {
+            assert!(body.contains(needle), "{needle} is not on the page");
+        }
         assert!(PAGES.iter().any(|pg| page_matches(pg, "wikilinks")));
         assert!(!page_matches(&PAGES[0], "zzzz-no-such-text"));
         // Each section heads one group.

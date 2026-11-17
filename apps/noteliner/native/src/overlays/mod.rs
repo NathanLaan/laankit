@@ -9,7 +9,6 @@
 //! | `ClearTags`, `RemoveRecent`, `RemoveAttachment`   | the other confirmations |
 //! | `Conflict`                 | a note changed on disk while it has unsaved edits |
 //! | `Settings`                 | Settings ([`settings`])                        |
-//! | `Help`                     | Help ([`help`])                                |
 //! | `About`                    | the shared About dialog                        |
 //! | `Busy`                     | "Importing …"                                  |
 //! | `TagEditor`                | the tag colours ([`tags`])                     |
@@ -70,7 +69,6 @@ pub enum Overlay {
     },
     RemoveRecent(Recent),
     Settings(Box<settings::SettingsState>),
-    Help(Box<help::HelpState>),
     About,
     TagEditor(tags::TagEditorState),
     /// `Remove "name"?` for an attachment of note `file_id`.

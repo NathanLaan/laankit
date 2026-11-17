@@ -52,6 +52,8 @@ const QUOTE_BAR: f32 = 8.0;
 const QUOTE_PAD: f32 = 40.0;
 /// Glyphs smaller than this aren't worth shaping (and size 0 isn't allowed).
 const MIN_FONT: f32 = 0.5;
+/// The space above and below a title on its band.
+const TITLE_PAD: f32 = 40.0;
 /// What a task checkbox span is laid out as, whatever its state, so checked
 /// and unchecked boxes line up (the box is drawn over it; see [`decorations`]).
 const CHECKBOX_TEXT: &str = "[x]";
@@ -98,6 +100,19 @@ impl SlideTheme {
         let key = |s: &str| s.replace('-', "").to_lowercase();
         let want = key(name.trim());
         ThemeId::ALL.into_iter().find(|t| key(t.id()) == want)
+    }
+
+    /// The colours of a title on its band: the band is the accent, and
+    /// everything on it takes the slide's background colour.
+    fn on_band(&self) -> SlideTheme {
+        SlideTheme {
+            bg: self.accent,
+            fg: self.bg,
+            muted: self.bg,
+            accent: self.bg,
+            rule: self.bg,
+            code_bg: self.accent,
+        }
     }
 
     /// `mark { background: var(--slide-accent); color: var(--slide-bg) }`.
@@ -308,9 +323,28 @@ impl<'a> SlideView<'a> {
         }
 
         let content = Rect::from_min_max(pos2(pad_x, top), pos2(pad_x + inner, bottom.max(top)));
-        let heading = self.layout_headings(cx, content.width());
+        // The title sits on a band of the accent colour, except where the
+        // slide is centred on its heading or a picture owns it.
+        let banded = !matches!(layout, Layout::Hero | Layout::Quote | Layout::FullBleed);
+        let heading = self.layout_headings(cx, content.width(), banded);
         let body_style = body_style(layout, &cx.theme);
         let headings_h = heading.h;
+        if banded && !heading.items.is_empty() {
+            // Flush under the header's rule, or from the slide's top edge.
+            let band_top = if top > pad_y { top - GAP * s } else { 0.0 };
+            let title_y = band_top + TITLE_PAD * s;
+            let band_bottom = title_y + headings_h + TITLE_PAD * s;
+            out.fill(
+                Rect::from_min_max(pos2(0.0, band_top), pos2(size.x, band_bottom)),
+                cx.theme.accent,
+            );
+            let body_top = band_bottom + GAP * s;
+            let free = (content.bottom() - body_top).max(0.0);
+            let body = self.layout_body(cx, content.width(), free, &body_style);
+            out.place(heading, vec2(content.left(), title_y));
+            out.place(body, vec2(content.left(), body_top));
+            return out;
+        }
         let gap = if heading.items.is_empty() {
             0.0
         } else {
@@ -348,9 +382,23 @@ impl<'a> SlideView<'a> {
         vars
     }
 
-    fn layout_headings(&self, cx: &Cx, width: f32) -> Laid {
+    /// The slide's title headings. On a band they are drawn in the slide's
+    /// background colour, with the theme turned inside out for what is in
+    /// them (a link, a highlight, a key cap).
+    fn layout_headings(&self, cx: &Cx, width: f32, banded: bool) -> Laid {
         let mut out = Laid::default();
         let hero = self.layout_kind() == Layout::Hero;
+        let on_band = Cx {
+            ui: cx.ui,
+            s: cx.s,
+            theme: cx.theme.on_band(),
+            images: cx.images,
+        };
+        let (cx, color) = if banded {
+            (&on_band, on_band.theme.fg)
+        } else {
+            (cx, cx.theme.accent)
+        };
         for block in self.slide.headings() {
             let level = block.level.unwrap_or(1).clamp(1, 6);
             let (size, lh) = match level {
@@ -364,7 +412,7 @@ impl<'a> SlideView<'a> {
             let style = TextStyle {
                 size: size * cx.s,
                 line_height: lh,
-                color: cx.theme.fg,
+                color,
                 weight: Some(fonts::SEMIBOLD),
                 italic: false,
             };
@@ -1122,6 +1170,7 @@ fn layout_rich_block(
                     } * s,
                     line_height: 1.15,
                     weight: Some(fonts::SEMIBOLD),
+                    color: style.theme.accent,
                     ..body
                 },
                 TextKind::Caption => TextStyle {
@@ -1535,6 +1584,69 @@ mod tests {
         })
         .drop_without_applying_deltas();
         out.expect("laid out")
+    }
+
+    /// The colour of the first text holding `word` on `md`'s first slide.
+    fn colour_of(md: &str, word: &str) -> Color32 {
+        slide_items(md, 0)
+            .iter()
+            .find_map(|i| match i {
+                Item::Text(_, g) if g.job.text.contains(word) => {
+                    Some(g.job.sections[0].format.color)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no {word}"))
+    }
+
+    #[test]
+    fn the_title_is_on_an_accent_band_and_other_headings_are_in_the_accent() {
+        // A slide's headings are all drawn at its top, so both are on the
+        // band. A heading inside a quote stays in the body.
+        let md = "## Title\n\n### Under\n\nplain words\n\n> #### Quoted\n";
+        let theme = SlideTheme::named(SlideTheme::DEFAULT_ID);
+        assert_eq!(colour_of(md, "Title"), theme.bg);
+        assert_eq!(colour_of(md, "Under"), theme.bg);
+        assert_eq!(colour_of(md, "Quoted"), theme.accent);
+        assert_eq!(colour_of(md, "plain"), theme.fg);
+
+        // The band runs edge to edge from the top, with the title inside it
+        // and the body below.
+        let items = slide_items(md, 0);
+        let band = items
+            .iter()
+            .find_map(|i| match i {
+                Item::Fill(r, _, c) if *c == theme.accent => Some(*r),
+                _ => None,
+            })
+            .expect("the band");
+        assert_eq!((band.left(), band.top(), band.right()), (0.0, 0.0, 1920.0));
+        let top_of = |word: &str| {
+            items
+                .iter()
+                .find_map(|i| match i {
+                    Item::Text(p, g) if g.job.text.contains(word) => Some(p.y),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        assert!(top_of("Title") > band.top() && top_of("Title") < band.bottom());
+        assert!(top_of("Under") > top_of("Title") && top_of("Under") < band.bottom());
+        assert!(top_of("plain") > band.bottom());
+    }
+
+    #[test]
+    fn a_title_slide_and_a_slide_with_no_heading_have_no_band() {
+        let theme = SlideTheme::named(SlideTheme::DEFAULT_ID);
+        let band = |md: &str| {
+            slide_items(md, 0).iter().any(
+                |i| matches!(i, Item::Fill(r, _, c) if *c == theme.accent && r.width() > 1900.0),
+            )
+        };
+        assert!(!band("# Talk\n\nby me\n"), "the title slide");
+        assert_eq!(colour_of("# Talk\n\nby me\n", "Talk"), theme.accent);
+        assert!(!band("just words\n"), "no heading");
+        assert!(band("## Point\n\nwords\n"));
     }
 
     #[test]

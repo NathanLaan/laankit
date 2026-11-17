@@ -21,7 +21,7 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - Tags, backlinks, and full-text search panes
 - File attachments (paste, drag-and-drop, or file picker) with image thumbnails
 - Reusable note templates with `{{title}}`/`{{date}}` placeholder substitution
-- Presentations: author slides inside a note and present full screen, with a speaker view. A presentation has a slide theme for each NoteLiner theme, in the same colours
+- Presentations: author slides inside a note and present full screen, with a speaker view. A presentation has a slide theme for each NoteLiner theme, in the same colours. Help (F1, or the Help button on the left toolbar) is a window you can keep open beside your work, and its Presentation Formatting page lists what you can write on a slide
 - PDF and HTML export (PDF rendered in-process with Typst)
 - Deleted notes, folders, and attachments go to the system's trash
 - Optional MCP server to expose the open project to AI assistants over a local-only socket (see below)

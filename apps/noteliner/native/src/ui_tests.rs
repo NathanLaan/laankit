@@ -18,7 +18,7 @@ use crate::config::Paths;
 
 pub(crate) fn harness(paths: Paths) -> Harness<'static, NoteLinerApp> {
     Harness::builder()
-        .with_size(egui::vec2(1400.0, 900.0))
+        .with_size(egui::vec2(1400.0, 960.0))
         .with_context_setup(laankit_egui::fonts::install)
         .build_ui_state(
             |ui, app: &mut NoteLinerApp| app.show(ui),
