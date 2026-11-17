@@ -73,7 +73,7 @@ pub struct Stage {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Presentation {
-    /// `dark` or `light`; other names render as dark.
+    /// A slide theme's id (an app theme's); other names render as `dark`.
     pub theme: String,
     /// A key of [`ASPECTS`].
     pub aspect: String,

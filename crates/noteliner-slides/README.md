@@ -57,11 +57,12 @@ The host owns the note text, its frontmatter and all I/O. The widgets read the c
 | Deck parsing (breaks, setext, fences, comments, directives, notes-only, title slide, layouts) | Done | Identical to `slides.js` on 126,000 generated cases |
 | Slide edits (all of `slideEdits.js`)                           | Done      | Identical output and caret line |
 | `estimateDuration`, `slideAtLine`, `substitute`                | Done      | |
-| Stage sizes 16:9, 16:10, 4:3; dark and light slide themes      | Done      | |
+| Stage sizes 16:9, 16:10, 4:3                                   | Done      | |
+| Slide themes                                                   | Native addition | One for each app theme, in its colours and under its id. They replace the Svelte build's dark and light, whose ids now mean the app's Dark and Light |
 | Layouts: hero, title-body, split, grid, full-bleed, quote, table | Done    | Sizes and gaps from `Slide.svelte`'s CSS |
 | Header/footer bands with `{{page}}`, `{{total}}`, host vars; slide numbers | Done | A bare `header` flag prints `true`, as the JS does |
 | `bg=` directive                                                | Done      | Hex, `rgb()`/`rgba()`, `transparent`, SVG names; gradients ignored |
-| `class=` directive                                             | Done      | `theme-light`/`theme-dark` and `layout-<id>` override the slide's theme and layout (the only class names `Slide.svelte`'s CSS styled); others ignored |
+| `class=` directive                                             | Done      | `theme-<id>` (as `theme-dark-purple` or `theme-darkPurple`) and `layout-<id>` override the slide's theme and layout (the only class names `Slide.svelte`'s CSS styled); others ignored |
 | Inline Markdown: bold, italic, code, links, strikethrough      | Done      | comrak → `laankit-richtext` blocks |
 | Lists, quotes, code blocks (wrapped), tables                   | Done      | Including column alignment (`:-:`, `--:`) from the cells' `align` |
 | Task lists (`- [ ]` / `- [x]`)                                 | Done      | Drawn boxes, filled with a tick when checked, in the slide theme's colours |

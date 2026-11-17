@@ -37,8 +37,18 @@ const UPDATE_REPO: &str = "NathanLaan/laankit";
 
 /// `DEFAULT_PRESENTATION` in `lib/slides.js`: what "Presentation" seeds.
 pub fn default_presentation() -> Value {
+    presentation_in(noteliner_slides::SlideTheme::DEFAULT_ID)
+}
+
+/// The slide theme of a new presentation. `None` keeps the theme of the
+/// template it is made from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeckTheme(pub Option<String>);
+
+/// The starting settings of a presentation in slide theme `theme`.
+fn presentation_in(theme: &str) -> Value {
     json!({
-        "theme": "dark",
+        "theme": theme,
         "aspect": "16:9",
         "slideLevel": 2,
         "header": "",
@@ -637,14 +647,16 @@ impl Backend {
     }
 
     /// A new note (from a template) in `folder`; for a presentation, the
-    /// blank deck body and the `presentation:` block.
+    /// blank deck body and the `presentation:` block, in the theme given. A
+    /// template that is a presentation keeps its settings, and takes the
+    /// theme only when one was picked.
     pub fn create_file(
         &self,
         name: String,
         tags: Vec<String>,
         template: Option<String>,
         folder: Option<String>,
-        deck: bool,
+        deck: Option<DeckTheme>,
     ) {
         self.spawn(|core| async move {
             let mut ws = core.ws.lock().await;
@@ -663,7 +675,7 @@ impl Backend {
                     return;
                 }
             };
-            if deck {
+            if let Some(DeckTheme(theme)) = deck {
                 let filename = entry["filename"].as_str().unwrap_or_default().to_string();
                 if template.is_none() {
                     if let Err(e) = ws
@@ -674,12 +686,24 @@ impl Backend {
                         log::warn!("blank deck body: {e}");
                     }
                 }
-                if !entry["deck"].as_bool().unwrap_or(false) {
-                    match ws
-                        .project
-                        .set_presentation(&filename, &default_presentation())
-                        .await
-                    {
+                let presentation = if !entry["deck"].as_bool().unwrap_or(false) {
+                    let theme = theme.as_deref();
+                    Some(presentation_in(
+                        theme.unwrap_or(noteliner_slides::SlideTheme::DEFAULT_ID),
+                    ))
+                } else {
+                    // The template's own settings, in the theme picked.
+                    theme.map(|theme| {
+                        let mut p = ws.project.read_frontmatter(&filename)["presentation"].clone();
+                        if !p.is_object() {
+                            p = default_presentation();
+                        }
+                        p["theme"] = json!(theme);
+                        p
+                    })
+                };
+                if let Some(presentation) = presentation {
+                    match ws.project.set_presentation(&filename, &presentation).await {
                         Ok(_) => entry["deck"] = json!(true),
                         Err(e) => log::warn!("seeding the presentation: {e}"),
                     }

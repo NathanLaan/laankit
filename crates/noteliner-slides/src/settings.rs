@@ -9,8 +9,8 @@ use laankit_egui::dialog::{self, ButtonKind, Dialog};
 use laankit_egui::settings;
 
 use crate::deck::{Presentation, ASPECTS};
+use crate::render::SlideTheme;
 
-const THEMES: [(&str, &str); 2] = [("dark", "Dark"), ("light", "Light")];
 const SLIDE_LEVELS: [(&str, &str); 4] = [
     ("0", "Only --- separators"),
     ("1", "# starts a slide"),
@@ -70,7 +70,8 @@ impl PresentationSettings {
         let d = &mut self.draft;
         ui.columns(2, |cols| {
             dialog::field_label(&mut cols[0], "Theme");
-            if let Some(v) = settings::select(&mut cols[0], "Theme", &THEMES, &d.theme) {
+            let themes = SlideTheme::options();
+            if let Some(v) = settings::select(&mut cols[0], "Theme", &themes, &d.theme) {
                 d.theme = v;
             }
             dialog::field_label(&mut cols[1], "Aspect Ratio");

@@ -145,6 +145,9 @@ pub struct NewFileForm {
     /// template or tags.
     pub new_folder: bool,
     pub template: Option<String>,
+    /// The slide theme picked for a presentation. `None` is the theme of the
+    /// template, or with no template, the app theme in use.
+    pub theme: Option<String>,
     /// From `templates:list`: `{ id, name, kind }`.
     pub templates: Vec<serde_json::Value>,
 }
@@ -161,6 +164,7 @@ impl NewFileForm {
             diagram: false,
             new_folder: false,
             template: None,
+            theme: None,
             templates: Vec::new(),
         }
     }
@@ -214,6 +218,7 @@ impl NewFileForm {
             diagram: false,
             new_folder: false,
             template: None,
+            theme: None,
             templates: Vec::new(),
         }
     }
@@ -229,10 +234,23 @@ impl NewFileForm {
             .filter(|t| t["kind"].as_str().unwrap_or("note") == kind)
             .collect()
     }
+
+    /// The slide theme a new presentation is given, where `app_theme` is the
+    /// app theme in use. `None` leaves a template's own theme alone.
+    pub fn deck_theme(&self, app_theme: &str) -> Option<String> {
+        match (&self.theme, &self.template) {
+            (Some(theme), _) => Some(theme.clone()),
+            (None, Some(_)) => None,
+            (None, None) => Some(app_theme.to_string()),
+        }
+    }
 }
 
 /// The label of the project folder itself, whose path is empty.
 const TOP: &str = "(Top of the project)";
+
+/// The Theme choice that keeps the theme a presentation template has.
+const FROM_TEMPLATE: &str = "(From the template)";
 
 /// Wide enough for the four type buttons on one line.
 const NEW_ITEM_WIDTH: f32 = 520.0;
@@ -244,6 +262,7 @@ pub fn new_file(
     form: &mut NewFileForm,
     folders: &[String],
     all_tags: &[String],
+    app_theme: &str,
 ) -> Option<FormAction> {
     let duplicating = form.duplicate_of.is_some();
     // One title whatever the type: the Type row says which is chosen.
@@ -343,6 +362,21 @@ pub fn new_file(
                     form.template.as_deref().unwrap_or(""),
                 ) {
                     form.template = (!v.is_empty()).then_some(v);
+                    // A template's own theme stands until another is picked.
+                    form.theme = None;
+                }
+            }
+
+            if !duplicating && form.deck {
+                ui.add_space(10.0);
+                dialog::field_label(ui, "Theme");
+                let mut opts = noteliner_slides::SlideTheme::options();
+                if form.template.is_some() {
+                    opts.insert(0, ("", FROM_TEMPLATE));
+                }
+                let shown = form.deck_theme(app_theme).unwrap_or_default();
+                if let Some(v) = shell::select(ui, "Theme", &opts, &shown) {
+                    form.theme = (!v.is_empty()).then_some(v);
                 }
             }
 
@@ -779,6 +813,17 @@ pub fn remove_attachment(ctx: &egui::Context, name: &str) -> Option<Confirm> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_presentation_takes_the_app_theme_unless_told() {
+        let mut f = NewFileForm::new("Talk", true, "");
+        assert_eq!(f.deck_theme("midnight").as_deref(), Some("midnight"));
+        // A template keeps its own theme until one is picked.
+        f.template = Some("pitch.md".into());
+        assert_eq!(f.deck_theme("midnight"), None);
+        f.theme = Some("light".into());
+        assert_eq!(f.deck_theme("midnight").as_deref(), Some("light"));
+    }
 
     #[test]
     fn duplicate_defaults() {

@@ -159,7 +159,7 @@ The tables list what the Svelte builds had and where it is here. NoteLiner 3 lea
 | `project:init`                                            | Removed | A new project is an empty folder you open                               |
 | `project:getIndex`, `project:saveIndex`                   | Changed | The backend's index is the one that counts; the app sends its tag changes |
 | `file:read`, `file:getFrontmatter`, `file:write`          | Changed | The whole file is read and written, frontmatter included; saves refresh the entry's `modifiedAt`, `deck`, and `tags` |
-| `file:create`, `file:duplicate`                           | Done    | Templates, folder, tags; Presentation seeds the deck body and block      |
+| `file:create`, `file:duplicate`                           | Done    | Templates, folder, tags; Presentation seeds the deck body and block, in the slide theme picked |
 | `file:delete`, `file:rename`                              | Done    | Delete sends the file to the trash                                      |
 | Folders: create, rename, move, delete; move a note        | Native addition | See Folders in [`../README.md`](../README.md)                   |
 | The check for changes made by other programs              | Native addition | Every few seconds while the window has the focus                |

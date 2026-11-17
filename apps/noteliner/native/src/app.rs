@@ -29,7 +29,7 @@ use noteliner_slides::{
 };
 use serde_json::{json, Value};
 
-use crate::backend::{self, Backend, DeleteTarget, Event, ExportKind, McpConfirm};
+use crate::backend::{self, Backend, DeckTheme, DeleteTarget, Event, ExportKind, McpConfirm};
 use crate::commands::{self, Act, View};
 use crate::config::{LastFilePosition, Layout, Paths, Prefs, Recent};
 use crate::deck::{self, DeckState, SlideImages};
@@ -392,6 +392,12 @@ impl NoteLinerApp {
     #[cfg(test)]
     pub fn selected(&self) -> Option<String> {
         self.project.as_ref()?.selected.clone()
+    }
+
+    /// The id of the app theme in use.
+    #[cfg(test)]
+    pub fn theme_id(&self) -> &'static str {
+        self.theme.theme.id()
     }
 
     /// The project's folders, by path.
@@ -3665,7 +3671,7 @@ impl NoteLinerApp {
                     Some(p) => (p.folders.clone(), model::all_tags(&p.index)),
                     None => (Vec::new(), Vec::new()),
                 };
-                match overlays::new_file(ctx, form, &folders, &tags) {
+                match overlays::new_file(ctx, form, &folders, &tags, self.theme.theme.id()) {
                     Some(FormAction::Close) => keep = false,
                     Some(FormAction::Submit) => {
                         keep = false;
@@ -3687,7 +3693,8 @@ impl NoteLinerApp {
                                 tags,
                                 form.template.clone(),
                                 folder,
-                                form.deck,
+                                form.deck
+                                    .then(|| DeckTheme(form.deck_theme(self.theme.theme.id()))),
                             ),
                         }
                     }

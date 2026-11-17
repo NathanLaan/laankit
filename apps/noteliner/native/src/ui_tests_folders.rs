@@ -741,6 +741,57 @@ fn the_tags_are_a_sorted_list_of_checkboxes() {
     close(h);
 }
 
+/// Makes a presentation called `name` through New Item, in slide theme
+/// `theme` when one is given, and returns the theme in its file.
+fn new_presentation(h: &mut H, project: &Path, name: &str, theme: Option<&str>) -> String {
+    act(h, Act::NewFile);
+    h.run_steps(3);
+    // A note has no theme.
+    assert!(h.query_by_role_and_label(Role::ComboBox, "Theme").is_none());
+    h.get_by_role_and_label(Role::Button, "Presentation")
+        .click();
+    h.run_steps(3);
+    if let Some(theme) = theme {
+        h.get_by_role_and_label(Role::ComboBox, "Theme").click();
+        h.run_steps(3);
+        h.get_all_by_role(Role::ListBoxOption)
+            .find(|n| {
+                n.accesskit_node()
+                    .label()
+                    .is_some_and(|l| l.trim() == theme)
+            })
+            .expect("the theme in the list")
+            .click();
+        h.run_steps(3);
+    }
+    name_and_ok(h, name);
+    let want = name.to_string();
+    wait_for(h, "the presentation", move |a| {
+        a.entries().iter().any(|e| e.name == want && e.deck)
+    });
+    let file = format!("{}.md", name.to_lowercase());
+    let raw = read(project, &file);
+    let line = raw
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("theme: "))
+        .unwrap_or_else(|| panic!("no theme in {raw}"));
+    line.to_string()
+}
+
+#[test]
+fn new_presentation_takes_the_theme_you_pick() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), plain_folder, 4);
+    // Left alone, the theme is the app theme in use.
+    let app_theme = h.state().theme_id().to_string();
+    assert_eq!(new_presentation(&mut h, &project, "First", None), app_theme);
+    assert_eq!(
+        new_presentation(&mut h, &project, "Second", Some("Light-Mulberry")),
+        "lightMulberry"
+    );
+    close(h);
+}
+
 #[test]
 fn new_item_makes_a_folder_in_the_parent_you_pick() {
     let tmp = tempfile::tempdir().unwrap();
