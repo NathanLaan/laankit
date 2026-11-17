@@ -434,3 +434,29 @@ fn losing_focus_mid_composition_keeps_the_text_and_unblocks_input() {
     type_text(&mut h, "!");
     assert_eq!(text(&h), "abü!");
 }
+
+#[test]
+fn an_empty_ime_event_does_not_swallow_a_key() {
+    let mut h = harness("abc");
+    cursor_to(&mut h, 3, 3);
+    type_text(&mut h, "def");
+    assert_eq!(text(&h), "abcdef");
+    // On Wayland an input method's "done" arrives as an empty preedit, and
+    // can share a frame with a key press. It isn't a composition.
+    // (`Harness::event` would give each event a frame of its own.)
+    h.input_mut().events.extend([
+        Event::Ime(egui::ImeEvent::Preedit {
+            text: String::new(),
+            active_range_chars: None,
+        }),
+        Event::Key {
+            key: Key::Z,
+            physical_key: Some(Key::Z),
+            pressed: true,
+            repeat: false,
+            modifiers: CMD,
+        },
+    ]);
+    h.step();
+    assert_eq!(text(&h), "abc");
+}

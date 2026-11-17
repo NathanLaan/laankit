@@ -387,21 +387,31 @@ impl EditorState {
         }
     }
 
-    /// Follows the IME composition; true when this frame has IME events.
+    /// Follows the IME composition; true when a composition owns this frame
+    /// (one is open, or text was composed or committed in it), so the keys
+    /// are the input method's.
     fn track_ime(&mut self, ui: &Ui) -> bool {
+        // A composition that was open when the frame began still owns it.
+        let mut busy = self.composing;
         ui.input(|i| {
-            let mut any = false;
             for e in &i.events {
                 if let Event::Ime(ime) = e {
-                    any = true;
                     self.composing = match ime {
                         egui::ImeEvent::Preedit { text, .. } => !text.is_empty(),
                         _ => false,
                     };
+                    // An empty preedit with no composition open is not one:
+                    // on Wayland an input method's "done" arrives that way,
+                    // and can share a frame with a key press.
+                    busy |= match ime {
+                        egui::ImeEvent::Preedit { text, .. } => !text.is_empty(),
+                        egui::ImeEvent::Commit(text) => !text.is_empty(),
+                        _ => false,
+                    };
                 }
             }
-            any
-        })
+        });
+        busy
     }
 
     /// The keys the editor handles itself; each one it acts on is removed
