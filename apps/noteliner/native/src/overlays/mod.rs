@@ -234,6 +234,11 @@ impl NewFileForm {
 /// The label of the project folder itself, whose path is empty.
 const TOP: &str = "(Top of the project)";
 
+/// Wide enough for the four type buttons on one line.
+const NEW_ITEM_WIDTH: f32 = 520.0;
+/// The Tags list shows about five tags and scrolls for more.
+const TAG_LIST_HEIGHT: f32 = 130.0;
+
 pub fn new_file(
     ctx: &egui::Context,
     form: &mut NewFileForm,
@@ -243,132 +248,150 @@ pub fn new_file(
     let duplicating = form.duplicate_of.is_some();
     // One title whatever the type: the Type row says which is chosen.
     let title = if duplicating { "Duplicate" } else { "New Item" };
-    let resp = Dialog::compact("new-file", title).show(ctx, |ui| {
-        let p = theme::palette(ui.ctx());
-        let mut submit = false;
-        if !duplicating {
-            dialog::field_label(ui, "Type");
-            // Wrapped, so the four fit a narrow dialog at a large UI scale.
-            ui.horizontal_wrapped(|ui| {
-                for (deck, diagram, folder, glyph, label) in [
-                    (false, false, false, icons::FILE_LINES, "Note"),
-                    (true, false, false, icons::PERSON_CHALKBOARD, "Presentation"),
-                    (false, true, false, icons::OBJECT_GROUP, "Diagram"),
-                    (false, false, true, icons::FOLDER, "Folder"),
-                ] {
-                    let chosen = (form.deck, form.diagram, form.new_folder);
-                    let kind = if chosen == (deck, diagram, folder) {
-                        ButtonKind::Primary
-                    } else {
-                        ButtonKind::Secondary
-                    };
-                    // The name and the folder are kept across types.
-                    if dialog::icon_button(ui, Some(glyph), label, kind, true).clicked() {
-                        form.deck = deck;
-                        form.diagram = diagram;
-                        form.new_folder = folder;
-                    }
-                }
-            });
-            // Keep the template valid when the type flips under it.
-            if let Some(t) = form.template.clone() {
-                if !form
-                    .visible_templates()
-                    .iter()
-                    .any(|v| v["id"] == t.as_str())
-                {
-                    form.template = None;
-                }
-            }
-            ui.add_space(10.0);
-        }
-        dialog::field_label(ui, "Name");
-        let r = dialog::text_input(ui, &mut form.name, "Untitled", true);
-        focus_once(ui, &r);
-        submit |= dialog::submitted(ui, &r);
-        ui.add_space(10.0);
-
-        dialog::field_label(ui, "Folder");
-        {
-            let mut options: Vec<(String, String)> = vec![(String::new(), TOP.into())];
-            for (path, name, depth) in crate::model::folder_options(folders, None) {
-                options.push((path, format!("{}{name}", "\u{a0}\u{a0}".repeat(depth + 1))));
-            }
-            // A folder made a moment ago may not be listed yet.
-            if !options.iter().any(|o| o.0 == form.folder) {
-                options.push((form.folder.clone(), form.folder.clone()));
-            }
-            let opts: Vec<(&str, &str)> = options
-                .iter()
-                .map(|(a, b)| (a.as_str(), b.as_str()))
-                .collect();
-            if let Some(v) = shell::select(ui, "Folder", &opts, &form.folder) {
-                form.folder = v;
-            }
-        }
-
-        let visible = form.visible_templates();
-        if !duplicating && !form.diagram && (!visible.is_empty() || form.deck) {
-            ui.add_space(10.0);
-            dialog::field_label(ui, "Template");
-            let blank = if form.deck {
-                "Blank Presentation"
-            } else {
-                "Blank"
-            };
-            let mut options: Vec<(String, String)> = vec![(String::new(), blank.into())];
-            for t in &visible {
-                options.push((
-                    t["id"].as_str().unwrap_or_default().to_string(),
-                    t["name"].as_str().unwrap_or_default().to_string(),
-                ));
-            }
-            let opts: Vec<(&str, &str)> = options
-                .iter()
-                .map(|(a, b)| (a.as_str(), b.as_str()))
-                .collect();
-            if let Some(v) = shell::select(
-                ui,
-                "Template",
-                &opts,
-                form.template.as_deref().unwrap_or(""),
-            ) {
-                form.template = (!v.is_empty()).then_some(v);
-            }
-        }
-
-        if !all_tags.is_empty() && !form.new_folder {
-            ui.add_space(10.0);
-            dialog::field_label(ui, "Tags");
-            ui.horizontal_wrapped(|ui| {
-                for tag in all_tags {
-                    let mut on = form.tags.contains(tag);
-                    if ui
-                        .checkbox(&mut on, RichText::new(tag).color(p.text_primary))
-                        .changed()
-                    {
-                        if on {
-                            form.tags.insert(tag.clone());
+    let resp = Dialog::compact("new-file", title)
+        .size(dialog::Size::Compact {
+            width: NEW_ITEM_WIDTH,
+        })
+        .show(ctx, |ui| {
+            let p = theme::palette(ui.ctx());
+            let mut submit = false;
+            if !duplicating {
+                dialog::field_label(ui, "Type");
+                // Wrapped, so the four fit a narrow dialog at a large UI scale.
+                ui.horizontal_wrapped(|ui| {
+                    for (deck, diagram, folder, glyph, label) in [
+                        (false, false, false, icons::FILE_LINES, "Note"),
+                        (true, false, false, icons::PERSON_CHALKBOARD, "Presentation"),
+                        (false, true, false, icons::OBJECT_GROUP, "Diagram"),
+                        (false, false, true, icons::FOLDER, "Folder"),
+                    ] {
+                        let chosen = (form.deck, form.diagram, form.new_folder);
+                        let kind = if chosen == (deck, diagram, folder) {
+                            ButtonKind::Primary
                         } else {
-                            form.tags.remove(tag);
+                            ButtonKind::Secondary
+                        };
+                        // The name and the folder are kept across types.
+                        if dialog::icon_button(ui, Some(glyph), label, kind, true).clicked() {
+                            form.deck = deck;
+                            form.diagram = diagram;
+                            form.new_folder = folder;
                         }
                     }
+                });
+                // Keep the template valid when the type flips under it.
+                if let Some(t) = form.template.clone() {
+                    if !form
+                        .visible_templates()
+                        .iter()
+                        .any(|v| v["id"] == t.as_str())
+                    {
+                        form.template = None;
+                    }
                 }
-            });
-        }
-        // A folder's name is checked against the folder picked above.
-        let problem = form.problem(folders);
-        if let Some(problem) = &problem {
-            ui.add_space(6.0);
-            dialog::error_text(ui, problem);
-        }
-        let ready = !form.name.trim().is_empty() && problem.is_none();
-        let out = form_buttons(ui, "OK", ready);
-        if submit && ready {
-            return Some(FormAction::Submit);
-        }
-        out
-    });
+                ui.add_space(10.0);
+            }
+            dialog::field_label(ui, "Name");
+            let r = dialog::text_input(ui, &mut form.name, "Untitled", true);
+            focus_once(ui, &r);
+            submit |= dialog::submitted(ui, &r);
+            ui.add_space(10.0);
+
+            dialog::field_label(ui, "Folder");
+            {
+                let mut options: Vec<(String, String)> = vec![(String::new(), TOP.into())];
+                for (path, name, depth) in crate::model::folder_options(folders, None) {
+                    options.push((path, format!("{}{name}", "\u{a0}\u{a0}".repeat(depth + 1))));
+                }
+                // A folder made a moment ago may not be listed yet.
+                if !options.iter().any(|o| o.0 == form.folder) {
+                    options.push((form.folder.clone(), form.folder.clone()));
+                }
+                let opts: Vec<(&str, &str)> = options
+                    .iter()
+                    .map(|(a, b)| (a.as_str(), b.as_str()))
+                    .collect();
+                if let Some(v) = shell::select(ui, "Folder", &opts, &form.folder) {
+                    form.folder = v;
+                }
+            }
+
+            let visible = form.visible_templates();
+            if !duplicating && !form.diagram && (!visible.is_empty() || form.deck) {
+                ui.add_space(10.0);
+                dialog::field_label(ui, "Template");
+                let blank = if form.deck {
+                    "Blank Presentation"
+                } else {
+                    "Blank"
+                };
+                let mut options: Vec<(String, String)> = vec![(String::new(), blank.into())];
+                for t in &visible {
+                    options.push((
+                        t["id"].as_str().unwrap_or_default().to_string(),
+                        t["name"].as_str().unwrap_or_default().to_string(),
+                    ));
+                }
+                let opts: Vec<(&str, &str)> = options
+                    .iter()
+                    .map(|(a, b)| (a.as_str(), b.as_str()))
+                    .collect();
+                if let Some(v) = shell::select(
+                    ui,
+                    "Template",
+                    &opts,
+                    form.template.as_deref().unwrap_or(""),
+                ) {
+                    form.template = (!v.is_empty()).then_some(v);
+                }
+            }
+
+            if !all_tags.is_empty() && !form.new_folder {
+                ui.add_space(10.0);
+                dialog::field_label(ui, "Tags");
+                // Alphabetical whatever the case, one tag to a row.
+                let mut sorted: Vec<&String> = all_tags.iter().collect();
+                sorted.sort_by_key(|t| (t.to_lowercase(), t.as_str()));
+                egui::Frame::new()
+                    .fill(p.bg_surface)
+                    .stroke(egui::Stroke::new(1.0, p.border))
+                    .corner_radius(6)
+                    .inner_margin(6)
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("new-file-tags")
+                            .max_height(TAG_LIST_HEIGHT)
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| {
+                                for tag in sorted {
+                                    let mut on = form.tags.contains(tag);
+                                    if ui
+                                        .checkbox(&mut on, RichText::new(tag).color(p.text_primary))
+                                        .changed()
+                                    {
+                                        if on {
+                                            form.tags.insert(tag.clone());
+                                        } else {
+                                            form.tags.remove(tag);
+                                        }
+                                    }
+                                }
+                            });
+                    });
+            }
+            // A folder's name is checked against the folder picked above.
+            let problem = form.problem(folders);
+            if let Some(problem) = &problem {
+                ui.add_space(6.0);
+                dialog::error_text(ui, problem);
+            }
+            let ready = !form.name.trim().is_empty() && problem.is_none();
+            let out = form_buttons(ui, "OK", ready);
+            if submit && ready {
+                return Some(FormAction::Submit);
+            }
+            out
+        });
     if resp.close {
         return Some(FormAction::Close);
     }

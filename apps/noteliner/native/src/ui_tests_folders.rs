@@ -71,6 +71,21 @@ fn notes(dir: &Path) {
     });
 }
 
+/// One note with more tags than the New Item dialog shows at once, out of
+/// order.
+fn many_tags(dir: &Path) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        std::fs::create_dir_all(dir).unwrap();
+        let mut p = Project::new();
+        p.open(dir).await.unwrap();
+        let tags = json!(["zeta", "Mid", "alpha", "b1", "b2", "b3", "b4", "b5", "b6"]);
+        p.create_file("Alpha", &tags, Some("alpha\n".into()), None)
+            .await
+            .unwrap();
+    });
+}
+
 fn open(tmp: &Path, make: fn(&Path), count: usize) -> (H, PathBuf, Paths) {
     let project = tmp.join("notes");
     std::fs::create_dir_all(&project).unwrap();
@@ -679,6 +694,51 @@ fn pick_parent(h: &mut H, name: &str) {
         .expect("the folder in the list")
         .click();
     h.run_steps(3);
+}
+
+#[test]
+fn the_four_types_are_on_one_line() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _, _) = open(tmp.path(), plain_folder, 4);
+    act(&mut h, Act::NewFile);
+    h.run_steps(3);
+    let top = |label: &str| h.get_by_role_and_label(Role::Button, label).rect().top();
+    let note = top("Note");
+    for label in ["Presentation", "Diagram", "Folder"] {
+        assert_eq!(top(label), note, "{label} is beside Note");
+    }
+    close(h);
+}
+
+#[test]
+fn the_tags_are_a_sorted_list_of_checkboxes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _, _) = open(tmp.path(), many_tags, 1);
+    act(&mut h, Act::NewFile);
+    h.run_steps(3);
+    let mut boxes: Vec<(String, f32, f32)> = h
+        .get_all_by_role(Role::CheckBox)
+        .map(|n| {
+            let label = n.accesskit_node().label().unwrap_or_default();
+            (label.trim().to_string(), n.rect().left(), n.rect().top())
+        })
+        .collect();
+    // The dialog is drawn last, over a pane that lists the tags too.
+    let boxes = boxes.split_off(boxes.len() - 9);
+    let names: Vec<&str> = boxes.iter().map(|b| b.0.as_str()).collect();
+    let mut sorted = names.clone();
+    sorted.sort_by_key(|t| t.to_lowercase());
+    assert_eq!(names, sorted, "alphabetical, whatever the case");
+    assert!(names.contains(&"zeta") && names.contains(&"Mid"));
+    // One to a row: the same left edge, each below the one before.
+    for pair in boxes.windows(2) {
+        assert_eq!(pair[0].1, pair[1].1, "{} and {}", pair[0].0, pair[1].0);
+        assert!(pair[0].2 < pair[1].2, "{} above {}", pair[0].0, pair[1].0);
+    }
+    // The list scrolls: its last tag lies past the buttons under it.
+    let ok = h.get_by_label("OK").rect();
+    assert!(boxes.last().unwrap().2 > ok.top(), "the list is cut short");
+    close(h);
 }
 
 #[test]
