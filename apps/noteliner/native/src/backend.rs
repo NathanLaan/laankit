@@ -225,6 +225,14 @@ pub enum Event {
     Error(String),
 }
 
+/// An edit to write as the project closes or the app quits.
+pub struct ClosingSave {
+    pub save: crate::editor::SaveRequest,
+    /// The app already knows that another program changed the file, and was
+    /// waiting to ask about it.
+    pub conflict: bool,
+}
+
 struct Core {
     paths: Paths,
     /// PDF export (Typst), built and warmed up on a background thread at
@@ -353,6 +361,79 @@ impl Core {
             .unwrap()
             .insert(filename.to_string(), now);
         (now.hash != held.hash).then_some(disk)
+    }
+
+    /// Another program changed `filename` since the app last read or wrote
+    /// it. Unlike [`Core::changed_on_disk`], the stamp stays as it is.
+    fn differs_on_disk(&self, project: &Project, filename: &str) -> bool {
+        let Ok(path) = project.file_path(filename) else {
+            return false;
+        };
+        let Some(held) = self.stamps.lock().unwrap().get(filename).copied() else {
+            return false;
+        };
+        let stat = stat_of(&path);
+        stat.0.is_some() && !held.looks_like(stat) && stamp_of(&path).hash != held.hash
+    }
+
+    /// The files the app has read that another program changed since.
+    fn all_that_differ(&self, project: &Project) -> Vec<String> {
+        let known: Vec<String> = self.stamps.lock().unwrap().keys().cloned().collect();
+        known
+            .into_iter()
+            .filter(|f| self.differs_on_disk(project, f))
+            .collect()
+    }
+
+    /// The app changed the frontmatter of `filename`, which another program
+    /// had changed first: the file as it is now, for the tab that has it
+    /// open. The app's change kept the other program's text, but the open
+    /// editor has not seen it.
+    fn rewritten_over_change(&self, project: &Project, filename: &str) -> Option<Event> {
+        let id = project
+            .files()
+            .iter()
+            .find(|f| f["filename"].as_str() == Some(filename))?["id"]
+            .as_str()?
+            .to_string();
+        let content = project.read_file(filename).ok()?;
+        Some(Event::FileChanged { id, content })
+    }
+
+    /// Writes an edit as the project closes or the app quits, when there is
+    /// no one to ask. If another program changed the file, it is left alone
+    /// and the edit is written beside it as a copy, whose path is returned.
+    /// The copy is named in the Log pane when the project is next opened.
+    async fn write_closing(
+        &self,
+        project: &mut Project,
+        closing: &ClosingSave,
+    ) -> Result<Option<String>> {
+        let (filename, content) = (&closing.save.filename, &closing.save.content);
+        let disk = if closing.conflict {
+            // The change was already found, and the stamp is the file's.
+            let path = project.file_path(filename)?;
+            path.exists()
+                .then(|| project.read_file(filename))
+                .transpose()?
+        } else {
+            self.changed_on_disk(project, filename)
+        };
+        if disk.is_none_or(|disk| disk == *content) {
+            project.write_file(filename, content).await?;
+            self.stamp(project, filename);
+            return Ok(None);
+        }
+        let when = chrono::Local::now().format("%Y-%m-%d %H%M").to_string();
+        let copy = project.write_conflict_copy(filename, content, &when)?;
+        self.window_state.add_notice(
+            &project.dir()?.display().to_string(),
+            format!(
+                "“{filename}” was changed by another program before your edits were saved. \
+                 Your edits are in “{copy}”."
+            ),
+        );
+        Ok(Some(copy))
     }
 
     /// The app just read or wrote `filename`: what is on disk is what the
@@ -551,15 +632,16 @@ impl Backend {
         });
     }
 
-    /// Closes the project: writes the editors' pending edits, stops MCP.
-    pub fn close_project(&self, pending: Vec<crate::editor::SaveRequest>) {
+    /// Closes the project: writes the editors' pending edits, stops MCP. An
+    /// edit to a file that another program changed is written as a copy.
+    pub fn close_project(&self, pending: Vec<ClosingSave>) {
         self.spawn(|core| async move {
             core.reject_pending_confirms();
             core.mcp.stop().await;
             let mut ws = core.ws.lock().await;
-            for save in pending {
-                if let Err(e) = ws.project.write_file(&save.filename, &save.content).await {
-                    log::warn!("saving {} before closing: {e}", save.filename);
+            for closing in pending {
+                if let Err(e) = core.write_closing(&mut ws.project, &closing).await {
+                    log::warn!("saving {} before closing: {e}", closing.save.filename);
                 }
             }
             ws.project.close();
@@ -605,14 +687,25 @@ impl Backend {
     pub fn save_index(&self, index: Value) {
         self.spawn(|core| async move {
             let mut ws = core.ws.lock().await;
+            // The tags go into each file as it is on disk, so another
+            // program's change to a note's text is kept. The tab that has
+            // the note open is told of it.
+            let changed = core.all_that_differ(&ws.project);
             let r = ws.project.save_index(index).await;
+            let mut reloads = Vec::new();
             if let Ok(rewritten) = &r {
                 for filename in rewritten {
                     core.stamp(&ws.project, filename);
+                    if changed.contains(filename) {
+                        reloads.extend(core.rewritten_over_change(&ws.project, filename));
+                    }
                 }
             }
             drop(ws);
             core.send(Event::IndexSaved(r.map(|_| ()).map_err(|e| e.to_string())));
+            for event in reloads {
+                core.send(event);
+            }
         });
     }
 
@@ -713,19 +806,22 @@ impl Backend {
         });
     }
 
-    /// Saves a whole file without waiting, on quit.
-    pub fn write_file_now(&self, filename: &str, content: &str) -> Result<()> {
+    /// Saves an edit without waiting, on quit. An edit to a file that
+    /// another program changed is written as a copy: its path is returned.
+    pub fn write_file_now(&self, closing: ClosingSave) -> Result<Option<String>> {
         let core = self.core.clone();
-        let (filename, content) = (filename.to_string(), content.to_string());
         self.rt.block_on(async move {
-            core.ws
-                .lock()
-                .await
-                .project
-                .write_file(&filename, &content)
-                .await
-                .map(|_| ())
+            let mut ws = core.ws.lock().await;
+            core.write_closing(&mut ws.project, &closing).await
         })
+    }
+
+    /// The lines kept for the Log pane as the project in `folder` last
+    /// closed. They are given once.
+    pub fn take_notices(&self, folder: &Path) -> Vec<String> {
+        self.core
+            .window_state
+            .take_notices(&folder.display().to_string())
     }
 
     /// A new note (from a template) in `folder`; for a presentation, the
@@ -1096,15 +1192,24 @@ impl Backend {
     pub fn set_presentation(&self, id: String, filename: String, presentation: Value) {
         self.spawn(|core| async move {
             let mut ws = core.ws.lock().await;
+            // As for the tags in [`Backend::save_index`].
+            let changed = core.differs_on_disk(&ws.project, &filename);
             let r = ws.project.set_presentation(&filename, &presentation).await;
+            let mut reload = None;
             if r.is_ok() {
                 core.stamp(&ws.project, &filename);
+                if changed {
+                    reload = core.rewritten_over_change(&ws.project, &filename);
+                }
             }
             drop(ws);
             core.send(Event::Presentation {
                 id,
                 outcome: r.map_err(|e| e.to_string()),
             });
+            if let Some(event) = reload {
+                core.send(event);
+            }
         });
     }
 

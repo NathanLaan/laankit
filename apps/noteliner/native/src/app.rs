@@ -29,7 +29,9 @@ use noteliner_slides::{
 };
 use serde_json::{json, Value};
 
-use crate::backend::{self, Backend, DeckTheme, DeleteTarget, Event, ExportKind, McpConfirm};
+use crate::backend::{
+    self, Backend, ClosingSave, DeckTheme, DeleteTarget, Event, ExportKind, McpConfirm,
+};
 use crate::commands::{self, Act, View};
 use crate::config::{LastFilePosition, Layout, Paths, Prefs, Recent};
 use crate::deck::{self, DeckState, SlideImages};
@@ -471,6 +473,19 @@ impl NoteLinerApp {
     #[cfg(test)]
     pub fn log_texts(&self) -> Vec<String> {
         self.log.iter().map(|l| l.message.clone()).collect()
+    }
+
+    /// Adds a tag to the open note, as the Tags pane does.
+    #[cfg(test)]
+    pub fn add_tag_for_test(&mut self, tag: &str) {
+        let changed = self.project.as_mut().is_some_and(|p| {
+            p.selected
+                .clone()
+                .is_some_and(|id| model::add_tag(&mut p.index, &id, tag))
+        });
+        if changed {
+            self.index_changed();
+        }
     }
 
     /// Looks for changes made outside the app now, as the timer would.
@@ -1052,6 +1067,10 @@ impl NoteLinerApp {
         self.backend.add_recent(&folder);
         self.recent = self.backend.recent();
         self.restore_bounds(ctx, &folder);
+        // What happened as the project last closed.
+        for notice in self.backend.take_notices(&folder) {
+            self.log_line(notice);
+        }
         let open_folders = layout
             .open_folders
             .iter()
@@ -1444,6 +1463,12 @@ impl NoteLinerApp {
                 e.set_presentation(presentation);
             }
         }
+        // So does the file a note is waiting to ask about: Reload takes it.
+        if let Some(disk) = self.pending_conflicts.get_mut(id) {
+            if let Some(next) = noteliner_core::frontmatter::with_presentation(disk, presentation) {
+                *disk = next;
+            }
+        }
     }
 
     /// Writes the index's tags into the frontmatter of the notes that are
@@ -1462,6 +1487,22 @@ impl NoteLinerApp {
             if let Some(entry) = e.file_id().and_then(|id| p.entry_value(id)) {
                 let entry = entry.clone();
                 e.retag(&entry);
+            }
+        }
+        // So does the file a note is waiting to ask about: Reload takes it.
+        for (id, disk) in &mut self.pending_conflicts {
+            if p.entry(id).is_none_or(|e| e.is_diagram()) {
+                continue;
+            }
+            let Some(entry) = p.entry_value(id) else {
+                continue;
+            };
+            let no_tags = entry["tags"].as_array().is_none_or(Vec::is_empty);
+            if no_tags && noteliner_core::frontmatter::split(disk).is_none() {
+                continue;
+            }
+            if let Some(next) = noteliner_core::frontmatter::retag(disk, entry) {
+                *disk = next;
             }
         }
     }
@@ -1751,13 +1792,51 @@ impl NoteLinerApp {
     fn go_home(&mut self) {
         let Some(p) = &self.project else { return };
         self.backend.save_layout(&p.folder, p.layout.to_value());
-        // A diagram waiting to ask about a change on disk is written too.
+        let pending = self.closing_saves();
+        self.backend.close_project(pending);
+    }
+
+    /// The edits to write as the project closes or the app quits: the tab
+    /// shown, and each tab that is waiting to ask about a change on disk.
+    /// There is no one to ask now, so those are marked: the backend writes
+    /// them beside the file as a copy.
+    fn closing_saves(&mut self) -> Vec<ClosingSave> {
+        let mut waiting = std::mem::take(&mut self.pending_conflicts);
+        let mut saves = Vec::new();
+        self.editor.hold(false);
         self.diagram.hold(false);
-        let pending = [self.editor.flush(), self.diagram.flush()]
+        for save in [self.editor.flush(), self.diagram.flush()]
             .into_iter()
             .flatten()
-            .collect();
-        self.backend.close_project(pending);
+        {
+            let conflict = waiting.remove(&save.id).is_some();
+            saves.push(ClosingSave { save, conflict });
+        }
+        for id in waiting.keys() {
+            let note = self
+                .tabs
+                .editors_mut()
+                .find(|e| e.file_id() == Some(id.as_str()))
+                .map(|e| {
+                    e.hold(false);
+                    e.flush()
+                });
+            let save = match note {
+                Some(save) => save,
+                None => self
+                    .tabs
+                    .diagrams_mut()
+                    .find(|d| d.file_id() == id)
+                    .and_then(|d| d.keep_mine()),
+            };
+            if let Some(save) = save {
+                saves.push(ClosingSave {
+                    save,
+                    conflict: true,
+                });
+            }
+        }
+        saves
     }
 
     fn export(&mut self, kind: ExportKind, id: Option<String>) {
@@ -4255,14 +4334,10 @@ impl NoteLinerApp {
 
     /// On quit: write the pending edit and the layout.
     pub fn shutdown(&mut self) {
-        // A diagram waiting to ask about a change on disk is written too.
-        self.diagram.hold(false);
-        for save in [self.editor.flush(), self.diagram.flush()]
-            .into_iter()
-            .flatten()
-        {
-            if let Err(e) = self.backend.write_file_now(&save.filename, &save.content) {
-                log::warn!("couldn't save {}: {e}", save.filename);
+        for closing in self.closing_saves() {
+            let filename = closing.save.filename.clone();
+            if let Err(e) = self.backend.write_file_now(closing) {
+                log::warn!("couldn't save {filename}: {e}");
             }
         }
         if let Some(p) = &self.project {

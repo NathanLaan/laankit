@@ -113,6 +113,10 @@ A file manager, a sync tool, or Git used by hand can add, move, and remove notes
 
 A save looks at the file first. If another program changed it since NoteLiner last read or wrote it, nothing is written and the same dialog asks. A file that was written again with the same content is not a change, and neither is a diagram file that reads as the diagram on the canvas. If you close the tab before answering, your edits are written and the Log pane says so. For a diagram, the dialog waits until a drag or a label you are typing is done, and Reload is one undo step. A file that is no longer a diagram cannot be reloaded, so the dialog stays open for Keep Mine.
 
+A tag you add or remove, and a change in Presentation Settings, go into the note as it is on disk, so another program's change to the text is kept. The open note then reloads, or asks if it has unsaved edits.
+
+Quitting and closing the project do not stop to ask. If another program changed a file that has unsaved edits, the file is left as it is and your edits are written beside it as a copy, named like `note (your edits 2026-11-17 1432).md`. The same is done for a file in any tab that was waiting to ask. The copy is a file of its own in the Files pane, and the Log pane names it when you next open the project. NoteLiner does not delete these copies.
+
 A moved file is matched by its file name, and a renamed one by its kind and size, when exactly one file disappeared and one appeared. A file that can't be matched is a removed file and a new one: a note keeps the tags in its frontmatter, and a diagram loses its tags.
 
 ## Using Git yourself

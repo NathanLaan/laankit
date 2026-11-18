@@ -591,3 +591,64 @@ fn a_diagram_changed_under_unsaved_edits_asks() {
         .any(|s| s.label == "Their Database"));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
 }
+
+/// The copies of your edits in the project folder.
+fn copies(project: &Path) -> Vec<String> {
+    std::fs::read_dir(project)
+        .unwrap()
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter(|n| n.contains("(your edits "))
+        .collect()
+}
+
+/// Quitting does not write a diagram over another program's change: the
+/// file is left as it is, and your diagram is written beside it.
+#[test]
+fn quitting_over_a_changed_diagram_keeps_both() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    let file = project.join("map.mmd");
+    open_diagram(&mut h, "Map");
+    start_box(&mut h, 300.0);
+    write_outside(&file, THEIRS);
+    h.state_mut().shutdown();
+    drop(h);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+    let made = copies(&project);
+    assert_eq!(made.len(), 1, "{made:?}");
+    assert!(made[0].starts_with("map (your edits ") && made[0].ends_with(").mmd"));
+    let mine = std::fs::read_to_string(project.join(&made[0])).unwrap();
+    assert!(!mine.contains("Their Database"));
+    assert_eq!(mine.matches("@shape").count(), 2);
+}
+
+/// The same for a diagram in a background tab that is waiting to ask.
+#[test]
+fn quitting_keeps_a_waiting_diagram_tabs_edits() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    let file = project.join("map.mmd");
+    open_note(&mut h, "Alpha");
+    open_diagram(&mut h, "Map");
+    start_box(&mut h, 300.0);
+    write_outside(&file, THEIRS);
+    let ctx = h.ctx.clone();
+    h.state_mut().apply_for_test(&ctx, Act::NextTab);
+    let alpha = id_of(&h, "Alpha");
+    wait_for(&mut h, "Alpha", move |a| {
+        a.editor_file_id().as_deref() == Some(alpha.as_str())
+    });
+    for _ in 0..40 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+    h.state_mut().shutdown();
+    drop(h);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+    let made = copies(&project);
+    assert_eq!(made.len(), 1, "{made:?}");
+    let mine = std::fs::read_to_string(project.join(&made[0])).unwrap();
+    assert!(!mine.contains("Their Database"));
+    assert_eq!(mine.matches("@shape").count(), 2);
+}
