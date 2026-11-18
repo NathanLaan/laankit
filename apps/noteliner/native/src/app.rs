@@ -1218,16 +1218,46 @@ impl NoteLinerApp {
         }
     }
 
-    /// A save of a note was not written, because another program changed the
-    /// file first. The note in the tab shown asks now, and one in a
-    /// background tab asks when its tab is shown. A tab that was closed has
-    /// nowhere to ask: its edits are written, with a line in the log.
+    /// A save of a note or a diagram was not written, because another
+    /// program changed the file first. The file in the tab shown asks now,
+    /// and one in a background tab asks when its tab is shown. A tab that
+    /// was closed has nowhere to ask: its edits are written, with a line in
+    /// the log.
     fn save_conflict(&mut self, id: String, content: String, disk: String) {
         if self.editor.conflicted(&id, &content) {
             self.pending_conflicts.insert(id, disk);
             return;
         }
+        if self.diagram.conflicted(&id) {
+            // A file that reads as the diagram on the canvas is no change.
+            if !self.diagram.settle_if_same(&id, &disk) {
+                self.pending_conflicts.insert(id, disk);
+            }
+            return;
+        }
         let open = self.tabs.contains(&id);
+        let stashed = self
+            .tabs
+            .diagrams_mut()
+            .find_map(|d| d.conflicted(&id).then_some(d))
+            .map(|d| (d.name().to_string(), (!open).then(|| d.keep_mine())));
+        match stashed {
+            Some((_, None)) => {
+                self.pending_conflicts.insert(id, disk);
+                return;
+            }
+            Some((name, Some(save))) => {
+                if let Some(save) = save {
+                    self.backend
+                        .write_file(save.id, save.filename, save.content);
+                }
+                self.log_line(format!(
+                    "“{name}” changed on disk as its tab was closed. Your version was kept."
+                ));
+                return;
+            }
+            None => {}
+        }
         let Some(editor) = self
             .tabs
             .editors_mut()
@@ -1257,15 +1287,30 @@ impl NoteLinerApp {
         if self.pending_conflicts.remove(id).is_none() {
             return;
         }
-        let active = self.editor.file_id() == Some(id);
-        let editor = if active {
-            Some(&mut self.editor)
+        let kept = if self.editor.file_id() == Some(id) {
+            self.editor.hold(false);
+            Some((self.editor.name().to_string(), self.editor.flush()))
+        } else if self.diagram.file_id() == Some(id) {
+            self.diagram.hold(false);
+            let name = self.diagram.name().unwrap_or_default().to_string();
+            Some((name, self.diagram.flush()))
         } else {
-            self.tabs.editors_mut().find(|e| e.file_id() == Some(id))
+            let note = self
+                .tabs
+                .editors_mut()
+                .find(|e| e.file_id() == Some(id))
+                .map(|e| {
+                    e.hold(false);
+                    (e.name().to_string(), e.flush())
+                });
+            note.or_else(|| {
+                self.tabs
+                    .diagrams_mut()
+                    .find(|d| d.file_id() == id)
+                    .map(|d| (d.name().to_string(), d.keep_mine()))
+            })
         };
-        let Some(editor) = editor else { return };
-        editor.hold(false);
-        let (name, save) = (editor.name().to_string(), editor.flush());
+        let Some((name, save)) = kept else { return };
         if let Some(save) = save {
             self.backend
                 .write_file(save.id, save.filename, save.content);
@@ -1284,15 +1329,25 @@ impl NoteLinerApp {
             return;
         };
         if self.diagram.file_id() == Some(id.as_str()) {
-            // A diagram being edited keeps the user's version.
             if self.diagram.is_dirty() {
-                self.log_line(format!(
-                    "“{}” changed on disk while it was being edited. Your version was kept.",
+                // Nothing is written over the change until the user has
+                // chosen. A file that reads as the diagram on the canvas is
+                // no change.
+                if !self.diagram.settle_if_same(&id, &content) {
+                    self.diagram.hold(true);
+                    self.pending_conflicts.insert(id, content);
+                }
+                return;
+            }
+            match self.diagram.replace(&id, &content) {
+                Ok(true) => self.toasts.info(format!(
+                    "“{}” changed on disk and was reloaded.",
                     entry.name
-                ));
-            } else if let Err(e) = self.diagram.replace(&id, &content) {
-                self.toasts
-                    .error(format!("Couldn't reload “{}”: {e}", entry.name));
+                )),
+                Ok(false) => {}
+                Err(e) => self
+                    .toasts
+                    .error(format!("Couldn't reload “{}”: {e}", entry.name)),
             }
             return;
         }
@@ -1324,10 +1379,22 @@ impl NoteLinerApp {
         }
         let grid = self.diagram.grid_size();
         let mut unreadable = false;
+        let mut asks = false;
         for d in self.tabs.diagrams_mut() {
-            if d.file_id() == id {
+            if d.file_id() != id {
+                continue;
+            }
+            // A diagram waiting to ask about an earlier change asks about
+            // this one.
+            if d.is_dirty() {
+                asks = true;
+            } else {
                 unreadable |= d.replace(&content, grid).is_err();
             }
+        }
+        if asks {
+            self.pending_conflicts.insert(id, content);
+            return;
         }
         if unreadable {
             self.tabs.take(&id);
@@ -1606,7 +1673,7 @@ impl NoteLinerApp {
         }
         if let Some(save) = self.diagram.flush() {
             self.backend
-                .write_file(save.id, save.filename, save.content);
+                .write_file_checked(save.id, save.filename, save.content);
         }
     }
 
@@ -1684,6 +1751,8 @@ impl NoteLinerApp {
     fn go_home(&mut self) {
         let Some(p) = &self.project else { return };
         self.backend.save_layout(&p.folder, p.layout.to_value());
+        // A diagram waiting to ask about a change on disk is written too.
+        self.diagram.hold(false);
         let pending = [self.editor.flush(), self.diagram.flush()]
             .into_iter()
             .flatten()
@@ -3321,7 +3390,7 @@ impl NoteLinerApp {
             let now = ctx.input(|i| i.time);
             if let Some(save) = self.diagram.due(now) {
                 self.backend
-                    .write_file(save.id, save.filename, save.content);
+                    .write_file_checked(save.id, save.filename, save.content);
             }
             // Keep the autosave timer ticking without input.
             if self.diagram.is_dirty() {
@@ -3775,12 +3844,17 @@ impl NoteLinerApp {
         // A note that changed on disk under unsaved edits asks once the
         // dialog that was open has closed.
         if self.overlay.is_none() {
-            let asked = self
-                .editor
-                .file_id()
-                .and_then(|id| self.pending_conflicts.remove_entry(id));
-            if let Some((id, content)) = asked {
-                let name = self.editor.name().to_string();
+            // A diagram asks once a drag or a label being typed is done.
+            let shown = match self.editor.file_id() {
+                Some(id) => Some((id, self.editor.name())),
+                None if self.diagram.editor.canvas.is_busy() => None,
+                None => self.diagram.file_id().zip(self.diagram.name()),
+            };
+            let asked = shown.and_then(|(id, name)| {
+                let (id, content) = self.pending_conflicts.remove_entry(id)?;
+                Some((id, name.to_string(), content))
+            });
+            if let Some((id, name, content)) = asked {
                 self.overlay = Some(Overlay::Conflict { id, name, content });
             }
         }
@@ -3911,6 +3985,20 @@ impl NoteLinerApp {
                 None => {}
             },
             Overlay::Conflict { id, name, content } => match overlays::conflict(ctx, name) {
+                Some(ConflictAction::Reload) if self.diagram.file_id() == Some(id.as_str()) => {
+                    // A file that isn't a diagram is refused, and the
+                    // question stays for Keep Mine.
+                    match self.diagram.reload(id, content) {
+                        Ok(save) => {
+                            keep = false;
+                            if let Some(save) = save {
+                                self.backend
+                                    .write_file(save.id, save.filename, save.content);
+                            }
+                        }
+                        Err(e) => self.toasts.error(format!("Couldn't reload “{name}”: {e}")),
+                    }
+                }
                 Some(ConflictAction::Reload) => {
                     keep = false;
                     if let Some(save) = self.editor.reload(id, std::mem::take(content)) {
@@ -3921,12 +4009,18 @@ impl NoteLinerApp {
                 Some(ConflictAction::KeepMine) => {
                     keep = false;
                     // The edits are saved over the file on disk.
-                    self.editor.hold(false);
-                    if self.editor.file_id() == Some(id.as_str()) {
-                        if let Some(save) = self.editor.flush() {
-                            self.backend
-                                .write_file(save.id, save.filename, save.content);
-                        }
+                    let save = if self.diagram.file_id() == Some(id.as_str()) {
+                        self.diagram.hold(false);
+                        self.diagram.flush()
+                    } else if self.editor.file_id() == Some(id.as_str()) {
+                        self.editor.hold(false);
+                        self.editor.flush()
+                    } else {
+                        None
+                    };
+                    if let Some(save) = save {
+                        self.backend
+                            .write_file(save.id, save.filename, save.content);
                     }
                 }
                 None => {}
@@ -4161,6 +4255,8 @@ impl NoteLinerApp {
 
     /// On quit: write the pending edit and the layout.
     pub fn shutdown(&mut self) {
+        // A diagram waiting to ask about a change on disk is written too.
+        self.diagram.hold(false);
         for save in [self.editor.flush(), self.diagram.flush()]
             .into_iter()
             .flatten()

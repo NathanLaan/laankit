@@ -359,10 +359,235 @@ fn a_diagram_changed_on_disk_reloads_as_one_undo_step() {
         a.diagram_editor().diagram.shapes.len() == 1
     });
     h.run_steps(2);
+    assert_eq!(
+        h.state().toast_texts(),
+        ["“Map” changed on disk and was reloaded."]
+    );
     // Undo shows the diagram as it was, and the drawing can still be undone.
     act(&mut h, Act::Undo);
     assert_eq!(shapes(&h), 2);
     assert!(h.state().diagram_editor().view().can_undo);
     act(&mut h, Act::Undo);
     assert_eq!(shapes(&h), 1);
+}
+
+/// The diagram as another program leaves it: the box, and one of its own.
+const THEIRS: &str = "flowchart LR\n  api[\"API Gateway\"]\n  db[\"Their Database\"]\n%% blockliner 1 grid=20\n%% @shape api x=40 y=40 w=160 h=80\n%% @shape db x=40 y=200 w=160 h=80\n";
+
+/// Another program writes `text` over the diagram's file.
+fn write_outside(file: &Path, text: &str) {
+    std::fs::write(file, text).unwrap();
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+    let f = std::fs::File::options().write(true).open(file).unwrap();
+    f.set_modified(later).unwrap();
+}
+
+/// Drags out a box with the Rectangle tool, and leaves its label open:
+/// nothing is saved while it is.
+fn start_box(h: &mut H, x: f32) {
+    act(
+        h,
+        Act::Diagram(blockliner_egui::commands::EditAct::Tool(Tool::Rect)),
+    );
+    assert_eq!(h.state().diagram_editor().tool, Tool::Rect);
+    let (from, to) = (at(h, x, 300.0), at(h, x + 100.0, 360.0));
+    drag(h, from, to);
+}
+
+/// Another program writes `text` while a box is being drawn, so the app
+/// has no chance to look at the file first. The box is then finished.
+fn draw_box_over(h: &mut H, x: f32, file: &Path, text: &str) {
+    start_box(h, x);
+    write_outside(file, text);
+    h.key_press(Key::Enter);
+    h.run_steps(3);
+}
+
+fn settled(h: &mut H) {
+    wait_for(h, "the save to settle", |a| {
+        a.diagram_status() == crate::editor::SaveStatus::Saved
+    });
+}
+
+fn on_disk(h: &mut H, what: &str, file: &Path, test: impl Fn(&str) -> bool + 'static) {
+    let file = file.to_path_buf();
+    wait_for(h, what, move |_| {
+        std::fs::read_to_string(&file).is_ok_and(|s| test(&s))
+    });
+}
+
+/// A diagram's save looks at the file first, and asks before it writes over
+/// a change another program made.
+#[test]
+fn a_diagram_save_does_not_write_over_another_programs_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    let file = project.join("map.mmd");
+    open_note(&mut h, "Alpha");
+    open_diagram(&mut h, "Map");
+
+    // The file changed, and the autosave runs with no check before it.
+    draw_box_over(&mut h, 300.0, &file, THEIRS);
+    assert_eq!(shapes(&h), 2);
+    wait_for(&mut h, "the question", |a| a.has_overlay());
+    h.run_steps(3);
+    assert!(h
+        .query_by_label_contains("was changed by another program")
+        .is_some());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+    assert_eq!(
+        h.state().diagram_status(),
+        crate::editor::SaveStatus::Unsaved
+    );
+    // Nothing is written while it waits for an answer.
+    for _ in 0..40 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+    // Keep Mine writes the diagram over the file.
+    h.get_by_label("Keep Mine").click();
+    on_disk(&mut h, "my diagram on disk", &file, |s| {
+        !s.contains("Their Database") && s.matches("@shape").count() == 2
+    });
+    settled(&mut h);
+    assert!(!h.state().has_overlay());
+
+    // Again, and Reload takes the file as one undo step.
+    draw_box_over(&mut h, 450.0, &file, THEIRS);
+    assert_eq!(shapes(&h), 3);
+    wait_for(&mut h, "the question again", |a| a.has_overlay());
+    h.run_steps(3);
+    h.get_by_label("Reload").click();
+    h.run_steps(3);
+    assert!(!h.state().has_overlay());
+    assert_eq!(shapes(&h), 2);
+    settled(&mut h);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+    act(&mut h, Act::Undo);
+    assert_eq!(shapes(&h), 3);
+    on_disk(&mut h, "the undo on disk", &file, |s| {
+        s.matches("@shape").count() == 3
+    });
+    settled(&mut h);
+
+    // A file that isn't a diagram: Reload is refused, and the question
+    // stays for Keep Mine.
+    draw_box_over(&mut h, 600.0, &file, "# Not a diagram\n");
+    wait_for(&mut h, "the question for a file that can't be read", |a| {
+        a.has_overlay()
+    });
+    h.run_steps(3);
+    h.get_by_label("Reload").click();
+    h.run_steps(3);
+    assert!(h.state().has_overlay());
+    assert!(h
+        .state()
+        .toast_texts()
+        .iter()
+        .any(|t| t.starts_with("Couldn't reload “Map”")));
+    assert_eq!(shapes(&h), 4);
+    h.get_by_label("Keep Mine").click();
+    on_disk(&mut h, "my diagram over the bad file", &file, |s| {
+        s.matches("@shape").count() == 4
+    });
+    settled(&mut h);
+}
+
+/// A save refused as the diagram's tab is left asks when the tab is shown.
+/// (These start from a project just opened, so the save runs before the
+/// app's own look at the files.)
+#[test]
+fn a_diagram_tab_that_is_left_asks_on_return() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    let file = project.join("map.mmd");
+    open_note(&mut h, "Alpha");
+    open_diagram(&mut h, "Map");
+    start_box(&mut h, 300.0);
+    write_outside(&file, THEIRS);
+    let ctx = h.ctx.clone();
+    h.state_mut().apply_for_test(&ctx, Act::NextTab);
+    let alpha = id_of(&h, "Alpha");
+    wait_for(&mut h, "Alpha", move |a| {
+        a.editor_file_id().as_deref() == Some(alpha.as_str())
+    });
+    for _ in 0..40 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(!h.state().has_overlay());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+    open_diagram(&mut h, "Map");
+    wait_for(&mut h, "the question on return", |a| a.has_overlay());
+    h.run_steps(3);
+    assert_eq!(shapes(&h), 2);
+    h.get_by_label("Reload").click();
+    h.run_steps(3);
+    assert_eq!(shapes(&h), 2);
+    settled(&mut h);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+    let theirs = h.state().diagram_editor().diagram.shapes.iter();
+    assert!(theirs.clone().any(|s| s.label == "Their Database"));
+}
+
+/// A save refused as the diagram's tab is closed has nowhere to ask: the
+/// diagram is written, and the log says so.
+#[test]
+fn a_diagram_tab_that_is_closed_keeps_your_version() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    let file = project.join("map.mmd");
+    open_diagram(&mut h, "Map");
+    start_box(&mut h, 300.0);
+    write_outside(&file, THEIRS);
+    let ctx = h.ctx.clone();
+    h.state_mut().apply_for_test(&ctx, Act::CloseTab);
+    on_disk(&mut h, "the closed tab's diagram", &file, |s| {
+        !s.contains("Their Database") && s.matches("@shape").count() == 2
+    });
+    assert!(h
+        .state()
+        .log_texts()
+        .iter()
+        .any(|l| l.contains("Your version was kept")));
+}
+
+/// The check finds the change while a shape is being drawn: it asks once
+/// the shape is done, where it used to take the file without a word.
+#[test]
+fn a_diagram_changed_under_unsaved_edits_asks() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    let file = project.join("map.mmd");
+    open_diagram(&mut h, "Map");
+    // The new shape's label is still being typed.
+    h.key_press(Key::R);
+    h.run_steps(2);
+    let (from, to) = (at(&h, 300.0, 300.0), at(&h, 400.0, 360.0));
+    drag(&mut h, from, to);
+    assert_eq!(shapes(&h), 2);
+    write_outside(&file, THEIRS);
+    h.state_mut().check_now();
+    for _ in 0..40 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(!h.state().has_overlay(), "it waits for the label");
+    assert_eq!(shapes(&h), 2);
+    h.key_press(Key::Enter);
+    wait_for(&mut h, "the question", |a| a.has_overlay());
+    h.run_steps(3);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+    h.get_by_label("Reload").click();
+    h.run_steps(3);
+    settled(&mut h);
+    assert!(h
+        .state()
+        .diagram_editor()
+        .diagram
+        .shapes
+        .iter()
+        .any(|s| s.label == "Their Database"));
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
 }
