@@ -133,6 +133,9 @@ pub struct NoteEditor {
     front: Front,
     /// The autosave waits (the app is asking about a change on disk).
     held: bool,
+    /// A write was in flight when the hold began: it lands on top of the
+    /// change on disk that the app is asking about.
+    held_over_write: bool,
 }
 
 /// Where the frontmatter block ends, and what it holds.
@@ -185,6 +188,7 @@ impl Default for NoteEditor {
             text_rect: None,
             front: Front::default(),
             held: false,
+            held_over_write: false,
         }
     }
 }
@@ -210,6 +214,7 @@ impl NoteEditor {
         self.dirty_since = None;
         self.saving = None;
         self.held = false;
+        self.held_over_write = false;
         self.front = Front::default();
         self.sync();
         let start = self.state.text()[..self.front.start].chars().count();
@@ -268,6 +273,7 @@ impl NoteEditor {
         self.char_at_pointer = None;
         self.text_rect = None;
         self.held = false;
+        self.held_over_write = false;
         self.front = Front::default();
     }
 
@@ -332,6 +338,7 @@ impl NoteEditor {
     /// a change on disk.
     pub fn hold(&mut self, held: bool) {
         self.held = held;
+        self.held_over_write = held && self.saving.is_some();
         if !held && self.dirty_since.is_some() {
             self.ctx.request_repaint();
         }
@@ -499,17 +506,29 @@ impl NoteEditor {
     }
 
     /// Takes the file from disk over a pending edit (the user chose Reload).
-    pub fn reload(&mut self, id: &str, content: String) {
+    /// If a write of the edit was already in flight when the change was
+    /// found, it has landed on top of the file: the content is returned to
+    /// be written back.
+    pub fn reload(&mut self, id: &str, content: String) -> Option<SaveRequest> {
         if self.id.as_deref() != Some(id) {
-            return;
+            return None;
         }
+        let write_back = self.held_over_write;
         self.dirty_since = None;
         self.saving = None;
         self.held = false;
+        self.held_over_write = false;
         self.state.replace_text(&self.ctx, content);
         self.status = SaveStatus::Saved;
         self.sync();
         self.ctx.request_repaint();
+        if !write_back {
+            return None;
+        }
+        let request = self.request()?;
+        self.saving = Some(request.content.clone());
+        self.status = SaveStatus::Saving;
+        Some(request)
     }
 
     /// A slide edit: the note's text becomes `markdown` (one undo step) and
@@ -821,8 +840,20 @@ mod tests {
         // While the app asks, the autosave waits; Reload takes the file.
         e.hold(true);
         assert_eq!(e.due(99.0), None);
-        e.reload("a", "theirs".into());
+        assert_eq!(e.reload("a", "theirs".into()), None);
         assert_eq!(e.text(), "theirs");
+        assert_eq!(e.status(), SaveStatus::Saved);
+        assert!(!e.is_dirty());
+        // A write that was in flight when the change was found lands on top
+        // of it, so Reload writes the file back.
+        edit(&mut e, "mine", 0.0);
+        let late = e.due(1.0).unwrap();
+        e.hold(true);
+        e.saved("a", &late.content, true);
+        let back = e.reload("a", "theirs".into()).unwrap();
+        assert_eq!(back.content, "theirs");
+        assert_eq!(e.status(), SaveStatus::Saving);
+        e.saved("a", "theirs", true);
         assert_eq!(e.status(), SaveStatus::Saved);
         assert!(!e.is_dirty());
         // Keep Mine: the autosave carries on.

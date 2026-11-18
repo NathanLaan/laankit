@@ -1,4 +1,5 @@
-//! `SettingsModal.svelte`: the UI, MCP and Keyboard Shortcuts tabs.
+//! `SettingsModal.svelte`: the UI, Project, Editor, Diagrams, MCP, and
+//! Keyboard Shortcuts tabs.
 //!
 //! Turning the MCP server on asks first, with `McpWalkthroughModal`
 //! ([`super::mcp::walkthrough`]): MCP stays off until Enable is clicked.
@@ -14,10 +15,18 @@ use serde_json::{json, Value};
 use crate::backend::McpStatus;
 use crate::config::{Prefs, DIAGRAM_GRID_SIZES};
 
-const TABS: [Tab<'static>; 4] = [
+const TABS: [Tab<'static>; 6] = [
     Tab {
         id: "ui",
         label: "UI",
+    },
+    Tab {
+        id: "project",
+        label: "Project",
+    },
+    Tab {
+        id: "editor",
+        label: "Editor",
     },
     Tab {
         id: "diagrams",
@@ -135,6 +144,8 @@ pub fn show(
             .top_inset(top_inset)
             .show(ctx, &mut tab, |ui, id| match id {
                 "ui" => ui_tab(ui, state, theme_state, &mut out),
+                "project" => project_tab(ui, state, &mut out),
+                "editor" => editor_tab(ui, state, &mut out),
                 "diagrams" => diagrams_tab(ui, state, &mut out),
                 "mcp" => mcp_tab(ui, state, &mut out),
                 _ => settings::shortcuts_list(ui, &crate::commands::shortcut_list(), None),
@@ -169,35 +180,6 @@ fn ui_tab(
     theme_state: &mut ThemeState,
     out: &mut Vec<SettingsAction>,
 ) {
-    if let Some(folder) = &state.project_folder {
-        settings::setting_group(
-            ui,
-            "Project",
-            Some("A project is a folder of notes. NoteLiner keeps its index in noteliner.json there."),
-            |ui| {
-                let p = theme::palette(ui.ctx());
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(folder)
-                            .font(fonts::mono(12.0))
-                            .color(p.text_secondary),
-                    );
-                    if dialog::icon_button(
-                        ui,
-                        Some(laankit_egui::icons::FOLDER_OPEN),
-                        "",
-                        ButtonKind::Secondary,
-                        true,
-                    )
-                    .on_hover_text("Open in file manager")
-                    .clicked()
-                    {
-                        out.push(SettingsAction::OpenProjectFolder);
-                    }
-                });
-            },
-        );
-    }
     settings::setting_group(ui, "Theme", None, |ui| {
         if settings::theme_list(ui, theme_state) {
             out.push(SettingsAction::ThemeChanged);
@@ -227,6 +209,39 @@ fn ui_tab(
             out.push(SettingsAction::Restart);
         }
     });
+}
+
+/// Where the project is, and what NoteLiner writes into its notes.
+fn project_tab(ui: &mut egui::Ui, state: &mut SettingsState, out: &mut Vec<SettingsAction>) {
+    if let Some(folder) = &state.project_folder {
+        settings::setting_group(
+            ui,
+            "Project",
+            Some("A project is a folder of notes. NoteLiner keeps its index in noteliner.json there."),
+            |ui| {
+                let p = theme::palette(ui.ctx());
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(folder)
+                            .font(fonts::mono(12.0))
+                            .color(p.text_secondary),
+                    );
+                    if dialog::icon_button(
+                        ui,
+                        Some(laankit_egui::icons::FOLDER_OPEN),
+                        "",
+                        ButtonKind::Secondary,
+                        true,
+                    )
+                    .on_hover_text("Open in file manager")
+                    .clicked()
+                    {
+                        out.push(SettingsAction::OpenProjectFolder);
+                    }
+                });
+            },
+        );
+    }
     settings::setting_group(
         ui,
         "Storage",
@@ -246,6 +261,10 @@ fn ui_tab(
             }
         },
     );
+}
+
+/// The note editor. Spelling only, for now.
+fn editor_tab(ui: &mut egui::Ui, state: &mut SettingsState, out: &mut Vec<SettingsAction>) {
     settings::setting_group(
         ui,
         "Editor",

@@ -297,11 +297,11 @@ fn every_sample_slide_renders_at_every_size() {
 }
 
 #[test]
-fn tasks_tables_and_marks_paint_in_both_slide_themes() {
+fn tasks_tables_and_marks_paint_in_every_slide_theme() {
     let md = "# Tasks\n\n- [ ] todo\n- [x] done\n\n---\n\n# Table\n\n\
               | L | C | R |\n|:--|:-:|--:|\n| a | b | c |\n\n---\n\n\
               # Marks\n\nsome <mark>hi</mark> and <kbd>Ctrl</kbd>\n";
-    for theme in ["dark", "light"] {
+    for (theme, _) in noteliner_slides::SlideTheme::options() {
         let config = serde_json::json!({ "theme": theme });
         let deck = parse_deck(md, Some(&config));
         assert_eq!(deck.slides.len(), 3);

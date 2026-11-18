@@ -40,9 +40,9 @@ cargo run -p noteliner-native --release          # the demo is in Recent Project
 |-------------------|-------------------------------------------------------------------------------------------|
 | `LAANKIT_PROJECT`  | Open this project folder at launch                                                        |
 | `LAANKIT_FILE`     | Then select the nth note in display order, or the note with this name                     |
-| `LAANKIT_OPEN`     | Then open `settings[:ui\|mcp\|shortcuts]`, `about`, `help`, `palette`, `new-file`, `new-folder`, `move`, `preview`, `slides`, `presentation-settings`, `present`, `log`, `search:<query>`, `tags`, `backlinks`, `attachments`, `tag-filter`, `tag-editor`, `mcp-walkthrough`, or `mcp-confirm` (a sample request) |
+| `LAANKIT_OPEN`     | Then open `settings[:ui\|project\|editor\|diagrams\|mcp\|shortcuts]`, `about`, `help`, `palette`, `new-file`, `new-folder`, `move`, `preview`, `slides`, `presentation-settings`, `present`, `log`, `search:<query>`, `tags`, `backlinks`, `attachments`, `tag-filter`, `tag-editor`, `mcp-walkthrough`, or `mcp-confirm` (a sample request) |
 
-The Help pages are `assets/help-pages.json` (loaded at build time with `include_str!`); edit that file to change the in-app Help.
+The Help pages are `assets/help-pages.json` (loaded at build time with `include_str!`); edit that file to change the in-app Help. Help is a window you can move, resize, and work beside, and not a dialog. Its Presentation Formatting page lists what a presentation can hold: slide breaks, layouts, the `slide:` options, speaker notes, headers, and footers.
 
 ## Architecture
 
@@ -159,7 +159,7 @@ The tables list what the Svelte builds had and where it is here. NoteLiner 3 lea
 | `project:init`                                            | Removed | A new project is an empty folder you open                               |
 | `project:getIndex`, `project:saveIndex`                   | Changed | The backend's index is the one that counts; the app sends its tag changes |
 | `file:read`, `file:getFrontmatter`, `file:write`          | Changed | The whole file is read and written, frontmatter included; saves refresh the entry's `modifiedAt`, `deck`, and `tags` |
-| `file:create`, `file:duplicate`                           | Done    | Templates, folder, tags; Presentation seeds the deck body and block      |
+| `file:create`, `file:duplicate`                           | Done    | Templates, folder, tags; Presentation seeds the deck body and block, in the slide theme picked |
 | `file:delete`, `file:rename`                              | Done    | Delete sends the file to the trash                                      |
 | Folders: create, rename, move, delete; move a note        | Native addition | See Folders in [`../README.md`](../README.md)                   |
 | The check for changes made by other programs              | Native addition | Every few seconds while the window has the focus                |
@@ -180,7 +180,7 @@ The tables list what the Svelte builds had and where it is here. NoteLiner 3 lea
 | `ui:getPrefs`, `ui:setPrefs` and their side effects       | Done    | `writeFrontmatter` and `mcpEnabled` apply live                          |
 | `ui:spellcheck-changed`                                   | Done    | F7 and Settings; Hunspell dictionaries instead of the webview's checker (see Spell checking) |
 | `update:*`                                                | Done    | About → Check for Updates (`laankit_core::updates`)                      |
-| `help:open`                                               | Done    | In-app Help dialog instead of a second window                           |
+| `help:open`                                               | Done    | An in-app Help window that floats over the app (F1, or the toolbar's Help button); not modal |
 | `app:relaunch`                                            | Done    | After the titlebar setting                                              |
 | `--mcp-bridge`                                            | Done    | Unix only for now (see above)                                           |
 | Single instance                                           | Not yet |                                                                         |
@@ -201,7 +201,7 @@ The tables list what the Svelte builds had and where it is here. NoteLiner 3 lea
 | `Editor`                                       | Done    | `laankit-editor` on its core engine: highlighting (code fences by language), list editing with ordered-list renumbering, shortcuts, find/replace, Go to line (Ctrl+Alt+G), bracket and selection matches, `[[` completion, paste/drop attachments, spell check, several cursors (Ctrl+click, Ctrl+D, find "all", Alt+drag), folding (gutter, Ctrl+Shift+[ / ]), and notes of 50,000+ lines. Its own parity table lists what's left |
 | `Preview`                                      | Done    | comrak + laankit-richtext; wikilinks open or create notes; attachments |
 | `StatusBar`, `LogPanel`                        | Done    | Including a deck's slide and speaking time. No branch chip; the log is the Activity Log, for MCP activity and import notes |
-| `SettingsModal` (UI, MCP, Keyboard Shortcuts)  | Done    | Turning MCP on opens the walkthrough                                  |
+| `SettingsModal` (UI, Project, Editor, Diagrams, MCP, Keyboard Shortcuts) | Done    | Turning MCP on opens the walkthrough                                  |
 | `ProjectSettingsModal`, `SyncModal`, `SyncingModal` | Removed | The project's folder is shown in Settings                          |
 | `ImportingModal`                               | Done    |                                                                       |
 | `AboutModal`, Help (`HelpApp`)                 | Done    |                                                                       |

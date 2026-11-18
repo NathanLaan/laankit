@@ -287,3 +287,71 @@ fn pdf_export_is_a_pdf() {
     let doc = hayro::hayro_syntax::Pdf::new(Arc::new(pdf)).expect("hayro reads it");
     assert_eq!(doc.pages().len(), 1);
 }
+
+#[test]
+fn settings_has_project_and_editor_tabs() {
+    const FRONTMATTER: &str = "Write YAML frontmatter to .md files";
+    const SPELLING: &str = "Check spelling";
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _) = open_project(tmp.path());
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    h.run_steps(3);
+
+    // The UI tab keeps the look of the app only.
+    assert!(h.query_by_label("Custom Window Titlebar").is_some());
+    assert!(h.query_by_label(FRONTMATTER).is_none());
+    assert!(h.query_by_label(SPELLING).is_none());
+
+    h.get_by_role_and_label(Role::Button, "Project").click();
+    h.run_steps(3);
+    assert!(h.query_by_label(FRONTMATTER).is_some());
+    assert!(h.query_by_label("Open in file manager").is_some());
+    assert!(h.query_by_label(SPELLING).is_none());
+
+    h.get_by_role_and_label(Role::Button, "Editor").click();
+    h.run_steps(3);
+    assert!(h.query_by_label(SPELLING).is_some());
+    assert!(h.query_by_label(FRONTMATTER).is_none());
+    close(h);
+}
+
+#[test]
+fn help_is_a_window_you_can_work_beside() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _) = open_project(tmp.path());
+
+    // The toolbar button opens it, and it is not a dialog over the app.
+    h.get_by_label("Help (F1)").click();
+    h.run_steps(3);
+    assert!(h.state().help_open());
+    assert!(!h.state().has_overlay(), "Help is not modal");
+    assert!(h.query_by_label("Search help").is_some());
+
+    // The page on writing a presentation.
+    h.get_by_role_and_label(Role::Button, "Presentation Formatting")
+        .scroll_to_me();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::Button, "Presentation Formatting")
+        .click();
+    h.run_steps(3);
+    assert_eq!(
+        h.state().help_page().as_deref(),
+        Some("presentation-formatting")
+    );
+
+    // The app behind it still takes commands: Settings opens over it, and
+    // Help is still there when Settings closes.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    h.run_steps(3);
+    assert!(h.state().has_overlay(), "Settings");
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+    assert!(!h.state().has_overlay());
+    assert!(h.state().help_open());
+
+    // F1 closes it again.
+    h.key_press(Key::F1);
+    h.run_steps(3);
+    assert!(!h.state().help_open());
+    close(h);
+}

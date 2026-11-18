@@ -6,8 +6,8 @@
 //! Block Markdown goes through comrak → HTML → `laankit_richtext`'s block
 //! model (the same inline Markdown the note preview supports), cached per
 //! block text with egui's [`FrameCache`]. Sizes are the Svelte stage's CSS
-//! pixels times the scale; the slide themes are independent of the app
-//! theme, as in the Svelte build, so a deck looks the same to its audience
+//! pixels times the scale. A slide theme has an app theme's colours, and
+//! the deck names the one it uses, so a deck looks the same to its audience
 //! whatever the presenter's UI theme.
 
 use std::collections::HashMap;
@@ -20,6 +20,7 @@ use egui::{
     pos2, vec2, Align, Color32, CornerRadius, FontId, Galley, Painter, Pos2, Rect, Response, Sense,
     Stroke, StrokeKind, TextureId, Ui, Vec2,
 };
+use laankit_egui::theme::ThemeId;
 use laankit_egui::{fonts, icons};
 use laankit_richtext::math::{self, MathMode};
 use laankit_richtext::{Block as RichBlock, Span, TextKind};
@@ -51,11 +52,14 @@ const QUOTE_BAR: f32 = 8.0;
 const QUOTE_PAD: f32 = 40.0;
 /// Glyphs smaller than this aren't worth shaping (and size 0 isn't allowed).
 const MIN_FONT: f32 = 0.5;
+/// The space above and below a title on its band.
+const TITLE_PAD: f32 = 40.0;
 /// What a task checkbox span is laid out as, whatever its state, so checked
 /// and unchecked boxes line up (the box is drawn over it; see [`decorations`]).
 const CHECKBOX_TEXT: &str = "[x]";
 
-/// A slide theme's colours (`.theme-dark` / `.theme-light`).
+/// A slide theme's colours. There is one for each app theme, under the
+/// same id and name, taken from the app theme's palette.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SlideTheme {
     pub bg: Color32,
@@ -67,22 +71,49 @@ pub struct SlideTheme {
 }
 
 impl SlideTheme {
-    pub const DARK: SlideTheme = SlideTheme {
-        bg: Color32::from_rgb(0x14, 0x18, 0x1d),
-        fg: Color32::from_rgb(0xf2, 0xf5, 0xf8),
-        muted: Color32::from_rgb(0x8b, 0x98, 0xa5),
-        accent: Color32::from_rgb(0x4d, 0xa3, 0xff),
-        rule: Color32::from_rgb(0x2b, 0x33, 0x3d),
-        code_bg: Color32::from_rgb(0x1e, 0x24, 0x2b),
-    };
-    pub const LIGHT: SlideTheme = SlideTheme {
-        bg: Color32::WHITE,
-        fg: Color32::from_rgb(0x16, 0x19, 0x1d),
-        muted: Color32::from_rgb(0x5d, 0x66, 0x73),
-        accent: Color32::from_rgb(0x0b, 0x62, 0xc4),
-        rule: Color32::from_rgb(0xdf, 0xe4, 0xea),
-        code_bg: Color32::from_rgb(0xf2, 0xf4, 0xf7),
-    };
+    /// The id a deck has when its `presentation:` block names no theme, and
+    /// the theme an unknown name is drawn in.
+    pub const DEFAULT_ID: &'static str = "dark";
+
+    /// The slide theme that matches an app theme.
+    pub fn of(id: ThemeId) -> SlideTheme {
+        let p = id.palette();
+        SlideTheme {
+            bg: p.bg_base,
+            fg: p.text_primary,
+            // The app's muted text is too faint for a hero slide's body.
+            muted: p.text_secondary,
+            accent: p.accent,
+            rule: p.border,
+            code_bg: p.code_bg,
+        }
+    }
+
+    /// `(id, name)` of every slide theme, in the app's order.
+    pub fn options() -> Vec<(&'static str, &'static str)> {
+        ThemeId::ALL.iter().map(|t| (t.id(), t.name())).collect()
+    }
+
+    /// The app theme a name means: its id or its name, in any case, with or
+    /// without the hyphens (`darkPurple`, `dark-purple`, `Dark-Purple`).
+    pub fn lookup(name: &str) -> Option<ThemeId> {
+        let key = |s: &str| s.replace('-', "").to_lowercase();
+        let want = key(name.trim());
+        ThemeId::ALL.into_iter().find(|t| key(t.id()) == want)
+    }
+
+    /// The colours of a title on its band: the band is the accent, and
+    /// everything on it takes the slide's background colour.
+    fn on_band(&self) -> SlideTheme {
+        SlideTheme {
+            bg: self.accent,
+            fg: self.bg,
+            muted: self.bg,
+            accent: self.bg,
+            rule: self.bg,
+            code_bg: self.accent,
+        }
+    }
 
     /// `mark { background: var(--slide-accent); color: var(--slide-bg) }`.
     fn mark(&self) -> (Color32, Color32) {
@@ -99,14 +130,10 @@ impl SlideTheme {
         (self.muted, self.accent, self.bg)
     }
 
-    /// The theme named in the deck's config; unknown names are dark, as the
-    /// Svelte CSS (only `.theme-dark` and `.theme-light` exist) falls back.
+    /// The theme named in the deck's config. An unknown name is drawn in
+    /// [`Self::DEFAULT_ID`].
     pub fn named(name: &str) -> SlideTheme {
-        if name == "light" {
-            Self::LIGHT
-        } else {
-            Self::DARK
-        }
+        Self::of(Self::lookup(name).unwrap_or(ThemeId::Dark))
     }
 }
 
@@ -191,7 +218,7 @@ impl<'a> SlideView<'a> {
         resp
     }
 
-    /// The slide's theme: the deck's, unless its `class=` names `theme-light` / `theme-dark`.
+    /// The slide's theme: the deck's, unless its `class=` names another (`theme-<id>`).
     pub fn theme(&self) -> SlideTheme {
         class_overrides(self.slide)
             .0
@@ -296,9 +323,28 @@ impl<'a> SlideView<'a> {
         }
 
         let content = Rect::from_min_max(pos2(pad_x, top), pos2(pad_x + inner, bottom.max(top)));
-        let heading = self.layout_headings(cx, content.width());
+        // The title sits on a band of the accent colour, except where the
+        // slide is centred on its heading or a picture owns it.
+        let banded = !matches!(layout, Layout::Hero | Layout::Quote | Layout::FullBleed);
+        let heading = self.layout_headings(cx, content.width(), banded);
         let body_style = body_style(layout, &cx.theme);
         let headings_h = heading.h;
+        if banded && !heading.items.is_empty() {
+            // Flush under the header's rule, or from the slide's top edge.
+            let band_top = if top > pad_y { top - GAP * s } else { 0.0 };
+            let title_y = band_top + TITLE_PAD * s;
+            let band_bottom = title_y + headings_h + TITLE_PAD * s;
+            out.fill(
+                Rect::from_min_max(pos2(0.0, band_top), pos2(size.x, band_bottom)),
+                cx.theme.accent,
+            );
+            let body_top = band_bottom + GAP * s;
+            let free = (content.bottom() - body_top).max(0.0);
+            let body = self.layout_body(cx, content.width(), free, &body_style);
+            out.place(heading, vec2(content.left(), title_y));
+            out.place(body, vec2(content.left(), body_top));
+            return out;
+        }
         let gap = if heading.items.is_empty() {
             0.0
         } else {
@@ -336,9 +382,23 @@ impl<'a> SlideView<'a> {
         vars
     }
 
-    fn layout_headings(&self, cx: &Cx, width: f32) -> Laid {
+    /// The slide's title headings. On a band they are drawn in the slide's
+    /// background colour, with the theme turned inside out for what is in
+    /// them (a link, a highlight, a key cap).
+    fn layout_headings(&self, cx: &Cx, width: f32, banded: bool) -> Laid {
         let mut out = Laid::default();
         let hero = self.layout_kind() == Layout::Hero;
+        let on_band = Cx {
+            ui: cx.ui,
+            s: cx.s,
+            theme: cx.theme.on_band(),
+            images: cx.images,
+        };
+        let (cx, color) = if banded {
+            (&on_band, on_band.theme.fg)
+        } else {
+            (cx, cx.theme.accent)
+        };
         for block in self.slide.headings() {
             let level = block.level.unwrap_or(1).clamp(1, 6);
             let (size, lh) = match level {
@@ -352,7 +412,7 @@ impl<'a> SlideView<'a> {
             let style = TextStyle {
                 size: size * cx.s,
                 line_height: lh,
-                color: cx.theme.fg,
+                color,
                 weight: Some(fonts::SEMIBOLD),
                 italic: false,
             };
@@ -624,8 +684,8 @@ impl Cx<'_> {
 }
 
 /// What a slide's `class=` directive changes. `Slide.svelte` appended it to the stage's CSS
-/// classes, where only the built-in class names had any styles: `theme-light` / `theme-dark` and
-/// `layout-<id>`. Those are honoured (the last of each kind wins); anything else is ignored.
+/// classes, where only the built-in class names had any styles: `theme-<id>` (a slide theme's id,
+/// as `theme-dark-purple` or `theme-darkPurple`) and `layout-<id>`. Those are honoured (the last of each kind wins); anything else is ignored.
 pub fn class_overrides(slide: &Slide) -> (Option<SlideTheme>, Option<Layout>) {
     let mut out = (None, None);
     let Some(class) = slide.directives.get_str("class") else {
@@ -633,10 +693,8 @@ pub fn class_overrides(slide: &Slide) -> (Option<SlideTheme>, Option<Layout>) {
     };
     for token in class.split_whitespace() {
         if let Some(name) = token.strip_prefix("theme-") {
-            match name {
-                "light" => out.0 = Some(SlideTheme::LIGHT),
-                "dark" => out.0 = Some(SlideTheme::DARK),
-                _ => {}
+            if let Some(id) = SlideTheme::lookup(name) {
+                out.0 = Some(SlideTheme::of(id));
             }
         } else if let Some(layout) = token
             .strip_prefix("layout-")
@@ -1112,6 +1170,7 @@ fn layout_rich_block(
                     } * s,
                     line_height: 1.15,
                     weight: Some(fonts::SEMIBOLD),
+                    color: style.theme.accent,
                     ..body
                 },
                 TextKind::Caption => TextStyle {
@@ -1398,7 +1457,7 @@ mod tests {
 
     #[test]
     fn tasks_draw_boxes_in_the_slide_theme() {
-        for theme in [SlideTheme::DARK, SlideTheme::LIGHT] {
+        for theme in ThemeId::ALL.map(SlideTheme::of) {
             let items = laid(theme).items;
             let (border, fill, tick) = theme.checkbox();
             let empty = items
@@ -1434,7 +1493,7 @@ mod tests {
 
     #[test]
     fn table_cells_follow_the_column_alignment() {
-        let items = laid(SlideTheme::DARK).items;
+        let items = laid(SlideTheme::named("dark")).items;
         let cell = |text: &str| {
             items
                 .iter()
@@ -1462,7 +1521,7 @@ mod tests {
 
     #[test]
     fn mark_and_kbd_use_the_slide_theme() {
-        for theme in [SlideTheme::DARK, SlideTheme::LIGHT] {
+        for theme in ThemeId::ALL.map(SlideTheme::of) {
             let items = laid(theme).items;
             let (mark_bg, mark_fg) = theme.mark();
             let marked = items.iter().any(|i| {
@@ -1474,14 +1533,33 @@ mod tests {
                 .iter()
                 .filter(|i| matches!(i, Item::Fill(_, _, c) if *c == cap_fill))
                 .count();
-            assert_eq!(caps, 1, "one key cap");
+            // In some themes a rule has the key cap's colour.
+            assert!(caps >= 1, "the key cap");
         }
     }
 
     #[test]
     fn themes_and_passthrough() {
-        assert_eq!(SlideTheme::named("light"), SlideTheme::LIGHT);
-        assert_eq!(SlideTheme::named("neon"), SlideTheme::DARK);
+        // One for each app theme, in its colours.
+        assert_eq!(SlideTheme::options().len(), ThemeId::ALL.len());
+        for id in ThemeId::ALL {
+            let (t, p) = (SlideTheme::named(id.id()), id.palette());
+            assert_eq!(
+                (t.bg, t.fg, t.accent),
+                (p.bg_base, p.text_primary, p.accent)
+            );
+            assert_eq!(SlideTheme::named(id.name()), t, "by name");
+        }
+        assert_eq!(
+            SlideTheme::lookup(" Dark-Purple "),
+            Some(ThemeId::DarkPurple)
+        );
+        assert_eq!(SlideTheme::lookup("theme"), None);
+        assert_eq!(SlideTheme::named("neon"), SlideTheme::of(ThemeId::Dark));
+        assert_eq!(
+            SlideTheme::named(SlideTheme::DEFAULT_ID),
+            SlideTheme::of(ThemeId::Dark)
+        );
         assert_eq!(PassThrough.uri("img/a.png"), None);
         assert!(PassThrough.uri("https://x/a.png").is_some());
     }
@@ -1508,6 +1586,69 @@ mod tests {
         out.expect("laid out")
     }
 
+    /// The colour of the first text holding `word` on `md`'s first slide.
+    fn colour_of(md: &str, word: &str) -> Color32 {
+        slide_items(md, 0)
+            .iter()
+            .find_map(|i| match i {
+                Item::Text(_, g) if g.job.text.contains(word) => {
+                    Some(g.job.sections[0].format.color)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no {word}"))
+    }
+
+    #[test]
+    fn the_title_is_on_an_accent_band_and_other_headings_are_in_the_accent() {
+        // A slide's headings are all drawn at its top, so both are on the
+        // band. A heading inside a quote stays in the body.
+        let md = "## Title\n\n### Under\n\nplain words\n\n> #### Quoted\n";
+        let theme = SlideTheme::named(SlideTheme::DEFAULT_ID);
+        assert_eq!(colour_of(md, "Title"), theme.bg);
+        assert_eq!(colour_of(md, "Under"), theme.bg);
+        assert_eq!(colour_of(md, "Quoted"), theme.accent);
+        assert_eq!(colour_of(md, "plain"), theme.fg);
+
+        // The band runs edge to edge from the top, with the title inside it
+        // and the body below.
+        let items = slide_items(md, 0);
+        let band = items
+            .iter()
+            .find_map(|i| match i {
+                Item::Fill(r, _, c) if *c == theme.accent => Some(*r),
+                _ => None,
+            })
+            .expect("the band");
+        assert_eq!((band.left(), band.top(), band.right()), (0.0, 0.0, 1920.0));
+        let top_of = |word: &str| {
+            items
+                .iter()
+                .find_map(|i| match i {
+                    Item::Text(p, g) if g.job.text.contains(word) => Some(p.y),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        assert!(top_of("Title") > band.top() && top_of("Title") < band.bottom());
+        assert!(top_of("Under") > top_of("Title") && top_of("Under") < band.bottom());
+        assert!(top_of("plain") > band.bottom());
+    }
+
+    #[test]
+    fn a_title_slide_and_a_slide_with_no_heading_have_no_band() {
+        let theme = SlideTheme::named(SlideTheme::DEFAULT_ID);
+        let band = |md: &str| {
+            slide_items(md, 0).iter().any(
+                |i| matches!(i, Item::Fill(r, _, c) if *c == theme.accent && r.width() > 1900.0),
+            )
+        };
+        assert!(!band("# Talk\n\nby me\n"), "the title slide");
+        assert_eq!(colour_of("# Talk\n\nby me\n", "Talk"), theme.accent);
+        assert!(!band("just words\n"), "no heading");
+        assert!(band("## Point\n\nwords\n"));
+    }
+
     #[test]
     fn images_have_rounded_corners_except_full_bleed() {
         let radius = |items: &[Item]| {
@@ -1528,22 +1669,22 @@ mod tests {
     #[test]
     fn class_names_override_theme_and_layout() {
         let md = "## A\n<!-- slide: class=\"theme-light layout-quote\" -->\n> q\n\n\
-                  ## B\n<!-- slide: class=\"theme-dark big\" -->\ntext\n\n\
+                  ## B\n<!-- slide: class=\"theme-light-mulberry big\" -->\ntext\n\n\
                   ## C\n<!-- slide: class=layout-nope -->\ntext\n";
         let deck = crate::deck::parse_deck(md, None);
         let overrides: Vec<_> = deck.slides.iter().map(class_overrides).collect();
         assert_eq!(
             overrides,
             [
-                (Some(SlideTheme::LIGHT), Some(Layout::Quote)),
-                (Some(SlideTheme::DARK), None),
+                (Some(SlideTheme::of(ThemeId::Light)), Some(Layout::Quote)),
+                (Some(SlideTheme::of(ThemeId::LightMulberry)), None),
                 (None, None)
             ]
         );
         let view = SlideView::new(&deck.slides[0], &deck.config);
         assert_eq!(
             (view.theme(), view.layout_kind()),
-            (SlideTheme::LIGHT, Layout::Quote)
+            (SlideTheme::of(ThemeId::Light), Layout::Quote)
         );
         let plain = SlideView::new(&deck.slides[2], &deck.config);
         assert_eq!(plain.theme(), SlideTheme::named(&deck.config.theme));

@@ -9,7 +9,6 @@
 //! | `ClearTags`, `RemoveRecent`, `RemoveAttachment`   | the other confirmations |
 //! | `Conflict`                 | a note changed on disk while it has unsaved edits |
 //! | `Settings`                 | Settings ([`settings`])                        |
-//! | `Help`                     | Help ([`help`])                                |
 //! | `About`                    | the shared About dialog                        |
 //! | `Busy`                     | "Importing …"                                  |
 //! | `TagEditor`                | the tag colours ([`tags`])                     |
@@ -70,7 +69,6 @@ pub enum Overlay {
     },
     RemoveRecent(Recent),
     Settings(Box<settings::SettingsState>),
-    Help(Box<help::HelpState>),
     About,
     TagEditor(tags::TagEditorState),
     /// `Remove "name"?` for an attachment of note `file_id`.
@@ -145,6 +143,9 @@ pub struct NewFileForm {
     /// template or tags.
     pub new_folder: bool,
     pub template: Option<String>,
+    /// The slide theme picked for a presentation. `None` is the theme of the
+    /// template, or with no template, the app theme in use.
+    pub theme: Option<String>,
     /// From `templates:list`: `{ id, name, kind }`.
     pub templates: Vec<serde_json::Value>,
 }
@@ -161,6 +162,7 @@ impl NewFileForm {
             diagram: false,
             new_folder: false,
             template: None,
+            theme: None,
             templates: Vec::new(),
         }
     }
@@ -214,6 +216,7 @@ impl NewFileForm {
             diagram: false,
             new_folder: false,
             template: None,
+            theme: None,
             templates: Vec::new(),
         }
     }
@@ -229,146 +232,198 @@ impl NewFileForm {
             .filter(|t| t["kind"].as_str().unwrap_or("note") == kind)
             .collect()
     }
+
+    /// The slide theme a new presentation is given, where `app_theme` is the
+    /// app theme in use. `None` leaves a template's own theme alone.
+    pub fn deck_theme(&self, app_theme: &str) -> Option<String> {
+        match (&self.theme, &self.template) {
+            (Some(theme), _) => Some(theme.clone()),
+            (None, Some(_)) => None,
+            (None, None) => Some(app_theme.to_string()),
+        }
+    }
 }
 
 /// The label of the project folder itself, whose path is empty.
 const TOP: &str = "(Top of the project)";
+
+/// The Theme choice that keeps the theme a presentation template has.
+const FROM_TEMPLATE: &str = "(From the template)";
+
+/// Wide enough for the four type buttons on one line.
+const NEW_ITEM_WIDTH: f32 = 520.0;
+/// The Tags list shows about five tags and scrolls for more.
+const TAG_LIST_HEIGHT: f32 = 130.0;
 
 pub fn new_file(
     ctx: &egui::Context,
     form: &mut NewFileForm,
     folders: &[String],
     all_tags: &[String],
+    app_theme: &str,
 ) -> Option<FormAction> {
     let duplicating = form.duplicate_of.is_some();
     // One title whatever the type: the Type row says which is chosen.
     let title = if duplicating { "Duplicate" } else { "New Item" };
-    let resp = Dialog::compact("new-file", title).show(ctx, |ui| {
-        let p = theme::palette(ui.ctx());
-        let mut submit = false;
-        if !duplicating {
-            dialog::field_label(ui, "Type");
-            // Wrapped, so the four fit a narrow dialog at a large UI scale.
-            ui.horizontal_wrapped(|ui| {
-                for (deck, diagram, folder, glyph, label) in [
-                    (false, false, false, icons::FILE_LINES, "Note"),
-                    (true, false, false, icons::PERSON_CHALKBOARD, "Presentation"),
-                    (false, true, false, icons::OBJECT_GROUP, "Diagram"),
-                    (false, false, true, icons::FOLDER, "Folder"),
-                ] {
-                    let chosen = (form.deck, form.diagram, form.new_folder);
-                    let kind = if chosen == (deck, diagram, folder) {
-                        ButtonKind::Primary
-                    } else {
-                        ButtonKind::Secondary
-                    };
-                    // The name and the folder are kept across types.
-                    if dialog::icon_button(ui, Some(glyph), label, kind, true).clicked() {
-                        form.deck = deck;
-                        form.diagram = diagram;
-                        form.new_folder = folder;
-                    }
-                }
-            });
-            // Keep the template valid when the type flips under it.
-            if let Some(t) = form.template.clone() {
-                if !form
-                    .visible_templates()
-                    .iter()
-                    .any(|v| v["id"] == t.as_str())
-                {
-                    form.template = None;
-                }
-            }
-            ui.add_space(10.0);
-        }
-        dialog::field_label(ui, "Name");
-        let r = dialog::text_input(ui, &mut form.name, "Untitled", true);
-        focus_once(ui, &r);
-        submit |= dialog::submitted(ui, &r);
-        ui.add_space(10.0);
-
-        dialog::field_label(ui, "Folder");
-        {
-            let mut options: Vec<(String, String)> = vec![(String::new(), TOP.into())];
-            for (path, name, depth) in crate::model::folder_options(folders, None) {
-                options.push((path, format!("{}{name}", "\u{a0}\u{a0}".repeat(depth + 1))));
-            }
-            // A folder made a moment ago may not be listed yet.
-            if !options.iter().any(|o| o.0 == form.folder) {
-                options.push((form.folder.clone(), form.folder.clone()));
-            }
-            let opts: Vec<(&str, &str)> = options
-                .iter()
-                .map(|(a, b)| (a.as_str(), b.as_str()))
-                .collect();
-            if let Some(v) = shell::select(ui, "Folder", &opts, &form.folder) {
-                form.folder = v;
-            }
-        }
-
-        let visible = form.visible_templates();
-        if !duplicating && !form.diagram && (!visible.is_empty() || form.deck) {
-            ui.add_space(10.0);
-            dialog::field_label(ui, "Template");
-            let blank = if form.deck {
-                "Blank Presentation"
-            } else {
-                "Blank"
-            };
-            let mut options: Vec<(String, String)> = vec![(String::new(), blank.into())];
-            for t in &visible {
-                options.push((
-                    t["id"].as_str().unwrap_or_default().to_string(),
-                    t["name"].as_str().unwrap_or_default().to_string(),
-                ));
-            }
-            let opts: Vec<(&str, &str)> = options
-                .iter()
-                .map(|(a, b)| (a.as_str(), b.as_str()))
-                .collect();
-            if let Some(v) = shell::select(
-                ui,
-                "Template",
-                &opts,
-                form.template.as_deref().unwrap_or(""),
-            ) {
-                form.template = (!v.is_empty()).then_some(v);
-            }
-        }
-
-        if !all_tags.is_empty() && !form.new_folder {
-            ui.add_space(10.0);
-            dialog::field_label(ui, "Tags");
-            ui.horizontal_wrapped(|ui| {
-                for tag in all_tags {
-                    let mut on = form.tags.contains(tag);
-                    if ui
-                        .checkbox(&mut on, RichText::new(tag).color(p.text_primary))
-                        .changed()
-                    {
-                        if on {
-                            form.tags.insert(tag.clone());
+    let resp = Dialog::compact("new-file", title)
+        .size(dialog::Size::Compact {
+            width: NEW_ITEM_WIDTH,
+        })
+        .show(ctx, |ui| {
+            let p = theme::palette(ui.ctx());
+            let mut submit = false;
+            if !duplicating {
+                dialog::field_label(ui, "Type");
+                // Wrapped, so the four fit a narrow dialog at a large UI scale.
+                ui.horizontal_wrapped(|ui| {
+                    for (deck, diagram, folder, glyph, label) in [
+                        (false, false, false, icons::FILE_LINES, "Note"),
+                        (true, false, false, icons::PERSON_CHALKBOARD, "Presentation"),
+                        (false, true, false, icons::OBJECT_GROUP, "Diagram"),
+                        (false, false, true, icons::FOLDER, "Folder"),
+                    ] {
+                        let chosen = (form.deck, form.diagram, form.new_folder);
+                        let kind = if chosen == (deck, diagram, folder) {
+                            ButtonKind::Primary
                         } else {
-                            form.tags.remove(tag);
+                            ButtonKind::Secondary
+                        };
+                        // The name and the folder are kept across types.
+                        if dialog::icon_button(ui, Some(glyph), label, kind, true).clicked() {
+                            form.deck = deck;
+                            form.diagram = diagram;
+                            form.new_folder = folder;
                         }
                     }
+                });
+                // Keep the template valid when the type flips under it.
+                if let Some(t) = form.template.clone() {
+                    if !form
+                        .visible_templates()
+                        .iter()
+                        .any(|v| v["id"] == t.as_str())
+                    {
+                        form.template = None;
+                    }
                 }
-            });
-        }
-        // A folder's name is checked against the folder picked above.
-        let problem = form.problem(folders);
-        if let Some(problem) = &problem {
-            ui.add_space(6.0);
-            dialog::error_text(ui, problem);
-        }
-        let ready = !form.name.trim().is_empty() && problem.is_none();
-        let out = form_buttons(ui, "OK", ready);
-        if submit && ready {
-            return Some(FormAction::Submit);
-        }
-        out
-    });
+                ui.add_space(10.0);
+            }
+            dialog::field_label(ui, "Name");
+            let r = dialog::text_input(ui, &mut form.name, "Untitled", true);
+            focus_once(ui, &r);
+            submit |= dialog::submitted(ui, &r);
+            ui.add_space(10.0);
+
+            dialog::field_label(ui, "Folder");
+            {
+                let mut options: Vec<(String, String)> = vec![(String::new(), TOP.into())];
+                for (path, name, depth) in crate::model::folder_options(folders, None) {
+                    options.push((path, format!("{}{name}", "\u{a0}\u{a0}".repeat(depth + 1))));
+                }
+                // A folder made a moment ago may not be listed yet.
+                if !options.iter().any(|o| o.0 == form.folder) {
+                    options.push((form.folder.clone(), form.folder.clone()));
+                }
+                let opts: Vec<(&str, &str)> = options
+                    .iter()
+                    .map(|(a, b)| (a.as_str(), b.as_str()))
+                    .collect();
+                if let Some(v) = shell::select(ui, "Folder", &opts, &form.folder) {
+                    form.folder = v;
+                }
+            }
+
+            let visible = form.visible_templates();
+            if !duplicating && !form.diagram && (!visible.is_empty() || form.deck) {
+                ui.add_space(10.0);
+                dialog::field_label(ui, "Template");
+                let blank = if form.deck {
+                    "Blank Presentation"
+                } else {
+                    "Blank"
+                };
+                let mut options: Vec<(String, String)> = vec![(String::new(), blank.into())];
+                for t in &visible {
+                    options.push((
+                        t["id"].as_str().unwrap_or_default().to_string(),
+                        t["name"].as_str().unwrap_or_default().to_string(),
+                    ));
+                }
+                let opts: Vec<(&str, &str)> = options
+                    .iter()
+                    .map(|(a, b)| (a.as_str(), b.as_str()))
+                    .collect();
+                if let Some(v) = shell::select(
+                    ui,
+                    "Template",
+                    &opts,
+                    form.template.as_deref().unwrap_or(""),
+                ) {
+                    form.template = (!v.is_empty()).then_some(v);
+                    // A template's own theme stands until another is picked.
+                    form.theme = None;
+                }
+            }
+
+            if !duplicating && form.deck {
+                ui.add_space(10.0);
+                dialog::field_label(ui, "Theme");
+                let mut opts = noteliner_slides::SlideTheme::options();
+                if form.template.is_some() {
+                    opts.insert(0, ("", FROM_TEMPLATE));
+                }
+                let shown = form.deck_theme(app_theme).unwrap_or_default();
+                if let Some(v) = shell::select(ui, "Theme", &opts, &shown) {
+                    form.theme = (!v.is_empty()).then_some(v);
+                }
+            }
+
+            if !all_tags.is_empty() && !form.new_folder {
+                ui.add_space(10.0);
+                dialog::field_label(ui, "Tags");
+                // Alphabetical whatever the case, one tag to a row.
+                let mut sorted: Vec<&String> = all_tags.iter().collect();
+                sorted.sort_by_key(|t| (t.to_lowercase(), t.as_str()));
+                egui::Frame::new()
+                    .fill(p.bg_surface)
+                    .stroke(egui::Stroke::new(1.0, p.border))
+                    .corner_radius(6)
+                    .inner_margin(6)
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("new-file-tags")
+                            .max_height(TAG_LIST_HEIGHT)
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| {
+                                for tag in sorted {
+                                    let mut on = form.tags.contains(tag);
+                                    if ui
+                                        .checkbox(&mut on, RichText::new(tag).color(p.text_primary))
+                                        .changed()
+                                    {
+                                        if on {
+                                            form.tags.insert(tag.clone());
+                                        } else {
+                                            form.tags.remove(tag);
+                                        }
+                                    }
+                                }
+                            });
+                    });
+            }
+            // A folder's name is checked against the folder picked above.
+            let problem = form.problem(folders);
+            if let Some(problem) = &problem {
+                ui.add_space(6.0);
+                dialog::error_text(ui, problem);
+            }
+            let ready = !form.name.trim().is_empty() && problem.is_none();
+            let out = form_buttons(ui, "OK", ready);
+            if submit && ready {
+                return Some(FormAction::Submit);
+            }
+            out
+        });
     if resp.close {
         return Some(FormAction::Close);
     }
@@ -756,6 +811,17 @@ pub fn remove_attachment(ctx: &egui::Context, name: &str) -> Option<Confirm> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_presentation_takes_the_app_theme_unless_told() {
+        let mut f = NewFileForm::new("Talk", true, "");
+        assert_eq!(f.deck_theme("midnight").as_deref(), Some("midnight"));
+        // A template keeps its own theme until one is picked.
+        f.template = Some("pitch.md".into());
+        assert_eq!(f.deck_theme("midnight"), None);
+        f.theme = Some("light".into());
+        assert_eq!(f.deck_theme("midnight").as_deref(), Some("light"));
+    }
 
     #[test]
     fn duplicate_defaults() {

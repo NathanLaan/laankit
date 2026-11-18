@@ -29,7 +29,7 @@ use noteliner_slides::{
 };
 use serde_json::{json, Value};
 
-use crate::backend::{self, Backend, DeleteTarget, Event, ExportKind, McpConfirm};
+use crate::backend::{self, Backend, DeckTheme, DeleteTarget, Event, ExportKind, McpConfirm};
 use crate::commands::{self, Act, View};
 use crate::config::{LastFilePosition, Layout, Paths, Prefs, Recent};
 use crate::deck::{self, DeckState, SlideImages};
@@ -255,6 +255,8 @@ pub struct NoteLinerApp {
     mcp_queue: VecDeque<McpConfirm>,
     overlay: Option<Overlay>,
     palette: Option<CommandPalette>,
+    /// The Help window, while it is open.
+    help: Option<Box<crate::overlays::help::HelpState>>,
     registry: Registry<Act, View>,
     toasts: Toasts,
     /// The file and folder dialogs, off the UI thread where they would
@@ -330,6 +332,7 @@ impl NoteLinerApp {
             mcp_queue: VecDeque::new(),
             overlay: None,
             palette: None,
+            help: None,
             registry,
             toasts: Toasts::default(),
             dialogs: FileDialogs::new(),
@@ -392,6 +395,12 @@ impl NoteLinerApp {
     #[cfg(test)]
     pub fn selected(&self) -> Option<String> {
         self.project.as_ref()?.selected.clone()
+    }
+
+    /// The id of the app theme in use.
+    #[cfg(test)]
+    pub fn theme_id(&self) -> &'static str {
+        self.theme.theme.id()
     }
 
     /// The project's folders, by path.
@@ -2300,7 +2309,13 @@ impl NoteLinerApp {
                 self.backend.mcp_status();
             }
             Act::About => self.overlay = Some(Overlay::About),
-            Act::Help => self.overlay = Some(Overlay::Help(Box::default())),
+            // Help is a window beside the work, not a dialog over it.
+            Act::Help => {
+                self.help = match self.help.take() {
+                    Some(_) => None,
+                    None => Some(Box::default()),
+                }
+            }
             Act::Palette => {
                 self.recent = self.backend.recent();
                 self.palette =
@@ -2609,6 +2624,7 @@ impl NoteLinerApp {
             self.toolbar(ui);
         }
         self.main_view(ui);
+        self.help(&ctx);
         self.overlays(&ctx);
         self.mcp_confirms(&ctx);
         self.palette(&ctx);
@@ -2690,6 +2706,7 @@ impl NoteLinerApp {
             (self.editor.can_undo(), self.editor.can_redo())
         };
         let update_ready = matches!(self.update, UpdateStatus::Available { .. });
+        let help_open = self.help.is_some();
         let mut acts = Vec::new();
         let mut bottom_acts = Vec::new();
         let b = |ui: &mut Ui, glyph, title, active: bool, disabled: bool| {
@@ -2849,6 +2866,9 @@ impl NoteLinerApp {
                     bottom_acts.push(Act::ToggleStatusBar);
                 }
                 toolbar::divider(ui);
+                if b(ui, icons::CIRCLE_QUESTION, "Help (F1)", help_open, false) {
+                    bottom_acts.push(Act::Help);
+                }
                 if b(ui, icons::GEAR, "Settings (Ctrl+,)", false, false) {
                     bottom_acts.push(Act::Settings);
                 }
@@ -3643,6 +3663,31 @@ impl NoteLinerApp {
 
     // --- Dialogs -----------------------------------------------------------------
 
+    /// The Help window. It is drawn under the dialogs, and hidden while
+    /// presenting.
+    fn help(&mut self, ctx: &egui::Context) {
+        if self.deck.presenter.is_some() {
+            return;
+        }
+        if let Some(state) = &mut self.help {
+            if crate::overlays::help::show(ctx, state) {
+                self.help = None;
+            }
+        }
+    }
+
+    /// Help is open.
+    #[cfg(test)]
+    pub fn help_open(&self) -> bool {
+        self.help.is_some()
+    }
+
+    /// The id of the Help page that was picked.
+    #[cfg(test)]
+    pub fn help_page(&self) -> Option<String> {
+        self.help.as_ref()?.selected.clone()
+    }
+
     fn overlays(&mut self, ctx: &egui::Context) {
         // A note that changed on disk under unsaved edits asks once the
         // dialog that was open has closed.
@@ -3665,7 +3710,7 @@ impl NoteLinerApp {
                     Some(p) => (p.folders.clone(), model::all_tags(&p.index)),
                     None => (Vec::new(), Vec::new()),
                 };
-                match overlays::new_file(ctx, form, &folders, &tags) {
+                match overlays::new_file(ctx, form, &folders, &tags, self.theme.theme.id()) {
                     Some(FormAction::Close) => keep = false,
                     Some(FormAction::Submit) => {
                         keep = false;
@@ -3687,7 +3732,8 @@ impl NoteLinerApp {
                                 tags,
                                 form.template.clone(),
                                 folder,
-                                form.deck,
+                                form.deck
+                                    .then(|| DeckTheme(form.deck_theme(self.theme.theme.id()))),
                             ),
                         }
                     }
@@ -3782,7 +3828,10 @@ impl NoteLinerApp {
             Overlay::Conflict { id, name, content } => match overlays::conflict(ctx, name) {
                 Some(ConflictAction::Reload) => {
                     keep = false;
-                    self.editor.reload(id, std::mem::take(content));
+                    if let Some(save) = self.editor.reload(id, std::mem::take(content)) {
+                        self.backend
+                            .write_file(save.id, save.filename, save.content);
+                    }
                 }
                 Some(ConflictAction::KeepMine) => {
                     keep = false;
@@ -3842,11 +3891,6 @@ impl NoteLinerApp {
                         }
                         SettingsAction::Restart => restart(ctx),
                     }
-                }
-            }
-            Overlay::Help(state) => {
-                if crate::overlays::help::show(ctx, state, top_inset) {
-                    keep = false;
                 }
             }
             Overlay::About => {
