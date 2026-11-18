@@ -168,9 +168,24 @@ enum Job {
 struct Queue {
     previews: VecDeque<PathBuf>,
     thumbs: VecDeque<ThumbJob>,
-    /// Being decoded now, so not handed out twice.
-    busy: HashSet<PathBuf>,
+    /// Being decoded now, so not handed out twice. A preview and a
+    /// thumbnail of one file are separate work: neither holds up the other.
+    busy_previews: HashSet<PathBuf>,
+    busy_thumbs: HashSet<PathBuf>,
     stop: bool,
+}
+
+impl Queue {
+    /// Replaces the waiting previews with `path` and then each of `ahead`,
+    /// leaving out any whose preview is being decoded now.
+    fn want_previews(&mut self, path: &Path, ahead: &[PathBuf]) {
+        self.previews.clear();
+        for p in std::iter::once(path).chain(ahead.iter().map(PathBuf::as_path)) {
+            if !self.busy_previews.contains(p) {
+                self.previews.push_back(p.to_owned());
+            }
+        }
+    }
 }
 
 struct Shared {
@@ -332,7 +347,7 @@ impl Backend {
         let mut q = self.shared.queue.lock().unwrap();
         q.thumbs = wanted
             .into_iter()
-            .filter(|j| !q.busy.contains(&j.path))
+            .filter(|j| !q.busy_thumbs.contains(&j.path))
             .collect();
         drop(q);
         self.shared.ready.notify_all();
@@ -341,14 +356,7 @@ impl Backend {
     /// Decodes `path` for the preview, ahead of any thumbnail, then each
     /// of `ahead`.
     pub fn want_preview(&self, path: &Path, ahead: &[PathBuf]) {
-        let mut q = self.shared.queue.lock().unwrap();
-        q.previews.clear();
-        for p in std::iter::once(path).chain(ahead.iter().map(PathBuf::as_path)) {
-            if !q.busy.contains(p) {
-                q.previews.push_back(p.to_owned());
-            }
-        }
-        drop(q);
+        self.shared.queue.lock().unwrap().want_previews(path, ahead);
         self.shared.ready.notify_all();
     }
 
@@ -680,16 +688,17 @@ fn picture_thread(tx: Sender<Event>, shared: Arc<Shared>, cache: Cache) {
                     return;
                 }
                 if let Some(p) = q.previews.pop_front() {
-                    q.busy.insert(p.clone());
+                    q.busy_previews.insert(p.clone());
                     break Picture::Preview(p);
                 }
                 if let Some(t) = q.thumbs.pop_front() {
-                    q.busy.insert(t.path.clone());
+                    q.busy_thumbs.insert(t.path.clone());
                     break Picture::Thumb(t);
                 }
                 q = shared.ready.wait(q).unwrap();
             }
         };
+        let preview = matches!(job, Picture::Preview(_));
         let (path, event) = match job {
             Picture::Preview(path) => {
                 let image = thumbs::decode(&path, PREVIEW_MAX)
@@ -729,7 +738,14 @@ fn picture_thread(tx: Sender<Event>, shared: Arc<Shared>, cache: Cache) {
                 )
             }
         };
-        shared.queue.lock().unwrap().busy.remove(&path);
+        {
+            let mut q = shared.queue.lock().unwrap();
+            if preview {
+                q.busy_previews.remove(&path);
+            } else {
+                q.busy_thumbs.remove(&path);
+            }
+        }
         if tx.send(event).is_err() {
             return;
         }
@@ -739,4 +755,24 @@ fn picture_thread(tx: Sender<Event>, shared: Arc<Shared>, cache: Cache) {
 
 fn to_color_image(img: &image::RgbaImage) -> ColorImage {
     ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_preview_is_queued_while_the_files_thumbnail_is_decoded() {
+        let a = PathBuf::from("a.png");
+        let b = PathBuf::from("b.png");
+        let mut q = Queue::default();
+        q.busy_thumbs.insert(a.clone());
+        q.want_previews(&a, std::slice::from_ref(&b));
+        assert_eq!(q.previews, [a.clone(), b.clone()]);
+
+        // Its own preview being decoded is on its way already.
+        q.busy_previews.insert(a.clone());
+        q.want_previews(&a, std::slice::from_ref(&b));
+        assert_eq!(q.previews, [b]);
+    }
 }
