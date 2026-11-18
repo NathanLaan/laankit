@@ -476,6 +476,15 @@ impl NoteEditor {
         Some(request)
     }
 
+    /// The save that was sent and has no answer yet.
+    pub fn in_flight(&self) -> Option<SaveRequest> {
+        Some(SaveRequest {
+            id: self.id.clone()?,
+            filename: self.filename.clone(),
+            content: self.saving.clone()?,
+        })
+    }
+
     /// The backend finished a write of `content` for note `id`.
     pub fn saved(&mut self, id: &str, content: &str, ok: bool) {
         if self.id.as_deref() != Some(id) || self.saving.as_deref() != Some(content) {

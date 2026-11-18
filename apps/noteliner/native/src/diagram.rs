@@ -84,6 +84,15 @@ impl Open {
         true
     }
 
+    /// The save that was sent and has no answer yet.
+    fn in_flight(&self) -> Option<SaveRequest> {
+        self.saving.then(|| SaveRequest {
+            id: self.id.clone(),
+            filename: self.filename.clone(),
+            content: blockliner_core::write(&self.saved),
+        })
+    }
+
     /// The file holds `d`, and so does the canvas.
     fn in_sync(&mut self, d: Diagram) {
         self.saved = d;
@@ -153,6 +162,11 @@ impl DiagramStash {
     /// refused.
     pub fn conflicted(&mut self, id: &str) -> bool {
         self.open.conflicted(id)
+    }
+
+    /// The save that was sent and has no answer yet.
+    pub fn in_flight(&self) -> Option<SaveRequest> {
+        self.open.in_flight()
     }
 
     /// The tab is closing with no answer: the diagram is written over the
@@ -280,6 +294,11 @@ impl DiagramDoc {
     /// the app has an answer. False if no write of it was in flight.
     pub fn conflicted(&mut self, id: &str) -> bool {
         self.open.as_mut().is_some_and(|o| o.conflicted(id))
+    }
+
+    /// The save that was sent and has no answer yet.
+    pub fn in_flight(&self) -> Option<SaveRequest> {
+        self.open.as_ref()?.in_flight()
     }
 
     /// The file on disk reads as the diagram on the canvas: there is

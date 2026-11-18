@@ -652,3 +652,52 @@ fn quitting_keeps_a_waiting_diagram_tabs_edits() {
     assert!(!mine.contains("Their Database"));
     assert_eq!(mine.matches("@shape").count(), 2);
 }
+
+/// The backend has found a change to a diagram, and the app has not heard
+/// of it yet. A save sent in that gap is not written over the change.
+#[test]
+fn a_diagram_save_sent_before_the_app_hears_of_a_change_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    let file = project.join("map.mmd");
+    open_note(&mut h, "Alpha");
+    open_diagram(&mut h, "Map");
+
+    // As the tab is left: it asks on return.
+    start_box(&mut h, 300.0);
+    write_outside(&file, THEIRS);
+    h.state_mut().check_unheard_for_test();
+    let ctx = h.ctx.clone();
+    h.state_mut().apply_for_test(&ctx, Act::NextTab);
+    let alpha = id_of(&h, "Alpha");
+    wait_for(&mut h, "Alpha", move |a| {
+        a.editor_file_id().as_deref() == Some(alpha.as_str())
+    });
+    for _ in 0..20 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+    open_diagram(&mut h, "Map");
+    wait_for(&mut h, "the question on return", |a| a.has_overlay());
+    h.run_steps(3);
+    assert_eq!(shapes(&h), 2);
+    h.get_by_label("Reload").click();
+    h.run_steps(3);
+    settled(&mut h);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS);
+
+    // On quit: both versions are kept.
+    const THEIRS_AGAIN: &str = "flowchart LR\n  api[\"API Gateway\"]\n  q[\"Their Queue\"]\n%% blockliner 1 grid=20\n%% @shape api x=40 y=40 w=160 h=80\n%% @shape q x=40 y=200 w=160 h=80\n";
+    start_box(&mut h, 500.0);
+    write_outside(&file, THEIRS_AGAIN);
+    h.state_mut().check_unheard_for_test();
+    h.state_mut().shutdown();
+    drop(h);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), THEIRS_AGAIN);
+    let made = copies(&project);
+    assert_eq!(made.len(), 1, "{made:?}");
+    let mine = std::fs::read_to_string(project.join(&made[0])).unwrap();
+    assert!(mine.contains("Their Database") && !mine.contains("Their Queue"));
+    assert_eq!(mine.matches("@shape").count(), 3);
+}

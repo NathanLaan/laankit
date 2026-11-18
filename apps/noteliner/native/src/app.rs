@@ -252,6 +252,9 @@ pub struct NoteLinerApp {
     /// Notes that changed on disk under unsaved edits, with the file as it
     /// is on disk. Each is asked about when its tab is the one shown.
     pending_conflicts: std::collections::HashMap<String, String>,
+    /// The last change on disk the app handled for each file, by id, as the
+    /// backend numbered it. Each save names it.
+    seen: std::collections::HashMap<String, u64>,
     /// The time of the last frame, for edits made by tests.
     #[cfg(test)]
     test_time: f64,
@@ -330,6 +333,7 @@ impl NoteLinerApp {
             last_check: 0.0,
             was_focused: true,
             pending_conflicts: Default::default(),
+            seen: Default::default(),
             #[cfg(test)]
             test_time: 0.0,
             mcp_running: false,
@@ -486,6 +490,27 @@ impl NoteLinerApp {
         if changed {
             self.index_changed();
         }
+    }
+
+    /// Looks for changes made outside the app, and waits for the backend
+    /// to finish. The app has not heard of what was found until its next
+    /// frame.
+    #[cfg(test)]
+    pub fn check_unheard_for_test(&mut self) {
+        let Some(p) = &self.project else { return };
+        let open = self
+            .tabs
+            .order()
+            .iter()
+            .filter_map(|id| p.entry(id).map(|e| (e.id.clone(), e.filename.clone())))
+            .collect();
+        self.backend.check_now(open);
+    }
+
+    /// Sends the pending edit of the tab shown to be saved now.
+    #[cfg(test)]
+    pub fn flush_for_test(&mut self) {
+        self.flush_active();
     }
 
     /// Looks for changes made outside the app now, as the timer would.
@@ -717,6 +742,7 @@ impl NoteLinerApp {
                 self.pending_line = None;
                 self.pending_position = None;
                 self.pending_conflicts.clear();
+                self.seen.clear();
                 self.recent = self.backend.recent();
                 if matches!(self.overlay, Some(Overlay::Busy { .. })) {
                     self.overlay = None;
@@ -889,8 +915,23 @@ impl NoteLinerApp {
                 // The folder it was moved into opens, to show it.
                 p.reveal_folder(noteliner_core::tree::folder_of(&to));
             }
-            Event::FileChanged { id, content } => self.file_changed(id, content),
-            Event::SaveConflict { id, content, disk } => self.save_conflict(id, content, disk),
+            Event::FileChanged {
+                id,
+                content,
+                report,
+            } => {
+                self.seen.insert(id.clone(), report);
+                self.file_changed(id, content);
+            }
+            Event::SaveConflict {
+                id,
+                content,
+                disk,
+                report,
+            } => {
+                self.seen.insert(id.clone(), report);
+                self.save_conflict(id, content, disk);
+            }
             Event::McpChanged => self.check(true),
             Event::IndexSaved(result) => {
                 if let Some(p) = &mut self.project {
@@ -899,6 +940,9 @@ impl NoteLinerApp {
                 if let Err(e) = result {
                     self.toasts.error(format!("Couldn't save the tags: {e}"));
                 }
+                // A note that reloaded while the save was on its way took
+                // the file as it was before the tags went in.
+                self.tags_into_editors();
             }
             Event::Presentation { id, outcome } => match outcome {
                 Ok(presentation) => {
@@ -1114,6 +1158,7 @@ impl NoteLinerApp {
         self.tabs.restore(open);
         self.pending_position = None;
         self.pending_conflicts.clear();
+        self.seen.clear();
         self.last_check = ctx.input(|i| i.time);
         // Reopen the note that was open, where it was left.
         if let Some(pos) = last {
@@ -1237,6 +1282,21 @@ impl NoteLinerApp {
         }
     }
 
+    /// Asks about a change on disk to the file `id`, which has unsaved
+    /// edits: now if its tab is shown, or when it is. A dialog that is
+    /// already asking about the file takes the newer text, so that one
+    /// change is asked about once.
+    fn ask_about(&mut self, id: String, disk: String) {
+        match &mut self.overlay {
+            Some(Overlay::Conflict {
+                id: asked, content, ..
+            }) if *asked == id => *content = disk,
+            _ => {
+                self.pending_conflicts.insert(id, disk);
+            }
+        }
+    }
+
     /// A save of a note or a diagram was not written, because another
     /// program changed the file first. The file in the tab shown asks now,
     /// and one in a background tab asks when its tab is shown. A tab that
@@ -1244,13 +1304,13 @@ impl NoteLinerApp {
     /// the log.
     fn save_conflict(&mut self, id: String, content: String, disk: String) {
         if self.editor.conflicted(&id, &content) {
-            self.pending_conflicts.insert(id, disk);
+            self.ask_about(id, disk);
             return;
         }
         if self.diagram.conflicted(&id) {
             // A file that reads as the diagram on the canvas is no change.
             if !self.diagram.settle_if_same(&id, &disk) {
-                self.pending_conflicts.insert(id, disk);
+                self.ask_about(id, disk);
             }
             return;
         }
@@ -1262,7 +1322,7 @@ impl NoteLinerApp {
             .map(|d| (d.name().to_string(), (!open).then(|| d.keep_mine())));
         match stashed {
             Some((_, None)) => {
-                self.pending_conflicts.insert(id, disk);
+                self.ask_about(id, disk);
                 return;
             }
             Some((name, Some(save))) => {
@@ -1286,7 +1346,7 @@ impl NoteLinerApp {
             return;
         };
         if open {
-            self.pending_conflicts.insert(id, disk);
+            self.ask_about(id, disk);
             return;
         }
         editor.hold(false);
@@ -1354,7 +1414,7 @@ impl NoteLinerApp {
                 // no change.
                 if !self.diagram.settle_if_same(&id, &content) {
                     self.diagram.hold(true);
-                    self.pending_conflicts.insert(id, content);
+                    self.ask_about(id, content);
                 }
                 return;
             }
@@ -1385,7 +1445,7 @@ impl NoteLinerApp {
             }
             // Nothing is written over the change until the user has chosen.
             self.editor.hold(true);
-            self.pending_conflicts.insert(id, content);
+            self.ask_about(id, content);
             return;
         }
         // A background tab has no unsaved edits: it takes the file as one
@@ -1412,7 +1472,7 @@ impl NoteLinerApp {
             }
         }
         if asks {
-            self.pending_conflicts.insert(id, content);
+            self.ask_about(id, content);
             return;
         }
         if unreadable {
@@ -1707,14 +1767,19 @@ impl NoteLinerApp {
     /// Writes the active tab's pending edit, a note's or a diagram's.
     /// A note is not written over a change another program made: see
     /// [`Self::save_conflict`].
+    /// Sends an edit to be saved, unless another program changed the file.
+    fn save_checked(&mut self, save: crate::editor::SaveRequest) {
+        let seen = self.seen.get(&save.id).copied().unwrap_or(0);
+        self.backend
+            .write_file_checked(save.id, save.filename, save.content, seen);
+    }
+
     fn flush_active(&mut self) {
         if let Some(save) = self.editor.flush() {
-            self.backend
-                .write_file_checked(save.id, save.filename, save.content);
+            self.save_checked(save);
         }
         if let Some(save) = self.diagram.flush() {
-            self.backend
-                .write_file_checked(save.id, save.filename, save.content);
+            self.save_checked(save);
         }
     }
 
@@ -1797,12 +1862,15 @@ impl NoteLinerApp {
     }
 
     /// The edits to write as the project closes or the app quits: the tab
-    /// shown, and each tab that is waiting to ask about a change on disk.
-    /// There is no one to ask now, so those are marked: the backend writes
-    /// them beside the file as a copy.
+    /// shown, each tab that is waiting to ask about a change on disk, and
+    /// each save that has no answer yet. There is no one to ask now, so the
+    /// tabs that were waiting are marked: the backend writes them beside the
+    /// file as a copy.
     fn closing_saves(&mut self) -> Vec<ClosingSave> {
         let mut waiting = std::mem::take(&mut self.pending_conflicts);
-        let mut saves = Vec::new();
+        let seen = std::mem::take(&mut self.seen);
+        let seen = |id: &str| seen.get(id).copied().unwrap_or(0);
+        let mut saves: Vec<ClosingSave> = Vec::new();
         self.editor.hold(false);
         self.diagram.hold(false);
         for save in [self.editor.flush(), self.diagram.flush()]
@@ -1810,7 +1878,12 @@ impl NoteLinerApp {
             .flatten()
         {
             let conflict = waiting.remove(&save.id).is_some();
-            saves.push(ClosingSave { save, conflict });
+            saves.push(ClosingSave {
+                seen: seen(&save.id),
+                save,
+                conflict,
+                in_flight: false,
+            });
         }
         for id in waiting.keys() {
             let note = self
@@ -1831,8 +1904,28 @@ impl NoteLinerApp {
             };
             if let Some(save) = save {
                 saves.push(ClosingSave {
+                    seen: seen(&save.id),
                     save,
                     conflict: true,
+                    in_flight: false,
+                });
+            }
+        }
+        // A save with no answer yet may have been refused, or may not have
+        // run. An edit already in the list is newer than it.
+        let mut in_flight: Vec<_> = [self.editor.in_flight(), self.diagram.in_flight()]
+            .into_iter()
+            .flatten()
+            .collect();
+        in_flight.extend(self.tabs.editors_mut().filter_map(|e| e.in_flight()));
+        in_flight.extend(self.tabs.diagrams_mut().filter_map(|d| d.in_flight()));
+        for save in in_flight {
+            if saves.iter().all(|s| s.save.id != save.id) {
+                saves.push(ClosingSave {
+                    seen: seen(&save.id),
+                    save,
+                    conflict: false,
+                    in_flight: true,
                 });
             }
         }
@@ -2027,8 +2120,7 @@ impl NoteLinerApp {
     /// Replaces the note with a slide edit and writes it at once.
     fn apply_slide_edit(&mut self, edit: noteliner_slides::EditResult) {
         if let Some(req) = self.editor.apply_slide_edit(edit.markdown, edit.caret_line) {
-            self.backend
-                .write_file_checked(req.id, req.filename, req.content);
+            self.save_checked(req);
         }
         self.update_deck();
     }
@@ -3468,8 +3560,7 @@ impl NoteLinerApp {
         if diagram_on && self.diagram.editor.observe() {
             let now = ctx.input(|i| i.time);
             if let Some(save) = self.diagram.due(now) {
-                self.backend
-                    .write_file_checked(save.id, save.filename, save.content);
+                self.save_checked(save);
             }
             // Keep the autosave timer ticking without input.
             if self.diagram.is_dirty() {
@@ -3504,10 +3595,7 @@ impl NoteLinerApp {
         }
         for a in editor_actions {
             match a {
-                EditorAction::Save(req) => {
-                    self.backend
-                        .write_file_checked(req.id, req.filename, req.content)
-                }
+                EditorAction::Save(req) => self.save_checked(req),
                 EditorAction::TogglePreview => self.apply(&ctx, Act::TogglePreview),
                 EditorAction::Export(kind) => self.export(kind, None),
                 EditorAction::PasteImage { file_id, image } => self.paste_image(file_id, &image),

@@ -1,6 +1,6 @@
 # NoteLiner: A Change Found by the Check Can Still Be Written Over Plan
 
-Status: for review (2026-11-18), not started. See "Questions" for what needs an answer first. A save looks at the file before it writes, and asks when another program changed it. There is one frame in which that does not hold: the backend has found the change and the app has not yet heard of it. This plan closes that frame, and a second one of the same kind on quit.
+Status: implemented (2026-11-18) with the recommended answers, not yet checked by eye. The test in P1 failed before the fix, which confirmed the cause. A save looks at the file before it writes, and asks when another program changed it. There is one frame in which that does not hold: the backend has found the change and the app has not yet heard of it. This plan closes that frame, and a second one of the same kind on quit.
 
 ## Summary
 
