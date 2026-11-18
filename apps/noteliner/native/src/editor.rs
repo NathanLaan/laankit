@@ -492,6 +492,21 @@ impl NoteEditor {
         };
     }
 
+    /// The backend did not write `content`: another program changed the file
+    /// first. The edit is unsaved again, and the autosave waits until the
+    /// app has an answer. False if this editor was not waiting on that write.
+    pub fn conflicted(&mut self, id: &str, content: &str) -> bool {
+        if self.id.as_deref() != Some(id) || self.saving.as_deref() != Some(content) {
+            return false;
+        }
+        self.saving = None;
+        self.dirty_since.get_or_insert(0.0);
+        self.status = SaveStatus::Unsaved;
+        self.held = true;
+        self.held_over_write = false;
+        true
+    }
+
     /// The file changed on disk: take it, unless an edit is pending. The
     /// caret stays where it can, and the note is in sync with disk.
     pub fn replace(&mut self, id: &str, content: String) -> bool {
@@ -855,6 +870,17 @@ mod tests {
         assert_eq!(e.status(), SaveStatus::Saving);
         e.saved("a", "theirs", true);
         assert_eq!(e.status(), SaveStatus::Saved);
+        assert!(!e.is_dirty());
+        // A write the backend refused: the edit is unsaved and waits.
+        edit(&mut e, "mine", 0.0);
+        let refused = e.due(1.0).unwrap();
+        assert!(!e.conflicted("b", &refused.content));
+        assert!(!e.conflicted("a", "something else"));
+        assert!(e.conflicted("a", &refused.content));
+        assert_eq!(e.status(), SaveStatus::Unsaved);
+        assert!(e.is_dirty());
+        assert_eq!(e.due(99.0), None);
+        assert_eq!(e.reload("a", "theirs".into()), None);
         assert!(!e.is_dirty());
         // Keep Mine: the autosave carries on.
         edit(&mut e, "mine again", 0.0);

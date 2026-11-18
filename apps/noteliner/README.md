@@ -108,8 +108,10 @@ A file manager, a sync tool, or Git used by hand can add, move, and remove notes
 | A note or folder removed | It leaves the tree, and its tab closes. A removed note with unsaved edits is written again. |
 | A note or diagram moved to another folder | It keeps its name, tags, and tab. Its attachments are moved after it if they were left behind. |
 | A note or diagram renamed | It keeps its tags and tab, and takes its name from the new file name. |
-| An open note changed, with no unsaved edits | The note reloads. |
-| An open note changed, with unsaved edits | Your edits stay, and a dialog offers Reload and Keep Mine. |
+| An open note changed, with no unsaved edits | The note reloads, and a toast says so. |
+| An open note changed, with unsaved edits | Your edits stay, and a dialog offers Reload and Keep Mine. A note in a background tab asks when you return to its tab. |
+
+A save looks at the note's file first. If another program changed it since NoteLiner last read or wrote it, nothing is written and the same dialog asks. A file that was written again with the same content is not a change. If you close the tab before answering, your edits are written and the Log pane says so. A diagram does not ask: your version is kept, with a line in the Log pane.
 
 A moved file is matched by its file name, and a renamed one by its kind and size, when exactly one file disappeared and one appeared. A file that can't be matched is a removed file and a new one: a note keeps the tags in its frontmatter, and a diagram loses its tags.
 

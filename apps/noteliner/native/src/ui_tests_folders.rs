@@ -910,3 +910,115 @@ fn a_long_folder_list_scrolls_in_the_new_file_dialog() {
     });
     close(h);
 }
+
+/// A save looks at the file first: a change another program made is not
+/// written over, even when the save runs before the app has looked.
+#[test]
+fn a_save_does_not_write_over_another_programs_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), notes, 2);
+    select(&mut h, "Alpha");
+    let block = h
+        .state()
+        .editor_file_text()
+        .replace("# Alpha\n\none two three\n", "");
+    let text = |body: &str| format!("{block}# Alpha\n\n{body}\n");
+    let on_disk = |project: &Path, want: String| {
+        let project = project.to_path_buf();
+        move |_: &mut NoteLinerApp| {
+            std::fs::read_to_string(project.join("alpha.md")).is_ok_and(|s| s == want)
+        }
+    };
+    let settled = |a: &mut NoteLinerApp| a.editor_status() == SaveStatus::Saved;
+
+    // The file was only touched: the save goes ahead, and nothing is asked.
+    touch(&project.join("alpha.md"));
+    h.state_mut().edit_file_for_test(&text("mine"));
+    wait_for(
+        &mut h,
+        "the save over a touched file",
+        on_disk(&project, text("mine")),
+    );
+    assert!(!h.state().has_overlay());
+
+    // The file changed, and the autosave runs with no check before it.
+    wait_for(&mut h, "the save to settle", settled);
+    std::fs::write(project.join("alpha.md"), text("theirs")).unwrap();
+    touch(&project.join("alpha.md"));
+    h.state_mut().edit_file_for_test(&text("mine again"));
+    wait_for(&mut h, "the question", |a| a.has_overlay());
+    h.run_steps(3);
+    assert_eq!(read(&project, "alpha.md"), text("theirs"));
+    assert_eq!(h.state().editor_file_text(), text("mine again"));
+    assert_eq!(h.state().editor_status(), SaveStatus::Unsaved);
+    h.get_by_label("Keep Mine").click();
+    wait_for(
+        &mut h,
+        "my edits on disk",
+        on_disk(&project, text("mine again")),
+    );
+
+    // The same as the note's tab is left: it asks when the tab is shown.
+    select(&mut h, "Beta");
+    select(&mut h, "Alpha");
+    wait_for(&mut h, "the save to settle", settled);
+    std::fs::write(project.join("alpha.md"), text("theirs")).unwrap();
+    touch(&project.join("alpha.md"));
+    h.state_mut().edit_file_for_test(&text("left behind"));
+    let ctx = h.ctx.clone();
+    h.state_mut().apply_for_test(&ctx, Act::NextTab);
+    let beta = id_of(&h, "Beta");
+    wait_for(&mut h, "Beta", move |a| {
+        a.editor_file_id().as_deref() == Some(beta.as_str())
+    });
+    for _ in 0..40 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(!h.state().has_overlay());
+    assert_eq!(read(&project, "alpha.md"), text("theirs"));
+    select(&mut h, "Alpha");
+    wait_for(&mut h, "the question on return", |a| a.has_overlay());
+    h.run_steps(3);
+    assert_eq!(h.state().editor_file_text(), text("left behind"));
+    h.get_by_label("Reload").click();
+    h.run_steps(3);
+    assert_eq!(h.state().editor_file_text(), text("theirs"));
+    assert_eq!(read(&project, "alpha.md"), text("theirs"));
+
+    // The same as the tab is closed: there is nowhere to ask, so the edits
+    // are written and the log says so.
+    wait_for(&mut h, "the reload to settle", settled);
+    std::fs::write(project.join("alpha.md"), text("theirs again")).unwrap();
+    touch(&project.join("alpha.md"));
+    h.state_mut().edit_file_for_test(&text("closed over"));
+    h.state_mut().apply_for_test(&ctx, Act::CloseTab);
+    wait_for(
+        &mut h,
+        "the closed tab's edits",
+        on_disk(&project, text("closed over")),
+    );
+    assert!(h
+        .state()
+        .log_texts()
+        .iter()
+        .any(|l| l.contains("Your version was kept")));
+}
+
+/// A note with no unsaved edits that changes on disk reloads, and says so.
+#[test]
+fn a_reload_from_disk_shows_a_toast() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), notes, 2);
+    select(&mut h, "Alpha");
+    std::fs::write(project.join("alpha.md"), "changed outside\n").unwrap();
+    touch(&project.join("alpha.md"));
+    h.state_mut().check_now();
+    wait_for(&mut h, "the reload", |a| {
+        a.editor_file_text() == "changed outside\n"
+    });
+    assert_eq!(
+        h.state().toast_texts(),
+        ["“Alpha” changed on disk and was reloaded."]
+    );
+}

@@ -247,7 +247,9 @@ pub struct NoteLinerApp {
     was_focused: bool,
     /// An open note that changed on disk under unsaved edits, waiting for
     /// the dialog that is open to close: (id, the file on disk).
-    pending_conflict: Option<(String, String)>,
+    /// Notes that changed on disk under unsaved edits, with the file as it
+    /// is on disk. Each is asked about when its tab is the one shown.
+    pending_conflicts: std::collections::HashMap<String, String>,
     /// The time of the last frame, for edits made by tests.
     #[cfg(test)]
     test_time: f64,
@@ -325,7 +327,7 @@ impl NoteLinerApp {
             log: Vec::new(),
             last_check: 0.0,
             was_focused: true,
-            pending_conflict: None,
+            pending_conflicts: Default::default(),
             #[cfg(test)]
             test_time: 0.0,
             mcp_running: false,
@@ -457,6 +459,18 @@ impl NoteLinerApp {
     #[cfg(test)]
     fn editor_time(&self) -> f64 {
         self.test_time
+    }
+
+    /// The messages in the toasts and in the log, oldest first.
+    #[cfg(test)]
+    pub fn toast_texts(&self) -> Vec<String> {
+        let shown = self.toasts.messages();
+        shown.into_iter().map(|(_, m)| m.to_string()).collect()
+    }
+
+    #[cfg(test)]
+    pub fn log_texts(&self) -> Vec<String> {
+        self.log.iter().map(|l| l.message.clone()).collect()
     }
 
     /// Looks for changes made outside the app now, as the timer would.
@@ -687,7 +701,7 @@ impl NoteLinerApp {
                 self.panes = PaneStates::default();
                 self.pending_line = None;
                 self.pending_position = None;
-                self.pending_conflict = None;
+                self.pending_conflicts.clear();
                 self.recent = self.backend.recent();
                 if matches!(self.overlay, Some(Overlay::Busy { .. })) {
                     self.overlay = None;
@@ -861,6 +875,7 @@ impl NoteLinerApp {
                 p.reveal_folder(noteliner_core::tree::folder_of(&to));
             }
             Event::FileChanged { id, content } => self.file_changed(id, content),
+            Event::SaveConflict { id, content, disk } => self.save_conflict(id, content, disk),
             Event::McpChanged => self.check(true),
             Event::IndexSaved(result) => {
                 if let Some(p) = &mut self.project {
@@ -1079,7 +1094,7 @@ impl NoteLinerApp {
         self.diagram.clear();
         self.tabs.restore(open);
         self.pending_position = None;
-        self.pending_conflict = None;
+        self.pending_conflicts.clear();
         self.last_check = ctx.input(|i| i.time);
         // Reopen the note that was open, where it was left.
         if let Some(pos) = last {
@@ -1203,6 +1218,63 @@ impl NoteLinerApp {
         }
     }
 
+    /// A save of a note was not written, because another program changed the
+    /// file first. The note in the tab shown asks now, and one in a
+    /// background tab asks when its tab is shown. A tab that was closed has
+    /// nowhere to ask: its edits are written, with a line in the log.
+    fn save_conflict(&mut self, id: String, content: String, disk: String) {
+        if self.editor.conflicted(&id, &content) {
+            self.pending_conflicts.insert(id, disk);
+            return;
+        }
+        let open = self.tabs.contains(&id);
+        let Some(editor) = self
+            .tabs
+            .editors_mut()
+            .find_map(|e| e.conflicted(&id, &content).then_some(e))
+        else {
+            // The note was reloaded or edited on since: that save is stale.
+            return;
+        };
+        if open {
+            self.pending_conflicts.insert(id, disk);
+            return;
+        }
+        editor.hold(false);
+        let (name, save) = (editor.name().to_string(), editor.flush());
+        if let Some(save) = save {
+            self.backend
+                .write_file(save.id, save.filename, save.content);
+        }
+        self.log_line(format!(
+            "“{name}” changed on disk as its tab was closed. Your version was kept."
+        ));
+    }
+
+    /// Closing a tab that is waiting to ask about a change on disk: its
+    /// edits are written, with a line in the log.
+    fn keep_edits_of_closing_tab(&mut self, id: &str) {
+        if self.pending_conflicts.remove(id).is_none() {
+            return;
+        }
+        let active = self.editor.file_id() == Some(id);
+        let editor = if active {
+            Some(&mut self.editor)
+        } else {
+            self.tabs.editors_mut().find(|e| e.file_id() == Some(id))
+        };
+        let Some(editor) = editor else { return };
+        editor.hold(false);
+        let (name, save) = (editor.name().to_string(), editor.flush());
+        if let Some(save) = save {
+            self.backend
+                .write_file(save.id, save.filename, save.content);
+        }
+        self.log_line(format!(
+            "“{name}” changed on disk under unsaved edits, and its tab was closed. Your version was kept."
+        ));
+    }
+
     /// An open file was changed on disk by another program (or by an AI
     /// assistant). With no unsaved edits it reloads. With unsaved edits they
     /// stay, and a dialog offers Reload and Keep Mine.
@@ -1229,12 +1301,17 @@ impl NoteLinerApp {
                 return;
             }
             if !self.editor.is_dirty() {
-                self.editor.replace(&id, content);
+                if self.editor.replace(&id, content) {
+                    self.toasts.info(format!(
+                        "“{}” changed on disk and was reloaded.",
+                        entry.name
+                    ));
+                }
                 return;
             }
             // Nothing is written over the change until the user has chosen.
             self.editor.hold(true);
-            self.pending_conflict = Some((id, content));
+            self.pending_conflicts.insert(id, content);
             return;
         }
         // A background tab has no unsaved edits: it takes the file as one
@@ -1520,11 +1597,14 @@ impl NoteLinerApp {
     }
 
     /// Writes the active tab's pending edit, a note's or a diagram's.
+    /// A note is not written over a change another program made: see
+    /// [`Self::save_conflict`].
     fn flush_active(&mut self) {
-        for save in [self.editor.flush(), self.diagram.flush()]
-            .into_iter()
-            .flatten()
-        {
+        if let Some(save) = self.editor.flush() {
+            self.backend
+                .write_file_checked(save.id, save.filename, save.content);
+        }
+        if let Some(save) = self.diagram.flush() {
             self.backend
                 .write_file(save.id, save.filename, save.content);
         }
@@ -1537,6 +1617,7 @@ impl NoteLinerApp {
             .project
             .as_ref()
             .is_some_and(|p| p.selected.as_deref() == Some(id));
+        self.keep_edits_of_closing_tab(id);
         if active {
             self.flush_active();
             // The tab keeps its state, for Reopen Closed Tab.
@@ -1798,7 +1879,8 @@ impl NoteLinerApp {
     /// Replaces the note with a slide edit and writes it at once.
     fn apply_slide_edit(&mut self, edit: noteliner_slides::EditResult) {
         if let Some(req) = self.editor.apply_slide_edit(edit.markdown, edit.caret_line) {
-            self.backend.write_file(req.id, req.filename, req.content);
+            self.backend
+                .write_file_checked(req.id, req.filename, req.content);
         }
         self.update_deck();
     }
@@ -3275,7 +3357,8 @@ impl NoteLinerApp {
         for a in editor_actions {
             match a {
                 EditorAction::Save(req) => {
-                    self.backend.write_file(req.id, req.filename, req.content)
+                    self.backend
+                        .write_file_checked(req.id, req.filename, req.content)
                 }
                 EditorAction::TogglePreview => self.apply(&ctx, Act::TogglePreview),
                 EditorAction::Export(kind) => self.export(kind, None),
@@ -3692,11 +3775,13 @@ impl NoteLinerApp {
         // A note that changed on disk under unsaved edits asks once the
         // dialog that was open has closed.
         if self.overlay.is_none() {
-            if let Some((id, content)) = self.pending_conflict.take() {
+            let asked = self
+                .editor
+                .file_id()
+                .and_then(|id| self.pending_conflicts.remove_entry(id));
+            if let Some((id, content)) = asked {
                 let name = self.editor.name().to_string();
-                if self.editor.file_id() == Some(id.as_str()) {
-                    self.overlay = Some(Overlay::Conflict { id, name, content });
-                }
+                self.overlay = Some(Overlay::Conflict { id, name, content });
             }
         }
         let Some(mut overlay) = self.overlay.take() else {

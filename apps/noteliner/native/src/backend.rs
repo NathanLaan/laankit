@@ -164,6 +164,13 @@ pub enum Event {
         from: String,
         to: String,
     },
+    /// A save was not written: another program changed the file since the
+    /// app last read or wrote it. `content` is the edit, `disk` the file.
+    SaveConflict {
+        id: String,
+        content: String,
+        disk: String,
+    },
     /// An open file was changed on disk by another program.
     FileChanged {
         id: String,
@@ -236,13 +243,42 @@ struct Core {
     stamps: Mutex<HashMap<String, Stamp>>,
 }
 
-/// A file's modification time and size.
-type Stamp = (Option<SystemTime>, u64);
+/// A file's modification time, its size, and a hash of its content.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Stamp {
+    modified: Option<SystemTime>,
+    len: u64,
+    hash: u64,
+}
 
-fn stamp_of(path: &Path) -> Stamp {
+impl Stamp {
+    /// The time and size are the ones on disk: one `stat`, no read.
+    fn looks_like(&self, (modified, len): (Option<SystemTime>, u64)) -> bool {
+        self.modified == modified && self.len == len
+    }
+}
+
+fn stat_of(path: &Path) -> (Option<SystemTime>, u64) {
     match std::fs::metadata(path) {
         Ok(m) => (m.modified().ok(), m.len()),
         Err(_) => (None, 0),
+    }
+}
+
+fn hash_of(content: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    content.hash(&mut h);
+    h.finish()
+}
+
+fn stamp_of(path: &Path) -> Stamp {
+    let (modified, len) = stat_of(path);
+    let hash = std::fs::read(path).map(|c| hash_of(&c)).unwrap_or(0);
+    Stamp {
+        modified,
+        len,
+        hash,
     }
 }
 
@@ -297,6 +333,26 @@ impl Core {
             read_tools: names("read"),
             write_tools: names("write"),
         }
+    }
+
+    /// The file on disk, if another program changed it since the app last
+    /// read or wrote it. The stamp is then the file's, so the change is
+    /// reported once. A file that is gone, one the app has not read, and one
+    /// that was written again with the same content have not changed.
+    fn changed_on_disk(&self, project: &Project, filename: &str) -> Option<String> {
+        let path = project.file_path(filename).ok()?;
+        let held = *self.stamps.lock().unwrap().get(filename)?;
+        let stat = stat_of(&path);
+        if stat.0.is_none() || held.looks_like(stat) {
+            return None;
+        }
+        let disk = project.read_file(filename).ok()?;
+        let now = stamp_of(&path);
+        self.stamps
+            .lock()
+            .unwrap()
+            .insert(filename.to_string(), now);
+        (now.hash != held.hash).then_some(disk)
     }
 
     /// The app just read or wrote `filename`: what is on disk is what the
@@ -577,10 +633,18 @@ impl Backend {
         });
     }
 
-    /// Saves a whole file. For a note whose file was removed by another
-    /// program, `restore` is its index entry, which is put back with it.
+    /// Saves a whole file, over whatever is on disk. For a note whose file
+    /// was removed by another program, `restore` is its index entry, which is
+    /// put back with it.
     pub fn write_file(&self, id: String, filename: String, content: String) {
-        self.write_file_restoring(id, filename, content, None);
+        self.write(id, filename, content, None, false);
+    }
+
+    /// Saves a whole file, unless another program changed it since the app
+    /// last read or wrote it: then nothing is written, and
+    /// [`Event::SaveConflict`] carries the file as it is on disk.
+    pub fn write_file_checked(&self, id: String, filename: String, content: String) {
+        self.write(id, filename, content, None, true);
     }
 
     pub fn write_file_restoring(
@@ -590,8 +654,26 @@ impl Backend {
         content: String,
         restore: Option<Value>,
     ) {
-        self.spawn(|core| async move {
+        self.write(id, filename, content, restore, false);
+    }
+
+    fn write(
+        &self,
+        id: String,
+        filename: String,
+        content: String,
+        restore: Option<Value>,
+        checked: bool,
+    ) {
+        self.spawn(move |core| async move {
             let mut ws = core.ws.lock().await;
+            if checked {
+                if let Some(disk) = core.changed_on_disk(&ws.project, &filename) {
+                    drop(ws);
+                    core.send(Event::SaveConflict { id, content, disk });
+                    return;
+                }
+            }
             let restored = match restore {
                 Some(entry) if ws.project.find(&id).is_none() => {
                     if let Ok(path) = ws.project.file_path(&filename) {
@@ -996,15 +1078,11 @@ impl Backend {
                 else {
                     continue;
                 };
-                let Ok(path) = ws.project.file_path(&filename) else {
-                    continue;
-                };
-                let now = stamp_of(&path);
-                let before = core.stamps.lock().unwrap().insert(filename.clone(), now);
-                if before.is_some_and(|b| b != now) && now.0.is_some() {
-                    if let Ok(content) = ws.project.read_file(&filename) {
-                        reloads.push(Event::FileChanged { id, content });
-                    }
+                let known = core.stamps.lock().unwrap().contains_key(&filename);
+                if !known {
+                    core.stamp(&ws.project, &filename);
+                } else if let Some(content) = core.changed_on_disk(&ws.project, &filename) {
+                    reloads.push(Event::FileChanged { id, content });
                 }
             }
             drop(ws);
