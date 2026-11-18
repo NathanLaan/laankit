@@ -2,7 +2,7 @@
 //! Phase 0 spike's approach), headless at 1000×800 with the LaanKit fonts.
 //!
 //! ```text
-//! cargo run --profile fast-release -p laankit-richtext --example bench [articles.json]
+//! cargo run --profile fast-release -p laankit-richtext --example richtext_bench [articles.json]
 //! ```
 //!
 //! `articles.json` is a cache of real feed articles (the Phase 0 article spike made one): an array of
