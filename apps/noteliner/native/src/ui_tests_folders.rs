@@ -643,7 +643,11 @@ fn changes_made_by_other_programs() {
     h.get_by_label("Reload").click();
     h.run_steps(3);
     assert_eq!(h.state().editor_file_text(), theirs);
-    assert_eq!(h.state().editor_status(), SaveStatus::Saved);
+    // If the autosave was already writing when the change was found, Reload
+    // writes the file back.
+    wait_for(&mut h, "the reload to settle", |a| {
+        a.editor_status() == SaveStatus::Saved
+    });
     assert_eq!(read(&project, "alpha.md"), theirs);
 
     // A note moved by another program keeps its tab, name and tags.

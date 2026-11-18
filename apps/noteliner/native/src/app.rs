@@ -3828,7 +3828,10 @@ impl NoteLinerApp {
             Overlay::Conflict { id, name, content } => match overlays::conflict(ctx, name) {
                 Some(ConflictAction::Reload) => {
                     keep = false;
-                    self.editor.reload(id, std::mem::take(content));
+                    if let Some(save) = self.editor.reload(id, std::mem::take(content)) {
+                        self.backend
+                            .write_file(save.id, save.filename, save.content);
+                    }
                 }
                 Some(ConflictAction::KeepMine) => {
                     keep = false;
