@@ -910,3 +910,442 @@ fn a_long_folder_list_scrolls_in_the_new_file_dialog() {
     });
     close(h);
 }
+
+/// A save looks at the file first: a change another program made is not
+/// written over, even when the save runs before the app has looked.
+#[test]
+fn a_save_does_not_write_over_another_programs_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), notes, 2);
+    select(&mut h, "Alpha");
+    let block = h
+        .state()
+        .editor_file_text()
+        .replace("# Alpha\n\none two three\n", "");
+    let text = |body: &str| format!("{block}# Alpha\n\n{body}\n");
+    let on_disk = |project: &Path, want: String| {
+        let project = project.to_path_buf();
+        move |_: &mut NoteLinerApp| {
+            std::fs::read_to_string(project.join("alpha.md")).is_ok_and(|s| s == want)
+        }
+    };
+    let settled = |a: &mut NoteLinerApp| a.editor_status() == SaveStatus::Saved;
+
+    // The file was only touched: the save goes ahead, and nothing is asked.
+    touch(&project.join("alpha.md"));
+    h.state_mut().edit_file_for_test(&text("mine"));
+    wait_for(
+        &mut h,
+        "the save over a touched file",
+        on_disk(&project, text("mine")),
+    );
+    assert!(!h.state().has_overlay());
+
+    // The file changed, and the autosave runs with no check before it.
+    wait_for(&mut h, "the save to settle", settled);
+    std::fs::write(project.join("alpha.md"), text("theirs")).unwrap();
+    touch(&project.join("alpha.md"));
+    h.state_mut().edit_file_for_test(&text("mine again"));
+    wait_for(&mut h, "the question", |a| a.has_overlay());
+    h.run_steps(3);
+    assert_eq!(read(&project, "alpha.md"), text("theirs"));
+    assert_eq!(h.state().editor_file_text(), text("mine again"));
+    assert_eq!(h.state().editor_status(), SaveStatus::Unsaved);
+    h.get_by_label("Keep Mine").click();
+    wait_for(
+        &mut h,
+        "my edits on disk",
+        on_disk(&project, text("mine again")),
+    );
+
+    // The same as the note's tab is left: it asks when the tab is shown.
+    select(&mut h, "Beta");
+    select(&mut h, "Alpha");
+    wait_for(&mut h, "the save to settle", settled);
+    std::fs::write(project.join("alpha.md"), text("theirs")).unwrap();
+    touch(&project.join("alpha.md"));
+    h.state_mut().edit_file_for_test(&text("left behind"));
+    let ctx = h.ctx.clone();
+    h.state_mut().apply_for_test(&ctx, Act::NextTab);
+    let beta = id_of(&h, "Beta");
+    wait_for(&mut h, "Beta", move |a| {
+        a.editor_file_id().as_deref() == Some(beta.as_str())
+    });
+    for _ in 0..40 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(!h.state().has_overlay());
+    assert_eq!(read(&project, "alpha.md"), text("theirs"));
+    select(&mut h, "Alpha");
+    wait_for(&mut h, "the question on return", |a| a.has_overlay());
+    h.run_steps(3);
+    assert_eq!(h.state().editor_file_text(), text("left behind"));
+    h.get_by_label("Reload").click();
+    h.run_steps(3);
+    assert_eq!(h.state().editor_file_text(), text("theirs"));
+    assert_eq!(read(&project, "alpha.md"), text("theirs"));
+
+    // The same as the tab is closed: there is nowhere to ask, so the edits
+    // are written and the log says so.
+    wait_for(&mut h, "the reload to settle", settled);
+    std::fs::write(project.join("alpha.md"), text("theirs again")).unwrap();
+    touch(&project.join("alpha.md"));
+    h.state_mut().edit_file_for_test(&text("closed over"));
+    h.state_mut().apply_for_test(&ctx, Act::CloseTab);
+    wait_for(
+        &mut h,
+        "the closed tab's edits",
+        on_disk(&project, text("closed over")),
+    );
+    assert!(h
+        .state()
+        .log_texts()
+        .iter()
+        .any(|l| l.contains("Your version was kept")));
+}
+
+/// A note with no unsaved edits that changes on disk reloads, and says so.
+#[test]
+fn a_reload_from_disk_shows_a_toast() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), notes, 2);
+    select(&mut h, "Alpha");
+    std::fs::write(project.join("alpha.md"), "changed outside\n").unwrap();
+    touch(&project.join("alpha.md"));
+    h.state_mut().check_now();
+    wait_for(&mut h, "the reload", |a| {
+        a.editor_file_text() == "changed outside\n"
+    });
+    assert_eq!(
+        h.state().toast_texts(),
+        ["“Alpha” changed on disk and was reloaded."]
+    );
+}
+
+/// The whole of Alpha's file with `body` as its text, under the block the
+/// editor shows now.
+fn alpha_with(h: &H, body: &str) -> String {
+    let file = h.state().editor_file_text();
+    let block = &file[..noteliner_core::frontmatter::body_start(&file)];
+    format!("{block}# Alpha\n\n{body}\n")
+}
+
+/// Another program writes `text` over a file. A check that the app has
+/// already started is left to finish first, so that it does not find the
+/// change before the step under test does.
+fn write_outside(h: &mut H, path: &Path, text: &str) {
+    for _ in 0..5 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::fs::write(path, text).unwrap();
+    touch(path);
+}
+
+/// The copies of your edits in the project folder.
+fn copies(project: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(project)
+        .unwrap()
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter(|n| n.contains("(your edits "))
+        .collect();
+    names.sort();
+    names
+}
+
+/// A tag added from the Tags pane goes into the file as it is on disk. If
+/// another program changed the note's text first, the editor takes it: a
+/// later edit does not write the old text back.
+#[test]
+fn a_tag_change_shows_another_programs_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), notes, 2);
+    let alpha = project.join("alpha.md");
+    select(&mut h, "Alpha");
+
+    // No unsaved edits: the note reloads with their text and your tag.
+    let theirs = alpha_with(&h, "theirs");
+    write_outside(&mut h, &alpha, &theirs);
+    h.state_mut().add_tag_for_test("later");
+    wait_for(&mut h, "their text in the editor", |a| {
+        let text = a.editor_file_text();
+        text.contains("theirs") && text.contains("  - later\n")
+    });
+    assert_eq!(h.state().editor_file_text(), read(&project, "alpha.md"));
+    assert_eq!(
+        h.state().toast_texts(),
+        ["“Alpha” changed on disk and was reloaded."]
+    );
+    let next = alpha_with(&h, "theirs\n\nand more");
+    h.state_mut().edit_file_for_test(&next);
+    let want = next.clone();
+    let file = alpha.clone();
+    wait_for(&mut h, "the later edit on disk", move |_| {
+        std::fs::read_to_string(&file).is_ok_and(|s| s == want)
+    });
+    wait_for(&mut h, "the save to settle", |a| {
+        a.editor_status() == SaveStatus::Saved
+    });
+
+    // Unsaved edits: the tag is written, and the dialog asks about the rest.
+    let theirs = alpha_with(&h, "theirs again");
+    write_outside(&mut h, &alpha, &theirs);
+    let mine = alpha_with(&h, "mine");
+    h.state_mut().edit_file_for_test(&mine);
+    h.state_mut().add_tag_for_test("third");
+    wait_for(&mut h, "the question", |a| a.has_overlay());
+    h.run_steps(3);
+    let disk = read(&project, "alpha.md");
+    assert!(disk.contains("theirs again") && disk.contains("  - third\n"));
+    assert!(h.state().editor_file_text().contains("mine"));
+    h.get_by_label("Reload").click();
+    h.run_steps(3);
+    assert_eq!(h.state().editor_file_text(), disk);
+    assert_eq!(read(&project, "alpha.md"), disk);
+}
+
+/// The same for a change to a note's `presentation:` block.
+#[test]
+fn a_presentation_change_shows_another_programs_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), notes, 2);
+    let alpha = project.join("alpha.md");
+    select(&mut h, "Alpha");
+    let theirs = alpha_with(&h, "theirs");
+    write_outside(&mut h, &alpha, &theirs);
+    let ctx = h.ctx.clone();
+    h.state_mut()
+        .apply_for_test(&ctx, Act::ConvertToPresentation);
+    wait_for(&mut h, "their text in the editor", |a| {
+        let text = a.editor_file_text();
+        text.contains("theirs") && text.contains("presentation:")
+    });
+    assert_eq!(h.state().editor_file_text(), read(&project, "alpha.md"));
+}
+
+/// Quitting does not write over another program's change: the file is left
+/// as it is, and your edits are written beside it. The log names the copy
+/// when the project is next opened.
+#[test]
+fn quitting_over_another_programs_change_keeps_both() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, paths) = open(tmp.path(), notes, 2);
+    let alpha = project.join("alpha.md");
+    let reopen = |count: usize| {
+        let mut h = harness(paths.clone());
+        h.run_steps(2);
+        h.state_mut().open(project.clone());
+        wait_for(&mut h, "the project", move |a| a.entries().len() == count);
+        h
+    };
+    let said = |h: &H| {
+        let log = h.state().log_texts();
+        log.iter().any(|l| l.contains("Your edits are in"))
+    };
+
+    // The file was only touched: the edit is written, with no copy.
+    select(&mut h, "Alpha");
+    touch(&alpha);
+    let mine = alpha_with(&h, "mine");
+    h.state_mut().edit_file_for_test(&mine);
+    h.state_mut().shutdown();
+    drop(h);
+    assert_eq!(read(&project, "alpha.md"), mine);
+    assert!(copies(&project).is_empty());
+
+    // The file changed: both versions are on disk.
+    let mut h = reopen(2);
+    assert!(!said(&h));
+    select(&mut h, "Alpha");
+    let theirs = alpha_with(&h, "theirs");
+    write_outside(&mut h, &alpha, &theirs);
+    let mine = alpha_with(&h, "mine again");
+    h.state_mut().edit_file_for_test(&mine);
+    h.state_mut().shutdown();
+    drop(h);
+    assert_eq!(read(&project, "alpha.md"), theirs);
+    let made = copies(&project);
+    assert_eq!(made.len(), 1, "{made:?}");
+    assert!(made[0].starts_with("alpha (your edits ") && made[0].ends_with(").md"));
+    assert_eq!(read(&project, &made[0]), mine);
+
+    // The copy is a note of its own, and the log names it once.
+    let mut h = reopen(3);
+    assert!(said(&h));
+    assert!(h.state().log_texts().iter().any(|l| l.contains(&made[0])));
+    h.state_mut().shutdown();
+    drop(h);
+    let h = reopen(3);
+    assert!(!said(&h));
+}
+
+/// A note in a background tab that is waiting to ask is not lost when the
+/// project closes: its edits are written as a copy.
+#[test]
+fn closing_the_project_keeps_a_waiting_tabs_edits() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), notes, 2);
+    let alpha = project.join("alpha.md");
+    select(&mut h, "Beta");
+    select(&mut h, "Alpha");
+    let theirs = alpha_with(&h, "theirs");
+    let mine = alpha_with(&h, "left behind");
+    write_outside(&mut h, &alpha, &theirs);
+    h.state_mut().edit_file_for_test(&mine);
+    let ctx = h.ctx.clone();
+    h.state_mut().apply_for_test(&ctx, Act::NextTab);
+    let beta = id_of(&h, "Beta");
+    wait_for(&mut h, "Beta", move |a| {
+        a.editor_file_id().as_deref() == Some(beta.as_str())
+    });
+    // The save is refused, and waits for Alpha's tab to be shown.
+    for _ in 0..40 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(read(&project, "alpha.md"), theirs);
+    h.state_mut().apply_for_test(&ctx, Act::GoHome);
+    wait_for(&mut h, "the close", |a| a.project_index().is_none());
+    assert_eq!(read(&project, "alpha.md"), theirs);
+    let made = copies(&project);
+    assert_eq!(made.len(), 1, "{made:?}");
+    assert_eq!(read(&project, &made[0]), mine);
+}
+
+/// The backend has found a change, and the app has not heard of it yet. A
+/// save sent in that gap is not written over the change.
+#[test]
+fn a_save_sent_before_the_app_hears_of_a_change_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), notes, 2);
+    let alpha = project.join("alpha.md");
+    select(&mut h, "Beta");
+    select(&mut h, "Alpha");
+
+    // In the tab shown: the dialog asks, and the file is theirs.
+    let theirs = alpha_with(&h, "theirs");
+    let mine = alpha_with(&h, "mine");
+    write_outside(&mut h, &alpha, &theirs);
+    h.state_mut().check_unheard_for_test();
+    h.state_mut().edit_file_for_test(&mine);
+    h.state_mut().flush_for_test();
+    wait_for(&mut h, "the question", |a| a.has_overlay());
+    for _ in 0..10 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(read(&project, "alpha.md"), theirs);
+    assert_eq!(h.state().editor_file_text(), mine);
+    h.get_by_label("Reload").click();
+    h.run_steps(3);
+    assert_eq!(h.state().editor_file_text(), theirs);
+    wait_for(&mut h, "the reload to settle", |a| {
+        a.editor_status() == SaveStatus::Saved
+    });
+    assert_eq!(read(&project, "alpha.md"), theirs);
+
+    // As the tab is left: it asks on return.
+    let theirs = alpha_with(&h, "theirs again");
+    let mine = alpha_with(&h, "left behind");
+    write_outside(&mut h, &alpha, &theirs);
+    h.state_mut().check_unheard_for_test();
+    h.state_mut().edit_file_for_test(&mine);
+    let ctx = h.ctx.clone();
+    h.state_mut().apply_for_test(&ctx, Act::NextTab);
+    let beta = id_of(&h, "Beta");
+    wait_for(&mut h, "Beta", move |a| {
+        a.editor_file_id().as_deref() == Some(beta.as_str())
+    });
+    for _ in 0..20 {
+        h.step();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(read(&project, "alpha.md"), theirs);
+    select(&mut h, "Alpha");
+    wait_for(&mut h, "the question on return", |a| a.has_overlay());
+    h.run_steps(3);
+    assert_eq!(h.state().editor_file_text(), mine);
+    h.get_by_label("Keep Mine").click();
+    let (file, want) = (alpha.clone(), mine.clone());
+    wait_for(&mut h, "my edits on disk", move |_| {
+        std::fs::read_to_string(&file).is_ok_and(|s| s == want)
+    });
+    wait_for(&mut h, "the save to settle", |a| {
+        a.editor_status() == SaveStatus::Saved
+    });
+
+    // On quit: both versions are kept.
+    let theirs = alpha_with(&h, "theirs once more");
+    let mine = alpha_with(&h, "mine on quit");
+    write_outside(&mut h, &alpha, &theirs);
+    h.state_mut().check_unheard_for_test();
+    h.state_mut().edit_file_for_test(&mine);
+    h.state_mut().shutdown();
+    drop(h);
+    assert_eq!(read(&project, "alpha.md"), theirs);
+    let made = copies(&project);
+    assert_eq!(made.len(), 1, "{made:?}");
+    assert_eq!(read(&project, &made[0]), mine);
+}
+
+/// A save that has no answer yet when the app quits is not lost: it is
+/// written, or kept as a copy if another program changed the file.
+#[test]
+fn quitting_with_a_save_in_flight_keeps_the_edit() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, paths) = open(tmp.path(), notes, 2);
+    let alpha = project.join("alpha.md");
+    let leave_and_quit = |mut h: H, mine: &str| {
+        h.state_mut().edit_file_for_test(mine);
+        let ctx = h.ctx.clone();
+        h.state_mut().apply_for_test(&ctx, Act::NextTab);
+        h.state_mut().shutdown();
+    };
+
+    // The file has not changed: the edit is written, with no copy.
+    select(&mut h, "Beta");
+    select(&mut h, "Alpha");
+    let mine = alpha_with(&h, "mine");
+    leave_and_quit(h, &mine);
+    assert_eq!(read(&project, "alpha.md"), mine);
+    assert!(copies(&project).is_empty());
+
+    // Another program changed it: both versions are kept.
+    let mut h = harness(paths.clone());
+    h.run_steps(2);
+    h.state_mut().open(project.clone());
+    wait_for(&mut h, "the project", |a| a.entries().len() == 2);
+    select(&mut h, "Beta");
+    select(&mut h, "Alpha");
+    let theirs = alpha_with(&h, "theirs");
+    let mine = alpha_with(&h, "mine again");
+    write_outside(&mut h, &alpha, &theirs);
+    leave_and_quit(h, &mine);
+    assert_eq!(read(&project, "alpha.md"), theirs);
+    let made = copies(&project);
+    assert_eq!(made.len(), 1, "{made:?}");
+    assert_eq!(read(&project, &made[0]), mine);
+}
+
+/// The backend has found a change to a note, and the app has not heard of
+/// it yet. A tag added in that gap is still in the note once it reloads.
+#[test]
+fn a_tag_added_before_the_app_hears_of_a_change_stays() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), notes, 2);
+    let alpha = project.join("alpha.md");
+    select(&mut h, "Alpha");
+    let theirs = alpha_with(&h, "theirs");
+    write_outside(&mut h, &alpha, &theirs);
+    h.state_mut().check_unheard_for_test();
+    h.state_mut().add_tag_for_test("later");
+    wait_for(&mut h, "their text and the tag in the editor", |a| {
+        let text = a.editor_file_text();
+        text.contains("theirs") && text.contains("  - later\n")
+    });
+    let file = alpha.clone();
+    wait_for(&mut h, "the same on disk", move |a| {
+        std::fs::read_to_string(&file).is_ok_and(|s| s == a.editor_file_text())
+    });
+}

@@ -117,7 +117,7 @@ Phase 0 laid out every block in a document's first frame to learn its height: 27
 
 ## Numbers
 
-`cargo run --profile fast-release -p laankit-richtext --example bench [articles.json]`, headless at 1000×800 with tessellation. Each run uses a fresh context warmed up by a different document, so glyphs are rasterized but this document's text has never been laid out (opening another article in the app). The five longest of the Phase 0 cached articles were used (not committed). Load average ≈ 7.5 (a busy desktop), so treat these as upper bounds. Re-run on 2026-10-18 after the task-list, alignment, `<mark>`/`<kbd>` and selection work at load ≈ 10.7: eager and progressive first frames both rose about 15–25%, in line with the load (2,000 blocks: 14.9 ms progressive), so the new drawing adds no measurable per-block cost.
+`cargo run --profile fast-release -p laankit-richtext --example richtext_bench [articles.json]`, headless at 1000×800 with tessellation. Each run uses a fresh context warmed up by a different document, so glyphs are rasterized but this document's text has never been laid out (opening another article in the app). The five longest of the Phase 0 cached articles were used (not committed). Load average ≈ 7.5 (a busy desktop), so treat these as upper bounds. Re-run on 2026-10-18 after the task-list, alignment, `<mark>`/`<kbd>` and selection work at load ≈ 10.7: eager and progressive first frames both rose about 15–25%, in line with the load (2,000 blocks: 14.9 ms progressive), so the new drawing adds no measurable per-block cost.
 
 | Document              | Blocks | Eager first frame | Progressive first frame | Frames to settle | Jump to middle |
 |-----------------------|--------|-------------------|-------------------------|------------------|----------------|
@@ -139,7 +139,7 @@ What's left of the first frame is shaping the visible screenful's text for the f
 ## Examples
 
 - `cargo run -p laankit-richtext --example preview [note.md]`: a note rendered the way NoteLiner's preview does it (tasks, an aligned table, `<mark>`, `<kbd>` by default). `LAANKIT_THEME` and `LAANKIT_SCREENSHOT` work as in the apps.
-- `bench`: see [Numbers](#numbers).
+- `richtext_bench`: see [Numbers](#numbers).
 
 ## Tests
 

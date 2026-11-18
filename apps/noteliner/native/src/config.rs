@@ -5,7 +5,7 @@
 //! |------------------------|------------------------------------------------------------------------|
 //! | `ui-preferences.json`  | `customTitlebar`, `writeFrontmatter`, `mcp*`, `spellCheckEnabled`, `filesSortMode`, `commandRecents` |
 //! | `recent-projects.json` | `[{ path, name, openedAt }]`, newest first, at most 5                  |
-//! | `window-state.json`    | Per project folder: the panel `layout` and window `bounds`             |
+//! | `window-state.json`    | Per project folder: the panel `layout`, window `bounds`, and `notices` |
 //! | `mcp-runtime.json`     | The running MCP server's socket (written by `noteliner_core::mcp`)     |
 //!
 //! Projects themselves (`noteliner.json` and the notes) live in the folders

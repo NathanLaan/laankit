@@ -680,6 +680,19 @@ impl Project {
         Ok(written)
     }
 
+    /// Writes `content` beside `filename` as a file of its own, and leaves
+    /// `filename` as it is: for edits that would replace another program's
+    /// change, when there is no one to ask. `when` is the time in the copy's
+    /// name. The copy joins the index when the folder is next read. Returns
+    /// its path in the project.
+    pub fn write_conflict_copy(&self, filename: &str, content: &str, when: &str) -> Result<String> {
+        let dir = self.dir()?;
+        self.file_path(filename)?;
+        let copy = conflict_copy_name(filename, when, |c| dir.join(c).exists());
+        fs::write(dir.join(&copy), content)?;
+        Ok(copy)
+    }
+
     /// Replaces a note's text and keeps its frontmatter (an AI assistant's
     /// `update_note`, and the importers). A diagram is its whole file.
     pub async fn write_body(&mut self, filename: &str, body: &str) -> Result<Written> {
@@ -1311,6 +1324,22 @@ impl Project {
     }
 }
 
+/// The name of a copy of `filename` that holds your edits: `a/note.md` at
+/// `2026-11-17 1432` is `a/note (your edits 2026-11-17 1432).md`. A name
+/// that is taken gets a number.
+pub fn conflict_copy_name(filename: &str, when: &str, taken: impl Fn(&str) -> bool) -> String {
+    let ext = extname(filename);
+    let stem = &filename[..filename.len() - ext.len()];
+    let first = format!("{stem} (your edits {when}){ext}");
+    if !taken(&first) {
+        return first;
+    }
+    (2..)
+        .map(|i| format!("{stem} (your edits {when}) {i}{ext}"))
+        .find(|c| !taken(c))
+        .unwrap_or(first)
+}
+
 /// `deck` caches "this note's frontmatter has a presentation block".
 pub fn apply_deck_flag(entry: &mut Value, data: &Data) -> bool {
     let is_deck = match frontmatter::get_field(data, "presentation") {
@@ -1406,6 +1435,50 @@ mod tests {
 
     fn id(v: &Value) -> &str {
         v["id"].as_str().unwrap()
+    }
+
+    #[test]
+    fn a_conflict_copy_has_a_name_of_its_own() {
+        let when = "2026-11-17 1432";
+        assert_eq!(
+            conflict_copy_name("a/note.md", when, |_| false),
+            "a/note (your edits 2026-11-17 1432).md"
+        );
+        assert_eq!(
+            conflict_copy_name("map.mmd", when, |_| false),
+            "map (your edits 2026-11-17 1432).mmd"
+        );
+        // A name that is taken gets a number.
+        let first = "note (your edits 2026-11-17 1432).md";
+        assert_eq!(
+            conflict_copy_name("note.md", when, |c| c == first),
+            "note (your edits 2026-11-17 1432) 2.md"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_conflict_copy_leaves_the_file_alone() {
+        let mut f = project().await;
+        let entry =
+            f.p.create_file("Note", &json!([]), None, None)
+                .await
+                .unwrap();
+        let filename = entry["filename"].as_str().unwrap().to_string();
+        fs::write(f.dir.join(&filename), "theirs").unwrap();
+        let when = "2026-11-17 1432";
+        let copy = f.p.write_conflict_copy(&filename, "mine", when).unwrap();
+        assert_eq!(read(&f.dir, &filename), "theirs");
+        assert_eq!(read(&f.dir, &copy), "mine");
+        // A second copy in the same minute does not replace the first.
+        let second =
+            f.p.write_conflict_copy(&filename, "mine too", when)
+                .unwrap();
+        assert_ne!(second, copy);
+        assert_eq!(read(&f.dir, &copy), "mine");
+        // The copy is a note of the project when it is next opened.
+        let dir = f.dir.clone();
+        f.p.open(&dir).await.unwrap();
+        assert!(f.p.files().iter().any(|e| e["filename"] == json!(copy)));
     }
 
     #[test]

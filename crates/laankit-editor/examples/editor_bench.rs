@@ -1,7 +1,7 @@
 //! Headless frame timings for the editor (the Phase 0 spike's benchmark,
 //! on the production widget).
 //!
-//! `cargo run --profile fast-release -p laankit-editor --example bench -- [--sizes 1000,5000] [--accesskit] [--fences N] [--engine core|textedit]`
+//! `cargo run --profile fast-release -p laankit-editor --example editor_bench -- [--sizes 1000,5000] [--accesskit] [--fences N] [--engine core|textedit]`
 //!
 //! `--fences N` puts N 200-line code fences (Rust, Python, JSON, shell) in
 //! each document and adds a column for typing inside one; the syntaxes are

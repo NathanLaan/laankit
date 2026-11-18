@@ -164,10 +164,22 @@ pub enum Event {
         from: String,
         to: String,
     },
-    /// An open file was changed on disk by another program.
+    /// A save was not written: another program changed the file since the
+    /// app last read or wrote it. `content` is the edit, `disk` the file.
+    /// `report` is as for [`Event::FileChanged`].
+    SaveConflict {
+        id: String,
+        content: String,
+        disk: String,
+        report: u64,
+    },
+    /// An open file was changed on disk by another program. `report` numbers
+    /// the change: the app sends the last one it handled with each save of
+    /// the file, so a save sent before it heard of this change is refused.
     FileChanged {
         id: String,
         content: String,
+        report: u64,
     },
     /// An AI assistant wrote to the project: check the open files now.
     McpChanged,
@@ -218,6 +230,20 @@ pub enum Event {
     Error(String),
 }
 
+/// An edit to write as the project closes or the app quits.
+pub struct ClosingSave {
+    pub save: crate::editor::SaveRequest,
+    /// The app already knows that another program changed the file, and was
+    /// waiting to ask about it.
+    pub conflict: bool,
+    /// The last change to the file that the app handled: the `report` of an
+    /// [`Event::FileChanged`] or an [`Event::SaveConflict`], or 0.
+    pub seen: u64,
+    /// A save of this edit was sent, and the app has no answer yet: it may
+    /// have been written, refused, or not run.
+    pub in_flight: bool,
+}
+
 struct Core {
     paths: Paths,
     /// PDF export (Typst), built and warmed up on a background thread at
@@ -234,15 +260,49 @@ struct Core {
     /// Each file's time and size when the app last read or wrote it, by
     /// path. A file that no longer matches was changed by another program.
     stamps: Mutex<HashMap<String, Stamp>>,
+    /// The number of the last change reported to the app for each file, by
+    /// path. A save that names an earlier one was sent before the app heard
+    /// of the change.
+    reports: Mutex<HashMap<String, u64>>,
+    next_report: AtomicU64,
 }
 
-/// A file's modification time and size.
-type Stamp = (Option<SystemTime>, u64);
+/// A file's modification time, its size, and a hash of its content.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Stamp {
+    modified: Option<SystemTime>,
+    len: u64,
+    hash: u64,
+}
 
-fn stamp_of(path: &Path) -> Stamp {
+impl Stamp {
+    /// The time and size are the ones on disk: one `stat`, no read.
+    fn looks_like(&self, (modified, len): (Option<SystemTime>, u64)) -> bool {
+        self.modified == modified && self.len == len
+    }
+}
+
+fn stat_of(path: &Path) -> (Option<SystemTime>, u64) {
     match std::fs::metadata(path) {
         Ok(m) => (m.modified().ok(), m.len()),
         Err(_) => (None, 0),
+    }
+}
+
+fn hash_of(content: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    content.hash(&mut h);
+    h.finish()
+}
+
+fn stamp_of(path: &Path) -> Stamp {
+    let (modified, len) = stat_of(path);
+    let hash = std::fs::read(path).map(|c| hash_of(&c)).unwrap_or(0);
+    Stamp {
+        modified,
+        len,
+        hash,
     }
 }
 
@@ -297,6 +357,137 @@ impl Core {
             read_tools: names("read"),
             write_tools: names("write"),
         }
+    }
+
+    /// The file on disk, if another program changed it since the app last
+    /// read or wrote it. The stamp is then the file's, so the change is
+    /// reported once. A file that is gone, one the app has not read, and one
+    /// that was written again with the same content have not changed.
+    fn changed_on_disk(&self, project: &Project, filename: &str) -> Option<(String, u64)> {
+        let path = project.file_path(filename).ok()?;
+        let held = *self.stamps.lock().unwrap().get(filename)?;
+        let stat = stat_of(&path);
+        if stat.0.is_none() || held.looks_like(stat) {
+            return None;
+        }
+        let disk = project.read_file(filename).ok()?;
+        let now = stamp_of(&path);
+        self.stamps
+            .lock()
+            .unwrap()
+            .insert(filename.to_string(), now);
+        (now.hash != held.hash).then(|| (disk, self.report(filename)))
+    }
+
+    /// Numbers a change to `filename` that the app is about to be told of.
+    fn report(&self, filename: &str) -> u64 {
+        let report = self.next_report.fetch_add(1, Ordering::SeqCst) + 1;
+        self.reports
+            .lock()
+            .unwrap()
+            .insert(filename.to_string(), report);
+        report
+    }
+
+    /// The number of the last change to `filename` the app was told of.
+    fn last_report(&self, filename: &str) -> u64 {
+        let reports = self.reports.lock().unwrap();
+        reports.get(filename).copied().unwrap_or(0)
+    }
+
+    /// The file as it is on disk, if a save of `filename` may not be
+    /// written over it: the app, which has handled the changes up to `seen`,
+    /// has not heard of the last one, or another program changed the file
+    /// since.
+    fn in_the_way(&self, project: &Project, filename: &str, seen: u64) -> Option<(String, u64)> {
+        let last = self.last_report(filename);
+        if last > seen {
+            return Some((project.read_file(filename).ok()?, last));
+        }
+        self.changed_on_disk(project, filename)
+    }
+
+    /// Another program changed `filename` since the app last read or wrote
+    /// it. Unlike [`Core::changed_on_disk`], the stamp stays as it is.
+    fn differs_on_disk(&self, project: &Project, filename: &str) -> bool {
+        let Ok(path) = project.file_path(filename) else {
+            return false;
+        };
+        let Some(held) = self.stamps.lock().unwrap().get(filename).copied() else {
+            return false;
+        };
+        let stat = stat_of(&path);
+        stat.0.is_some() && !held.looks_like(stat) && stamp_of(&path).hash != held.hash
+    }
+
+    /// The files the app has read that another program changed since.
+    fn all_that_differ(&self, project: &Project) -> Vec<String> {
+        let known: Vec<String> = self.stamps.lock().unwrap().keys().cloned().collect();
+        known
+            .into_iter()
+            .filter(|f| self.differs_on_disk(project, f))
+            .collect()
+    }
+
+    /// The app changed the frontmatter of `filename`, which another program
+    /// had changed first: the file as it is now, for the tab that has it
+    /// open. The app's change kept the other program's text, but the open
+    /// editor has not seen it.
+    fn rewritten_over_change(&self, project: &Project, filename: &str) -> Option<Event> {
+        let id = project
+            .files()
+            .iter()
+            .find(|f| f["filename"].as_str() == Some(filename))?["id"]
+            .as_str()?
+            .to_string();
+        let content = project.read_file(filename).ok()?;
+        let report = self.report(filename);
+        Some(Event::FileChanged {
+            id,
+            content,
+            report,
+        })
+    }
+
+    /// Writes an edit as the project closes or the app quits, when there is
+    /// no one to ask. If another program changed the file, it is left alone
+    /// and the edit is written beside it as a copy, whose path is returned.
+    /// The copy is named in the Log pane when the project is next opened.
+    async fn write_closing(
+        &self,
+        project: &mut Project,
+        closing: &ClosingSave,
+    ) -> Result<Option<String>> {
+        let (filename, content) = (&closing.save.filename, &closing.save.content);
+        let path = project.file_path(filename)?;
+        // A save in flight that landed needs nothing more.
+        if closing.in_flight && std::fs::read_to_string(&path).is_ok_and(|d| d == *content) {
+            return Ok(None);
+        }
+        let disk = if closing.conflict {
+            // The change was already found, and the stamp is the file's.
+            path.exists()
+                .then(|| project.read_file(filename))
+                .transpose()?
+        } else {
+            self.in_the_way(project, filename, closing.seen)
+                .map(|(disk, _)| disk)
+        };
+        if disk.is_none_or(|disk| disk == *content) {
+            project.write_file(filename, content).await?;
+            self.stamp(project, filename);
+            return Ok(None);
+        }
+        let when = chrono::Local::now().format("%Y-%m-%d %H%M").to_string();
+        let copy = project.write_conflict_copy(filename, content, &when)?;
+        self.window_state.add_notice(
+            &project.dir()?.display().to_string(),
+            format!(
+                "“{filename}” was changed by another program before your edits were saved. \
+                 Your edits are in “{copy}”."
+            ),
+        );
+        Ok(Some(copy))
     }
 
     /// The app just read or wrote `filename`: what is on disk is what the
@@ -432,6 +623,8 @@ impl Backend {
             confirms: Mutex::new(HashMap::new()),
             next_confirm: AtomicU64::new(0),
             stamps: Mutex::new(HashMap::new()),
+            reports: Mutex::new(HashMap::new()),
+            next_report: AtomicU64::new(0),
         });
         *host_core.lock().unwrap() = Some(Arc::downgrade(&core));
         Self { rt, rx, core }
@@ -482,6 +675,7 @@ impl Backend {
                 res
             };
             core.stamps.lock().unwrap().clear();
+            core.reports.lock().unwrap().clear();
             core.send(match res {
                 Ok(opened) => Event::ProjectOpened {
                     folder,
@@ -495,21 +689,23 @@ impl Backend {
         });
     }
 
-    /// Closes the project: writes the editors' pending edits, stops MCP.
-    pub fn close_project(&self, pending: Vec<crate::editor::SaveRequest>) {
+    /// Closes the project: writes the editors' pending edits, stops MCP. An
+    /// edit to a file that another program changed is written as a copy.
+    pub fn close_project(&self, pending: Vec<ClosingSave>) {
         self.spawn(|core| async move {
             core.reject_pending_confirms();
             core.mcp.stop().await;
             let mut ws = core.ws.lock().await;
-            for save in pending {
-                if let Err(e) = ws.project.write_file(&save.filename, &save.content).await {
-                    log::warn!("saving {} before closing: {e}", save.filename);
+            for closing in pending {
+                if let Err(e) = core.write_closing(&mut ws.project, &closing).await {
+                    log::warn!("saving {} before closing: {e}", closing.save.filename);
                 }
             }
             ws.project.close();
             ws.links.reset();
             drop(ws);
             core.stamps.lock().unwrap().clear();
+            core.reports.lock().unwrap().clear();
             core.send(Event::ProjectClosed);
         });
     }
@@ -549,14 +745,25 @@ impl Backend {
     pub fn save_index(&self, index: Value) {
         self.spawn(|core| async move {
             let mut ws = core.ws.lock().await;
+            // The tags go into each file as it is on disk, so another
+            // program's change to a note's text is kept. The tab that has
+            // the note open is told of it.
+            let changed = core.all_that_differ(&ws.project);
             let r = ws.project.save_index(index).await;
+            let mut reloads = Vec::new();
             if let Ok(rewritten) = &r {
                 for filename in rewritten {
                     core.stamp(&ws.project, filename);
+                    if changed.contains(filename) {
+                        reloads.extend(core.rewritten_over_change(&ws.project, filename));
+                    }
                 }
             }
             drop(ws);
             core.send(Event::IndexSaved(r.map(|_| ()).map_err(|e| e.to_string())));
+            for event in reloads {
+                core.send(event);
+            }
         });
     }
 
@@ -577,10 +784,21 @@ impl Backend {
         });
     }
 
-    /// Saves a whole file. For a note whose file was removed by another
-    /// program, `restore` is its index entry, which is put back with it.
+    /// Saves a whole file, over whatever is on disk. For a note whose file
+    /// was removed by another program, `restore` is its index entry, which is
+    /// put back with it.
     pub fn write_file(&self, id: String, filename: String, content: String) {
-        self.write_file_restoring(id, filename, content, None);
+        self.write(id, filename, content, None, None);
+    }
+
+    /// Saves a whole file, unless another program changed it since the app
+    /// last read or wrote it: then nothing is written, and
+    /// [`Event::SaveConflict`] carries the file as it is on disk. `seen` is
+    /// the last change to the file that the app handled (the `report` of an
+    /// [`Event::FileChanged`] or an [`Event::SaveConflict`], or 0): the save
+    /// is refused too if the backend has reported a later one.
+    pub fn write_file_checked(&self, id: String, filename: String, content: String, seen: u64) {
+        self.write(id, filename, content, None, Some(seen));
     }
 
     pub fn write_file_restoring(
@@ -590,8 +808,31 @@ impl Backend {
         content: String,
         restore: Option<Value>,
     ) {
-        self.spawn(|core| async move {
+        self.write(id, filename, content, restore, None);
+    }
+
+    fn write(
+        &self,
+        id: String,
+        filename: String,
+        content: String,
+        restore: Option<Value>,
+        checked: Option<u64>,
+    ) {
+        self.spawn(move |core| async move {
             let mut ws = core.ws.lock().await;
+            if let Some(seen) = checked {
+                if let Some((disk, report)) = core.in_the_way(&ws.project, &filename, seen) {
+                    drop(ws);
+                    core.send(Event::SaveConflict {
+                        id,
+                        content,
+                        disk,
+                        report,
+                    });
+                    return;
+                }
+            }
             let restored = match restore {
                 Some(entry) if ws.project.find(&id).is_none() => {
                     if let Ok(path) = ws.project.file_path(&filename) {
@@ -631,19 +872,22 @@ impl Backend {
         });
     }
 
-    /// Saves a whole file without waiting, on quit.
-    pub fn write_file_now(&self, filename: &str, content: &str) -> Result<()> {
+    /// Saves an edit without waiting, on quit. An edit to a file that
+    /// another program changed is written as a copy: its path is returned.
+    pub fn write_file_now(&self, closing: ClosingSave) -> Result<Option<String>> {
         let core = self.core.clone();
-        let (filename, content) = (filename.to_string(), content.to_string());
         self.rt.block_on(async move {
-            core.ws
-                .lock()
-                .await
-                .project
-                .write_file(&filename, &content)
-                .await
-                .map(|_| ())
+            let mut ws = core.ws.lock().await;
+            core.write_closing(&mut ws.project, &closing).await
         })
+    }
+
+    /// The lines kept for the Log pane as the project in `folder` last
+    /// closed. They are given once.
+    pub fn take_notices(&self, folder: &Path) -> Vec<String> {
+        self.core
+            .window_state
+            .take_notices(&folder.display().to_string())
     }
 
     /// A new note (from a template) in `folder`; for a presentation, the
@@ -961,7 +1205,23 @@ impl Backend {
     /// and per open file. With `tree`, the index is sent back even if
     /// nothing on disk changed (an AI assistant wrote to the project).
     pub fn check(&self, open: Vec<(String, String)>, tree: bool) {
-        self.spawn(|core| async move {
+        self.spawn(|core| async move { core.check(open, tree).await });
+    }
+
+    /// As [`Backend::check`], finished before it returns. What it found
+    /// waits for the next [`Backend::poll`].
+    #[cfg(test)]
+    pub fn check_now(&self, open: Vec<(String, String)>) {
+        let core = self.core.clone();
+        self.rt
+            .block_on(async move { core.check(open, false).await });
+    }
+}
+
+impl Core {
+    async fn check(&self, open: Vec<(String, String)>, tree: bool) {
+        let core = self;
+        {
             let mut ws = core.ws.lock().await;
             if !ws.project.is_open() {
                 return;
@@ -981,6 +1241,10 @@ impl Backend {
                     if let Some(stamp) = stamps.remove(old) {
                         stamps.insert(new.clone(), stamp);
                     }
+                    let mut reports = core.reports.lock().unwrap();
+                    if let Some(report) = reports.remove(old) {
+                        reports.insert(new.clone(), report);
+                    }
                 }
             }
             if changed.is_some() || tree {
@@ -996,37 +1260,49 @@ impl Backend {
                 else {
                     continue;
                 };
-                let Ok(path) = ws.project.file_path(&filename) else {
-                    continue;
-                };
-                let now = stamp_of(&path);
-                let before = core.stamps.lock().unwrap().insert(filename.clone(), now);
-                if before.is_some_and(|b| b != now) && now.0.is_some() {
-                    if let Ok(content) = ws.project.read_file(&filename) {
-                        reloads.push(Event::FileChanged { id, content });
-                    }
+                let known = core.stamps.lock().unwrap().contains_key(&filename);
+                if !known {
+                    core.stamp(&ws.project, &filename);
+                } else if let Some((content, report)) = core.changed_on_disk(&ws.project, &filename)
+                {
+                    reloads.push(Event::FileChanged {
+                        id,
+                        content,
+                        report,
+                    });
                 }
             }
             drop(ws);
             for event in reloads {
                 core.send(event);
             }
-        });
+        }
     }
+}
 
+impl Backend {
     /// Adds, replaces or (with null) removes a note's `presentation:` block.
     pub fn set_presentation(&self, id: String, filename: String, presentation: Value) {
         self.spawn(|core| async move {
             let mut ws = core.ws.lock().await;
+            // As for the tags in [`Backend::save_index`].
+            let changed = core.differs_on_disk(&ws.project, &filename);
             let r = ws.project.set_presentation(&filename, &presentation).await;
+            let mut reload = None;
             if r.is_ok() {
                 core.stamp(&ws.project, &filename);
+                if changed {
+                    reload = core.rewritten_over_change(&ws.project, &filename);
+                }
             }
             drop(ws);
             core.send(Event::Presentation {
                 id,
                 outcome: r.map_err(|e| e.to_string()),
             });
+            if let Some(event) = reload {
+                core.send(event);
+            }
         });
     }
 
@@ -1316,6 +1592,10 @@ impl Core {
     /// paths, or none: their stamps are read again.
     fn forget_stamps_under(&self, folder: &str) {
         self.stamps
+            .lock()
+            .unwrap()
+            .retain(|path, _| !tree::is_under(path, folder));
+        self.reports
             .lock()
             .unwrap()
             .retain(|path, _| !tree::is_under(path, folder));

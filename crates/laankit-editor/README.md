@@ -12,7 +12,7 @@ It runs on **its own editor core** ([`editor_core`](src/editor_core/mod.rs), the
 ```bash
 cargo run -p laankit-editor --example editor -- note.md        # or --lines 20000
 cargo run -p laankit-editor --example editor --features spellcheck -- note.md
-cargo run --profile fast-release -p laankit-editor --example bench -- [--sizes 1000,5000] [--accesskit] [--fences 4] [--engine core|textedit]
+cargo run --profile fast-release -p laankit-editor --example editor_bench -- [--sizes 1000,5000] [--accesskit] [--fences 4] [--engine core|textedit]
 cargo test -p laankit-editor --features spellcheck
 LAANKIT_EDITOR_ENGINE=textedit cargo run -p noteliner-native   # the fallback engine
 ```
@@ -167,7 +167,7 @@ for event in out.events { /* see the contract below */ }
 
 ### Core engine against `TextEdit` (Phase 3, 2026-10-18)
 
-`cargo run --profile fast-release -p laankit-editor --example bench -- --sizes 5000,20000,50000 [--engine textedit] [--accesskit]`, CPU per frame (`run_ui` and `tessellate`, 1200×800), p50 / p95 / max in ms. Load average **≈4** (≈7.5 for the AccessKit rows).
+`cargo run --profile fast-release -p laankit-editor --example editor_bench -- --sizes 5000,20000,50000 [--engine textedit] [--accesskit]`, CPU per frame (`run_ui` and `tessellate`, 1200×800), p50 / p95 / max in ms. Load average **≈4** (≈7.5 for the AccessKit rows).
 
 | Engine   | Lines  | Open  | Idle               | Type at start      | Type in middle     | Type at end        | Enter in list      | Wheel scroll       |
 |----------|--------|-------|--------------------|--------------------|--------------------|--------------------|--------------------|--------------------|
@@ -195,7 +195,7 @@ With AccessKit on (a screen reader running):
 
 ### With code-fence highlighting (Phase 2, 2026-10-18, `TextEdit` engine)
 
-`cargo run --profile fast-release -p laankit-editor --example bench -- --sizes 1000,5000,20000 --fences 4`: the generated notes plus four 200-line fences (Rust, Python, JSON, shell), syntaxes loaded. Load average **≈20** (another agent compiling), so these are upper bounds. p50 / p95 / max in ms, AccessKit off.
+`cargo run --profile fast-release -p laankit-editor --example editor_bench -- --sizes 1000,5000,20000 --fences 4`: the generated notes plus four 200-line fences (Rust, Python, JSON, shell), syntaxes loaded. Load average **≈20** (another agent compiling), so these are upper bounds. p50 / p95 / max in ms, AccessKit off.
 
 | Lines  | Open   | Idle               | Type at start      | Type in middle     | Type at end        | Type in a fence    | Wheel scroll       |
 |--------|--------|--------------------|--------------------|--------------------|--------------------|--------------------|--------------------|
@@ -209,7 +209,7 @@ With AccessKit on (a screen reader running):
 
 ### Before code highlighting
 
-`cargo run --profile fast-release -p laankit-editor --example bench`: CPU per frame (`run_ui` and `tessellate`, 1200×800), p50 / p95 / max in ms. These were taken on a 16-core laptop at load average **≈10**: other agents were compiling. Run back to back at the same load, the Phase 0 spike measured 10–20% less while typing, because this widget also paints the gutter and active line, records undo diffs and tracks completion. On a quiet machine, scale both down (the spike's quiet runs were about 30% lower).
+`cargo run --profile fast-release -p laankit-editor --example editor_bench`: CPU per frame (`run_ui` and `tessellate`, 1200×800), p50 / p95 / max in ms. These were taken on a 16-core laptop at load average **≈10**: other agents were compiling. Run back to back at the same load, the Phase 0 spike measured 10–20% less while typing, because this widget also paints the gutter and active line, records undo diffs and tracks completion. On a quiet machine, scale both down (the spike's quiet runs were about 30% lower).
 
 AccessKit off:
 
