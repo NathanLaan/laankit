@@ -18,6 +18,7 @@ mod editor;
 mod math;
 mod model;
 mod overlays;
+mod pptx;
 mod spell;
 mod svg_colors;
 mod tabs;

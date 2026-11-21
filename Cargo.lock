@@ -4470,6 +4470,7 @@ name = "noteliner-native"
 version = "3.5.1"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "blockliner-core",
  "blockliner-egui",
  "chrono",
@@ -4487,15 +4488,31 @@ dependencies = [
  "log",
  "noteliner-core",
  "noteliner-export",
+ "noteliner-pptx",
  "noteliner-slides",
  "open",
  "regex",
+ "reqwest",
  "rfd",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
  "winresource",
+ "zip 2.4.2",
+]
+
+[[package]]
+name = "noteliner-pptx"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "image",
+ "laankit-richtext",
+ "noteliner-slides",
+ "roxmltree 0.20.0",
+ "serde_json",
+ "zip 2.4.2",
 ]
 
 [[package]]

@@ -24,6 +24,7 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - Reusable note templates with `{{title}}`/`{{date}}` placeholder substitution
 - Presentations: author slides inside a note and present full screen, with a speaker view. A presentation has a slide theme for each NoteLiner theme, in the same colours. Help (F1, or the Help button on the left toolbar) is a window you can keep open beside your work, and its Presentation Formatting page lists what you can write on a slide
 - PDF and HTML export (PDF rendered in-process with Typst)
+- Save to PowerPoint: a presentation as a `.pptx` file you can edit in PowerPoint, LibreOffice Impress, Keynote, and Google Slides. See Save to PowerPoint
 - Deleted notes, folders, and attachments go to the system's trash
 - Optional MCP server to expose the open project to AI assistants over a local-only socket (see below)
 - A light, dark, or system mode in six colours, and keyboard shortcuts for every action
@@ -144,6 +145,35 @@ With a diagram open, the Outline pane is the Objects pane. It lists the diagram'
 Selecting from the pane is not an edit. It adds nothing to Undo, and the toolbar, the Properties panel, and Delete act on the selection as they do when you select on the canvas.
 
 The pane is shown or hidden, placed, and sized once for notes and diagrams. The Command Palette lists it as Toggle Outline, and also as Toggle Objects while a diagram is open.
+
+## Save to PowerPoint
+
+Save to PowerPoint writes a presentation to your Downloads folder as `<name>.pptx`, and opens the folder. It is in a presentation's right-click menu in the Files pane, below Save to PDF, and in the Command Palette as Save Presentation to PowerPoint. An unsaved edit is saved first. A file of the same name is replaced.
+
+The file has a slide for each slide of the presentation, in the same order, with the same aspect ratio and colours. Titles, text, lists, and tables are PowerPoint text and tables, so you can edit them. The slides are close to NoteLiner's and not identical: PowerPoint wraps text by its own rules, and it uses the fonts on the computer that opens the file. The file names Inter for text and JetBrains Mono for code, and a computer without them shows a substitute.
+
+| In NoteLiner | In the file |
+|---|---|
+| A slide | A slide. A slide marked `skip` and a `notes-only` slide are left out, as when you present. |
+| The slide theme | The background and colours of every slide, and the colours PowerPoint's colour pickers offer. |
+| `bg=` and `class=theme-…` on a slide | That slide's background and colours. |
+| The title | PowerPoint's title, on its band of the accent colour. |
+| Paragraphs and lists | Text with its bold, italic, strikethrough, underline, code, highlight, and links. A list keeps its bullets, numbers, and depth. A task item starts with ☐ or ☑. |
+| A quote | Text with a bar in the accent colour at its left. |
+| A code block | Text in the monospace font on the code background, in one colour. |
+| A table | A PowerPoint table. |
+| A picture | A picture inside the file, placed as the layout places it. PNG, JPEG, and GIF files go in as they are, and an SVG or WebP picture is turned into a PNG. |
+| A picture at a web address | Downloaded, with 10 seconds for each. |
+| A formula on its own line (`$$…$$`) | A picture of the formula in the slide's text colour. |
+| A formula inside a line of text (`$…$`) | Its source, in the monospace font. PowerPoint cannot hold a picture inside a line. |
+| A video | A box with the video's name and a link to it. |
+| Speaker notes | The slide's notes. |
+| Header and footer | Text at the top and bottom of each slide, with `{{name}}`, `{{date}}`, and the other placeholders filled in as they are on the day you save. |
+| Slide numbers | PowerPoint's slide number, which stays right when you reorder slides in PowerPoint. |
+
+A picture that can't be read or downloaded becomes a box with its alt text and address. The message that the file was saved says how many there were, and the Log lists each one with its slide.
+
+Save to PDF on a presentation still writes a document, not slides.
 
 ## Files Info
 

@@ -80,6 +80,8 @@ pub enum ExportKind {
     Pdf,
     /// A diagram's `.mmd` file, as it is.
     Mermaid,
+    /// A presentation as an editable PowerPoint file.
+    Pptx,
 }
 
 /// `mcp:getStatus`.
@@ -198,6 +200,8 @@ pub enum Event {
     Exported {
         kind: ExportKind,
         result: Result<PathBuf, String>,
+        /// What could not be saved in full, one line for each.
+        warnings: Vec<String>,
     },
     /// `file:import` of the file `name` finished: `{ entry, stats }`.
     Imported {
@@ -1362,15 +1366,18 @@ impl Backend {
         });
     }
 
-    /// Writes the note to the Downloads folder.
+    /// Writes the note to the Downloads folder, or to `to` (the tests).
+    ///
+    /// A presentation saved as PowerPoint goes through `crate::pptx`, which
+    /// reads its pictures and renders its formulas first.
     ///
     /// PDF goes through `noteliner-export` (Typst, in-process): Letter, 0.5 in
     /// margins, and the note's name as the title heading. The layout runs on
     /// a blocking thread. Images come from `_attachments/` beside the note.
-    pub fn export(&self, kind: ExportKind, filename: String, name: String) {
+    pub fn export(&self, kind: ExportKind, filename: String, name: String, to: Option<PathBuf>) {
         self.spawn(|core| async move {
             let result = async {
-                let (raw, note_dir) = {
+                let (raw, note_dir, presentation) = {
                     let ws = core.ws.lock().await;
                     if !ws.project.is_open() {
                         anyhow::bail!("No project is open");
@@ -1378,11 +1385,18 @@ impl Backend {
                     let raw = std::fs::read_to_string(ws.project.file_path(&filename)?)?;
                     // A note's attachments are in its own folder.
                     let note_dir = ws.project.dir()?.join(tree::folder_of(&filename));
-                    (raw, note_dir)
+                    let presentation = match kind {
+                        ExportKind::Pptx => {
+                            ws.project.read_frontmatter(&filename)["presentation"].clone()
+                        }
+                        _ => Value::Null,
+                    };
+                    (raw, note_dir, presentation)
                 };
-                let dir = downloads_dir();
+                let dir = to.unwrap_or_else(downloads_dir);
                 std::fs::create_dir_all(&dir)?;
                 let slug = export::export_slug(&name);
+                let mut warnings = Vec::new();
                 match kind {
                     ExportKind::Markdown => std::fs::write(dir.join(format!("{slug}.md")), &raw)?,
                     ExportKind::Mermaid => std::fs::write(dir.join(format!("{slug}.mmd")), &raw)?,
@@ -1394,13 +1408,30 @@ impl Backend {
                         let pdf = pdf_bytes(core.exporter.clone(), raw, name, note_dir).await?;
                         std::fs::write(dir.join(format!("{slug}.pdf")), pdf)?
                     }
+                    ExportKind::Pptx => {
+                        let out = crate::pptx::export(
+                            core.exporter.clone(),
+                            raw,
+                            presentation,
+                            name,
+                            note_dir,
+                        )
+                        .await?;
+                        std::fs::write(dir.join(format!("{slug}.pptx")), out.bytes)?;
+                        warnings = out.warnings;
+                    }
                 }
-                Ok(dir)
+                Ok((dir, warnings))
             }
             .await;
+            let (result, warnings) = match result {
+                Ok((dir, warnings)) => (Ok(dir), warnings),
+                Err(e) => (Err(e), Vec::new()),
+            };
             core.send(Event::Exported {
                 kind,
                 result: result.map_err(|e: anyhow::Error| e.to_string()),
+                warnings,
             });
         });
     }

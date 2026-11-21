@@ -15,6 +15,7 @@ laankit-richtext = { path = "crates/laankit-richtext" }
 pageliner-epub = { path = "crates/pageliner-epub" }
 noteliner-export = { path = "crates/noteliner-export" }
 noteliner-slides = { path = "crates/noteliner-slides" }
+noteliner-pptx = { path = "crates/noteliner-pptx" }
 blockliner-core = { path = "crates/blockliner-core" }
 blockliner-egui = { path = "crates/blockliner-egui" }
 printliner-core = { path = "crates/printliner-core" }

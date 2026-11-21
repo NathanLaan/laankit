@@ -20,6 +20,7 @@ pub mod presenter;
 pub mod render;
 pub mod settings;
 
+pub use color::parse as parse_color;
 pub use deck::{
     estimate_duration, normalize_presentation, parse_deck, slide_at_line, stage_size, substitute,
     Block, BlockKind, Deck, DirValue, Directives, Layout, Presentation, Slide, SourceRange, Stage,

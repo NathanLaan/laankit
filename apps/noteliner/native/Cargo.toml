@@ -18,12 +18,14 @@ laankit-egui.workspace = true
 laankit-richtext.workspace = true
 noteliner-core = { path = "../../../crates/noteliner-core" }
 noteliner-export.workspace = true
+noteliner-pptx.workspace = true
 noteliner-slides.workspace = true
 laankit-editor = { workspace = true, features = ["spellcheck"] }
 # Diagrams in a project: BlockLiner's model and its editor widgets.
 blockliner-core.workspace = true
 blockliner-egui.workspace = true
 anyhow.workspace = true
+base64.workspace = true
 chrono.workspace = true
 eframe.workspace = true
 egui.workspace = true
@@ -32,6 +34,8 @@ env_logger.workspace = true
 image.workspace = true
 log.workspace = true
 regex = "1"
+# Pictures at a web address, for Save to PowerPoint.
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
@@ -49,6 +53,8 @@ image = { version = "0.25", default-features = false, features = ["png", "ico"] 
 egui_kittest.workspace = true
 hayro = "0.8"
 tempfile = "3"
+# Reads a saved PowerPoint file back.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # --- Packaging (docs/packaging.md) --------------------------------------------
 # Run `cargo run -p xtask -- icons` first: the icons come from packaging/generated.

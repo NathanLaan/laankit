@@ -696,6 +696,10 @@ fn context_menu(
         if item(ui, icons::FILE_PDF, "Save to PDF", None) {
             act(ContextAction::Export(ExportKind::Pdf));
         }
+        // A presentation's slides, as a file PowerPoint can edit.
+        if entry.deck && item(ui, icons::FILE_EXPORT, "Save to PowerPoint", None) {
+            act(ContextAction::Export(ExportKind::Pptx));
+        }
         if item(ui, icons::FILE_LINES, "Save to Markdown", None) {
             act(ContextAction::Export(ExportKind::Markdown));
         }

@@ -47,6 +47,8 @@ pub enum Act {
     ExportDiagram,
     /// The diagram's `.mmd` file, copied to Downloads.
     ExportMermaid,
+    /// Save to PowerPoint, for the selected presentation.
+    ExportPptx,
     ToggleProperties,
     ToggleGrid,
     ToggleDimensions,
@@ -562,6 +564,15 @@ pub fn registry() -> Registry<Act, View> {
         )
         .key(Binding::physical(shift, Key::V))
         .shortcut("Ctrl+Shift+V")
+        .when(is_deck),
+    );
+    r.register(
+        add(
+            "deck.exportPptx",
+            "Save Presentation to PowerPoint",
+            "Presentation",
+            Act::ExportPptx,
+        )
         .when(is_deck),
     );
     // Not in the Svelte build, which had no presenter: F5 as in most

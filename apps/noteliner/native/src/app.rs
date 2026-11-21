@@ -1030,12 +1030,30 @@ impl NoteLinerApp {
             }
             Event::McpConfirm(req) => self.mcp_queue.push_back(req),
             Event::Update(status) => self.update = status,
-            Event::Exported { kind, result } => match result {
+            Event::Exported {
+                kind,
+                result,
+                warnings,
+            } => match result {
                 Ok(dir) => {
+                    if kind == ExportKind::Pptx {
+                        // What a slide lost is in the Log, and counted here.
+                        for w in &warnings {
+                            self.log_line(format!("Save to PowerPoint: {w}"));
+                        }
+                        self.toasts.info(match warnings.len() {
+                            0 => "Saved PowerPoint to Downloads".to_string(),
+                            1 => "Saved PowerPoint to Downloads. 1 part of a slide could not be saved in full: see the Log".to_string(),
+                            n => format!("Saved PowerPoint to Downloads. {n} parts of slides could not be saved in full: see the Log"),
+                        });
+                    }
+                    #[cfg(not(test))]
                     if let Err(e) = open::that_detached(&dir) {
                         self.toasts.info(format!("Saved to {}", dir.display()));
                         log::warn!("opening {}: {e}", dir.display());
                     }
+                    #[cfg(test)]
+                    let _ = dir;
                 }
                 Err(e) => {
                     let what = match kind {
@@ -1043,6 +1061,7 @@ impl NoteLinerApp {
                         ExportKind::Markdown => "Markdown",
                         ExportKind::Pdf => "PDF",
                         ExportKind::Mermaid => "Mermaid",
+                        ExportKind::Pptx => "PowerPoint",
                     };
                     self.toasts.error(format!("Save to {what} failed: {e}"));
                 }
@@ -1982,12 +2001,23 @@ impl NoteLinerApp {
             return;
         };
         let (name, filename) = (e.name.clone(), e.filename.clone());
+        // A presentation is what has slides to save.
+        if kind == ExportKind::Pptx && !e.deck {
+            return;
+        }
         // The file on disk is what's exported: write a pending edit first.
         self.flush_active();
-        if kind == ExportKind::Pdf {
-            self.toasts.info(format!("Saving {name} as PDF…"));
+        match kind {
+            ExportKind::Pdf => self.toasts.info(format!("Saving {name} as PDF…")),
+            ExportKind::Pptx => self.toasts.info(format!("Saving {name} as PowerPoint…")),
+            _ => {}
         }
-        self.backend.export(kind, filename, name);
+        // The tests write to their own folder, not to Downloads.
+        #[cfg(test)]
+        let to = self.diagram_export_dir.clone();
+        #[cfg(not(test))]
+        let to = None;
+        self.backend.export(kind, filename, name, to);
     }
 
     // --- Diagrams ------------------------------------------------------------------
@@ -2582,6 +2612,7 @@ impl NoteLinerApp {
             }
             Act::Diagram(act) => self.edit_diagram(act),
             Act::ExportDiagram => self.open_diagram_export(),
+            Act::ExportPptx => self.export(ExportKind::Pptx, None),
             Act::ExportMermaid => {
                 if self.diagram_active() {
                     self.export(ExportKind::Mermaid, None);
