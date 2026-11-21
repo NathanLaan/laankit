@@ -1,6 +1,6 @@
 [package]
 name = "medialiner-native"
-version = "0.2.2"
+version = "0.2.3"
 description = "MediaLiner: browse and organize the photos in your folders, where they are. An egui UI over medialiner-core."
 edition.workspace = true
 license.workspace = true

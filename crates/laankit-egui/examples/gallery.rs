@@ -571,7 +571,6 @@ impl eframe::App for Gallery {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.theme.follow_system(ui.ctx());
         window::allow_rounded_corners(ui.ctx());
-        let corner = window::corner_radius(ui.ctx());
         let ctx = ui.ctx().clone();
         // Commands first, so their keys don't reach text fields.
         if !self.modal_open() {
@@ -652,32 +651,11 @@ impl eframe::App for Gallery {
             egui::Panel::left("gallery-sidebar")
                 .resizable(true)
                 .default_size(240.0)
-                .frame(
-                    Frame::NONE
-                        .fill(p.bg_surface)
-                        .corner_radius(egui::CornerRadius {
-                            // The window's bottom-left corner, with the toolbar hidden.
-                            sw: if self.toolbar_visible { 0 } else { corner },
-                            ..Default::default()
-                        }),
-                )
+                .frame(Frame::NONE.fill(p.bg_surface))
                 .show(ui, |ui| self.sidebar(ui));
         }
         egui::CentralPanel::default()
-            .frame(
-                Frame::NONE
-                    .fill(p.bg_base)
-                    .inner_margin(Margin::same(16))
-                    .corner_radius(egui::CornerRadius {
-                        se: corner,
-                        sw: if self.toolbar_visible || self.sidebar {
-                            0
-                        } else {
-                            corner
-                        },
-                        ..Default::default()
-                    }),
-            )
+            .frame(Frame::NONE.fill(p.bg_base).inner_margin(Margin::same(16)))
             .show(ui, |ui| {
                 ScrollArea::vertical()
                     .auto_shrink(false)
@@ -700,8 +678,8 @@ impl eframe::App for Gallery {
         }
     }
 
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        window::CLEAR
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        window::clear_color(&self.theme, true, visuals)
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

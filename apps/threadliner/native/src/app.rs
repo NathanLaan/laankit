@@ -696,6 +696,7 @@ impl ThreadLinerApp {
         self.palette(&ctx);
         self.toasts.show(&ctx);
         if self.custom_titlebar {
+            window::allow_rounded_corners(&ctx);
             window::window_edges(&ctx);
         }
         if let Some(shot) = &mut self.screenshot {
@@ -1199,6 +1200,10 @@ impl ThreadLinerApp {
 impl eframe::App for ThreadLinerApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
+    }
+
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        window::clear_color(&self.theme, self.custom_titlebar, visuals)
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

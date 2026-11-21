@@ -71,15 +71,11 @@ impl<'a> ToolbarButton<'a> {
     }
 }
 
-/// The toolbar's width, its buttons' size and their icons' size, which are
-/// [`WIDTH`], [`BUTTON_SIZE`] and 16 px in Classic and larger in Modern.
-fn sizes(ctx: &egui::Context) -> (f32, f32, f32) {
-    let k = theme::shape(ctx).control_scale;
-    (
-        (WIDTH * k).round(),
-        (BUTTON_SIZE * k).round(),
-        ICON_SIZE * k,
-    )
+/// The toolbar's width, its buttons' size and their icons' size. They are
+/// the same in Classic and Modern: the toolbar doesn't scroll, and larger
+/// buttons would push the last ones off a window of the default height.
+fn sizes(_ctx: &egui::Context) -> (f32, f32, f32) {
+    (WIDTH, BUTTON_SIZE, ICON_SIZE)
 }
 
 fn limit_id() -> Id {
@@ -111,11 +107,6 @@ pub fn show(ui: &mut Ui, top: impl FnOnce(&mut Ui), bottom: impl FnOnce(&mut Ui)
         .frame(
             Frame::NONE
                 .fill(fill)
-                // The toolbar reaches the window's bottom-left corner.
-                .corner_radius(egui::CornerRadius {
-                    sw: crate::window::corner_radius(ui.ctx()),
-                    ..Default::default()
-                })
                 .inner_margin(Margin::symmetric(0, PADDING)),
         )
         .show(ui, |ui| {

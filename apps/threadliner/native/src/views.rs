@@ -79,13 +79,16 @@ fn pane_header(ui: &mut Ui, p: &Palette, title: &str) {
     let (rect, _) =
         ui.allocate_exact_size(vec2(ui.available_width(), HEADER_HEIGHT), Sense::hover());
     ui.painter().rect_filled(rect, 0.0, p.bg_base);
-    ui.painter().hline(
-        rect.x_range(),
-        rect.bottom() - 0.5,
-        Stroke::new(1.0, p.border),
-    );
+    // Modern's pane headers have no line under them.
+    if !laankit_egui::theme::shape(ui.ctx()).modern {
+        ui.painter().hline(
+            rect.x_range(),
+            rect.bottom() - 0.5,
+            Stroke::new(1.0, p.border),
+        );
+    }
     let galley = ui.painter().layout(
-        title.to_uppercase(),
+        laankit_egui::panes::heading(ui.ctx(), title),
         fonts::Style {
             weight: Some(fonts::SEMIBOLD),
             ..Default::default()
@@ -129,7 +132,7 @@ fn elide(
     };
     let mut job = egui::text::LayoutJob::single_section(
         if semibold {
-            text.to_uppercase()
+            laankit_egui::panes::heading(ui.ctx(), text)
         } else {
             text.to_string()
         },
@@ -174,7 +177,11 @@ fn row(
             StrokeKind::Inside,
         );
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, 0.0, p.bg_item_hover);
+        ui.painter().rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_item_hover,
+        );
     }
     (rect, resp)
 }
@@ -271,7 +278,11 @@ fn feed_row(ui: &Ui, p: &Palette, rect: Rect, feed: &Feed) {
         );
         let w = (text.size().x + 12.0).max(20.0);
         let badge = Rect::from_center_size(pos2(right - w / 2.0, rect.center().y), vec2(w, 18.0));
-        ui.painter().rect_filled(badge, 9.0, p.accent);
+        ui.painter().rect_filled(
+            badge,
+            laankit_egui::theme::shape(ui.ctx()).round(9),
+            p.accent,
+        );
         ui.painter()
             .galley(badge.center() - text.size() / 2.0, text, p.accent_on);
         right = badge.left() - 8.0;
@@ -307,7 +318,11 @@ fn tag_toggle(ui: &mut Ui, p: &Palette, tag: &Tag, feed: Option<&Feed>) -> egui:
     });
     let hovered = enabled && resp.hovered();
     if hovered {
-        ui.painter().rect_filled(rect, 0.0, p.bg_item_hover);
+        ui.painter().rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_item_hover,
+        );
     }
     let ink = if assigned {
         p.accent
@@ -580,7 +595,7 @@ pub fn setup(ui: &mut Ui, form: &mut SetupForm) -> Vec<ViewAction> {
         Frame::new()
             .fill(p.bg_surface)
             .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(theme::RADIUS_LARGE)
+            .corner_radius(laankit_egui::theme::shape(ui.ctx()).dialog())
             .inner_margin(Margin::same(32))
             .show(ui, |ui| {
                 ui.set_width(width);

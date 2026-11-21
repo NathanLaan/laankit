@@ -70,7 +70,7 @@ fn main() -> eframe::Result {
         .with_drag_and_drop(true)
         .with_icon(app_icon());
     if paths.prefs().custom_titlebar {
-        viewport = laankit_egui::window::undecorated(viewport);
+        viewport = laankit_egui::window::undecorated_rounded(viewport);
     }
     let options = eframe::NativeOptions {
         viewport,

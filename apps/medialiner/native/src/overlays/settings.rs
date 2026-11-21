@@ -338,8 +338,7 @@ fn ui_tab(
     theme_state: &mut ThemeState,
     out: &mut Vec<SettingsAction>,
 ) {
-    // Modern is offered once this app's own screens are drawn from the shape.
-    if settings::appearance(ui, theme_state, &laankit_egui::theme::Colour::ALL, false) {
+    if settings::appearance(ui, theme_state, &laankit_egui::theme::Colour::ALL, true) {
         out.push(SettingsAction::ThemeChanged);
     }
     settings::setting_group(ui, "UI Scale", None, |ui| {

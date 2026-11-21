@@ -113,7 +113,11 @@ fn button(ui: &mut Ui, icon: &str, title: &str, active: bool) -> bool {
     let (rect, response) = ui.allocate_exact_size(vec2(BUTTON, BUTTON), Sense::click());
     let hovered = response.hovered();
     if hovered {
-        ui.painter().rect_filled(rect, theme::RADIUS, p.bg_button);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).control(),
+            p.bg_button,
+        );
     }
     let color = if active {
         p.accent

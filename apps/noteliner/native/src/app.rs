@@ -2456,7 +2456,12 @@ impl NoteLinerApp {
     fn apply(&mut self, ctx: &egui::Context, act: Act) {
         let zoom = matches!(
             act,
-            Act::ZoomIn | Act::ZoomOut | Act::ZoomReset | Act::SetMode(_) | Act::SetColour(_)
+            Act::ZoomIn
+                | Act::ZoomOut
+                | Act::ZoomReset
+                | Act::SetMode(_)
+                | Act::SetLook(_)
+                | Act::SetColour(_)
         );
         match act {
             Act::NewFile | Act::NewPresentation => {
@@ -2620,6 +2625,7 @@ impl NoteLinerApp {
             Act::ZoomOut => self.theme.zoom_out(),
             Act::ZoomReset => self.theme.zoom_reset(),
             Act::SetMode(m) => self.theme.mode = m,
+            Act::SetLook(l) => self.theme.look = l,
             Act::SetColour(c) => self.theme.colour = c,
             Act::GoHome => self.go_home(),
             Act::Settings => {
@@ -2958,6 +2964,7 @@ impl NoteLinerApp {
         self.toasts.show(&ctx);
         self.diagram.editor.end_frame(&ctx);
         if self.custom_titlebar {
+            window::allow_rounded_corners(&ctx);
             window::window_edges(&ctx);
         }
         self.track_position();
@@ -4442,6 +4449,10 @@ impl eframe::App for NoteLinerApp {
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         self.read_displays(ui.ctx(), frame);
         self.show(ui);
+    }
+
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        window::clear_color(&self.theme, self.custom_titlebar, visuals)
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

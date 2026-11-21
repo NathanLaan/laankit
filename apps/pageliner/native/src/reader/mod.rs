@@ -188,7 +188,7 @@ pub fn tool_button(
     let painter = ui.painter();
     painter.rect(
         rect,
-        egui::CornerRadius::same(6),
+        laankit_egui::theme::shape(ui.ctx()).round(6),
         fill.gamma_multiply(alpha),
         Stroke::new(stroke.width, stroke.color.gamma_multiply(alpha)),
         egui::StrokeKind::Inside,
@@ -219,7 +219,11 @@ pub fn list_row(ui: &mut Ui, text: &str, indent: f32, current: bool) -> Response
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 24.0), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text));
     if resp.hovered() {
-        ui.painter().rect_filled(rect, 4.0, p.bg_item_hover);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).round(4),
+            p.bg_item_hover,
+        );
     }
     let color = if current {
         p.accent
@@ -285,9 +289,12 @@ pub fn annotations_pane(
         ui.horizontal(|ui| {
             ui.add_space(10.0);
             ui.label(
-                laankit_egui::fonts::weight(title.to_uppercase(), laankit_egui::fonts::SEMIBOLD)
-                    .size(10.0)
-                    .color(p.text_faint),
+                laankit_egui::fonts::weight(
+                    laankit_egui::panes::heading(ui.ctx(), title),
+                    laankit_egui::fonts::SEMIBOLD,
+                )
+                .size(10.0)
+                .color(p.text_faint),
             );
         });
         ui.add_space(2.0);
@@ -357,7 +364,11 @@ fn annotation_row(
         )
     });
     if resp.hovered() || del.hovered() {
-        ui.painter().rect_filled(rect, 4.0, p.bg_item_hover);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).round(4),
+            p.bg_item_hover,
+        );
     }
     let painter = ui.painter();
     let x = rect.left() + 10.0;

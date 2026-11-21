@@ -122,7 +122,7 @@ fn segmented<T: Copy + PartialEq>(
         };
         let first = i == 0;
         let last = i + 1 == choices.len();
-        let r = theme::RADIUS.nw;
+        let r = laankit_egui::theme::shape(ui.ctx()).control().nw;
         let corners = egui::CornerRadius {
             nw: if first { r } else { 0 },
             sw: if first { r } else { 0 },

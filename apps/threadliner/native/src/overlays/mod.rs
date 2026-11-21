@@ -212,7 +212,7 @@ pub fn tags(ctx: &egui::Context, state: &mut TagsState, tags: &[Tag]) -> Option<
             egui::Frame::new()
                 .fill(p.bg_base)
                 .stroke(egui::Stroke::new(1.0, p.border))
-                .corner_radius(theme::RADIUS)
+                .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
                 .show(ui, |ui| {
                     ui.set_min_size(egui::vec2(ui.available_width(), 220.0));
                     ui.set_max_width(ui.available_width());
@@ -305,7 +305,11 @@ fn tag_row(ui: &mut egui::Ui, p: &theme::Palette, name: &str, active: bool) -> e
             egui::StrokeKind::Inside,
         );
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, 0.0, p.bg_item_hover);
+        ui.painter().rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_item_hover,
+        );
     }
     ui.painter().text(
         egui::pos2(rect.left() + 12.0, rect.center().y),

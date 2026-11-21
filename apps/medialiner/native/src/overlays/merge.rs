@@ -215,7 +215,7 @@ pub fn show(ctx: &egui::Context, state: &mut MergeState) -> Vec<MergeAction> {
             .collect();
         egui::Frame::NONE
             .stroke(egui::Stroke::new(1.0, p.border))
-            .corner_radius(theme::RADIUS)
+            .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("medialiner-merge-tree")

@@ -15,7 +15,7 @@ use blockliner_core::style::{
     Agreement, Colour, Common, Dash, DashCommon, Weight, PRESETS, WEIGHTS,
 };
 use blockliner_core::{Diagram, HAlign, ShapeKind, VAlign};
-use egui::{pos2, vec2, Align2, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
+use egui::{pos2, vec2, Align2, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
 use laankit_egui::dialog::{self, ButtonKind};
 use laankit_egui::{icons, theme};
 
@@ -477,7 +477,7 @@ fn kind_select(
     let painter = ui.painter();
     painter.rect(
         rect,
-        CornerRadius::same(6),
+        laankit_egui::theme::shape(ui.ctx()).round(6),
         fill,
         Stroke::new(1.0, edge),
         StrokeKind::Inside,
@@ -616,7 +616,11 @@ fn row(
             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, &label));
             let square = Rect::from_center_size(rect.center(), vec2(16.0, 16.0));
             if resp.hovered() {
-                ui.painter().rect_filled(rect, 4.0, p.bg_item_hover);
+                ui.painter().rect_filled(
+                    rect,
+                    laankit_egui::theme::shape(ui.ctx()).round(4),
+                    p.bg_item_hover,
+                );
             }
             paint::swatch(ui.painter(), square, look, ringed == Some(s), &p);
             if resp.on_hover_text(label).clicked() {

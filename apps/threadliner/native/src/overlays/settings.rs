@@ -115,8 +115,7 @@ fn ui_tab(
     theme_state: &mut ThemeState,
     out: &mut Vec<SettingsAction>,
 ) {
-    // Modern is offered once this app's own screens are drawn from the shape.
-    if settings::appearance(ui, theme_state, &COLOURS, false) {
+    if settings::appearance(ui, theme_state, &COLOURS, true) {
         out.push(SettingsAction::ThemeChanged);
     }
     settings::setting_group(ui, "UI Scale", None, |ui| {
@@ -200,7 +199,7 @@ fn sync_tab(
         Frame::new()
             .fill(p.pre_bg)
             .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(theme::RADIUS)
+            .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
             .inner_margin(Margin::symmetric(10, 8))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());

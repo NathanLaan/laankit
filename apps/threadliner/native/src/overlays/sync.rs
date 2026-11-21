@@ -297,8 +297,11 @@ fn small_icon(ui: &mut egui::Ui, glyph: &str, label: &str, enabled: bool) -> egu
     let (rect, resp) = ui.allocate_exact_size(vec2(28.0, 28.0), sense);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     if enabled && resp.hovered() {
-        ui.painter()
-            .rect_filled(rect, theme::RADIUS, p.bg_button_hover);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).control(),
+            p.bg_button_hover,
+        );
     }
     ui.painter().text(
         pos2(rect.center().x, rect.center().y),

@@ -95,7 +95,11 @@ pub fn show(
         )
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("ATTACHMENTS").size(11.0).color(p.text_muted));
+                ui.label(
+                    RichText::new(laankit_egui::panes::heading(ui.ctx(), "ATTACHMENTS"))
+                        .size(11.0)
+                        .color(p.text_muted),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if icon_button(ui, icons::XMARK, "Close attachments") {
                         out.push(AttachmentAction::Close);
@@ -161,7 +165,7 @@ fn item(
     ));
     ui.painter().rect(
         rect,
-        theme::RADIUS,
+        laankit_egui::theme::shape(ui.ctx()).control(),
         if resp.hovered() {
             p.bg_item_hover
         } else {
@@ -187,7 +191,7 @@ fn item(
         egui::Image::new(uri)
             .fit_to_exact_size(thumb.size())
             .maintain_aspect_ratio(true)
-            .corner_radius(theme::RADIUS)
+            .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
             .paint_at(ui, thumb);
     } else {
         ui.painter().text(

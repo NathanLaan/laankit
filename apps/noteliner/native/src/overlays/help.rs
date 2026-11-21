@@ -116,7 +116,7 @@ pub fn show(ctx: &egui::Context, state: &mut HelpState) -> bool {
                                 section = &page.section;
                                 ui.add_space(8.0);
                                 ui.label(
-                                    RichText::new(section.to_uppercase())
+                                    RichText::new(laankit_egui::panes::heading(ui.ctx(), section))
                                         .size(11.0)
                                         .color(p.text_muted)
                                         .extra_letter_spacing(0.5),
@@ -139,10 +139,17 @@ pub fn show(ctx: &egui::Context, state: &mut HelpState) -> bool {
                                 )
                             });
                             if selected {
-                                ui.painter().rect_filled(rect, theme::RADIUS, p.bg_selected);
+                                ui.painter().rect_filled(
+                                    rect,
+                                    laankit_egui::theme::shape(ui.ctx()).control(),
+                                    p.bg_selected,
+                                );
                             } else if resp.hovered() {
-                                ui.painter()
-                                    .rect_filled(rect, theme::RADIUS, p.bg_item_hover);
+                                ui.painter().rect_filled(
+                                    rect,
+                                    laankit_egui::theme::shape(ui.ctx()).control(),
+                                    p.bg_item_hover,
+                                );
                             }
                             ui.painter().text(
                                 pos2(rect.left() + 8.0, rect.center().y),

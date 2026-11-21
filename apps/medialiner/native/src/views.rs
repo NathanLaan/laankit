@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Local};
 use egui::{
-    pos2, vec2, Align, Align2, Color32, CornerRadius, FontId, Frame, Layout, Margin, Rect,
-    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextureHandle, Ui, Vec2,
+    pos2, vec2, Align, Align2, Color32, FontId, Frame, Layout, Margin, Rect, RichText, ScrollArea,
+    Sense, Stroke, StrokeKind, TextureHandle, Ui, Vec2,
 };
 use laankit_egui::dialog::{self, ButtonKind};
 use laankit_egui::theme::{self, Palette};
@@ -206,15 +206,18 @@ fn pane_header(ui: &mut Ui, title: &str, buttons: impl FnOnce(&mut Ui)) {
         Sense::hover(),
     );
     let painter = ui.painter();
-    painter.hline(
-        rect.x_range(),
-        rect.bottom() - 0.5,
-        Stroke::new(1.0, p.border),
-    );
+    // Modern's pane headers have no line under them.
+    if !laankit_egui::theme::shape(ui.ctx()).modern {
+        painter.hline(
+            rect.x_range(),
+            rect.bottom() - 0.5,
+            Stroke::new(1.0, p.border),
+        );
+    }
     painter.text(
         pos2(rect.left() + 14.0, rect.center().y),
         Align2::LEFT_CENTER,
-        title.to_uppercase(),
+        laankit_egui::panes::heading(ui.ctx(), title),
         FontId::proportional(11.0),
         p.text_muted,
     );
@@ -381,7 +384,11 @@ pub fn files_pane(ui: &mut Ui, props: &FilesProps<'_>) -> Vec<ViewAction> {
             };
             let (rect, _) = ui.allocate_exact_size(vec2(24.0, 24.0), Sense::hover());
             if props.include_subfolders {
-                ui.painter().rect_filled(rect, theme::RADIUS, p.bg_selected);
+                ui.painter().rect_filled(
+                    rect,
+                    laankit_egui::theme::shape(ui.ctx()).control(),
+                    p.bg_selected,
+                );
             }
             if panes::header_button(
                 ui,
@@ -494,14 +501,24 @@ fn paint_file_row(
 ) {
     let painter = ui.painter();
     if selected {
-        painter.rect_filled(rect, 0.0, p.bg_selected);
-        painter.vline(
-            rect.left() + 1.0,
-            rect.y_range(),
-            Stroke::new(2.0, p.accent),
+        painter.rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_selected,
         );
+        if !laankit_egui::theme::shape(ui.ctx()).modern {
+            painter.vline(
+                rect.left() + 1.0,
+                rect.y_range(),
+                Stroke::new(2.0, p.accent),
+            );
+        }
     } else if hovered {
-        painter.rect_filled(rect, 0.0, p.bg_item_hover);
+        painter.rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_item_hover,
+        );
     }
     let cy = rect.center().y;
     let photo = f.kind.is_photo();
@@ -777,7 +794,7 @@ fn paint_cell(
 ) {
     let painter = ui.painter();
     let square = Rect::from_min_size(rect.min, vec2(cell, cell));
-    let radius = CornerRadius::same(6);
+    let radius = laankit_egui::theme::shape(ui.ctx()).round(6);
     painter.rect_filled(square, radius, p.bg_surface);
     match thumb {
         Some(Thumb::Ready(tex)) => {
@@ -1103,7 +1120,7 @@ pub fn info_pane(ui: &mut Ui, props: &InfoProps<'_>) -> Vec<ViewAction> {
 
 fn section(ui: &mut Ui, p: &Palette, title: &str) {
     ui.label(
-        RichText::new(title.to_uppercase())
+        RichText::new(laankit_egui::panes::heading(ui.ctx(), title))
             .size(11.0)
             .color(p.text_muted),
     );

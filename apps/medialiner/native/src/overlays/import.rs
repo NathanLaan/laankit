@@ -618,7 +618,7 @@ fn file_list(ui: &mut egui::Ui, items: &[Item], scanned: bool) {
     let p = theme::palette(ui.ctx());
     egui::Frame::NONE
         .stroke(egui::Stroke::new(1.0, p.border))
-        .corner_radius(theme::RADIUS)
+        .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
         .inner_margin(egui::Margin::symmetric(8, 4))
         .show(ui, |ui| {
             egui::ScrollArea::vertical()
@@ -688,7 +688,7 @@ fn folder_tree(ui: &mut egui::Ui, state: &mut ImportState) {
         .collect();
     egui::Frame::NONE
         .stroke(egui::Stroke::new(1.0, p.border))
-        .corner_radius(theme::RADIUS)
+        .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
         .show(ui, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("medialiner-import-tree")

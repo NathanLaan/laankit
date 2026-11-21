@@ -13,7 +13,7 @@
 
 use std::collections::HashSet;
 
-use egui::{pos2, vec2, Align2, CornerRadius, FontId, Key, Rect, Sense, Stroke, TextEdit, Ui};
+use egui::{pos2, vec2, Align2, FontId, Key, Rect, Sense, Stroke, TextEdit, Ui};
 use laankit_egui::icons;
 use laankit_egui::theme::{self, Palette};
 
@@ -203,7 +203,10 @@ pub fn show(ui: &mut Ui, state: &mut TreeState, props: &TreeProps<'_>) -> Vec<Tr
             }
             for (node, depth) in &rows {
                 let (rect, resp) = ui.allocate_exact_size(
-                    vec2(ui.available_width(), ROW_HEIGHT),
+                    vec2(
+                        ui.available_width(),
+                        laankit_egui::theme::shape(ui.ctx()).row_height,
+                    ),
                     Sense::click_and_drag(),
                 );
                 let indent = LEFT_PAD + *depth as f32 * INDENT;
@@ -338,7 +341,7 @@ pub fn show(ui: &mut Ui, state: &mut TreeState, props: &TreeProps<'_>) -> Vec<Tr
         if let Some((_, rect)) = &drop_target {
             ui.painter().rect_stroke(
                 rect.shrink(1.0),
-                CornerRadius::same(3),
+                3.0,
                 Stroke::new(1.0, p.accent),
                 egui::StrokeKind::Inside,
             );
@@ -398,14 +401,24 @@ fn paint_folder(
 ) {
     let painter = ui.painter();
     if selected {
-        painter.rect_filled(rect, 0.0, p.bg_selected);
-        painter.vline(
-            rect.left() + 1.0,
-            rect.y_range(),
-            Stroke::new(2.0, p.accent),
+        painter.rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_selected,
         );
+        if !laankit_egui::theme::shape(ui.ctx()).modern {
+            painter.vline(
+                rect.left() + 1.0,
+                rect.y_range(),
+                Stroke::new(2.0, p.accent),
+            );
+        }
     } else if hovered {
-        painter.rect_filled(rect, 0.0, p.bg_item_hover);
+        painter.rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_item_hover,
+        );
     }
     let cy = rect.center().y;
     painter.text(
@@ -464,14 +477,24 @@ fn paint_row(
 ) {
     let painter = ui.painter();
     if selected {
-        painter.rect_filled(rect, 0.0, p.bg_selected);
-        painter.vline(
-            rect.left() + 1.0,
-            rect.y_range(),
-            Stroke::new(2.0, p.accent),
+        painter.rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_selected,
         );
+        if !laankit_egui::theme::shape(ui.ctx()).modern {
+            painter.vline(
+                rect.left() + 1.0,
+                rect.y_range(),
+                Stroke::new(2.0, p.accent),
+            );
+        }
     } else if hovered {
-        painter.rect_filled(rect, 0.0, p.bg_item_hover);
+        painter.rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_item_hover,
+        );
     }
     let cy = rect.center().y;
     if let Some(open) = open {
@@ -504,7 +527,11 @@ fn paint_row(
             pos2(right - galley.size().x / 2.0 - 5.0, cy),
             vec2(galley.size().x + 10.0, 16.0),
         );
-        painter.rect_filled(pill, CornerRadius::same(8), p.tag_bg);
+        painter.rect_filled(
+            pill,
+            laankit_egui::theme::shape(ui.ctx()).round(8),
+            p.tag_bg,
+        );
         painter.galley(
             pill.center() - galley.size() / 2.0,
             galley,

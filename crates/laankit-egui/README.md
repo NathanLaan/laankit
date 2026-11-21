@@ -71,7 +71,23 @@ What the apps look like is three settings, chosen separately in Settings and hel
 
 `ThemeState::apply` hands the palette and the shape to the widgets, which read them with `theme::palette(ctx)` and `theme::shape(ctx)`. An app calls `ThemeState::follow_system(ctx)` each frame so that System mode follows the computer.
 
-`settings::appearance(ui, state, colours, looks)` draws the three groups. An app passes the colours it offers, and passes `looks: true` only once its own screens are drawn from the shape. No app does yet, so the apps are Classic and only the gallery offers Modern.
+`settings::appearance(ui, state, colours, looks)` draws the three groups. An app passes the colours it offers, and passes `looks: true` when its own screens are drawn from the shape, as all six apps do.
+
+An app's own drawing follows the shape through the same calls the shared widgets use:
+
+| For | Use |
+|---|---|
+| A corner of 4 px or more | `theme::shape(ctx).round(4)`, or `.control()`, `.item()`, `.menu()`, `.dialog()` |
+| The fill of a hovered or selected row | `shape.item_rect(row)` with `shape.item()`. Draw the stripe at its left only when `!shape.modern`. |
+| A heading in capitals | `panes::heading(ctx, "PROPERTIES")` |
+| A caption above a field | `settings::caption(ctx, "Name")` |
+| A tree row's height | `shape.row_height` |
+
+Corners of 1 to 3 px (a highlight behind text, a small mark) and anything in rendered content stay as they are.
+
+The window's corners are rounded in Modern. An app makes its window with `window::undecorated_rounded`, returns `window::clear_color(..)` from `eframe::App::clear_color`, and calls `window::allow_rounded_corners(ctx)` before `window::window_edges(ctx)`, which cuts the corners out of whatever was drawn.
+
+`LAANKIT_STYLE=modern cargo test --workspace` runs every UI test in Modern.
 
 The seven `ThemeId` palettes (Midnight, Dark, Dark-Purple, Light, Light-Purple, Light-Mulberry, and Light-Rasberryson) are the sets of the first five colours that existed as themes, and are still NoteLiner's slide themes. A state is saved as `{ theme, mode, style, colour, scale }`, where `theme` is the nearest of the seven. A state that has only `theme` opens as that theme's mode and colour in Classic, with the same palette.
 

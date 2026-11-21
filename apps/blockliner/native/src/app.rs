@@ -1332,6 +1332,7 @@ impl BlockLinerApp {
         self.ed.end_frame(&ctx);
         self.update_title(&ctx);
         if self.custom_titlebar {
+            window::allow_rounded_corners(&ctx);
             window::window_edges(&ctx);
         }
         if let Some(shot) = &mut self.screenshot {
@@ -1742,6 +1743,10 @@ impl BlockLinerApp {
 impl eframe::App for BlockLinerApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
+    }
+
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        window::clear_color(&self.theme, self.custom_titlebar, visuals)
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

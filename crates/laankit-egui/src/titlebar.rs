@@ -58,15 +58,7 @@ pub fn show(
         .exact_size(TITLEBAR_HEIGHT)
         .resizable(false)
         .show_separator_line(false)
-        .frame(Frame::NONE.fill(fill).corner_radius({
-            let r = window::corner_radius(ui.ctx());
-            egui::CornerRadius {
-                nw: r,
-                ne: r,
-                sw: 0,
-                se: 0,
-            }
-        }))
+        .frame(Frame::NONE.fill(fill))
         .show(ui, |ui| {
             let out = contents(ui, bar, theme, actions);
             if modern {

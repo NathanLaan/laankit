@@ -581,8 +581,8 @@ pub struct Shape {
     /// Corners of dialogs.
     pub dialog_radius: u8,
     /// How much larger than Classic's the controls are: buttons, inputs,
-    /// lists, checkboxes and the toolbar's buttons, with their padding and
-    /// icons. Their text stays the size the UI scale gives it.
+    /// lists and checkboxes, with their padding. The toolbar's buttons are
+    /// not: it doesn't scroll, so they have to keep fitting. Their text stays the size the UI scale gives it.
     pub control_scale: f32,
     /// Corners of the window itself, where the app's window allows it
     /// (see [`crate::window::corner_radius`]).

@@ -14,7 +14,7 @@ use blockliner_core::Order;
 use blockliner_egui::commands::{EditAct, EditView, When};
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
-use laankit_egui::theme::{Colour, Mode};
+use laankit_egui::theme::{Colour, Look, Mode};
 
 /// Everything a shortcut, button or palette entry can ask for.
 #[derive(Clone, Debug, PartialEq)]
@@ -91,6 +91,7 @@ pub enum Act {
     ZoomReset,
     GoHome,
     SetMode(Mode),
+    SetLook(Look),
     SetColour(Colour),
     Settings,
     About,
@@ -797,8 +798,7 @@ pub fn registry() -> Registry<Act, View> {
         .when(project_open),
     );
 
-    // Mode and colour: palette-only. Set Theme joins them when the Theme
-    // setting is offered.
+    // Mode, theme and colour: palette-only.
     for mode in Mode::ALL {
         r.register(add(
             match mode {
@@ -813,6 +813,20 @@ pub fn registry() -> Registry<Act, View> {
             },
             "Theme",
             Act::SetMode(mode),
+        ));
+    }
+    for look in Look::ALL {
+        r.register(add(
+            match look {
+                Look::Classic => "theme.look.classic",
+                Look::Modern => "theme.look.modern",
+            },
+            match look {
+                Look::Classic => "Set Theme: Classic",
+                Look::Modern => "Set Theme: Modern",
+            },
+            "Theme",
+            Act::SetLook(look),
         ));
     }
     for colour in Colour::ALL {

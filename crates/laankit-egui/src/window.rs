@@ -49,16 +49,30 @@ pub fn undecorated(viewport: egui::ViewportBuilder) -> egui::ViewportBuilder {
 
 /// [`undecorated`], and see-through where nothing is drawn, so that the
 /// window's corners can be rounded. An app that uses this also calls
-/// [`allow_rounded_corners`] once, returns [`CLEAR`] from
-/// `eframe::App::clear_color`, and rounds the panels that reach the bottom
-/// of its window by [`corner_radius`]. The title bar and the toolbar round
-/// their own corners.
+/// [`allow_rounded_corners`] each frame and returns [`CLEAR`] from
+/// `eframe::App::clear_color`. [`window_edges`] then cuts the corners out
+/// of whatever the app drew, so no panel has to round its own.
 pub fn undecorated_rounded(viewport: egui::ViewportBuilder) -> egui::ViewportBuilder {
     undecorated(viewport).with_transparent(true)
 }
 
 /// The clear colour of a window made with [`undecorated_rounded`]: nothing.
 pub const CLEAR: [f32; 4] = [0.0; 4];
+
+/// What an app returns from `eframe::App::clear_color`: nothing where the
+/// theme rounds the window's corners and the window is `undecorated`, and
+/// the panel colour otherwise.
+pub fn clear_color(
+    theme: &crate::theme::ThemeState,
+    undecorated: bool,
+    visuals: &egui::Visuals,
+) -> [f32; 4] {
+    if undecorated && custom_caption_buttons() && theme.shape().window_radius > 0 {
+        CLEAR
+    } else {
+        visuals.panel_fill.to_normalized_gamma_f32()
+    }
+}
 
 fn rounded_id() -> egui::Id {
     egui::Id::unique("laankit-window-rounded")
@@ -196,6 +210,41 @@ fn caption_button(ui: &mut Ui, button: Caption, height: f32, ink: Color32) -> Re
     resp.on_hover_text(RichText::new(label))
 }
 
+/// Clears the window's four corners outside a `radius` curve, so the desktop
+/// shows there. egui can only draw over what is there, so this clears the
+/// pixels directly, a row at a time. The hairline drawn after it smooths
+/// the edge.
+fn cut_corners(rect: Rect, radius: f32) -> egui::Shape {
+    use eframe::glow::{self, HasContext as _};
+    let cut = move |info: egui::PaintCallbackInfo, painter: &eframe::egui_glow::Painter| {
+        let gl = painter.gl();
+        let [w, h] = info.screen_size_px.map(|v| v as i32);
+        let r = (radius * info.pixels_per_point).round();
+        // Safety: plain state changes and clears on the context being painted.
+        unsafe {
+            gl.enable(glow::SCISSOR_TEST);
+            gl.clear_color(0.0, 0.0, 0.0, 0.0);
+            for row in 0..r as i32 {
+                let dy = r - (row as f32 + 0.5);
+                let width = (r - (r * r - dy * dy).sqrt()).round() as i32;
+                if width <= 0 {
+                    continue;
+                }
+                for y in [h - 1 - row, row] {
+                    for x in [0, w - width] {
+                        gl.scissor(x, y, width, 1);
+                        gl.clear(glow::COLOR_BUFFER_BIT);
+                    }
+                }
+            }
+        }
+    };
+    egui::Shape::Callback(egui::PaintCallback {
+        rect,
+        callback: std::sync::Arc::new(eframe::egui_glow::CallbackFn::new(cut)),
+    })
+}
+
 /// A hairline round the window, and resizing from its edges and corners
 /// (when not maximized). Call once per frame, after the panels.
 pub fn window_edges(ctx: &egui::Context) {
@@ -212,13 +261,17 @@ pub fn window_edges(ctx: &egui::Context) {
     }
     let r = ctx.content_rect();
     let border = crate::theme::palette(ctx).border;
-    ctx.layer_painter(egui::LayerId::new(
+    let radius = corner_radius(ctx);
+    let painter = ctx.layer_painter(egui::LayerId::new(
         egui::Order::Foreground,
         egui::Id::unique("window-border"),
-    ))
-    .rect_stroke(
+    ));
+    if radius > 0 {
+        painter.add(cut_corners(r, f32::from(radius)));
+    }
+    painter.rect_stroke(
         r,
-        corner_radius(ctx),
+        radius,
         egui::Stroke::new(1.0, border),
         egui::StrokeKind::Inside,
     );

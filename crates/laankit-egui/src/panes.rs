@@ -396,6 +396,17 @@ fn draw_header(
     closed
 }
 
+/// The text of a heading an app draws itself (a pane's or a section's
+/// caption): in capitals in Classic, and `Files` or `Recent Files` in
+/// Modern. A heading that isn't all capitals is left as written in Modern.
+pub fn heading(ctx: &egui::Context, text: &str) -> String {
+    if theme::shape(ctx).modern {
+        title_case(text)
+    } else {
+        text.to_uppercase()
+    }
+}
+
 /// `FILES` as `Files`, and `RECENT FILES` as `Recent Files`. A title that
 /// isn't all capitals is left as it is.
 fn title_case(title: &str) -> String {

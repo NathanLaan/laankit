@@ -319,9 +319,17 @@ fn outline(ui: &mut Ui, text: &str, cursor_line: usize) -> Option<usize> {
 
 fn outline_row(ui: &Ui, p: &Palette, rect: Rect, h: &Heading, active: bool, hovered: bool) {
     if active {
-        ui.painter().rect_filled(rect, 0.0, p.bg_selected);
+        ui.painter().rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_selected,
+        );
     } else if hovered {
-        ui.painter().rect_filled(rect, 0.0, p.bg_item_hover);
+        ui.painter().rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_item_hover,
+        );
     }
     let left = rect.left() + 8.0 + (h.level - 1) as f32 * 14.0;
     let font = FontId::proportional(if h.level == 1 { 13.0 } else { 12.5 });

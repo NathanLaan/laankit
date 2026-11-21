@@ -180,8 +180,7 @@ fn ui_tab(
     theme_state: &mut ThemeState,
     out: &mut Vec<SettingsAction>,
 ) {
-    // Modern is offered once this app's own screens are drawn from the shape.
-    if settings::appearance(ui, theme_state, &laankit_egui::theme::Colour::ALL, false) {
+    if settings::appearance(ui, theme_state, &laankit_egui::theme::Colour::ALL, true) {
         out.push(SettingsAction::ThemeChanged);
     }
     settings::setting_group(ui, "UI Scale", None, |ui| {
@@ -411,7 +410,7 @@ fn mcp_tab(ui: &mut egui::Ui, state: &mut SettingsState, out: &mut Vec<SettingsA
             egui::Frame::NONE
                 .fill(p.pre_bg)
                 .stroke(egui::Stroke::new(1.0, p.border))
-                .corner_radius(theme::RADIUS)
+                .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
                 .inner_margin(egui::Margin::same(10))
                 .show(ui, |ui| {
                     ui.label(
