@@ -14,7 +14,7 @@ use blockliner_core::Order;
 use blockliner_egui::commands::{EditAct, EditView, When};
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
-use laankit_egui::theme::ThemeId;
+use laankit_egui::theme::{Colour, Look, Mode};
 
 /// Everything a shortcut, button or palette entry can ask for.
 #[derive(Clone, Debug, PartialEq)]
@@ -90,7 +90,9 @@ pub enum Act {
     ZoomOut,
     ZoomReset,
     GoHome,
-    SetTheme(ThemeId),
+    SetMode(Mode),
+    SetLook(Look),
+    SetColour(Colour),
     Settings,
     About,
     Help,
@@ -796,13 +798,58 @@ pub fn registry() -> Registry<Act, View> {
         .when(project_open),
     );
 
-    // Theme: palette-only.
-    for (id, label, theme) in [
-        ("theme.midnight", "Set Theme: Midnight", ThemeId::Midnight),
-        ("theme.dark", "Set Theme: Dark", ThemeId::Dark),
-        ("theme.light", "Set Theme: Light", ThemeId::Light),
-    ] {
-        r.register(add(id, label, "Theme", Act::SetTheme(theme)));
+    // Mode, theme and colour: palette-only.
+    for mode in Mode::ALL {
+        r.register(add(
+            match mode {
+                Mode::Light => "theme.mode.light",
+                Mode::Dark => "theme.mode.dark",
+                Mode::System => "theme.mode.system",
+            },
+            match mode {
+                Mode::Light => "Set Mode: Light",
+                Mode::Dark => "Set Mode: Dark",
+                Mode::System => "Set Mode: System",
+            },
+            "Theme",
+            Act::SetMode(mode),
+        ));
+    }
+    for look in Look::ALL {
+        r.register(add(
+            match look {
+                Look::Classic => "theme.look.classic",
+                Look::Modern => "theme.look.modern",
+            },
+            match look {
+                Look::Classic => "Set Theme: Classic",
+                Look::Modern => "Set Theme: Modern",
+            },
+            "Theme",
+            Act::SetLook(look),
+        ));
+    }
+    for colour in Colour::ALL {
+        r.register(add(
+            match colour {
+                Colour::Blue => "theme.colour.blue",
+                Colour::Purple => "theme.colour.purple",
+                Colour::Midnight => "theme.colour.midnight",
+                Colour::Mulberry => "theme.colour.mulberry",
+                Colour::Rasberryson => "theme.colour.rasberryson",
+                Colour::Neutral => "theme.colour.neutral",
+            },
+            match colour {
+                Colour::Blue => "Set Colour: Blue",
+                Colour::Purple => "Set Colour: Purple",
+                Colour::Midnight => "Set Colour: Midnight",
+                Colour::Mulberry => "Set Colour: Mulberry",
+                Colour::Rasberryson => "Set Colour: Rasberryson",
+                Colour::Neutral => "Set Colour: Neutral",
+            },
+            "Theme",
+            Act::SetColour(colour),
+        ));
     }
 
     // App

@@ -15,7 +15,6 @@ use crate::{icons, theme};
 pub const WIDTH: f32 = 48.0;
 /// `.toolbar-btn`: 36 × 36, 6 px corners, 16 px icons.
 pub const BUTTON_SIZE: f32 = 36.0;
-const BUTTON_RADIUS: u8 = 6;
 const ICON_SIZE: f32 = 16.0;
 /// `gap: 4px`.
 const GAP: f32 = 4.0;
@@ -72,6 +71,13 @@ impl<'a> ToolbarButton<'a> {
     }
 }
 
+/// The toolbar's width, its buttons' size and their icons' size. They are
+/// the same in Classic and Modern: the toolbar doesn't scroll, and larger
+/// buttons would push the last ones off a window of the default height.
+fn sizes(_ctx: &egui::Context) -> (f32, f32, f32) {
+    (WIDTH, BUTTON_SIZE, ICON_SIZE)
+}
+
 fn limit_id() -> Id {
     Id::unique("laankit-toolbar-top-limit")
 }
@@ -82,7 +88,8 @@ fn limit_id() -> Id {
 /// some documents when the window is too short for them.
 pub fn fits(ui: &Ui, buttons: usize) -> bool {
     let limit: f32 = ui.data(|d| d.get_temp(limit_id())).unwrap_or(f32::INFINITY);
-    let needed = DIVIDER_HEIGHT + GAP + buttons as f32 * (BUTTON_SIZE + GAP);
+    let (_, size, _) = sizes(ui.ctx());
+    let needed = DIVIDER_HEIGHT + GAP + buttons as f32 * (size + GAP);
     ui.cursor().top() + needed <= limit
 }
 
@@ -90,12 +97,16 @@ pub fn fits(ui: &Ui, buttons: usize) -> bool {
 /// spacer, then `bottom` against the bottom edge.
 pub fn show(ui: &mut Ui, top: impl FnOnce(&mut Ui), bottom: impl FnOnce(&mut Ui)) {
     let p = theme::palette(ui.ctx());
+    let modern = theme::shape(ui.ctx()).modern;
+    // Modern: the toolbar and the sidebar share one colour, with no line between.
+    let fill = if modern { p.bg_base } else { p.bg_overlay };
     egui::Panel::left("laankit-toolbar")
-        .exact_size(WIDTH)
+        .exact_size(sizes(ui.ctx()).0)
         .resizable(false)
+        .show_separator_line(!modern)
         .frame(
             Frame::NONE
-                .fill(p.bg_overlay)
+                .fill(fill)
                 .inner_margin(Margin::symmetric(0, PADDING)),
         )
         .show(ui, |ui| {
@@ -145,9 +156,13 @@ pub fn button(ui: &mut Ui, b: ToolbarButton<'_>) -> Response {
     } else {
         Sense::click()
     };
-    let (rect, resp) = ui.allocate_exact_size(vec2(BUTTON_SIZE, BUTTON_SIZE), sense);
+    let (_, size, icon_size) = sizes(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(vec2(size, size), sense);
     let hovered = resp.hovered() && !b.disabled;
-    let (fill, ink, outline) = if b.active {
+    let (fill, ink, outline) = if b.active && theme::shape(ui.ctx()).modern {
+        // A tinted fill alone marks the selected button.
+        (p.bg_selected, p.accent, Stroke::NONE)
+    } else if b.active {
         (p.bg_selected, p.accent, Stroke::new(1.0, p.accent))
     } else if hovered {
         (p.bg_button, p.text_primary, Stroke::NONE)
@@ -162,12 +177,13 @@ pub fn button(ui: &mut Ui, b: ToolbarButton<'_>) -> Response {
         ink
     };
     let painter = ui.painter();
-    painter.rect(rect, BUTTON_RADIUS, fill, outline, egui::StrokeKind::Inside);
+    let radius = theme::shape(ui.ctx()).round(6);
+    painter.rect(rect, radius, fill, outline, egui::StrokeKind::Inside);
     painter.text(
         rect.center(),
         Align2::CENTER_CENTER,
         b.icon,
-        icons::font(ICON_SIZE),
+        icons::font(icon_size),
         ink,
     );
     let label = b.label.unwrap_or(b.title).to_owned();

@@ -65,7 +65,7 @@ impl<'a> NotPorted<'a> {
         let card = Rect::from_center_size(area.center(), vec2(width, height.min(area.height())));
         ui.painter().rect(
             card,
-            theme::RADIUS_LARGE,
+            theme::shape(ui.ctx()).dialog(),
             p.bg_surface,
             Stroke::new(1.0, p.border),
             StrokeKind::Inside,
@@ -115,7 +115,9 @@ impl<'a> NotPorted<'a> {
             } else {
                 p.accent
             };
-            child.painter().rect_filled(r, theme::RADIUS, fill);
+            child
+                .painter()
+                .rect_filled(r, theme::shape(ui.ctx()).control(), fill);
             child.painter().text(
                 r.left_center() + vec2(pad.x + 6.0, 0.0),
                 Align2::CENTER_CENTER,

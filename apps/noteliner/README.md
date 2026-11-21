@@ -25,7 +25,7 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - PDF and HTML export (PDF rendered in-process with Typst)
 - Deleted notes, folders, and attachments go to the system's trash
 - Optional MCP server to expose the open project to AI assistants over a local-only socket (see below)
-- Built-in themes and keyboard shortcuts for every action
+- A light, dark, or system mode in six colours, and keyboard shortcuts for every action
 
 ## What a project is
 

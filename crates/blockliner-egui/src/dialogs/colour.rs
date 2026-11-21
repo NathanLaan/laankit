@@ -57,14 +57,14 @@ pub fn show(ctx: &egui::Context, state: &mut ColourState) -> Option<ColourAction
                 match paint::colour(parsed.as_ref()) {
                     Some(c) => ui.painter().rect(
                         rect,
-                        theme::RADIUS.nw,
+                        laankit_egui::theme::shape(ui.ctx()).control().nw,
                         c,
                         Stroke::new(1.0, p.border),
                         StrokeKind::Inside,
                     ),
                     None => ui.painter().rect_stroke(
                         rect,
-                        theme::RADIUS.nw,
+                        laankit_egui::theme::shape(ui.ctx()).control().nw,
                         Stroke::new(1.0, p.text_faint),
                         StrokeKind::Inside,
                     ),

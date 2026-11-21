@@ -37,7 +37,7 @@ impl eframe::App for App {
 }
 ```
 
-`examples/gallery.rs` shows every widget in every theme:
+`examples/gallery.rs` shows every widget in every mode, theme, and colour:
 
 ```bash
 cargo run -p laankit-egui --example gallery
@@ -47,17 +47,49 @@ cargo run -p laankit-egui --example gallery
 
 | Module        | What it does                                                                                   |
 |---------------|------------------------------------------------------------------------------------------------|
-| `theme`       | The six desktop-ui themes (generated from `theme/index.svelte.js`), UI scale steps, egui `Visuals` |
+| `theme`       | Mode, theme, and colour (see Themes below), UI scale steps, egui `Visuals`                      |
 | `fonts`       | Bundled Inter / JetBrains Mono / Font Awesome; weights and italics; system-font fallback        |
 | `icons`       | Font Awesome codepoints, drawn in the icon font family                                          |
-| `window`      | Undecorated-window chrome: drag, double-click maximize, edge resize, caption buttons            |
+| `window`      | Undecorated-window chrome: drag, double-click maximize, edge resize, caption buttons, rounded corners (`undecorated_rounded`, `corner_radius`) |
 | `titlebar`    | `TitleBar.svelte`: toolbar toggle, app actions, title, UI-scale dropdown, window controls       |
 | `toolbar`     | `Toolbar`, `ToolbarButton`, `ToolbarDivider`, `ToolbarSpacer`                                   |
 | `toast`       | Info, success and error notices at the bottom centre                                            |
-| `diagnostics` | `LAANKIT_SCREENSHOT`, `LAANKIT_SCREENSHOT_EXIT`, `LAANKIT_THEME`, `LAANKIT_SCALE`                   |
+| `diagnostics` | `LAANKIT_SCREENSHOT`, `LAANKIT_SCREENSHOT_EXIT`, `LAANKIT_MODE`, `LAANKIT_STYLE`, `LAANKIT_COLOUR`, `LAANKIT_THEME`, `LAANKIT_SCALE` |
 | `dialog`      | Compact and full-size modals (`.modal-compact`, `.modal`), text inputs, buttons, `confirm`       |
 | `file_dialog` | `FileDialogs`: runs an `rfd` dialog on its own thread on Linux, so the window keeps answering the compositor (no "not responding" prompt) |
 | `commands`, `palette`, `settings`, `panes`, `tabs`, `about`, `not_ported` | Command registry and palette, settings shell, pane host, document tabs, about dialog, "not in the native build yet" panel |
+
+## Themes
+
+What the apps look like is three settings, chosen separately in Settings and held in `ThemeState`.
+
+| Setting | Type | Choices | Decides |
+|---|---|---|---|
+| Mode | `Mode` | Light, Dark, System | Whether the light or the dark set of the colour is used. System follows the computer, and is Dark where the computer reports nothing. |
+| Theme | `Look` | Classic, Modern | The `Shape`: corners, row and header heights, and how the title bar, toolbar, pane headers, tabs, selections, and buttons are drawn. |
+| Colour | `Colour` | Blue, Purple, Midnight, Mulberry, Rasberryson, Neutral | A light and a dark `Palette`. |
+
+`ThemeState::apply` hands the palette and the shape to the widgets, which read them with `theme::palette(ctx)` and `theme::shape(ctx)`. An app calls `ThemeState::follow_system(ctx)` each frame so that System mode follows the computer.
+
+`settings::appearance(ui, state, colours, looks)` draws the three groups. An app passes the colours it offers, and passes `looks: true` when its own screens are drawn from the shape, as all six apps do.
+
+An app's own drawing follows the shape through the same calls the shared widgets use:
+
+| For | Use |
+|---|---|
+| A corner of 4 px or more | `theme::shape(ctx).round(4)`, or `.control()`, `.item()`, `.menu()`, `.dialog()` |
+| The fill of a hovered or selected row | `shape.item_rect(row)` with `shape.item()`. Draw the stripe at its left only when `!shape.modern`. |
+| A heading in capitals | `panes::heading(ctx, "PROPERTIES")` |
+| A caption above a field | `settings::caption(ctx, "Name")` |
+| A tree row's height | `shape.row_height` |
+
+Corners of 1 to 3 px (a highlight behind text, a small mark) and anything in rendered content stay as they are.
+
+The window's corners are rounded in Modern. An app makes its window with `window::undecorated_rounded`, returns `window::clear_color(..)` from `eframe::App::clear_color`, and calls `window::allow_rounded_corners(ctx)` before `window::window_edges(ctx)`, which cuts the corners out of whatever was drawn.
+
+`LAANKIT_STYLE=modern cargo test --workspace` runs every UI test in Modern.
+
+The seven `ThemeId` palettes (Midnight, Dark, Dark-Purple, Light, Light-Purple, Light-Mulberry, and Light-Rasberryson) are the sets of the first five colours that existed as themes, and are still NoteLiner's slide themes. A state is saved as `{ theme, mode, style, colour, scale }`, where `theme` is the nearest of the seven. A state that has only `theme` opens as that theme's mode and colour in Classic, with the same palette.
 
 ## Fonts
 
@@ -87,7 +119,7 @@ Anything these faces lack (CJK, emoji, Arabic, Devanagari, …) falls back to th
 ## Diagnostics
 
 ```bash
-WAYLAND_DISPLAY= LAANKIT_THEME=light LAANKIT_SCALE=125 \
+WAYLAND_DISPLAY= LAANKIT_MODE=light LAANKIT_STYLE=modern LAANKIT_COLOUR=purple LAANKIT_SCALE=125 \
   LAANKIT_SCREENSHOT=/tmp/shot.png LAANKIT_SCREENSHOT_EXIT=1 \
   cargo run -p laankit-egui --example gallery
 ```

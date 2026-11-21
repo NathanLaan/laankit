@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use egui::{pos2, vec2, Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui};
+use egui::{pos2, vec2, Color32, FontId, Rect, RichText, Sense, Stroke, Ui};
 use laankit_egui::theme::{self, Palette};
 use laankit_egui::{fonts, icons, settings};
 
@@ -55,7 +55,7 @@ pub fn sidebar(ui: &mut Ui, counts: Counts, filter: FormatFilter) -> Vec<ViewAct
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
                 ui.label(
-                    RichText::new("LIBRARY")
+                    RichText::new(laankit_egui::panes::heading(ui.ctx(), "LIBRARY"))
                         .size(10.0)
                         .color(p.text_faint)
                         .extra_letter_spacing(0.5),
@@ -129,7 +129,7 @@ fn nav_item(
         (Color32::TRANSPARENT, p.text_secondary)
     };
     let painter = ui.painter();
-    painter.rect_filled(rect, CornerRadius::same(6), fill);
+    painter.rect_filled(rect, laankit_egui::theme::shape(ui.ctx()).round(6), fill);
     painter.text(
         pos2(rect.left() + 18.0, rect.center().y),
         egui::Align2::CENTER_CENTER,
@@ -156,7 +156,11 @@ fn nav_item(
         ),
         vec2(count_galley.size().x + 16.0, 17.0),
     );
-    painter.rect_filled(pill, CornerRadius::same(10), p.bg_button);
+    painter.rect_filled(
+        pill,
+        laankit_egui::theme::shape(ui.ctx()).round(10),
+        p.bg_button,
+    );
     painter.galley(
         pill.center() - count_galley.size() / 2.0,
         count_galley,
@@ -185,8 +189,11 @@ fn foot_button(
         p.text_secondary
     };
     if hovered {
-        ui.painter()
-            .rect_filled(rect, CornerRadius::same(6), p.bg_item_hover);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).round(6),
+            p.bg_item_hover,
+        );
     }
     let icon_x = if label.is_some() {
         rect.left() + 18.0
@@ -331,8 +338,11 @@ fn count_pill(ui: &mut Ui, p: &Palette, n: usize) {
         ui.painter()
             .layout_no_wrap(n.to_string(), FontId::proportional(12.0), p.text_muted);
     let (rect, _) = ui.allocate_exact_size(vec2(galley.size().x + 16.0, 18.0), Sense::hover());
-    ui.painter()
-        .rect_filled(rect, CornerRadius::same(10), p.bg_button);
+    ui.painter().rect_filled(
+        rect,
+        laankit_egui::theme::shape(ui.ctx()).round(10),
+        p.bg_button,
+    );
     ui.painter()
         .galley(rect.center() - galley.size() / 2.0, galley, p.text_muted);
 }
@@ -354,7 +364,7 @@ fn import_button(ui: &mut Ui, p: &Palette, label: &str) -> egui::Response {
     };
     ui.painter().rect(
         rect,
-        CornerRadius::same(6),
+        laankit_egui::theme::shape(ui.ctx()).round(6),
         fill,
         Stroke::new(1.0, p.accent),
         egui::StrokeKind::Inside,
@@ -386,17 +396,21 @@ fn book_card(
     if selected {
         painter.rect(
             rect,
-            CornerRadius::same(8),
+            laankit_egui::theme::shape(ui.ctx()).round(8),
             p.bg_selected,
             Stroke::new(1.0, p.accent),
             egui::StrokeKind::Inside,
         );
     } else if hovered {
-        painter.rect_filled(rect, CornerRadius::same(8), p.bg_item_hover);
+        painter.rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).round(8),
+            p.bg_item_hover,
+        );
     }
     let inner = rect.shrink(CARD_PAD);
     let cover_rect = Rect::from_min_size(inner.min, vec2(inner.width(), inner.width() * 1.5));
-    let radius = CornerRadius::same(6);
+    let radius = laankit_egui::theme::shape(ui.ctx()).round(6);
     painter.rect_filled(cover_rect, radius, p.bg_button);
     match cover {
         Some(Cover::Ready(tex)) => {
@@ -438,11 +452,7 @@ fn book_card(
         cover_rect.min + vec2(6.0, 6.0),
         badge.size() + vec2(12.0, 4.0),
     );
-    painter.rect_filled(
-        badge_rect,
-        CornerRadius::same(3),
-        Color32::from_black_alpha(140),
-    );
+    painter.rect_filled(badge_rect, 3.0, Color32::from_black_alpha(140));
     painter.galley(badge_rect.min + vec2(6.0, 2.0), badge, Color32::WHITE);
 
     // Remove button (on hover).
@@ -462,7 +472,11 @@ fn book_card(
         } else {
             Color32::from_black_alpha(140)
         };
-        painter.rect_filled(del_rect, CornerRadius::same(4), fill);
+        painter.rect_filled(
+            del_rect,
+            laankit_egui::theme::shape(ui.ctx()).round(4),
+            fill,
+        );
         painter.text(
             del_rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -624,7 +638,7 @@ pub fn drop_overlay(ctx: &egui::Context) {
     let target = screen.shrink(24.0);
     painter.rect_stroke(
         target,
-        CornerRadius::same(12),
+        laankit_egui::theme::shape(ctx).round(12),
         Stroke::new(2.0, p.accent),
         egui::StrokeKind::Inside,
     );

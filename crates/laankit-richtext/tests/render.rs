@@ -28,10 +28,7 @@ fn harness(theme: ThemeId) -> Harness<'static, State> {
     let state = State {
         doc: from_article_html(HTML, Some("https://example.com/post")),
         view: RichView::default(),
-        theme: ThemeState {
-            theme,
-            ..Default::default()
-        },
+        theme: ThemeState::of(theme),
         ready: false,
     };
     Harness::builder()

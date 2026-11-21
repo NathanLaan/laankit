@@ -168,7 +168,9 @@ fn new_diagram_opens_the_canvas_with_blockliners_tools() {
     }
     assert!(h.query_by_label("Show More Shapes").is_some());
     assert!(h.query_by_role(Role::MultilineTextInput).is_none());
-    assert!(h.query_by_label("PROPERTIES").is_some());
+    assert!(h
+        .query_by_label(&laankit_egui::panes::heading(&h.ctx, "PROPERTIES"))
+        .is_some());
 
     // Draw a rectangle with the toolbar button: it's written to the file.
     h.get_by_label("Rectangle").click();
@@ -238,7 +240,9 @@ fn a_note_tab_and_a_diagram_tab_keep_their_state() {
     assert_eq!(h.state().diagram_file_id(), None);
     assert!(h.query_by_role(Role::MultilineTextInput).is_some());
     assert!(h.query_by_label("Rectangle").is_none());
-    assert!(h.query_by_label("PROPERTIES").is_none());
+    assert!(h
+        .query_by_label(&laankit_egui::panes::heading(&h.ctx, "PROPERTIES"))
+        .is_none());
     // A tool key does nothing to the diagram now.
     h.key_press(Key::R);
     h.run_steps(2);

@@ -54,7 +54,7 @@ fn main() -> eframe::Result {
         .with_min_inner_size([760.0, 480.0])
         .with_icon(app_icon());
     if paths.prefs().custom_titlebar {
-        viewport = laankit_egui::window::undecorated(viewport);
+        viewport = laankit_egui::window::undecorated_rounded(viewport);
     }
     let options = eframe::NativeOptions {
         viewport,

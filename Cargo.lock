@@ -823,7 +823,7 @@ dependencies = [
 
 [[package]]
 name = "blockliner-native"
-version = "2.9.0"
+version = "2.9.1"
 dependencies = [
  "anyhow",
  "blockliner-core",
@@ -4150,7 +4150,7 @@ dependencies = [
 
 [[package]]
 name = "medialiner-native"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4467,7 +4467,7 @@ dependencies = [
 
 [[package]]
 name = "noteliner-native"
-version = "3.4.3"
+version = "3.4.4"
 dependencies = [
  "anyhow",
  "blockliner-core",
@@ -5073,7 +5073,7 @@ dependencies = [
 
 [[package]]
 name = "pageliner-native"
-version = "2.3.2"
+version = "2.3.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5646,7 +5646,7 @@ dependencies = [
 
 [[package]]
 name = "printliner-native"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -7303,7 +7303,7 @@ dependencies = [
 
 [[package]]
 name = "threadliner-native"
-version = "2.3.2"
+version = "2.3.3"
 dependencies = [
  "anyhow",
  "chrono",

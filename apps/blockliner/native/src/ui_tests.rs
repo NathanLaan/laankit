@@ -317,10 +317,15 @@ fn units_and_dimension_lines_are_saved() {
     two_shapes(&mut h);
     h.run_steps(2);
 
-    // Inches, and the lines off again, from Settings.
+    // Inches, and the lines off again, from Settings. The window is made
+    // taller so that the whole page is in reach without scrolling.
+    h.set_size(egui::vec2(1280.0, 1200.0));
+    h.run_steps(2);
     h.get_by_label("Settings").click();
     h.run_steps(3);
-    h.get_by_label("Units / Grid Mark").click();
+    // The list, and not its caption, which Modern writes the same way.
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Units / Grid Mark")
+        .click();
     h.run_steps(2);
     h.get_by_label("Inches (in)").click();
     h.run_steps(2);

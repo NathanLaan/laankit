@@ -8,7 +8,7 @@ pub mod preview;
 pub mod sidebar;
 pub mod tree;
 
-use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui};
+use egui::{pos2, vec2, Align2, Color32, FontId, Rect, RichText, Sense, Stroke, Ui};
 use laankit_egui::theme::{self, Palette};
 use laankit_egui::{fonts, icons};
 
@@ -63,10 +63,13 @@ pub fn open_screen(ui: &mut Ui, recent: &[Recent]) -> Option<OpenAction> {
                     }
                     ui.add_space(36.0);
                     ui.label(
-                        fonts::weight("RECENT PROJECTS", fonts::SEMIBOLD)
-                            .size(11.0)
-                            .color(p.text_muted)
-                            .extra_letter_spacing(0.5),
+                        fonts::weight(
+                            laankit_egui::panes::heading(ui.ctx(), "RECENT PROJECTS"),
+                            fonts::SEMIBOLD,
+                        )
+                        .size(11.0)
+                        .color(p.text_muted)
+                        .extra_letter_spacing(0.5),
                     );
                     ui.add_space(8.0);
                     for r in recent {
@@ -91,7 +94,7 @@ fn action_button(ui: &mut Ui, p: &Palette, glyph: &str, label: &str) -> egui::Re
     let hovered = resp.hovered();
     ui.painter().rect(
         rect,
-        CornerRadius::same(6),
+        laankit_egui::theme::shape(ui.ctx()).round(6),
         if hovered {
             p.bg_button_hover
         } else {
@@ -129,7 +132,11 @@ fn recent_row(ui: &mut Ui, p: &Palette, r: &Recent) -> Option<OpenAction> {
     x.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Remove from list"));
     let painter = ui.painter();
     if resp.hovered() || x.hovered() {
-        painter.rect_filled(rect, CornerRadius::same(6), p.bg_item_hover);
+        painter.rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).round(6),
+            p.bg_item_hover,
+        );
     }
     painter.text(
         pos2(rect.left() + 18.0, rect.center().y),
@@ -415,7 +422,7 @@ pub fn drop_overlay(ctx: &egui::Context, message: &str) {
     let target = screen.shrink(24.0);
     painter.rect_stroke(
         target,
-        CornerRadius::same(12),
+        laankit_egui::theme::shape(ctx).round(12),
         Stroke::new(2.0, p.accent),
         egui::StrokeKind::Inside,
     );

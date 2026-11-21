@@ -83,9 +83,12 @@ impl Preview {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(if is_deck { "SLIDES" } else { "PREVIEW" })
-                            .size(11.0)
-                            .color(p.text_muted),
+                        RichText::new(laankit_egui::panes::heading(
+                            ui.ctx(),
+                            if is_deck { "SLIDES" } else { "PREVIEW" },
+                        ))
+                        .size(11.0)
+                        .color(p.text_muted),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let close = ui

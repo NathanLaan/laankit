@@ -338,11 +338,9 @@ fn ui_tab(
     theme_state: &mut ThemeState,
     out: &mut Vec<SettingsAction>,
 ) {
-    settings::setting_group(ui, "Theme", None, |ui| {
-        if settings::theme_list(ui, theme_state) {
-            out.push(SettingsAction::ThemeChanged);
-        }
-    });
+    if settings::appearance(ui, theme_state, &laankit_egui::theme::Colour::ALL, true) {
+        out.push(SettingsAction::ThemeChanged);
+    }
     settings::setting_group(ui, "UI Scale", None, |ui| {
         if settings::scale_list(ui, theme_state) {
             out.push(SettingsAction::ThemeChanged);

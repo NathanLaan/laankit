@@ -482,7 +482,7 @@ pub fn tags_pane(
                                 if over {
                                     ui.painter().rect_stroke(
                                         resp.rect.expand(1.0),
-                                        theme::RADIUS,
+                                        laankit_egui::theme::shape(ui.ctx()).control(),
                                         Stroke::new(2.0, p.accent),
                                         egui::StrokeKind::Outside,
                                     );
@@ -543,7 +543,7 @@ fn chip(
     let hovered = enabled && resp.hovered();
     ui.painter().rect(
         rect,
-        theme::RADIUS,
+        laankit_egui::theme::shape(ui.ctx()).control(),
         fill.gamma_multiply(alpha),
         if active {
             Stroke::new(1.0, swatch.map_or(p.accent, |s| s.color()))
@@ -608,8 +608,11 @@ pub fn filter_button(
         "Filter by tags",
     );
     if !hidden.is_empty() {
-        ui.painter()
-            .rect_filled(rect.shrink(1.0), theme::RADIUS, p.bg_selected);
+        ui.painter().rect_filled(
+            rect.shrink(1.0),
+            laankit_egui::theme::shape(ui.ctx()).control(),
+            p.bg_selected,
+        );
         ui.painter().text(
             rect.center() - vec2(4.0, 0.0),
             Align2::CENTER_CENTER,
@@ -649,7 +652,7 @@ fn filter_popover(
             egui::Frame::NONE
                 .fill(p.bg_surface)
                 .stroke(Stroke::new(1.0, p.border))
-                .corner_radius(theme::RADIUS)
+                .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
                 .shadow(ui.visuals().popup_shadow)
                 .show(ui, |ui| {
                     ui.set_width(220.0);
@@ -725,7 +728,11 @@ fn filter_row(ui: &mut Ui, p: &Palette, label: &str, count: usize, checked: bool
         )
     });
     if resp.hovered() {
-        ui.painter().rect_filled(rect, 0.0, p.bg_item_hover);
+        ui.painter().rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_item_hover,
+        );
     }
     let ink = if checked {
         p.text_primary
@@ -862,7 +869,11 @@ fn line_row(
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
     let resp = resp.on_hover_text(format!("Go to line {}", key.1));
     if resp.hovered() {
-        ui.painter().rect_filled(rect, 0.0, p.bg_item_hover);
+        ui.painter().rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_item_hover,
+        );
     }
     ui.painter().text(
         pos2(rect.left() + 44.0, rect.center().y),

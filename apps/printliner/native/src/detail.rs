@@ -164,7 +164,7 @@ fn section(ui: &mut Ui, p: &Palette, title: &str, body: impl FnOnce(&mut Ui)) {
     Frame::new()
         .fill(p.bg_surface)
         .stroke(Stroke::new(1.0, p.border))
-        .corner_radius(theme::RADIUS_LARGE)
+        .corner_radius(laankit_egui::theme::shape(ui.ctx()).dialog())
         .inner_margin(Margin::same(16))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -197,10 +197,18 @@ fn job(ui: &mut Ui, p: &Palette, s: &PrinterStatus) {
     if let Some(pc) = s.percent.filter(|_| s.state.is_active()) {
         ui.add_space(6.0);
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 8.0), Sense::hover());
-        ui.painter().rect_filled(rect, 4.0, p.bg_button);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).round(4),
+            p.bg_button,
+        );
         let mut done = rect;
         done.set_width(rect.width() * f32::from(pc) / 100.0);
-        ui.painter().rect_filled(done, 4.0, p.accent);
+        ui.painter().rect_filled(
+            done,
+            laankit_egui::theme::shape(ui.ctx()).round(4),
+            p.accent,
+        );
         ui.add_space(6.0);
     }
     let mut items = vec![("State", s.state.label().to_string())];
@@ -314,7 +322,7 @@ fn task_row(
                         egui::load::Bytes::Shared(bytes.clone()),
                     )
                     .fit_to_exact_size(vec2(THUMB, THUMB))
-                    .corner_radius(theme::RADIUS),
+                    .corner_radius(laankit_egui::theme::shape(ui.ctx()).control()),
                 );
             }
             None => {
@@ -322,7 +330,11 @@ fn task_row(
                     wanted.push((t.id.clone(), url.clone()));
                 }
                 let (rect, _) = ui.allocate_exact_size(vec2(THUMB, THUMB), Sense::hover());
-                ui.painter().rect_filled(rect, theme::RADIUS, p.bg_button);
+                ui.painter().rect_filled(
+                    rect,
+                    laankit_egui::theme::shape(ui.ctx()).control(),
+                    p.bg_button,
+                );
                 ui.painter().text(
                     rect.center(),
                     Align2::CENTER_CENTER,

@@ -84,7 +84,7 @@ cargo run -p pageliner-native --release
 | Auto-sync (commit and push 8 s after changes)          | Done            | Debounced like the Tauri host; never pulls on its own                   |
 | After Sync Now                                         | Native addition | The library reloads, so books and progress pulled from another device appear |
 | `ui:getPrefs` / `ui:setPrefs`                          | Done            | Custom titlebar (restart relaunches), sidebar, and status bar toggles    |
-| Themes and UI scale                                    | Done            | All seven themes; Ctrl+= / - / 0 and Ctrl+wheel                          |
+| Mode, colour, and UI scale                             | Done            | Light, Dark, or System, in six colours; Ctrl+= / - / 0 and Ctrl+wheel    |
 | Keyboard shortcuts                                     | Done            | Ctrl+O, Ctrl+E, Ctrl+J, Ctrl+Shift+S, Ctrl+,, Ctrl+Shift+I, Ctrl+K     |
 | Command palette                                        | Done            | Commands plus books by title                                           |
 | Status bar                                             | Done            | Book or count, "Page n / N", format, scale                             |

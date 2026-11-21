@@ -90,7 +90,7 @@ pub fn confirm(
             egui::Frame::NONE
                 .fill(p.pre_bg)
                 .stroke(egui::Stroke::new(1.0, p.border))
-                .corner_radius(theme::RADIUS)
+                .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
                 .inner_margin(egui::Margin::same(8))
                 .show(ui, |ui| {
                     egui::ScrollArea::vertical()
@@ -218,7 +218,7 @@ pub fn walkthrough(
             egui::Frame::NONE
                 .fill(p.pre_bg)
                 .stroke(egui::Stroke::new(1.0, p.border))
-                .corner_radius(theme::RADIUS)
+                .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
                 .inner_margin(egui::Margin::same(10))
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());

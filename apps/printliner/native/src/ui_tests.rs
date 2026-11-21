@@ -110,7 +110,7 @@ fn demo_dashboard_shows_the_printers_and_their_detail() {
     wait_for(&mut h, "the task history", |a| {
         a.tasks_for(demo::X1C).is_some()
     });
-    h.get_by_label("Task History".to_uppercase().as_str());
+    h.get_by_label(&laankit_egui::panes::heading(&h.ctx, "TASK HISTORY"));
     h.get_by_label("Hex key holder");
     h.get_by_label("Slot 1");
     h.get_by_label("In Use");
@@ -167,7 +167,7 @@ fn signed_out_shows_the_welcome() {
     h.get_by_label("Sign In").click();
     h.run_steps(2);
     assert!(h.state().has_overlay());
-    h.get_by_label("EMAIL");
+    h.get_by_label(&laankit_egui::panes::heading(&h.ctx, "EMAIL"));
 }
 
 #[test]
@@ -257,7 +257,10 @@ fn signing_in_with_an_emailed_code() {
     key(&mut h, Key::Enter);
     wait_for(&mut h, "the code step", |_| true);
     let start = Instant::now();
-    while h.query_by_label("CODE").is_none() {
+    while h
+        .query_by_label(&laankit_egui::panes::heading(&h.ctx, "CODE"))
+        .is_none()
+    {
         assert!(start.elapsed() < Duration::from_secs(10), "no code step");
         std::thread::sleep(Duration::from_millis(10));
         h.step();
@@ -371,7 +374,10 @@ fn signing_in_with_a_code_and_no_password() {
     h.run_steps(2);
     h.get_by_label("Email Me a Code Instead").click();
     let start = Instant::now();
-    while h.query_by_label("CODE").is_none() {
+    while h
+        .query_by_label(&laankit_egui::panes::heading(&h.ctx, "CODE"))
+        .is_none()
+    {
         assert!(start.elapsed() < Duration::from_secs(10), "no code step");
         std::thread::sleep(Duration::from_millis(10));
         h.step();

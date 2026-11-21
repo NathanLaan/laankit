@@ -163,7 +163,7 @@ pub fn banner(ui: &mut Ui, message: &str, button: &str, tone: Tone) -> bool {
     Frame::new()
         .fill(colour.gamma_multiply(0.12))
         .stroke(Stroke::new(1.0, colour.gamma_multiply(0.6)))
-        .corner_radius(theme::RADIUS)
+        .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
         .inner_margin(Margin::symmetric(14, 8))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -274,7 +274,7 @@ fn card(
     let hovered = resp.hovered();
     ui.painter().rect(
         rect,
-        theme::RADIUS_LARGE,
+        laankit_egui::theme::shape(ui.ctx()).dialog(),
         if hovered {
             p.bg_item_hover
         } else {
@@ -340,7 +340,7 @@ fn card_contents(
                     egui::load::Bytes::Shared(bytes.clone()),
                 )
                 .fit_to_exact_size(vec2(RING, RING))
-                .corner_radius(theme::RADIUS);
+                .corner_radius(laankit_egui::theme::shape(ui.ctx()).control());
                 ui.add(image);
             }
             _ => ring(ui, p, percent, colour),
@@ -432,7 +432,7 @@ fn card_contents(
 pub fn chip(ui: &mut Ui, text: &str, colour: Color32) {
     Frame::new()
         .fill(colour.gamma_multiply(0.15))
-        .corner_radius(theme::RADIUS)
+        .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
         .inner_margin(Margin::symmetric(8, 3))
         .show(ui, |ui| {
             ui.label(

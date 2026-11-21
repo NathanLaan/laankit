@@ -68,7 +68,7 @@ Every IPC channel of `src/main/preload.js` (as the Tauri host implements them) a
 | `help:open`                                                | Partial         | Same content, as an in-app dialog rather than a second window         |
 | About and `update:*`                                       | Done            | `laankit_core::updates`; ThreadLiner publishes no release repo, so it reports "latest", as the Tauri build does |
 | `ui:getPrefs` / `ui:setPrefs` (custom titlebar)            | Done            | Restart now relaunches the binary                                     |
-| Themes and UI scale                                        | Done            | Light, Dark, Midnight (ThreadLiner's allow-list); Ctrl+= / - / 0 and Ctrl+wheel |
+| Mode, colour, and UI scale                                 | Done            | Light, Dark, or System, in Blue or Midnight (the colours of the three themes ThreadLiner shipped); the synced `theme` holds the nearest of Light, Dark, and Midnight; Ctrl+= / - / 0 and Ctrl+wheel |
 | Keyboard shortcuts                                         | Done            | All of `handleGlobalKeydown`, ignored while typing; zoom also works with a dialog open |
 | Command palette                                            | Native addition | Ctrl+Shift+P; commands plus feeds                                    |
 | Resizable sidebar and entry list                           | Done            | 180–500 and 220–600 px, as the Svelte limits                          |
@@ -82,7 +82,7 @@ Every IPC channel of `src/main/preload.js` (as the Tauri host implements them) a
 | Variable                       | Effect                                                              |
 |--------------------------------|---------------------------------------------------------------------|
 | `LAANKIT_SCREENSHOT=<png>`      | Saves a screenshot once the window has settled (`LAANKIT_SCREENSHOT_EXIT=1` closes afterwards) |
-| `LAANKIT_THEME`, `LAANKIT_SCALE` | Override the theme (`light`, `dark`, `midnight`) and scale          |
+| `LAANKIT_MODE`, `LAANKIT_COLOUR`, `LAANKIT_THEME`, `LAANKIT_SCALE` | Override the mode, the colour, both at once by an older theme's id (`light`, `dark`, `midnight`), and the scale |
 | `LAANKIT_FEED=<n>`, `LAANKIT_ENTRY=<n>` | Select the nth feed and entry once loaded                    |
 | `LAANKIT_OPEN=<dialog>`         | `add`, `tags`, `settings[:ui\|feeds\|sync\|shortcuts]`, `sync`, `about`, `help`, or `palette` |
 

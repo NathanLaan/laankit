@@ -105,10 +105,17 @@ fn tag_row(ui: &mut Ui, tag: &str, active: bool, index: &Value) -> egui::Respons
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::ListItem, true, active, tag));
     if active {
-        ui.painter().rect_filled(rect, theme::RADIUS, p.bg_selected);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).control(),
+            p.bg_selected,
+        );
     } else if resp.hovered() {
-        ui.painter()
-            .rect_filled(rect, theme::RADIUS, p.bg_item_hover);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).control(),
+            p.bg_item_hover,
+        );
     }
     chip(ui, rect.left() + 8.0, rect.center().y, tag, index);
     resp
@@ -125,7 +132,8 @@ fn chip(ui: &Ui, x: f32, y: f32, tag: &str, index: &Value) {
         .layout_no_wrap(tag.to_string(), FontId::proportional(12.0), ink);
     let rect =
         egui::Rect::from_min_size(egui::pos2(x, y - 11.0), vec2(galley.size().x + 16.0, 22.0));
-    ui.painter().rect_filled(rect, theme::RADIUS, fill);
+    ui.painter()
+        .rect_filled(rect, laankit_egui::theme::shape(ui.ctx()).control(), fill);
     ui.painter()
         .galley(egui::pos2(x + 8.0, y - galley.size().y / 2.0), galley, ink);
 }

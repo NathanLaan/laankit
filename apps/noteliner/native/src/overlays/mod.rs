@@ -387,7 +387,7 @@ pub fn new_file(
                 egui::Frame::new()
                     .fill(p.bg_surface)
                     .stroke(egui::Stroke::new(1.0, p.border))
-                    .corner_radius(6)
+                    .corner_radius(laankit_egui::theme::shape(ui.ctx()).round(6))
                     .inner_margin(6)
                     .show(ui, |ui| {
                         egui::ScrollArea::vertical()
@@ -525,9 +525,17 @@ fn folder_row(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response 
         egui::WidgetInfo::selected(egui::Role::ListBoxOption, true, selected, label)
     });
     if selected {
-        ui.painter().rect_filled(rect, 4.0, p.bg_selected);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).round(4),
+            p.bg_selected,
+        );
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, 4.0, p.bg_item_hover);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).round(4),
+            p.bg_item_hover,
+        );
     }
     ui.painter().with_clip_rect(rect).text(
         egui::pos2(rect.left() + 10.0, rect.center().y),
@@ -607,7 +615,7 @@ pub fn move_dialog(
         egui::Frame::new()
             .fill(p.bg_surface)
             .stroke(egui::Stroke::new(1.0, p.border))
-            .corner_radius(6)
+            .corner_radius(laankit_egui::theme::shape(ui.ctx()).round(6))
             .inner_margin(4)
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()

@@ -2,7 +2,7 @@
 
 use egui::{Frame, Margin, RichText, ScrollArea, Stroke};
 use laankit_egui::settings::{self, SettingsShell, Tab};
-use laankit_egui::theme::{self, ThemeId, ThemeState};
+use laankit_egui::theme::{self, Colour, ThemeState};
 use laankit_egui::{dialog, toast};
 use serde_json::{json, Value};
 use threadliner_core::sync::LogEntry;
@@ -10,8 +10,9 @@ use threadliner_core::sync::LogEntry;
 use crate::backend::Settings;
 use crate::model;
 
-/// ThreadLiner ships these themes (`themeState.init({ themes })` in `main.js`).
-pub const THEMES: [ThemeId; 3] = [ThemeId::Light, ThemeId::Dark, ThemeId::Midnight];
+/// ThreadLiner offers these colours: those of Light, Dark and Midnight, the
+/// themes it shipped (`themeState.init({ themes })` in `main.js`).
+pub const COLOURS: [Colour; 2] = [Colour::Blue, Colour::Midnight];
 
 const TABS: [Tab<'static>; 4] = [
     Tab {
@@ -114,11 +115,9 @@ fn ui_tab(
     theme_state: &mut ThemeState,
     out: &mut Vec<SettingsAction>,
 ) {
-    settings::setting_group(ui, "Theme", None, |ui| {
-        if settings::theme_list_among(ui, theme_state, &THEMES) {
-            out.push(SettingsAction::ThemeChanged);
-        }
-    });
+    if settings::appearance(ui, theme_state, &COLOURS, true) {
+        out.push(SettingsAction::ThemeChanged);
+    }
     settings::setting_group(ui, "UI Scale", None, |ui| {
         if settings::scale_list(ui, theme_state) {
             out.push(SettingsAction::ThemeChanged);
@@ -200,7 +199,7 @@ fn sync_tab(
         Frame::new()
             .fill(p.pre_bg)
             .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(theme::RADIUS)
+            .corner_radius(laankit_egui::theme::shape(ui.ctx()).control())
             .inner_margin(Margin::symmetric(10, 8))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());

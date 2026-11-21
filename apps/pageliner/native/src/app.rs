@@ -482,6 +482,7 @@ impl PageLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
+        self.theme.follow_system(&ctx);
         self.handle_events(&ctx);
         if let Some(paths) = self.imports.poll() {
             self.backend.import(paths);
@@ -498,6 +499,7 @@ impl PageLinerApp {
         self.dropped_files(&ctx);
         self.toasts.show(&ctx);
         if self.custom_titlebar {
+            window::allow_rounded_corners(&ctx);
             window::window_edges(&ctx);
         }
         if let Some(shot) = &mut self.screenshot {
@@ -761,6 +763,10 @@ impl PageLinerApp {
 impl eframe::App for PageLinerApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
+    }
+
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        window::clear_color(&self.theme, self.custom_titlebar, visuals)
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

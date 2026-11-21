@@ -302,7 +302,11 @@ fn row(ui: &mut Ui, p: &Palette, r: &Row<'_>) -> egui::Response {
             StrokeKind::Inside,
         );
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, 0.0, p.bg_item_hover);
+        ui.painter().rect_filled(
+            laankit_egui::theme::shape(ui.ctx()).item_rect(rect),
+            laankit_egui::theme::shape(ui.ctx()).item(),
+            p.bg_item_hover,
+        );
     }
     let ink = if r.missing {
         p.text_muted
@@ -539,7 +543,11 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
             );
             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &zoom));
             if resp.hovered() {
-                painter.rect_filled(resp.rect, 4.0, p.bg_item_hover);
+                painter.rect_filled(
+                    resp.rect,
+                    laankit_egui::theme::shape(ui.ctx()).round(4),
+                    p.bg_item_hover,
+                );
                 ink = p.text_primary;
             }
             let resp = resp

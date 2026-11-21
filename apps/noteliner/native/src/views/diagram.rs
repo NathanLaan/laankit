@@ -228,7 +228,11 @@ fn button_frame(
     response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, enabled, active, title));
     let hovered = enabled && response.hovered();
     if hovered {
-        ui.painter().rect_filled(rect, theme::RADIUS, p.bg_button);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).control(),
+            p.bg_button,
+        );
     }
     let color = if !enabled {
         p.text_faint
@@ -250,7 +254,11 @@ fn zoom_readout(ui: &mut Ui, zoom: f32) -> bool {
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Reset Canvas Zoom"));
     if response.hovered() {
-        ui.painter().rect_filled(rect, theme::RADIUS, p.bg_button);
+        ui.painter().rect_filled(
+            rect,
+            laankit_egui::theme::shape(ui.ctx()).control(),
+            p.bg_button,
+        );
     }
     ui.painter().text(
         rect.center(),
@@ -283,7 +291,11 @@ pub fn properties_panel(
         )
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("PROPERTIES").size(11.0).color(p.text_muted));
+                ui.label(
+                    RichText::new(laankit_egui::panes::heading(ui.ctx(), "PROPERTIES"))
+                        .size(11.0)
+                        .color(p.text_muted),
+                );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     close = button(ui, icons::XMARK, "Close properties", false, true);
                 });
