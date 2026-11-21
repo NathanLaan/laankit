@@ -21,6 +21,11 @@ use crate::theme::{self, Colour, Look, Mode, Palette, ThemeState, SCALES};
 /// `.modal-header { height: 32px; padding: 0 24px }`.
 const HEADER_HEIGHT: f32 = 32.0;
 /// `border-radius: 6px` on the settings controls.
+/// A list's or checkbox row's height: [`CONTROL_HEIGHT`] in Classic.
+fn control_height(ctx: &egui::Context) -> f32 {
+    (CONTROL_HEIGHT * theme::shape(ctx).control_scale).round()
+}
+
 fn control_radius(ctx: &egui::Context) -> CornerRadius {
     theme::shape(ctx).round(6)
 }
@@ -303,6 +308,7 @@ pub(crate) fn modal_footer(ui: &mut Ui, p: &Palette) -> bool {
 /// `.close-btn` / `.primary-btn`: accent outline and text on the selected
 /// wash, filling with the accent on hover.
 pub(crate) fn outline_button(ui: &mut Ui, p: &Palette, label: &str, pad: Vec2) -> Response {
+    let pad = pad * theme::shape(ui.ctx()).control_scale;
     let galley = ui.painter().layout_no_wrap(
         label.to_string(),
         FontId::proportional(theme::BODY_SIZE),
@@ -503,8 +509,10 @@ const DROPDOWN_MAX_HEIGHT: f32 = 280.0;
 /// `.theme-select` / `.scale-select`: the closed select, opening a popup
 /// list below it. A long list scrolls.
 fn dropdown(ui: &mut Ui, p: &Palette, label: &str, current: &str, options: impl FnOnce(&mut Ui)) {
-    let (rect, resp) =
-        ui.allocate_exact_size(vec2(ui.available_width(), CONTROL_HEIGHT), Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(
+        vec2(ui.available_width(), control_height(ui.ctx())),
+        Sense::click(),
+    );
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, label));
     let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&resp));
     let fill = if resp.hovered() {
@@ -593,8 +601,10 @@ fn swatch_row(ui: &mut Ui, label: &str, fill: Color32, ink: Color32, selected: b
 /// when on. Flips `checked` when clicked (unless disabled).
 pub fn toggle_option(ui: &mut Ui, label: &str, checked: &mut bool, enabled: bool) -> Response {
     let p = theme::palette(ui.ctx());
-    let (rect, mut resp) =
-        ui.allocate_exact_size(vec2(ui.available_width(), CONTROL_HEIGHT), Sense::click());
+    let (rect, mut resp) = ui.allocate_exact_size(
+        vec2(ui.available_width(), control_height(ui.ctx())),
+        Sense::click(),
+    );
     let on = *checked;
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, on, label));
     if enabled && resp.clicked() {

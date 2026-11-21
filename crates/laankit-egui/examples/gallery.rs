@@ -64,7 +64,7 @@ struct View {
 
 fn main() -> eframe::Result {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    let viewport = window::undecorated(
+    let viewport = window::undecorated_rounded(
         egui::ViewportBuilder::default()
             .with_title("LaanKit gallery")
             .with_inner_size([1100.0, 760.0])
@@ -570,6 +570,8 @@ fn registry() -> Registry<Act, View> {
 impl eframe::App for Gallery {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.theme.follow_system(ui.ctx());
+        window::allow_rounded_corners(ui.ctx());
+        let corner = window::corner_radius(ui.ctx());
         let ctx = ui.ctx().clone();
         // Commands first, so their keys don't reach text fields.
         if !self.modal_open() {
@@ -650,11 +652,32 @@ impl eframe::App for Gallery {
             egui::Panel::left("gallery-sidebar")
                 .resizable(true)
                 .default_size(240.0)
-                .frame(Frame::NONE.fill(p.bg_surface))
+                .frame(
+                    Frame::NONE
+                        .fill(p.bg_surface)
+                        .corner_radius(egui::CornerRadius {
+                            // The window's bottom-left corner, with the toolbar hidden.
+                            sw: if self.toolbar_visible { 0 } else { corner },
+                            ..Default::default()
+                        }),
+                )
                 .show(ui, |ui| self.sidebar(ui));
         }
         egui::CentralPanel::default()
-            .frame(Frame::NONE.fill(p.bg_base).inner_margin(Margin::same(16)))
+            .frame(
+                Frame::NONE
+                    .fill(p.bg_base)
+                    .inner_margin(Margin::same(16))
+                    .corner_radius(egui::CornerRadius {
+                        se: corner,
+                        sw: if self.toolbar_visible || self.sidebar {
+                            0
+                        } else {
+                            corner
+                        },
+                        ..Default::default()
+                    }),
+            )
             .show(ui, |ui| {
                 ScrollArea::vertical()
                     .auto_shrink(false)
@@ -675,6 +698,10 @@ impl eframe::App for Gallery {
         if let Some(shot) = &mut self.screenshot {
             shot.tick(&ctx);
         }
+    }
+
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        window::CLEAR
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

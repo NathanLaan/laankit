@@ -1,6 +1,6 @@
 # LaanKit: Mode, Theme, and Colour Plan
 
-Status: P1 and P2 implemented (2026-11-20) with your answers to Q1 to Q10, not yet checked by eye in an app. P3 to P5 not started. Splits the one Theme setting into three that you choose separately in Settings: Mode (Light, Dark, or System), Theme (Classic or Modern), and Colour (the colours of the older themes, and Neutral). Classic is the look the apps have always had. Modern is a new look: a quiet title bar, rounded and inset selections, softer buttons and inputs, lighter pane headers, and popups with a shadow.
+Status: P1 and P2 implemented (2026-11-20) with your answers to Q1 to Q10, not yet checked by eye in an app. P3 to P5 not started. Splits the one Theme setting into three that you choose separately in Settings: Mode (Light, Dark, or System), Theme (Classic or Modern), and Colour (the colours of the older themes, and Neutral). Classic is the look the apps have always had. Modern is a new look: a rounded window, a quiet title bar, rounded and inset selections, softer buttons and inputs, lighter pane headers, and popups with a shadow.
 
 ## Summary
 
@@ -75,23 +75,43 @@ A record, `Shape`, holds what Theme decides. `ThemeState::apply` hands the colou
 | Toolbar | Its own darker colour, with a line beside it | The colour of the sidebar, with no line |
 | Pane header | 44 px, `FILES`, 11 px, a line under it | 32 px, `Files`, 12 px semibold, no line |
 | Between panes | A 4 px bar | A 1 px line in the same 4 px band, which fills in when pointed at or dragged |
-| Tree row | 26 px. The selection is the full width, with a 2 px stripe at the left. | 28 px. The selection is inset 6 px and rounded 6 px, with no stripe. |
+| Tree row | 26 px. The selection is the full width, with a 2 px stripe at the left. | 28 px. The selection is inset 6 px and rounded 8 px, with no stripe. |
 | Tabs | Square, with a line between and an accent line over the open one | Rounded at the top, with a gap between and no lines |
-| Corners of buttons and inputs | 4 px, or 6 px in dialogs and Settings | 8 px |
-| Corners of menus | 4 px | 10 px |
-| Corners of dialogs | 12 px | 14 px |
-| Corners of the Command Palette | 10 px | 12 px |
+| Corners of the window | Square | 12 px, where the app's window allows it. See "The window's corners". |
+| Corners of buttons and inputs | 4 px, or 6 px in dialogs and Settings | 10 px |
+| Corners of menus | 4 px | 12 px |
+| Corners of dialogs | 12 px | 18 px |
+| Corners of the Command Palette | 10 px | 14 px |
 | Primary button in a dialog | A tinted fill with an accent outline, filled when pointed at | Filled with the accent, with no outline |
 | Input with the focus | A 1 px outline in the accent | A 2 px ring |
 | Dialog header | A bar of the accent, with the title in capitals | The dialog's own colour, the title as written, and a line under it |
 | Captions in Settings and dialogs | 11 px capitals | 12 px semibold, as written |
-| Buttons and lists drawn by egui itself | egui's padding | Taller, with 12 px by 7 px of padding |
+| Size of the controls | As they were | 10% larger: the toolbar and its buttons and icons, dialog buttons, text inputs, the lists and checkbox rows in Settings, and egui's own buttons and checkboxes. Their text stays the size the UI scale gives it. |
+| Buttons and lists drawn by egui itself | egui's padding | Taller, with about 13 px by 8 px of padding |
 | Scroll bars | Floating, 10 px | Floating, 6 px |
 | Shadow under dialogs, menus, and popups | egui's own under its menus, and none under dialogs | A soft shadow under each |
 
 Modern uses the same colours as Classic for each colour and mode.
 
 A screen reader hears a pane's title as the app passes it (`FILES`) in both shapes, so the UI tests find panes the same way.
+
+### The window's corners
+
+In Modern the window itself has rounded corners. The apps draw their own title bar on a window with no frame from the system, so the corners are the app's to draw.
+
+| Part | How |
+|---|---|
+| The window | Made see-through where nothing is drawn (`window::undecorated_rounded`), with nothing as its clear colour. This is chosen when the window is made, and cannot follow the Theme setting afterwards. |
+| The top corners | The title bar rounds them. |
+| The bottom-left corner | The toolbar rounds it. |
+| The bottom-right corner, and the bottom-left with the toolbar hidden | Whichever of the app's own panels reaches it, by `window::corner_radius`. |
+| Maximized or full screen | Square. |
+| macOS | Left to the system, which rounds its windows itself. |
+| With the system's own title bar | Left to the system. |
+
+It is built in the shared widgets and the gallery. A screenshot of the gallery has all four corner pixels fully see-through. Each app gets it in its own phase, with Modern: the app's window has to be made see-through, and its bottom panels have to round their corners.
+
+A see-through window needs a compositor. Every current desktop has one. On an X11 session without one, the corners would show black.
 
 ### The system's mode
 
@@ -140,6 +160,7 @@ With Mode set to System, each app reads the computer's setting every frame and c
 - The seven older themes, at 100% and 150% scale: a screenshot of the gallery from the build before this work and one from the build after P2, taken one after the other and compared pixel by pixel. They match, apart from the gallery's spinner, which is animated and differs between any two runs.
 - A pointer over the window changes a screenshot, so a pair that differed was taken again.
 - This check was made with the gallery's old row of seven theme chips still in place. The gallery's three new rows were added after it.
+- After the later changes to Modern (rounder corners, the window's corners, and larger controls), Classic was compared again in Midnight and Light at 100%. The title bar, toolbar, and sidebar match the build before this work. The rest of the gallery differs because its rows changed, so it could not be compared.
 
 ## To review
 
@@ -161,6 +182,7 @@ Things to look at in Modern, in a few colours and both modes: the title bar and 
 
 ## Not done
 
+- The rounded window corners have been seen in a screenshot of the app's own drawing only. I could not see what the desktop shows behind them. Look at the gallery's corners in Modern, on each system you test on.
 - System mode has not been seen to follow a computer's setting on any desktop. It needs a check by hand on each: change the system's setting with an app open.
 - The new sets have been looked at in gallery screenshots only, not in an app.
 - The gallery has no selected tree row and no tab strip, so those two Modern shapes have not been seen. They show in NoteLiner in P3.
@@ -181,7 +203,7 @@ Things to look at in Modern, in a few colours and both modes: the title bar and 
 |---|---|---|
 | P1: Mode and Colour | `Mode` and `Colour` in `crates/laankit-egui/src/theme.rs`, the five new sets, the saved form, System mode, the groups in Settings, NoteLiner's commands, ThreadLiner's colours, the environment variables, and every app. | Done. |
 | P2: The shape, and the shared widgets | `Shape` with the Classic and Modern values. The widgets in `crates/laankit-egui` read it: title bar, caption buttons, toolbar, panes, tree, tabs, dialogs, Settings, Command Palette, toasts, About, and egui's own buttons, menus, and scroll bars. The gallery offers Classic and Modern. | Done. No app offers Modern. |
-| P3: NoteLiner | NoteLiner's own drawing reads the shape: the Files tree and its rows, the Tags, Search, Backlinks, Outline, and Slides panes, the editor's toolbar, the tab bar, the status bar, the diagram toolbar and Properties panel, and each dialog. The Theme group is shown, and the palette gets Set Theme. | Not started. Done when every NoteLiner screen has been looked at in Modern, in light and dark, in at least Blue and Purple, and the tests pass in both shapes. |
+| P3: NoteLiner | The window is made see-through and its bottom panels round the window's corners. NoteLiner's own drawing reads the shape: the Files tree and its rows, the Tags, Search, Backlinks, Outline, and Slides panes, the editor's toolbar, the tab bar, the status bar, the diagram toolbar and Properties panel, and each dialog. The Theme group is shown, and the palette gets Set Theme. | Not started. Done when every NoteLiner screen has been looked at in Modern, in light and dark, in at least Blue and Purple, and the tests pass in both shapes. |
 | P4: The editor and rich text | `laankit-editor`, `laankit-richtext`, and `blockliner-egui`: the gutter, the completion popup, code blocks, and the diagram canvas's handles and menus. | Not started. |
 | P5: The other apps | ThreadLiner, PageLiner, BlockLiner, MediaLiner, and PrintLiner, one at a time. Each shows the Theme group when its screens are done. | Not started. |
 

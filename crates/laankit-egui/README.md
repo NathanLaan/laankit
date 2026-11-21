@@ -50,7 +50,7 @@ cargo run -p laankit-egui --example gallery
 | `theme`       | Mode, theme, and colour (see Themes below), UI scale steps, egui `Visuals`                      |
 | `fonts`       | Bundled Inter / JetBrains Mono / Font Awesome; weights and italics; system-font fallback        |
 | `icons`       | Font Awesome codepoints, drawn in the icon font family                                          |
-| `window`      | Undecorated-window chrome: drag, double-click maximize, edge resize, caption buttons            |
+| `window`      | Undecorated-window chrome: drag, double-click maximize, edge resize, caption buttons, rounded corners (`undecorated_rounded`, `corner_radius`) |
 | `titlebar`    | `TitleBar.svelte`: toolbar toggle, app actions, title, UI-scale dropdown, window controls       |
 | `toolbar`     | `Toolbar`, `ToolbarButton`, `ToolbarDivider`, `ToolbarSpacer`                                   |
 | `toast`       | Info, success and error notices at the bottom centre                                            |

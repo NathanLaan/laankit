@@ -47,6 +47,45 @@ pub fn undecorated(viewport: egui::ViewportBuilder) -> egui::ViewportBuilder {
     }
 }
 
+/// [`undecorated`], and see-through where nothing is drawn, so that the
+/// window's corners can be rounded. An app that uses this also calls
+/// [`allow_rounded_corners`] once, returns [`CLEAR`] from
+/// `eframe::App::clear_color`, and rounds the panels that reach the bottom
+/// of its window by [`corner_radius`]. The title bar and the toolbar round
+/// their own corners.
+pub fn undecorated_rounded(viewport: egui::ViewportBuilder) -> egui::ViewportBuilder {
+    undecorated(viewport).with_transparent(true)
+}
+
+/// The clear colour of a window made with [`undecorated_rounded`]: nothing.
+pub const CLEAR: [f32; 4] = [0.0; 4];
+
+fn rounded_id() -> egui::Id {
+    egui::Id::unique("laankit-window-rounded")
+}
+
+/// Says that the window was made with [`undecorated_rounded`], so its
+/// corners may be rounded.
+pub fn allow_rounded_corners(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.insert_temp(rounded_id(), true));
+}
+
+/// The radius of the window's corners now: the theme's
+/// ([`crate::theme::Shape::window_radius`], none in Classic), and none while
+/// the window is maximized or full screen, where the app didn't call
+/// [`allow_rounded_corners`], or on macOS, which rounds its windows itself.
+pub fn corner_radius(ctx: &egui::Context) -> u8 {
+    let allowed: bool = ctx.data(|d| d.get_temp(rounded_id())).unwrap_or(false);
+    let filling = ctx.input(|i| {
+        i.viewport().maximized.unwrap_or(false) || i.viewport().fullscreen.unwrap_or(false)
+    });
+    if !allowed || filling || !custom_caption_buttons() {
+        0
+    } else {
+        crate::theme::shape(ctx).window_radius
+    }
+}
+
 /// Dragging the title bar's empty space moves the window; double-clicking
 /// maximizes or restores. Call before drawing the title bar's controls so
 /// they stay on top.
@@ -179,7 +218,7 @@ pub fn window_edges(ctx: &egui::Context) {
     ))
     .rect_stroke(
         r,
-        0.0,
+        corner_radius(ctx),
         egui::Stroke::new(1.0, border),
         egui::StrokeKind::Inside,
     );

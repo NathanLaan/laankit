@@ -163,10 +163,14 @@ pub fn field_label(ui: &mut Ui, text: &str) {
 /// [`submitted`] checks.
 pub fn text_input(ui: &mut Ui, value: &mut String, hint: &str, enabled: bool) -> Response {
     let p = theme::palette(ui.ctx());
+    let k = theme::shape(ui.ctx()).control_scale;
     let edit = TextEdit::singleline(value)
         .hint_text(RichText::new(hint).color(p.text_muted))
         .desired_width(f32::INFINITY)
-        .margin(Margin::symmetric(12, 8))
+        .margin(Margin::symmetric(
+            (12.0 * k).round() as i8,
+            (8.0 * k).round() as i8,
+        ))
         .background_color(p.input_bg);
     ui.scope(|ui| {
         // TextEdit draws its frame from these: the input border at rest and on
@@ -226,7 +230,7 @@ pub fn icon_button(
         FontId::proportional(13.0),
         Color32::PLACEHOLDER,
     );
-    let pad = vec2(16.0, 8.0);
+    let pad = vec2(16.0, 8.0) * theme::shape(ui.ctx()).control_scale;
     let icon_w = if icon.is_some() { 20.0 } else { 0.0 };
     let size = vec2(text.size().x + icon_w, text.size().y.max(15.0)) + pad * 2.0;
     let sense = if enabled {

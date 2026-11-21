@@ -543,10 +543,13 @@ impl ThemeState {
             let egui = egui::style::Spacing::default();
             let s = &mut style.spacing;
             s.button_padding = if shape.modern {
-                egui::vec2(12.0, 7.0)
+                egui::vec2(12.0, 7.0) * shape.control_scale
             } else {
                 egui.button_padding
             };
+            s.interact_size = egui.interact_size * shape.control_scale;
+            s.icon_width = egui.icon_width * shape.control_scale;
+            s.icon_width_inner = egui.icon_width_inner * shape.control_scale;
             s.scroll.bar_width = if shape.modern {
                 6.0
             } else {
@@ -577,6 +580,13 @@ pub struct Shape {
     pub menu_radius: u8,
     /// Corners of dialogs.
     pub dialog_radius: u8,
+    /// How much larger than Classic's the controls are: buttons, inputs,
+    /// lists, checkboxes and the toolbar's buttons, with their padding and
+    /// icons. Their text stays the size the UI scale gives it.
+    pub control_scale: f32,
+    /// Corners of the window itself, where the app's window allows it
+    /// (see [`crate::window::corner_radius`]).
+    pub window_radius: u8,
     /// The height of a tree row.
     pub row_height: f32,
     /// The height of a pane's header.
@@ -593,7 +603,7 @@ impl Shape {
         CornerRadius::same(match (self.modern, classic) {
             (false, r) | (true, r @ 0) => r,
             (true, 1..=6) => self.control_radius,
-            (true, 7..=10) => 12,
+            (true, 7..=10) => 14,
             (true, r) => r.max(self.dialog_radius),
         })
     }
@@ -647,6 +657,8 @@ pub const CLASSIC: Shape = Shape {
     item_inset: 0.0,
     menu_radius: 4,
     dialog_radius: 12,
+    window_radius: 0,
+    control_scale: 1.0,
     row_height: 26.0,
     pane_header_height: 44.0,
     shadow: false,
@@ -654,11 +666,13 @@ pub const CLASSIC: Shape = Shape {
 
 pub const MODERN: Shape = Shape {
     modern: true,
-    control_radius: 8,
-    item_radius: 6,
+    control_radius: 10,
+    item_radius: 8,
     item_inset: 6.0,
-    menu_radius: 10,
-    dialog_radius: 14,
+    menu_radius: 12,
+    dialog_radius: 18,
+    window_radius: 12,
+    control_scale: 1.1,
     row_height: 28.0,
     pane_header_height: 32.0,
     shadow: true,
@@ -1302,6 +1316,9 @@ mod tests {
         let row = egui::Rect::from_min_size(egui::pos2(3.0, 4.0), egui::vec2(100.0, 26.0));
         assert_eq!(CLASSIC.item_rect(row), row);
         assert_eq!(CLASSIC.popup_shadow(), Shadow::NONE);
+        assert_eq!(CLASSIC.window_radius, 0);
+        assert_eq!(CLASSIC.control_scale, 1.0);
+        assert_eq!(MODERN.control_scale, 1.1);
         for r in [0, 4, 6, 10, 12, 18] {
             assert_eq!(CLASSIC.round(r), CornerRadius::same(r));
             assert!(MODERN.round(r).nw >= r);
