@@ -16,6 +16,7 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - Changes made by other programs (a file manager, a sync tool, Git used by hand) show up while the project is open
 - Tabs: each file you open gets a tab above the document, with its own undo history, cursor, and scroll. Undo and Redo on the left toolbar act on the active tab, and are off when it has nothing to undo. Ctrl+W closes a tab, Ctrl+Shift+W reopens the tab you closed last with its history, and Ctrl+Tab and Ctrl+Shift+Tab switch tabs. The tabs come back when you reopen the project
 - Diagrams: BlockLiner's diagram editor inside a project. A diagram is a `.mmd` file beside your notes, with BlockLiner's tools in the toolbar above it and a Properties panel to its right. Shapes can be moved in front of or behind one another (Move to Front, Move Up, Move Down, Move to Back). It can be tagged, linked with `[[wikilinks]]`, moved to another folder, and exported as PNG, SVG, or Mermaid
+- Outline and Objects: one pane (Ctrl+Shift+O) lists the open document's parts. In a note or a presentation it is titled Outline and lists the headings. In a diagram it is titled Objects and lists every shape, text object, and line. See Objects
 - Markdown editor with syntax highlighting, list editing, multiple cursors, folding, find/replace, and `[[wikilink]]` completion. It shows a note's whole file, with its frontmatter at the top
 - Live Markdown preview with math (`$…$`, `$$…$$`) typeset by Typst
 - Tags, backlinks, and full-text search panes
@@ -118,6 +119,31 @@ A tag you add or remove, and a change in Presentation Settings, go into the note
 Quitting and closing the project do not stop to ask. If another program changed a file that has unsaved edits, the file is left as it is and your edits are written beside it as a copy, named like `note (your edits 2026-11-17 1432).md`. The same is done for a file in any tab that was waiting to ask. An edit whose save had not finished when you quit is written, or kept as a copy in the same way. The copy is a file of its own in the Files pane, and the Log pane names it when you next open the project. NoteLiner does not delete these copies.
 
 A moved file is matched by its file name, and a renamed one by its kind and size, when exactly one file disappeared and one appeared. A file that can't be matched is a removed file and a new one: a note keeps the tags in its frontmatter, and a diagram loses its tags.
+
+## Objects
+
+With a diagram open, the Outline pane is the Objects pane. It lists the diagram's objects in three groups, each with its count. A click on a group's heading folds it, and a group with nothing in it is not shown.
+
+| Group | Holds | Order |
+|---|---|---|
+| Shapes | Every shape that is not a text object, notes included | Front to back |
+| Text | Text objects | Front to back |
+| Lines | Arrows and lines | The order they were made |
+
+- A shape's row shows the first line of its label. A shape with no label shows its kind, such as Rectangle, in a lighter colour.
+- A line's row shows what it joins, such as "Start to Approved?", and its label at the right. A line with one end on a shape shows "From Start" or "To Start", and a line with neither shows "Line" or "Arrow".
+- A shape that NoteLiner cannot edit, because it is declared inside a `subgraph` or another statement kept as written, is in a lighter colour, and its tooltip says so.
+
+| Action | Result |
+|---|---|
+| Click a row | Selects that object on the canvas. If part of it is out of view, the canvas moves to centre it, at the same zoom. |
+| Ctrl+click a row | Adds it to the selection, or takes it out. |
+| Shift+click a row | Selects from the last row you clicked to this one, within the group. |
+| Select on the canvas | Marks the rows, and scrolls the pane to the first of them. |
+
+Selecting from the pane is not an edit. It adds nothing to Undo, and the toolbar, the Properties panel, and Delete act on the selection as they do when you select on the canvas.
+
+The pane is shown or hidden, placed, and sized once for notes and diagrams. The Command Palette lists it as Toggle Outline, and also as Toggle Objects while a diagram is open.
 
 ## Files Info
 

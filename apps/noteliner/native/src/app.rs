@@ -527,6 +527,11 @@ impl NoteLinerApp {
     }
 
     #[cfg(test)]
+    pub fn diagram_is_dirty_for_test(&self) -> bool {
+        self.diagram.is_dirty()
+    }
+
+    #[cfg(test)]
     pub fn diagram_editor(&self) -> &blockliner_egui::DiagramEditor {
         &self.diagram.editor
     }
@@ -2888,6 +2893,7 @@ impl NoteLinerApp {
                 let now = ctx.input(|i| i.time);
                 self.panes.search.set_query(arg, now - 1.0);
             }
+            "outline" => self.toggle(|l| l.show_outline = true),
             "tags" => self.toggle(|l| l.show_tags = true),
             "backlinks" => self.toggle(|l| l.show_backlinks = true),
             "attachments" => self.toggle(|l| l.show_attachments = true),
@@ -3069,6 +3075,7 @@ impl NoteLinerApp {
             .map(|p| p.layout.clone())
             .unwrap_or_default();
         let is_deck = self.is_deck();
+        let is_diagram = self.diagram_active();
         let (can_undo, can_redo) = if self.diagram_active() {
             let v = self.diagram.editor.view();
             (v.can_undo, v.can_redo)
@@ -3149,7 +3156,12 @@ impl NoteLinerApp {
                     if b(
                         ui,
                         icons::LIST_OL,
-                        "Outline (Ctrl+Shift+O)",
+                        // A diagram has no headings: the pane lists its objects.
+                        if is_diagram {
+                            "Objects (Ctrl+Shift+O)"
+                        } else {
+                            "Outline (Ctrl+Shift+O)"
+                        },
                         l.show_outline,
                         false,
                     ) {
@@ -3349,6 +3361,10 @@ impl NoteLinerApp {
         let caret_line = self.editor.body_line();
         let active_slide = self.deck.active(caret_line.max(1));
         let is_deck = self.is_deck();
+        // The OBJECTS list, built from the diagram each frame.
+        let object_rows = self
+            .diagram_active()
+            .then(|| blockliner_egui::objects::objects(&self.diagram.editor.diagram));
         let Some(p) = self.project.as_mut() else {
             return;
         };
@@ -3389,7 +3405,13 @@ impl NoteLinerApp {
                 .frame(Frame::NONE.fill(pal.bg_surface))
                 .show(ui, |ui| {
                     let (parsed, pane, _) = self.deck.parts();
+                    let canvas = &self.diagram.editor.canvas;
                     let props = SidebarProps {
+                        objects: object_rows.as_deref().map(|rows| sidebar::DiagramObjects {
+                            rows,
+                            shapes: &canvas.selection,
+                            lines: &canvas.lines,
+                        }),
                         index: &p.index,
                         entries: &p.entries,
                         folders: &p.folders,
@@ -3731,6 +3753,7 @@ impl NoteLinerApp {
                     .set_prefs(json!({ "filesSortMode": mode.id() }));
             }
             SidebarAction::GoToLine(line) => self.editor.scroll_to_line(line),
+            SidebarAction::SelectObjects(sel) => self.diagram.editor.select(sel),
             SidebarAction::ClosePane(id) => self.toggle(|l| l.close_pane(&id)),
             // The layout is saved by `persist_layout`.
             SidebarAction::LayoutChanged => {}

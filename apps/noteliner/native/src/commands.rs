@@ -677,6 +677,17 @@ pub fn registry() -> Registry<Act, View> {
         )
         .when(ready),
     );
+    // In a diagram the Outline pane lists its objects: the same pane, under
+    // the name it has there.
+    r.register(
+        add(
+            "view.toggleObjects",
+            "Toggle Objects",
+            "View",
+            Act::ToggleOutline,
+        )
+        .when(is_diagram),
+    );
     r.register(
         view(
             "view.toggleOutline",

@@ -9,6 +9,7 @@
 //! | `commands`   | the edit commands (`EditAct`) and their registrations         |
 //! | `tools`      | the tool buttons, the More Shapes list and the tools' keys    |
 //! | `properties` | the Properties pane                                          |
+//! | `objects`    | the list of a diagram's shapes, text and lines              |
 //! | `glyphs`     | the icons in the lists: tools, stroke styles, weights, text  |
 //! | `export`     | the SVG writer and the PNG rasteriser                        |
 //! | `dialogs`    | the Custom colour and Export dialogs                         |
@@ -20,6 +21,7 @@ pub mod dialogs;
 pub mod editor;
 pub mod export;
 pub mod glyphs;
+pub mod objects;
 pub mod properties;
 pub mod tools;
 pub mod units;

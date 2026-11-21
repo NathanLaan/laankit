@@ -61,6 +61,8 @@ pub struct PaneStates {
     /// The tag filter popover is open.
     pub filter_open: bool,
     pub files_info: FilesInfoState,
+    /// The OBJECTS list of the open diagram.
+    pub objects: blockliner_egui::objects::ObjectsState,
 }
 
 // --- SEARCH -------------------------------------------------------------------
@@ -1058,10 +1060,7 @@ pub struct FilesInfoState {
 /// The number of notes, presentations, and diagrams.
 pub fn file_counts(entries: &[Entry]) -> (usize, usize, usize) {
     let diagrams = entries.iter().filter(|e| e.is_diagram()).count();
-    let decks = entries
-        .iter()
-        .filter(|e| !e.is_diagram() && e.deck)
-        .count();
+    let decks = entries.iter().filter(|e| !e.is_diagram() && e.deck).count();
     (entries.len() - diagrams - decks, decks, diagrams)
 }
 
