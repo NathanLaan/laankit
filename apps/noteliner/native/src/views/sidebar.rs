@@ -180,6 +180,12 @@ pub fn show(
                     sort_pick = Some(mode);
                 }
                 new_folder |= new_folder_button(ui);
+                pane_views::files_info_button(
+                    ui,
+                    &mut states.files_info,
+                    props.entries,
+                    &mut header_out,
+                );
             }
             "slides" => present |= present_button(ui),
             "tags" => pane_views::tags_header(

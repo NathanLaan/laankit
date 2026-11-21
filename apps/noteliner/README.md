@@ -119,11 +119,29 @@ Quitting and closing the project do not stop to ask. If another program changed 
 
 A moved file is matched by its file name, and a renamed one by its kind and size, when exactly one file disappeared and one appeared. A file that can't be matched is a removed file and a new one: a note keeps the tags in its frontmatter, and a diagram loses its tags.
 
+## Files Info
+
+The info button in the Files pane's header opens a panel with the number of notes, presentations, and diagrams in the project, and the total. The counts are of the whole project, whatever the tag filter hides. Escape, a click outside the panel, or a second click on the button closes it.
+
+When the project folder is the top of a Git repository, the panel also shows a Git part. A project that is a folder inside a larger repository has none.
+
+| Row | Shows |
+|---|---|
+| Repository | The address of the remote named `origin`, or of the first remote. A user name, a password, or a token in the address is left out. Copy address puts it on the clipboard. |
+| Branch | The branch's name, or the commit when no branch is checked out. |
+| Status | "Up to date", or the number of uncommitted changes. A changed, added, removed, renamed, or untracked file is one change. |
+| Under Status | The commits to push and to pull, when there are any, as of your last fetch. |
+
+- The Git part needs the `git` program. Where it isn't installed, the panel says so, and the counts still show.
+- Two commands are run, `git status` and `git remote -v`, when the panel opens, when you press Refresh, and when the window regains the focus with the panel open. A command that takes more than five seconds is stopped.
+- Nothing is fetched, and `.git` is not written to.
+
 ## Using Git yourself
 
-NoteLiner runs no `git` command, keeps no history of a note's earlier versions, and does not sync.
+NoteLiner keeps no history of a note's earlier versions, and does not sync. It never commits, fetches, pulls, or pushes.
 
-- A project that is a Git repository opens as any folder does. NoteLiner doesn't read, change, or delete `.git`.
+- A project that is a Git repository opens as any folder does. NoteLiner doesn't change or delete `.git`.
+- Files Info reads the repository's status with `git`, and only while its panel is open. See Files Info.
 - Changes you make in NoteLiner show as uncommitted changes in that repository. You commit and push them yourself.
 - A pull, a checkout, or a merge while the project is open is picked up like any other change made outside NoteLiner.
 

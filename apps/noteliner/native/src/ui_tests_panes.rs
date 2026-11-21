@@ -355,3 +355,110 @@ fn help_is_a_window_you_can_work_beside() {
     assert!(!h.state().help_open());
     close(h);
 }
+
+/// A harness with a project of two notes, a presentation, and a diagram.
+fn open_mixed(tmp: &Path) -> (Harness<'static, NoteLinerApp>, PathBuf) {
+    let project = tmp.join("notes");
+    std::fs::create_dir_all(&project).unwrap();
+    fixture(&project);
+    std::fs::write(
+        project.join("talk.md"),
+        "---\npresentation:\n  theme: dark\n---\n# Talk\n",
+    )
+    .unwrap();
+    std::fs::write(project.join("map.mmd"), "flowchart LR\n  a[\"Alpha\"]\n").unwrap();
+    let mut h = harness(Paths {
+        user_data: tmp.join("NoteLiner"),
+    });
+    h.run_steps(2);
+    h.state_mut().open(project.clone());
+    wait_for(&mut h, "the project", |a| a.entries().len() == 4);
+    (h, project)
+}
+
+#[test]
+fn files_info_counts_each_kind_and_has_no_git_part_in_a_plain_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _project) = open_mixed(tmp.path());
+
+    h.get_by_label("Files info").click();
+    h.run_steps(3);
+    for row in ["Notes: 2", "Presentations: 1", "Diagrams: 1", "Total: 4"] {
+        assert!(h.query_by_label(row).is_some(), "{row}");
+    }
+    assert!(h.query_by_label("Refresh Git status").is_none());
+
+    // The tag filter leaves the counts alone.
+    h.state_mut().hide_tag_for_test("work");
+    h.run_steps(2);
+    assert!(h.query_by_label("Total: 4").is_some());
+
+    // Escape closes it.
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    assert!(h.query_by_label("Total: 4").is_none());
+    close(h);
+}
+
+#[test]
+fn files_info_says_so_when_git_cannot_read_the_repository() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_mixed(tmp.path());
+    // Enough to look like a repository, and not enough to be one.
+    std::fs::create_dir_all(project.join(".git")).unwrap();
+    std::fs::write(project.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+
+    h.get_by_label("Files info").click();
+    // With `git` installed it fails to read it; with none, it says that.
+    wait_for(&mut h, "git's answer", |a| a.files_info_git_failed());
+    h.run_steps(2);
+    assert!(h.query_by_label("Total: 4").is_some());
+    assert!(h.query_by_label("Refresh Git status").is_some());
+    assert!(
+        h.query_by_label_contains("Git could not read this repository")
+            .is_some()
+            || h.query_by_label_contains("Git is not installed").is_some()
+    );
+    assert_eq!(
+        std::fs::read_to_string(project.join(".git/HEAD")).unwrap(),
+        "ref: refs/heads/main\n"
+    );
+    close(h);
+}
+
+/// Skipped where `git` is not installed.
+#[test]
+fn files_info_shows_the_repository_and_its_changes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_mixed(tmp.path());
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(&project)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .output()
+            .is_ok_and(|o| o.status.success())
+    };
+    if !git(&["init", "-q", "-b", "main"]) {
+        eprintln!("git is not installed: skipped");
+        return;
+    }
+    assert!(git(&[
+        "remote",
+        "add",
+        "origin",
+        "https://me:secret@example.com/you/notes.git"
+    ]));
+
+    h.get_by_label("Files info").click();
+    wait_for(&mut h, "git's answer", |a| a.files_info_git_ready());
+    h.run_steps(2);
+    assert!(h
+        .query_by_label("Repository: https://example.com/you/notes.git")
+        .is_some());
+    assert!(h.query_by_label("Branch: main").is_some());
+    // Nothing is committed, so every file is a change.
+    assert!(h.query_by_label_contains("uncommitted changes").is_some());
+    close(h);
+}

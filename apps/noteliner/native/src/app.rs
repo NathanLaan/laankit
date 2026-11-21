@@ -52,7 +52,7 @@ use crate::spell;
 use crate::tabs::{NoteStash, Stashed, Tabs, HISTORY_BUDGET};
 use crate::views::attachments::{self, AttachmentAction};
 use crate::views::diagram::{self as diagram_view, ToolbarAction as DiagramToolbarAction};
-use crate::views::panes::{PaneAction, PaneStates};
+use crate::views::panes::{GitView, PaneAction, PaneStates};
 use crate::views::preview::{DeckProps, Preview, PreviewAction};
 use crate::views::sidebar::{self, SidebarAction, SidebarProps};
 use crate::views::tree::{ContextAction, FolderAction, Item, TreeAction, TreeState};
@@ -654,6 +654,21 @@ impl NoteLinerApp {
     }
 
     #[cfg(test)]
+    pub fn hide_tag_for_test(&mut self, tag: &str) {
+        self.hidden_tags.insert(tag.to_string());
+    }
+
+    #[cfg(test)]
+    pub fn files_info_git_ready(&self) -> bool {
+        matches!(self.panes.files_info.git, GitView::Ready(_))
+    }
+
+    #[cfg(test)]
+    pub fn files_info_git_failed(&self) -> bool {
+        matches!(self.panes.files_info.git, GitView::Failed(_))
+    }
+
+    #[cfg(test)]
     pub fn push_mcp_confirm(&mut self, req: McpConfirm) {
         self.mcp_queue.push_back(req);
     }
@@ -727,7 +742,14 @@ impl NoteLinerApp {
                 index,
                 folders,
                 truncated,
-            } => self.project_opened(ctx, folder, index, folders, truncated),
+            } => {
+                // The last project's repository is not this one's.
+                self.panes.files_info.git = GitView::Hidden;
+                self.project_opened(ctx, folder, index, folders, truncated);
+                if self.panes.files_info.open {
+                    self.read_git();
+                }
+            }
             Event::OpenFailed(message) => {
                 self.opening = false;
                 self.toasts
@@ -1076,6 +1098,15 @@ impl NoteLinerApp {
                 self.panes.search.results_arrived(&query, &results)
             }
             Event::Backlinks { id, links } => self.panes.backlinks.arrived(&id, &links),
+            Event::GitInfo { folder, result } => {
+                // An answer for a project closed since is dropped.
+                if self.project.as_ref().is_some_and(|p| p.folder == folder) {
+                    self.panes.files_info.git = match result {
+                        Ok(info) => GitView::Ready(info),
+                        Err(e) => GitView::Failed(e.message()),
+                    };
+                }
+            }
             // `[[` completion is built from the index (as `wikilinkCompletions` is).
             Event::NoteNames(_) => {}
             Event::Error(message) => self.toasts.error(message),
@@ -1505,6 +1536,9 @@ impl NoteLinerApp {
         self.was_focused = focused;
         if !focused {
             return;
+        }
+        if regained && self.panes.files_info.open {
+            self.read_git();
         }
         if regained || now - self.last_check >= CHECK_SECS {
             self.last_check = now;
@@ -2858,6 +2892,10 @@ impl NoteLinerApp {
             "backlinks" => self.toggle(|l| l.show_backlinks = true),
             "attachments" => self.toggle(|l| l.show_attachments = true),
             "tag-filter" => self.panes.filter_open = true,
+            "files-info" => {
+                self.panes.files_info.open = true;
+                self.read_git();
+            }
             "tag-editor" => self.overlay = Some(Overlay::TagEditor(Default::default())),
             "mcp-walkthrough" => {
                 self.apply(ctx, Act::Settings);
@@ -3762,6 +3800,7 @@ impl NoteLinerApp {
                 }
             }
             PaneAction::FilterShowAll => self.hidden_tags.clear(),
+            PaneAction::FilesInfoRefresh => self.read_git(),
             PaneAction::FilterHideAll => {
                 if let Some(p) = &self.project {
                     self.hidden_tags.extend(model::all_tags(&p.index));
@@ -3769,6 +3808,24 @@ impl NoteLinerApp {
                 }
             }
         }
+    }
+
+    /// Reads the project's Git repository for Files Info, when it is one.
+    /// `git` runs only from here, so only while the panel is open.
+    fn read_git(&mut self) {
+        let Some(folder) = self.project.as_ref().map(|p| p.folder.clone()) else {
+            return;
+        };
+        let info = &mut self.panes.files_info;
+        if !noteliner_core::git::is_repo(&folder) {
+            info.git = GitView::Hidden;
+            return;
+        }
+        // The rows stay while a newer answer is on its way.
+        if !matches!(info.git, GitView::Ready(_)) {
+            info.git = GitView::Checking;
+        }
+        self.backend.git_info(folder);
     }
 
     /// The Attachments panel (`AttachmentPanel.svelte`).

@@ -213,6 +213,11 @@ pub enum Event {
         id: String,
         links: Vec<Value>,
     },
+    /// What Files Info shows of the repository at `folder`.
+    GitInfo {
+        folder: PathBuf,
+        result: Result<noteliner_core::git::GitInfo, noteliner_core::git::GitError>,
+    },
     /// For wikilink autocomplete, with laankit-editor.
     #[allow(dead_code)]
     NoteNames(Vec<Value>),
@@ -1533,6 +1538,15 @@ impl Backend {
         self.spawn(|core| async move {
             let results = core.ws.lock().await.project.search(&query, case_sensitive);
             core.send(Event::SearchResults { query, results });
+        });
+    }
+
+    /// Reads the Git repository at `folder`, for Files Info. Nothing in it
+    /// is changed.
+    pub fn git_info(&self, folder: PathBuf) {
+        self.spawn(|core| async move {
+            let result = noteliner_core::git::read(&folder).await;
+            core.send(Event::GitInfo { folder, result });
         });
     }
 
