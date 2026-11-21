@@ -51,13 +51,38 @@ pub fn show(
     actions: impl FnOnce(&mut Ui),
 ) -> Vec<TitleBarAction> {
     let p = theme::palette(ui.ctx());
+    let modern = theme::shape(ui.ctx()).modern;
+    // Classic: a bar of the accent. Modern: the window's colour, with a line under it.
+    let fill = if modern { p.bg_base } else { p.accent };
     egui::Panel::top("laankit-titlebar")
         .exact_size(TITLEBAR_HEIGHT)
         .resizable(false)
         .show_separator_line(false)
-        .frame(Frame::NONE.fill(p.accent))
-        .show(ui, |ui| contents(ui, bar, theme, actions))
+        .frame(Frame::NONE.fill(fill))
+        .show(ui, |ui| {
+            let out = contents(ui, bar, theme, actions);
+            if modern {
+                let full = ui.max_rect();
+                ui.painter().hline(
+                    full.x_range(),
+                    full.bottom() - 0.5,
+                    Stroke::new(1.0, p.border),
+                );
+            }
+            out
+        })
         .inner
+}
+
+/// The colour of the title bar's text and icons: the accent's ink on the
+/// Classic bar, and the window's text in Modern.
+fn ink(ctx: &egui::Context) -> Color32 {
+    let p = theme::palette(ctx);
+    if theme::shape(ctx).modern {
+        p.text_primary
+    } else {
+        p.accent_on
+    }
 }
 
 fn contents(
@@ -67,7 +92,7 @@ fn contents(
     actions: impl FnOnce(&mut Ui),
 ) -> Vec<TitleBarAction> {
     let mut out = Vec::new();
-    let ink = theme::palette(ui.ctx()).accent_on;
+    let ink = ink(ui.ctx());
     let full = ui.max_rect();
     window::title_bar_drag(ui);
 
@@ -130,23 +155,44 @@ fn contents(
 /// A title bar icon button (`.titlebar-btn`): 48 × 32, the accent-on ink at
 /// 75%, darkened on hover; `active` keeps it darkened (the toolbar toggle).
 pub fn button(ui: &mut Ui, glyph: &str, label: &str, active: bool) -> Response {
-    let ink = theme::palette(ui.ctx()).accent_on;
+    let p = theme::palette(ui.ctx());
+    let shape = theme::shape(ui.ctx());
+    let ink = ink(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(vec2(BUTTON_WIDTH, TITLEBAR_HEIGHT), Sense::click());
     let hovered = resp.hovered();
-    let fill = if hovered {
-        Color32::from_black_alpha(46)
-    } else if active {
-        Color32::from_black_alpha(31)
-    } else {
-        Color32::TRANSPARENT
-    };
-    let ink = if hovered || active {
-        ink
-    } else {
-        ink.gamma_multiply(0.75)
-    };
     let painter = ui.painter();
-    painter.rect_filled(rect, 0.0, fill);
+    let ink = if shape.modern {
+        // A rounded fill inside the bar; the active button is tinted.
+        let fill = if hovered {
+            p.bg_button
+        } else if active {
+            p.bg_selected
+        } else {
+            Color32::TRANSPARENT
+        };
+        painter.rect_filled(rect.shrink2(vec2(6.0, 3.0)), shape.item(), fill);
+        if active {
+            p.accent
+        } else if hovered {
+            p.text_primary
+        } else {
+            p.text_secondary
+        }
+    } else {
+        let fill = if hovered {
+            Color32::from_black_alpha(46)
+        } else if active {
+            Color32::from_black_alpha(31)
+        } else {
+            Color32::TRANSPARENT
+        };
+        painter.rect_filled(rect, 0.0, fill);
+        if hovered || active {
+            ink
+        } else {
+            ink.gamma_multiply(0.75)
+        }
+    };
     painter.text(
         rect.center(),
         Align2::CENTER_CENTER,
@@ -167,17 +213,33 @@ fn scale_dropdown(ui: &mut Ui, theme: &ThemeState, ink: Color32) -> Option<Strin
         .map_or("100%", |s| s.1);
     let mut picked = None;
     ui.scope(|ui| {
+        let p = theme::palette(ui.ctx());
+        let modern = theme::shape(ui.ctx()).modern;
         let v = ui.visuals_mut();
         // `background: rgba(0, 0, 0, 0.18)`, darker on hover; accent-on text.
+        // Modern: the button colours, with no outline.
         for (w, alpha) in [
             (&mut v.widgets.inactive, 46),
             (&mut v.widgets.hovered, 71),
             (&mut v.widgets.active, 71),
             (&mut v.widgets.open, 71),
         ] {
-            w.weak_bg_fill = Color32::from_black_alpha(alpha);
-            w.bg_fill = Color32::from_black_alpha(alpha);
-            w.bg_stroke = Stroke::new(1.0, Color32::from_black_alpha(46));
+            let (fill, outline) = if modern {
+                let fill = if alpha == 46 {
+                    p.bg_button
+                } else {
+                    p.bg_button_hover
+                };
+                (fill, Stroke::NONE)
+            } else {
+                (
+                    Color32::from_black_alpha(alpha),
+                    Stroke::new(1.0, Color32::from_black_alpha(46)),
+                )
+            };
+            w.weak_bg_fill = fill;
+            w.bg_fill = fill;
+            w.bg_stroke = outline;
             w.fg_stroke = Stroke::new(1.0, ink);
             w.expansion = 0.0;
         }

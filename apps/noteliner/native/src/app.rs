@@ -405,10 +405,11 @@ impl NoteLinerApp {
         self.project.as_ref()?.selected.clone()
     }
 
-    /// The id of the app theme in use.
+    /// The id of the nearest of the seven older themes to the mode and
+    /// colour in use, which a new presentation's slide theme starts as.
     #[cfg(test)]
     pub fn theme_id(&self) -> &'static str {
-        self.theme.theme.id()
+        self.theme.legacy().id()
     }
 
     /// The project's folders, by path.
@@ -2455,7 +2456,7 @@ impl NoteLinerApp {
     fn apply(&mut self, ctx: &egui::Context, act: Act) {
         let zoom = matches!(
             act,
-            Act::ZoomIn | Act::ZoomOut | Act::ZoomReset | Act::SetTheme(_)
+            Act::ZoomIn | Act::ZoomOut | Act::ZoomReset | Act::SetMode(_) | Act::SetColour(_)
         );
         match act {
             Act::NewFile | Act::NewPresentation => {
@@ -2618,7 +2619,8 @@ impl NoteLinerApp {
             Act::ZoomIn => self.theme.zoom_in(),
             Act::ZoomOut => self.theme.zoom_out(),
             Act::ZoomReset => self.theme.zoom_reset(),
-            Act::SetTheme(t) => self.theme.theme = t,
+            Act::SetMode(m) => self.theme.mode = m,
+            Act::SetColour(c) => self.theme.colour = c,
             Act::GoHome => self.go_home(),
             Act::Settings => {
                 let mut state =
@@ -2914,6 +2916,7 @@ impl NoteLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
+        self.theme.follow_system(&ctx);
         #[cfg(test)]
         {
             self.test_time = ctx.input(|i| i.time);
@@ -4036,7 +4039,7 @@ impl NoteLinerApp {
                     Some(p) => (p.folders.clone(), model::all_tags(&p.index)),
                     None => (Vec::new(), Vec::new()),
                 };
-                match overlays::new_file(ctx, form, &folders, &tags, self.theme.theme.id()) {
+                match overlays::new_file(ctx, form, &folders, &tags, self.theme.legacy().id()) {
                     Some(FormAction::Close) => keep = false,
                     Some(FormAction::Submit) => {
                         keep = false;
@@ -4059,7 +4062,7 @@ impl NoteLinerApp {
                                 form.template.clone(),
                                 folder,
                                 form.deck
-                                    .then(|| DeckTheme(form.deck_theme(self.theme.theme.id()))),
+                                    .then(|| DeckTheme(form.deck_theme(self.theme.legacy().id()))),
                             ),
                         }
                     }

@@ -1315,6 +1315,7 @@ impl BlockLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
+        self.theme.follow_system(&ctx);
         self.ed.begin_frame(&ctx);
         self.backend_events();
         self.picked(&ctx);

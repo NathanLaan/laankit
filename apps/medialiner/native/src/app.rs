@@ -1561,6 +1561,7 @@ impl MediaLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
+        self.theme.follow_system(&ctx);
         if std::mem::take(&mut self.theme_dirty) {
             self.theme.apply(&ctx);
         }

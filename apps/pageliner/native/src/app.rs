@@ -482,6 +482,7 @@ impl PageLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
+        self.theme.follow_system(&ctx);
         self.handle_events(&ctx);
         if let Some(paths) = self.imports.poll() {
             self.backend.import(paths);

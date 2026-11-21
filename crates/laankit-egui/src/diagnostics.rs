@@ -5,7 +5,10 @@
 //! |---------------------------|-------------------------------------------------------------|
 //! | `LAANKIT_SCREENSHOT=<png>` | Saves a screenshot once the window has settled              |
 //! | `LAANKIT_SCREENSHOT_EXIT`  | Closes the app after saving it                              |
-//! | `LAANKIT_THEME=<id>`       | Overrides the saved theme (`midnight`, `lightPurple`, …)    |
+//! | `LAANKIT_THEME=<id>`       | One of the seven older themes (`midnight`, `lightPurple`, …): sets the mode and colour |
+//! | `LAANKIT_MODE=<id>`        | Overrides the saved mode (`light`, `dark`, `system`)        |
+//! | `LAANKIT_STYLE=<id>`       | Overrides the saved theme (`classic`, `modern`)             |
+//! | `LAANKIT_COLOUR=<id>`      | Overrides the saved colour (`blue`, `purple`, `midnight`, `mulberry`, `rasberryson`, `neutral`) |
 //! | `LAANKIT_SCALE=<id>`       | Overrides the saved UI scale (`100`, `150`, …)              |
 //!
 //! On Wayland the compositor stops sending frame callbacks while the session
@@ -60,16 +63,25 @@ impl Screenshot {
     }
 }
 
-/// Applies `LAANKIT_THEME` and `LAANKIT_SCALE`, if set, to a loaded theme state.
+/// Applies `LAANKIT_THEME`, `LAANKIT_MODE`, `LAANKIT_STYLE`,
+/// `LAANKIT_COLOUR` and `LAANKIT_SCALE`, if set, to a loaded theme state.
 pub fn theme_overrides(state: &mut ThemeState) {
+    use crate::theme::{Colour, Look, Mode, ThemeId};
     // Unknown ids are ignored, keeping the saved value.
-    if let Some(theme) = std::env::var("LAANKIT_THEME")
-        .ok()
-        .and_then(|t| crate::theme::ThemeId::from_id(&t))
-    {
-        state.theme = theme;
+    let var = |name: &str| std::env::var(name).ok();
+    if let Some(theme) = var("LAANKIT_THEME").and_then(|t| ThemeId::from_id(&t)) {
+        state.set_legacy(theme);
     }
-    if let Ok(scale) = std::env::var("LAANKIT_SCALE") {
+    if let Some(mode) = var("LAANKIT_MODE").and_then(|m| Mode::from_id(&m)) {
+        state.mode = mode;
+    }
+    if let Some(look) = var("LAANKIT_STYLE").and_then(|l| Look::from_id(&l)) {
+        state.look = look;
+    }
+    if let Some(colour) = var("LAANKIT_COLOUR").and_then(|c| Colour::from_id(&c)) {
+        state.colour = colour;
+    }
+    if let Some(scale) = var("LAANKIT_SCALE") {
         state.set_scale(&scale);
     }
 }

@@ -15,12 +15,15 @@ use egui::{
 
 use crate::settings::{modal_area, modal_frame, modal_header};
 use crate::theme::{self, Palette};
-use crate::{fonts, toast};
+use crate::toast;
 
 /// `.modal-compact { min-width: 340px; max-width: 500px }`; forms use this width.
 pub const COMPACT_WIDTH: f32 = 420.0;
 /// `border-radius: 6px` on inputs and buttons.
-const CONTROL_RADIUS: CornerRadius = CornerRadius::same(6);
+/// `border-radius: 6px` on buttons and inputs, in Classic.
+fn control_radius(ctx: &egui::Context) -> CornerRadius {
+    theme::shape(ctx).round(6)
+}
 /// `.modal-overlay { padding: 10px 10px 10px 58px }`.
 const OVERLAY_PAD: Margin = Margin {
     left: 58,
@@ -90,7 +93,7 @@ impl<'a> Dialog<'a> {
         let screen = ctx.content_rect();
         let mut modal = Modal::new(self.id)
             .backdrop_color(p.modal_overlay)
-            .frame(modal_frame(&p));
+            .frame(modal_frame(&p, &theme::shape(ctx)));
         let fixed = match self.size {
             Size::Compact { .. } => None,
             Size::Full { top_inset } => {
@@ -151,13 +154,7 @@ impl<'a> Dialog<'a> {
 
 /// `.setting-label`: the 11 px upper-case caption above a field.
 pub fn field_label(ui: &mut Ui, text: &str) {
-    let p = theme::palette(ui.ctx());
-    ui.label(
-        fonts::weight(text.to_uppercase(), fonts::SEMIBOLD)
-            .size(11.0)
-            .color(p.text_muted)
-            .extra_letter_spacing(0.5),
-    );
+    ui.label(crate::settings::caption(ui.ctx(), text));
     ui.add_space(2.0);
 }
 
@@ -174,12 +171,19 @@ pub fn text_input(ui: &mut Ui, value: &mut String, hint: &str, enabled: bool) ->
     ui.scope(|ui| {
         // TextEdit draws its frame from these: the input border at rest and on
         // hover, the focus colour (`selection.stroke`) while focused.
+        let radius = control_radius(ui.ctx());
+        // Modern: a ring while focused.
+        let focus = if theme::shape(ui.ctx()).modern {
+            2.0
+        } else {
+            1.0
+        };
         let v = &mut ui.visuals_mut().widgets;
         for w in [&mut v.inactive, &mut v.hovered, &mut v.active, &mut v.open] {
             w.bg_stroke = Stroke::new(1.0, p.input_border);
-            w.corner_radius = CONTROL_RADIUS;
+            w.corner_radius = radius;
         }
-        ui.visuals_mut().selection.stroke = Stroke::new(1.0, p.input_border_focus);
+        ui.visuals_mut().selection.stroke = Stroke::new(focus, p.input_border_focus);
         ui.add_enabled(enabled, edit)
     })
     .inner
@@ -233,11 +237,11 @@ pub fn icon_button(
     let (rect, resp) = ui.allocate_exact_size(size, sense);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     let hovered = enabled && resp.hovered();
-    let (fill, ink, stroke) = colors(&p, kind, hovered);
+    let (fill, ink, stroke) = colors(&p, kind, hovered, theme::shape(ui.ctx()).modern);
     let alpha = if enabled { 1.0 } else { 0.5 };
     ui.painter().rect(
         rect,
-        CONTROL_RADIUS,
+        control_radius(ui.ctx()),
         fill.gamma_multiply(alpha),
         Stroke::new(stroke.width, stroke.color.gamma_multiply(alpha)),
         StrokeKind::Inside,
@@ -265,8 +269,16 @@ pub fn icon_button(
     }
 }
 
-fn colors(p: &Palette, kind: ButtonKind, hovered: bool) -> (Color32, Color32, Stroke) {
+fn colors(
+    p: &Palette,
+    kind: ButtonKind,
+    hovered: bool,
+    modern: bool,
+) -> (Color32, Color32, Stroke) {
     match (kind, hovered) {
+        // Modern: the primary button is filled with the accent, with no outline.
+        (ButtonKind::Primary, false) if modern => (p.accent, p.accent_on, Stroke::NONE),
+        (ButtonKind::Primary, true) if modern => (p.accent_hover, p.accent_on, Stroke::NONE),
         (ButtonKind::Primary, false) => (p.bg_selected, p.accent, Stroke::new(1.0, p.accent)),
         (ButtonKind::Primary, true) => (p.accent, p.accent_on, Stroke::new(1.0, p.accent)),
         (ButtonKind::Secondary, false) => (p.bg_button, p.text_primary, Stroke::NONE),

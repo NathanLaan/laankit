@@ -176,6 +176,7 @@ pub fn show(
     mut header_extra: impl FnMut(&mut Ui, &str),
 ) -> PaneHostOutput {
     let p = theme::palette(ui.ctx());
+    let shape = theme::shape(ui.ctx());
     let mut out = PaneHostOutput::default();
     let ids = visible_order(&layout.order, panes);
     // Keep the stored order complete, so a reorder can place any pane.
@@ -214,15 +215,16 @@ pub fn show(
                 )
             });
             let resp = resp.on_hover_cursor(egui::CursorIcon::ResizeVertical);
-            ui.painter().rect_filled(
-                divider,
-                0.0,
-                if resp.hovered() || resp.dragged() {
-                    p.border_hover
-                } else {
-                    p.border
-                },
-            );
+            let active = resp.hovered() || resp.dragged();
+            let ink = if active { p.border_hover } else { p.border };
+            if shape.modern && !active {
+                // A line, with the same band to drag.
+                ui.painter().rect_filled(divider, 0.0, p.bg_base);
+                ui.painter()
+                    .hline(divider.x_range(), divider.center().y, Stroke::new(1.0, ink));
+            } else {
+                ui.painter().rect_filled(divider, 0.0, ink);
+            }
             if resp.drag_started() {
                 drag.resize = Some((i, (heights[i - 1], heights[i])));
             }
@@ -249,7 +251,7 @@ pub fn show(
         let rect = Rect::from_min_size(pos2(host.left(), y), vec2(host.width(), heights[i]));
         let header = Rect::from_min_size(
             rect.min,
-            vec2(rect.width(), HEADER_HEIGHT.min(rect.height())),
+            vec2(rect.width(), shape.pane_header_height.min(rect.height())),
         );
         header_rects.push(header);
         let closed = draw_header(ui, &p, id, spec, header, &mut drag, &mut header_extra);
@@ -328,18 +330,32 @@ fn draw_header(
         drag.pane = Some(spec.id.to_string());
     }
     let painter = ui.painter_at(rect);
+    let modern = theme::shape(ui.ctx()).modern;
     painter.rect_filled(rect, 0.0, p.bg_base);
-    painter.hline(
-        rect.x_range(),
-        rect.bottom() - 0.5,
-        Stroke::new(1.0, p.border),
-    );
-    let ink = if dragging {
-        p.text_muted.gamma_multiply(0.5)
+    if !modern {
+        painter.hline(
+            rect.x_range(),
+            rect.bottom() - 0.5,
+            Stroke::new(1.0, p.border),
+        );
+    }
+    let ink = if modern {
+        p.text_secondary
     } else {
         p.text_muted
     };
-    let title = crate::settings::semibold_galley(ui, spec.title, 11.0, ink);
+    let ink = if dragging {
+        ink.gamma_multiply(0.5)
+    } else {
+        ink
+    };
+    // Apps pass the title in capitals (`FILES`). Modern writes it `Files`;
+    // a screen reader hears the title as passed either way.
+    let title = if modern {
+        crate::settings::semibold_galley(ui, &title_case(spec.title), 12.0, ink)
+    } else {
+        crate::settings::semibold_galley(ui, spec.title, 11.0, ink)
+    };
     painter.galley(
         pos2(rect.left() + 12.0, rect.center().y - title.size().y / 2.0),
         title,
@@ -380,6 +396,25 @@ fn draw_header(
     closed
 }
 
+/// `FILES` as `Files`, and `RECENT FILES` as `Recent Files`. A title that
+/// isn't all capitals is left as it is.
+fn title_case(title: &str) -> String {
+    if title.chars().any(char::is_lowercase) {
+        return title.to_string();
+    }
+    let mut out = String::with_capacity(title.len());
+    let mut start = true;
+    for c in title.chars() {
+        if start {
+            out.push(c);
+        } else {
+            out.extend(c.to_lowercase());
+        }
+        start = !c.is_alphanumeric();
+    }
+    out
+}
+
 /// `.pane-header-btn`: a 24 px icon button. Also used by apps for header
 /// extras, so they match.
 pub fn header_button(
@@ -394,7 +429,7 @@ pub fn header_button(
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
     if resp.hovered() {
         ui.painter()
-            .rect_filled(rect, theme::RADIUS, p.bg_button_hover);
+            .rect_filled(rect, theme::shape(ui.ctx()).control(), p.bg_button_hover);
     }
     ui.painter().text(
         rect.center(),

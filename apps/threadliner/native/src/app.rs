@@ -314,7 +314,7 @@ impl ThreadLinerApp {
         self.hydrated = true;
         let before = self.theme.clone();
         if let Some(t) = self.settings.theme.as_deref().and_then(ThemeId::from_id) {
-            self.theme.theme = t;
+            self.theme.set_legacy(t);
         }
         if let Some(s) = self.settings.scale.as_deref() {
             self.theme.set_scale(s);
@@ -565,11 +565,12 @@ impl ThreadLinerApp {
     /// `themeState.set` / `setScale` mirror the choice to the synced settings.
     fn theme_changed(&mut self, before: &ThemeState) {
         self.theme_saved = true;
-        if self.theme.theme != before.theme {
-            self.settings.theme = Some(self.theme.theme.id().to_string());
+        // The synced file holds one of the seven older themes: the nearest.
+        if self.theme.legacy() != before.legacy() {
+            self.settings.theme = Some(self.theme.legacy().id().to_string());
             if self.setup_complete {
                 self.backend
-                    .set_setting("theme", json!(self.theme.theme.id()));
+                    .set_setting("theme", json!(self.theme.legacy().id()));
             }
         }
         if self.theme.scale != before.scale {
@@ -662,6 +663,7 @@ impl ThreadLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
+        self.theme.follow_system(&ctx);
         self.handle_events(&ctx);
         if let Some(dir) = self.browse.poll() {
             self.setup.data_dir = dir.display().to_string();

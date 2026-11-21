@@ -90,12 +90,16 @@ pub fn fits(ui: &Ui, buttons: usize) -> bool {
 /// spacer, then `bottom` against the bottom edge.
 pub fn show(ui: &mut Ui, top: impl FnOnce(&mut Ui), bottom: impl FnOnce(&mut Ui)) {
     let p = theme::palette(ui.ctx());
+    let modern = theme::shape(ui.ctx()).modern;
+    // Modern: the toolbar and the sidebar share one colour, with no line between.
+    let fill = if modern { p.bg_base } else { p.bg_overlay };
     egui::Panel::left("laankit-toolbar")
         .exact_size(WIDTH)
         .resizable(false)
+        .show_separator_line(!modern)
         .frame(
             Frame::NONE
-                .fill(p.bg_overlay)
+                .fill(fill)
                 .inner_margin(Margin::symmetric(0, PADDING)),
         )
         .show(ui, |ui| {
@@ -147,7 +151,10 @@ pub fn button(ui: &mut Ui, b: ToolbarButton<'_>) -> Response {
     };
     let (rect, resp) = ui.allocate_exact_size(vec2(BUTTON_SIZE, BUTTON_SIZE), sense);
     let hovered = resp.hovered() && !b.disabled;
-    let (fill, ink, outline) = if b.active {
+    let (fill, ink, outline) = if b.active && theme::shape(ui.ctx()).modern {
+        // A tinted fill alone marks the selected button.
+        (p.bg_selected, p.accent, Stroke::NONE)
+    } else if b.active {
         (p.bg_selected, p.accent, Stroke::new(1.0, p.accent))
     } else if hovered {
         (p.bg_button, p.text_primary, Stroke::NONE)

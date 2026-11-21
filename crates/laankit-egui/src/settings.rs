@@ -16,12 +16,14 @@ use egui::{
 use crate::commands::ShortcutEntry;
 use crate::fonts;
 use crate::icons;
-use crate::theme::{self, Palette, ThemeId, ThemeState, SCALES};
+use crate::theme::{self, Colour, Look, Mode, Palette, ThemeState, SCALES};
 
 /// `.modal-header { height: 32px; padding: 0 24px }`.
 const HEADER_HEIGHT: f32 = 32.0;
 /// `border-radius: 6px` on the settings controls.
-const CONTROL_RADIUS: CornerRadius = CornerRadius::same(6);
+fn control_radius(ctx: &egui::Context) -> CornerRadius {
+    theme::shape(ctx).round(6)
+}
 /// `padding: 10px 14px` around 14 px text.
 const CONTROL_HEIGHT: f32 = 38.0;
 /// `.modal-overlay { padding: 10px 10px 10px 58px }`: the left margin
@@ -100,7 +102,7 @@ impl<'a> SettingsShell<'a> {
         let modal = Modal::new(Id::unique("laankit-settings"))
             .area(modal_area(Id::unique("laankit-settings"), rect.min))
             .backdrop_color(p.modal_overlay)
-            .frame(modal_frame(&p))
+            .frame(modal_frame(&p, &theme::shape(ctx)))
             .show(ctx, |ui| {
                 ui.set_min_size(rect.size());
                 ui.set_max_size(rect.size());
@@ -194,11 +196,12 @@ pub(crate) fn modal_area(id: Id, pos: egui::Pos2) -> Area {
 }
 
 /// `.modal`: the surface with a hairline and 12 px corners.
-pub(crate) fn modal_frame(p: &Palette) -> Frame {
+pub(crate) fn modal_frame(p: &Palette, shape: &theme::Shape) -> Frame {
     Frame::new()
         .fill(p.bg_surface)
         .stroke(Stroke::new(1.0, p.border))
-        .corner_radius(theme::RADIUS_LARGE)
+        .corner_radius(shape.dialog())
+        .shadow(shape.popup_shadow())
 }
 
 /// `.modal-header`: the accent bar with the upper-case title and the close
@@ -206,22 +209,37 @@ pub(crate) fn modal_frame(p: &Palette) -> Frame {
 pub(crate) fn modal_header(ui: &mut Ui, p: &Palette, title: &str) -> bool {
     let (rect, _) =
         ui.allocate_exact_size(vec2(ui.available_width(), HEADER_HEIGHT), Sense::hover());
-    let r = theme::RADIUS_LARGE.nw;
-    ui.painter().rect_filled(
-        rect,
-        CornerRadius {
-            nw: r,
-            ne: r,
-            sw: 0,
-            se: 0,
-        },
-        p.accent,
-    );
-    let title = semibold_galley(ui, &title.to_uppercase(), 14.0, p.accent_on);
+    let shape = theme::shape(ui.ctx());
+    let r = shape.dialog_radius;
+    let top = CornerRadius {
+        nw: r,
+        ne: r,
+        sw: 0,
+        se: 0,
+    };
+    // Classic: the accent bar, with the title in capitals. Modern: the
+    // dialog's own colour, the title as written, and a line under it.
+    let ink = if shape.modern {
+        ui.painter().rect_filled(rect, top, p.bg_surface);
+        ui.painter().hline(
+            rect.x_range(),
+            rect.bottom() - 0.5,
+            Stroke::new(1.0, p.border),
+        );
+        p.text_primary
+    } else {
+        ui.painter().rect_filled(rect, top, p.accent);
+        p.accent_on
+    };
+    let title = if shape.modern {
+        semibold_galley(ui, title, 14.0, ink)
+    } else {
+        semibold_galley(ui, &title.to_uppercase(), 14.0, ink)
+    };
     ui.painter().galley(
         pos2(rect.left() + 24.0, rect.center().y - title.size().y / 2.0),
         title,
-        p.accent_on,
+        ink,
     );
     let button = Rect::from_center_size(
         pos2(rect.right() - 24.0 - 12.0, rect.center().y),
@@ -232,16 +250,19 @@ pub(crate) fn modal_header(ui: &mut Ui, p: &Palette, title: &str) -> bool {
         .on_hover_text("Close (Esc)");
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Close"));
     if resp.hovered() {
-        ui.painter()
-            .rect_filled(button, theme::RADIUS, Color32::from_black_alpha(46));
+        let hover = if shape.modern {
+            p.bg_button
+        } else {
+            Color32::from_black_alpha(46)
+        };
+        ui.painter().rect_filled(button, shape.control(), hover);
     }
     ui.painter().text(
         button.center(),
         Align2::CENTER_CENTER,
         icons::XMARK,
         icons::font(14.0),
-        p.accent_on
-            .gamma_multiply(if resp.hovered() { 1.0 } else { 0.8 }),
+        ink.gamma_multiply(if resp.hovered() { 1.0 } else { 0.8 }),
     );
     resp.clicked()
 }
@@ -290,20 +311,44 @@ pub(crate) fn outline_button(ui: &mut Ui, p: &Palette, label: &str, pad: Vec2) -
     let size = galley.size() + pad * 2.0;
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
-    let (fill, ink) = if resp.hovered() {
-        (p.accent, p.accent_on)
+    // Modern: filled with the accent, with no outline, as a dialog's
+    // primary button is.
+    let modern = theme::shape(ui.ctx()).modern;
+    let (fill, ink) = match (modern, resp.hovered()) {
+        (true, true) => (p.accent_hover, p.accent_on),
+        (true, false) | (false, true) => (p.accent, p.accent_on),
+        (false, false) => (p.bg_selected, p.accent),
+    };
+    let outline = if modern {
+        Stroke::NONE
     } else {
-        (p.bg_selected, p.accent)
+        Stroke::new(1.0, p.accent)
     };
     ui.painter().rect(
         rect,
-        CONTROL_RADIUS,
+        control_radius(ui.ctx()),
         fill,
-        Stroke::new(1.0, p.accent),
+        outline,
         StrokeKind::Outside,
     );
     ui.painter().galley(rect.min + pad, galley, ink);
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// The caption above a setting or a field: 11 px capitals in Classic, and
+/// the label as written, a little larger, in Modern.
+pub fn caption(ctx: &egui::Context, label: &str) -> RichText {
+    let p = theme::palette(ctx);
+    if theme::shape(ctx).modern {
+        fonts::weight(label, fonts::SEMIBOLD)
+            .size(12.0)
+            .color(p.text_secondary)
+    } else {
+        fonts::weight(label.to_uppercase(), fonts::SEMIBOLD)
+            .size(11.0)
+            .color(p.text_muted)
+            .extra_letter_spacing(0.5)
+    }
 }
 
 /// `SettingGroup`: an upper-case caption, optional help text, then the
@@ -316,12 +361,7 @@ pub fn setting_group<R>(
 ) -> R {
     let p = theme::palette(ui.ctx());
     if !label.is_empty() {
-        ui.label(
-            fonts::weight(label.to_uppercase(), fonts::SEMIBOLD)
-                .size(11.0)
-                .color(p.text_muted)
-                .extra_letter_spacing(0.5),
-        );
+        ui.label(caption(ui.ctx(), label));
         ui.add_space(4.0);
     }
     if let Some(help) = help {
@@ -333,35 +373,78 @@ pub fn setting_group<R>(
     inner
 }
 
-/// `ThemeList`: a full-width dropdown of the themes, each option painted in
-/// its own theme's accent colours. Applies the choice to the context and
-/// returns `true` when it changed, so the app can persist it.
-pub fn theme_list(ui: &mut Ui, state: &mut ThemeState) -> bool {
-    theme_list_among(ui, state, &ThemeId::ALL)
-}
-
-/// [`theme_list`] limited to `themes`, for apps that ship a subset
-/// (`themeState.configure({ themes })`; ThreadLiner offers Light, Dark and
-/// Midnight).
-pub fn theme_list_among(ui: &mut Ui, state: &mut ThemeState, themes: &[ThemeId]) -> bool {
-    let p = theme::palette(ui.ctx());
-    let mut picked = None;
-    dropdown(ui, &p, "Theme", state.theme.name(), |ui| {
-        for &t in themes {
-            let tp = t.palette();
-            if swatch_row(ui, t.name(), tp.accent, tp.accent_on, t == state.theme).clicked() {
-                picked = Some(t);
+/// The Mode, Theme and Colour groups, each a full-width dropdown that
+/// changes its own part of `state` and leaves the other two. `colours` are
+/// the ones the app offers (ThreadLiner offers Blue and Midnight). The Theme
+/// group is shown when `looks` is set: an app sets it once its own screens
+/// are drawn from the [`theme::Shape`]. Applies a choice to the context and
+/// returns `true` when one changed, so the app can persist it.
+pub fn appearance(ui: &mut Ui, state: &mut ThemeState, colours: &[Colour], looks: bool) -> bool {
+    let before = state.clone();
+    let unreported = state.mode == Mode::System && !state.system_reported();
+    setting_group(
+        ui,
+        "Mode",
+        unreported.then_some(
+            "This computer does not report a light or dark setting, so System uses Dark.",
+        ),
+        |ui| {
+            let p = theme::palette(ui.ctx());
+            let mut picked = None;
+            dropdown(ui, &p, "Mode", state.mode.name(), |ui| {
+                for m in Mode::ALL {
+                    if swatch_row(ui, m.name(), p.bg_surface, p.text_primary, m == state.mode)
+                        .clicked()
+                    {
+                        picked = Some(m);
+                    }
+                }
+            });
+            if let Some(m) = picked {
+                state.mode = m;
             }
+        },
+    );
+    if looks {
+        setting_group(ui, "Theme", None, |ui| {
+            let p = theme::palette(ui.ctx());
+            let mut picked = None;
+            dropdown(ui, &p, "Theme", state.look.name(), |ui| {
+                for l in Look::ALL {
+                    if swatch_row(ui, l.name(), p.bg_surface, p.text_primary, l == state.look)
+                        .clicked()
+                    {
+                        picked = Some(l);
+                    }
+                }
+            });
+            if let Some(l) = picked {
+                state.look = l;
+            }
+        });
+    }
+    setting_group(ui, "Colour", None, |ui| {
+        let p = theme::palette(ui.ctx());
+        let dark = state.dark();
+        let mut picked = None;
+        dropdown(ui, &p, "Colour", state.colour.name(), |ui| {
+            for &c in colours {
+                // Each option is painted in its own accent, in the mode in use.
+                let cp = c.palette(dark);
+                if swatch_row(ui, c.name(), cp.accent, cp.accent_on, c == state.colour).clicked() {
+                    picked = Some(c);
+                }
+            }
+        });
+        if let Some(c) = picked {
+            state.colour = c;
         }
     });
-    match picked {
-        Some(t) if t != state.theme => {
-            state.theme = t;
-            state.apply(ui.ctx());
-            true
-        }
-        _ => false,
+    if *state == before {
+        return false;
     }
+    state.apply(ui.ctx());
+    true
 }
 
 /// `ScaleList`: a full-width dropdown of the UI scale steps. Applies the
@@ -436,7 +519,7 @@ fn dropdown(ui: &mut Ui, p: &Palette, label: &str, current: &str, options: impl 
     };
     ui.painter().rect(
         rect,
-        CONTROL_RADIUS,
+        control_radius(ui.ctx()),
         fill,
         Stroke::new(1.0, stroke),
         StrokeKind::Inside,
@@ -529,7 +612,7 @@ pub fn toggle_option(ui: &mut Ui, label: &str, checked: &mut bool, enabled: bool
     let alpha = if enabled { 1.0 } else { 0.5 };
     ui.painter().rect(
         rect,
-        CONTROL_RADIUS,
+        control_radius(ui.ctx()),
         fill.gamma_multiply(alpha),
         stroke,
         StrokeKind::Outside,
@@ -570,7 +653,7 @@ pub fn restart_banner(ui: &mut Ui, message: Option<&str>) -> bool {
     Frame::new()
         .fill(p.bg_selected)
         .stroke(Stroke::new(1.0, p.accent))
-        .corner_radius(CONTROL_RADIUS)
+        .corner_radius(control_radius(ui.ctx()))
         .inner_margin(Margin::symmetric(14, 10))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -589,7 +672,8 @@ pub fn restart_banner(ui: &mut Ui, message: Option<&str>) -> bool {
                     } else {
                         p.accent
                     };
-                    ui.painter().rect_filled(rect, theme::RADIUS, fill);
+                    ui.painter()
+                        .rect_filled(rect, theme::shape(ui.ctx()).control(), fill);
                     ui.painter().galley(rect.min + pad, galley, p.accent_on);
                     restart = resp
                         .on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -636,7 +720,8 @@ pub fn shortcuts_list(ui: &mut Ui, shortcuts: &[ShortcutEntry], empty_message: O
             egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{}: {}", s.action, s.keys))
         });
         if row % 2 == 0 {
-            ui.painter().rect_filled(rect, CONTROL_RADIUS, p.bg_base);
+            ui.painter()
+                .rect_filled(rect, control_radius(ui.ctx()), p.bg_base);
         }
         row += 1;
         ui.painter().text(
@@ -658,7 +743,7 @@ pub fn shortcuts_list(ui: &mut Ui, shortcuts: &[ShortcutEntry], empty_message: O
         );
         ui.painter().rect(
             chip,
-            theme::RADIUS,
+            theme::shape(ui.ctx()).control(),
             p.bg_button,
             Stroke::new(1.0, p.border),
             StrokeKind::Inside,
@@ -694,9 +779,10 @@ mod tests {
             restarted: false,
             changed: 0,
         };
+        // Tall enough for every group at 150%, with none scrolled out of reach.
         Harness::builder()
             .with_context_setup(crate::fonts::install)
-            .with_size(vec2(1000.0, 800.0))
+            .with_size(vec2(1000.0, 1100.0))
             .build_ui_state(
                 |ui, s: &mut State| {
                     if s.closed {
@@ -723,9 +809,7 @@ mod tests {
                         &mut s.active,
                         |ui, tab| match tab {
                             "ui" => {
-                                setting_group(ui, "Theme", None, |ui| {
-                                    *changed += theme_list(ui, theme) as usize
-                                });
+                                *changed += appearance(ui, theme, &Colour::ALL, true) as usize;
                                 setting_group(
                                     ui,
                                     "UI scale",
@@ -752,21 +836,72 @@ mod tests {
     }
 
     #[test]
-    fn theme_selection_changes_state() {
+    fn each_of_mode_theme_and_colour_changes_its_own_part() {
         let mut h = harness();
         h.run();
-        h.get_by_label("Theme").click();
-        h.run();
-        h.get_by_label("Light-Mulberry").click();
-        h.run();
-        assert_eq!(h.state().theme.theme, ThemeId::LightMulberry);
-        assert_eq!(h.state().changed, 1);
-        assert!(!h.state().closed, "picking a theme keeps settings open");
+        let start = h.state().theme.clone();
         assert_eq!(
-            theme::palette(&h.ctx).accent,
-            ThemeId::LightMulberry.palette().accent,
+            (start.mode, start.look, start.colour),
+            (Mode::Dark, Look::Classic, Colour::Midnight)
+        );
+
+        h.get_by_label("Colour").click();
+        h.run();
+        h.get_by_label("Mulberry").click();
+        h.run();
+        let s = h.state().theme.clone();
+        assert_eq!(
+            (s.mode, s.look, s.colour),
+            (Mode::Dark, Look::Classic, Colour::Mulberry)
+        );
+        assert_eq!(h.state().changed, 1);
+        assert!(!h.state().closed, "picking a colour keeps settings open");
+        assert_eq!(
+            theme::palette(&h.ctx),
+            *Colour::Mulberry.palette(true),
             "applied"
         );
+
+        h.get_by_label("Mode").click();
+        h.run();
+        h.get_by_label("Light").click();
+        h.run();
+        let s = h.state().theme.clone();
+        assert_eq!(
+            (s.mode, s.look, s.colour),
+            (Mode::Light, Look::Classic, Colour::Mulberry)
+        );
+        assert_eq!(
+            theme::palette(&h.ctx),
+            *theme::ThemeId::LightMulberry.palette(),
+            "the old Light-Mulberry theme"
+        );
+
+        h.get_by_label("Theme").click();
+        h.run();
+        h.get_by_label("Modern").click();
+        h.run();
+        let s = h.state().theme.clone();
+        assert_eq!(
+            (s.mode, s.look, s.colour),
+            (Mode::Light, Look::Modern, Colour::Mulberry)
+        );
+        assert_eq!(theme::shape(&h.ctx), theme::MODERN, "applied");
+        assert_eq!(h.state().changed, 3);
+    }
+
+    #[test]
+    fn system_mode_says_so_when_the_computer_reports_nothing() {
+        let mut h = harness();
+        h.run();
+        h.get_by_label("Mode").click();
+        h.run();
+        h.get_by_label("System").click();
+        h.run();
+        assert_eq!(h.state().theme.mode, Mode::System);
+        // The test window reports no setting: Dark is used.
+        assert!(h.state().theme.dark());
+        h.get_by_label_contains("so System uses Dark");
     }
 
     #[test]

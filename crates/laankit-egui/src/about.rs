@@ -154,7 +154,7 @@ impl<'a> AboutModal<'a> {
         let modal = Modal::new(Id::unique("laankit-about"))
             .area(modal_area(Id::unique("laankit-about"), pos))
             .backdrop_color(p.modal_overlay)
-            .frame(modal_frame(&p))
+            .frame(modal_frame(&p, &theme::shape(ctx)))
             .show(ctx, |ui| {
                 ui.set_min_size(size);
                 ui.set_max_size(size);
@@ -251,7 +251,7 @@ impl<'a> AboutModal<'a> {
                     Frame::new()
                         .fill(p.bg_overlay)
                         .stroke(Stroke::new(1.0, p.border))
-                        .corner_radius(CornerRadius::same(6))
+                        .corner_radius(theme::shape(ui.ctx()).round(6))
                         .inner_margin(Margin::symmetric(12, 8))
                         .show(ui, |ui| {
                             egui::ScrollArea::vertical()
@@ -338,7 +338,7 @@ fn check_button(ui: &mut Ui, p: &Palette, status: &UpdateStatus) -> egui::Respon
     let alpha = if enabled { 1.0 } else { 0.5 };
     ui.painter().rect(
         rect,
-        CornerRadius::same(6),
+        theme::shape(ui.ctx()).round(6),
         fill.gamma_multiply(alpha),
         Stroke::NONE,
         StrokeKind::Inside,

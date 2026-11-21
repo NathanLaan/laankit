@@ -23,7 +23,7 @@ use laankit_egui::not_ported::NotPorted;
 use laankit_egui::palette::{CommandPalette, ItemKind, PaletteItem, PaletteOutcome};
 use laankit_egui::panes::{self, Pane, PaneLayout};
 use laankit_egui::settings::{self, SettingsShell, Tab};
-use laankit_egui::theme::{self, ThemeId, ThemeState};
+use laankit_egui::theme::{self, Colour, Look, Mode, ThemeState};
 use laankit_egui::titlebar::{self, TitleBar, TitleBarAction};
 use laankit_egui::toast::Toasts;
 use laankit_egui::toolbar::{self, ToolbarButton};
@@ -185,11 +185,7 @@ impl Gallery {
             Act::Settings => self.settings_tab = Some("ui".into()),
             Act::About => self.about = true,
             Act::NextTheme => {
-                let i = ThemeId::ALL
-                    .iter()
-                    .position(|t| *t == self.theme.theme)
-                    .unwrap_or(0);
-                self.theme.theme = ThemeId::ALL[(i + 1) % ThemeId::ALL.len()];
+                self.theme.colour = next_colour(self.theme.colour);
             }
             Act::ZoomIn => self.theme.zoom_in(),
             Act::ZoomOut => self.theme.zoom_out(),
@@ -202,22 +198,43 @@ impl Gallery {
         self.theme.apply(ctx);
     }
 
-    fn set_theme(&mut self, ctx: &egui::Context, id: ThemeId) {
-        self.theme.theme = id;
-        self.theme.apply(ctx);
-    }
-
     fn content(&mut self, ui: &mut Ui) {
         let p = theme::palette(ui.ctx());
-        section(ui, "Theme", |ui| {
+        // Each row changes its own part and leaves the other two.
+        let before = self.theme.clone();
+        section(ui, "Mode", |ui| {
             ui.horizontal_wrapped(|ui| {
-                for id in ThemeId::ALL {
-                    if theme_chip(ui, id, self.theme.theme == id).clicked() {
-                        self.set_theme(ui.ctx(), id);
+                for mode in Mode::ALL {
+                    if chip(ui, &p, mode.name(), None, self.theme.mode == mode).clicked() {
+                        self.theme.mode = mode;
                     }
                 }
             });
         });
+        section(ui, "Theme", |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for look in Look::ALL {
+                    if chip(ui, &p, look.name(), None, self.theme.look == look).clicked() {
+                        self.theme.look = look;
+                    }
+                }
+            });
+        });
+        section(ui, "Colour", |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for colour in Colour::ALL {
+                    // Painted in its own set, in the mode in use.
+                    let own = colour.palette(self.theme.dark());
+                    let dot = Some(own.accent);
+                    if chip(ui, own, colour.name(), dot, self.theme.colour == colour).clicked() {
+                        self.theme.colour = colour;
+                    }
+                }
+            });
+        });
+        if self.theme != before {
+            self.theme.apply(ui.ctx());
+        }
 
         section(ui, "Text", |ui| {
             ui.label("Body text in Inter, 14 px. The quick brown fox jumps over the lazy dog.");
@@ -421,9 +438,7 @@ impl Gallery {
             .top_inset(theme::TITLEBAR_HEIGHT)
             .show(ctx, &mut tab, |ui, id| match id {
                 "ui" => {
-                    settings::setting_group(ui, "Theme", None, |ui| {
-                        settings::theme_list(ui, theme)
-                    });
+                    settings::appearance(ui, theme, &theme::Colour::ALL, true);
                     settings::setting_group(
                         ui,
                         "UI scale",
@@ -554,6 +569,7 @@ fn registry() -> Registry<Act, View> {
 
 impl eframe::App for Gallery {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        self.theme.follow_system(ui.ctx());
         let ctx = ui.ctx().clone();
         // Commands first, so their keys don't reach text fields.
         if !self.modal_open() {
@@ -582,11 +598,8 @@ impl eframe::App for Gallery {
             }
         }
         if cycle_theme {
-            let i = ThemeId::ALL
-                .iter()
-                .position(|t| *t == self.theme.theme)
-                .unwrap_or(0);
-            self.set_theme(&ctx, ThemeId::ALL[(i + 1) % ThemeId::ALL.len()]);
+            self.theme.colour = next_colour(self.theme.colour);
+            self.theme.apply(&ctx);
         }
 
         let (mut act, mut bottom_act) = (None, None);
@@ -692,8 +705,20 @@ fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {
 }
 
 /// A theme preview chip painted in that theme's own colours (`ThemeList`).
-fn theme_chip(ui: &mut Ui, id: ThemeId, selected: bool) -> egui::Response {
-    let t = id.palette();
+/// The colour after `colour`, going round.
+fn next_colour(colour: Colour) -> Colour {
+    let i = Colour::ALL.iter().position(|c| *c == colour).unwrap_or(0);
+    Colour::ALL[(i + 1) % Colour::ALL.len()]
+}
+
+/// A choice in the Mode, Theme and Colour rows.
+fn chip(
+    ui: &mut Ui,
+    t: &theme::Palette,
+    label: &str,
+    dot: Option<egui::Color32>,
+    selected: bool,
+) -> egui::Response {
     let stroke = if selected {
         egui::Stroke::new(2.0, t.accent)
     } else {
@@ -702,17 +727,20 @@ fn theme_chip(ui: &mut Ui, id: ThemeId, selected: bool) -> egui::Response {
     let resp = Frame::NONE
         .fill(t.bg_surface)
         .stroke(stroke)
-        .corner_radius(theme::RADIUS)
+        .corner_radius(theme::shape(ui.ctx()).control())
         .inner_margin(Margin::symmetric(10, 6))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                let (dot, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
-                ui.painter().circle_filled(dot.center(), 6.0, t.accent);
-                ui.label(RichText::new(id.name()).color(t.text_primary));
+                if let Some(colour) = dot {
+                    let (at, _) =
+                        ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                    ui.painter().circle_filled(at.center(), 6.0, colour);
+                }
+                ui.label(RichText::new(label).color(t.text_primary));
             });
         })
         .response
         .interact(egui::Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, id.name()));
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, selected, label));
     resp
 }

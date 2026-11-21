@@ -99,17 +99,38 @@ fn tab_widget(
         resp.scroll_to_me(None);
     }
     let painter = ui.painter();
-    if tab.active {
-        painter.rect_filled(rect, 0.0, p.bg_base);
-        painter.hline(rect.x_range(), rect.top() + 1.0, Stroke::new(2.0, p.accent));
-    } else if resp.hovered() {
-        painter.rect_filled(rect.shrink2(vec2(0.0, 0.5)), 0.0, p.bg_item_hover);
+    let shape = theme::shape(ui.ctx());
+    if shape.modern {
+        // Rounded at the top, with a gap between tabs and no lines.
+        let r = shape.control_radius;
+        let body = egui::Rect::from_min_max(
+            pos2(rect.left() + 2.0, rect.top() + 4.0),
+            pos2(rect.right() - 2.0, rect.bottom()),
+        );
+        let top = egui::CornerRadius {
+            nw: r,
+            ne: r,
+            sw: 0,
+            se: 0,
+        };
+        if tab.active {
+            painter.rect_filled(body, top, p.bg_base);
+        } else if resp.hovered() {
+            painter.rect_filled(body.shrink2(vec2(0.0, 0.5)), top, p.bg_item_hover);
+        }
+    } else {
+        if tab.active {
+            painter.rect_filled(rect, 0.0, p.bg_base);
+            painter.hline(rect.x_range(), rect.top() + 1.0, Stroke::new(2.0, p.accent));
+        } else if resp.hovered() {
+            painter.rect_filled(rect.shrink2(vec2(0.0, 0.5)), 0.0, p.bg_item_hover);
+        }
+        painter.vline(
+            rect.right() - 0.5,
+            rect.y_range(),
+            Stroke::new(1.0, p.border),
+        );
     }
-    painter.vline(
-        rect.right() - 0.5,
-        rect.y_range(),
-        Stroke::new(1.0, p.border),
-    );
     if let Some(glyph) = tab.icon {
         painter.text(
             pos2(rect.left() + 14.0, rect.center().y),
@@ -135,7 +156,8 @@ fn tab_widget(
     let show_x = tab.active || resp.hovered() || x.hovered();
     if show_x {
         if x.hovered() {
-            ui.painter().rect_filled(close, 4.0, p.bg_button_hover);
+            ui.painter()
+                .rect_filled(close, shape.control(), p.bg_button_hover);
         }
         ui.painter().text(
             close.center(),

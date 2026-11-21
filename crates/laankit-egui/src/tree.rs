@@ -131,6 +131,7 @@ pub fn show(
     mut context_menu: impl FnMut(&mut Ui, usize),
 ) -> TreeOutput {
     let p = theme::palette(ui.ctx());
+    let row_height = theme::shape(ui.ctx()).row_height;
     let tree = ui.make_persistent_id(id_salt);
     let mut out = TreeOutput::default();
     let spacing = ui.spacing().item_spacing.y;
@@ -141,7 +142,7 @@ pub fn show(
         } else {
             Sense::click()
         };
-        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_HEIGHT), sense);
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), row_height), sense);
         resp.widget_info(|| {
             egui::WidgetInfo::selected(egui::Role::TreeItem, !row.muted, row.selected, row.label)
         });
@@ -150,7 +151,7 @@ pub fn show(
         if row.branch.is_some() {
             let chevron = Rect::from_min_size(
                 pos2(rect.left() + indent - 16.0, rect.top()),
-                vec2(16.0, ROW_HEIGHT),
+                vec2(16.0, row_height),
             );
             let c = ui.interact(chevron, tree.with(("chevron", i)), Sense::click());
             c.widget_info(|| {
@@ -214,23 +215,32 @@ fn paint_row(
     drop_hover: bool,
 ) {
     let painter = ui.painter();
+    let shape = theme::shape(ui.ctx());
+    // Modern: the fill sits in from the sides, rounded, with no stripe.
+    let fill = shape.item_rect(rect);
     if drop_hover {
-        painter.rect_filled(rect, 0.0, p.bg_drag_over);
+        painter.rect_filled(fill, shape.item(), p.bg_drag_over);
         painter.rect_stroke(
-            rect.shrink(1.0),
-            theme::RADIUS,
+            if shape.modern { fill } else { rect.shrink(1.0) },
+            if shape.modern {
+                shape.item()
+            } else {
+                shape.control()
+            },
             Stroke::new(1.0, p.accent),
             egui::StrokeKind::Inside,
         );
     } else if row.selected {
-        painter.rect_filled(rect, 0.0, p.bg_selected);
-        painter.vline(
-            rect.left() + 1.0,
-            rect.y_range(),
-            Stroke::new(2.0, p.accent),
-        );
+        painter.rect_filled(fill, shape.item(), p.bg_selected);
+        if !shape.modern {
+            painter.vline(
+                rect.left() + 1.0,
+                rect.y_range(),
+                Stroke::new(2.0, p.accent),
+            );
+        }
     } else if hovered {
-        painter.rect_filled(rect, 0.0, p.bg_item_hover);
+        painter.rect_filled(fill, shape.item(), p.bg_item_hover);
     }
     let cy = rect.center().y;
     if let Some(open) = row.branch {

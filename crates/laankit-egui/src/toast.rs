@@ -116,7 +116,7 @@ impl Toasts {
                 let frame = Frame::NONE
                     .fill(fill)
                     .stroke(stroke)
-                    .corner_radius(theme::RADIUS_LARGE)
+                    .corner_radius(theme::shape(ctx).dialog())
                     .inner_margin(Margin::symmetric(18, 12))
                     .shadow(egui::Shadow {
                         offset: [0, 8],

@@ -31,7 +31,10 @@ const TOP_FRACTION: f32 = 0.18;
 const ROW_HEIGHT: f32 = 38.0;
 const ROW_PAD_X: f32 = 18.0;
 /// `border-radius: 10px`.
-const RADIUS: CornerRadius = CornerRadius::same(10);
+/// `border-radius: 10px` on the palette, in Classic.
+fn radius(ctx: &egui::Context) -> CornerRadius {
+    theme::shape(ctx).round(10)
+}
 
 /// What a result is; picks its icon and groups the list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -171,7 +174,7 @@ impl CommandPalette {
         let frame = Frame::new()
             .fill(p.bg_surface)
             .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(RADIUS)
+            .corner_radius(radius(egui_ctx))
             .shadow(egui::epaint::Shadow {
                 offset: [0, 16],
                 blur: 48,
@@ -245,8 +248,8 @@ impl CommandPalette {
             .fill(p.input_bg)
             .inner_margin(Margin::symmetric(18, 14))
             .corner_radius(CornerRadius {
-                nw: RADIUS.nw,
-                ne: RADIUS.ne,
+                nw: radius(ui.ctx()).nw,
+                ne: radius(ui.ctx()).ne,
                 sw: 0,
                 se: 0,
             })
@@ -392,7 +395,7 @@ impl CommandPalette {
             );
             painter.rect(
                 chip,
-                theme::RADIUS,
+                theme::shape(ui.ctx()).control(),
                 p.bg_button,
                 Stroke::new(1.0, if selected { p.accent } else { p.border }),
                 StrokeKind::Inside,

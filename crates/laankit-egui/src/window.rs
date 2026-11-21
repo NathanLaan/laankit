@@ -135,6 +135,10 @@ fn caption_button(ui: &mut Ui, button: Caption, height: f32, ink: Color32) -> Re
     let hovered = resp.hovered();
     let (fill, ink) = match (button, hovered) {
         (Caption::Close, true) => (CLOSE_RED, Color32::WHITE),
+        // Modern's bar is the window's colour, where black doesn't show.
+        (_, true) if crate::theme::shape(ui.ctx()).modern => {
+            (crate::theme::palette(ui.ctx()).bg_button, ink)
+        }
         // `background: rgba(0, 0, 0, 0.18); opacity: 1`
         (_, true) => (Color32::from_black_alpha(46), ink),
         // `opacity: 0.75`

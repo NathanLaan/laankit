@@ -159,11 +159,7 @@ fn render(md: &str, theme: ThemeId) -> (Vec<Shape>, RichStyle) {
             move |ui, (doc, view, ready): &mut (Document, RichView, bool)| {
                 if !*ready {
                     laankit_egui::fonts::install(ui.ctx());
-                    ThemeState {
-                        theme,
-                        ..Default::default()
-                    }
-                    .apply(ui.ctx());
+                    ThemeState::of(theme).apply(ui.ctx());
                     *ready = true;
                     return;
                 }
