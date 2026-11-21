@@ -111,7 +111,7 @@ NoteLiner does not rewrite links on a rename today, for notes or for attachments
 
 - Editing a diagram on the slide. You edit it in its tab.
 - Embedding a diagram that is outside the project folder.
-- Showing a ` ```mermaid ` code block as a diagram. That is the rich content plan (`apps/noteliner/docs/plans/plan-rich-content.md`), and it would draw Mermaid's own layouts, not BlockLiner's.
+- Showing a ` ```mermaid ` code block as a diagram. That is separate work, and it would draw Mermaid's own layouts, not BlockLiner's.
 - Animating a diagram, or revealing it a part at a time.
 - Exporting a presentation to PDF, HTML, or PowerPoint. That is Phases 3 and 4 of `apps/noteliner/docs/plans/plan-presentations.md`. When it is built, it reads diagrams through the same code.
 - Drawing diagrams in dark colours (see Q2).
