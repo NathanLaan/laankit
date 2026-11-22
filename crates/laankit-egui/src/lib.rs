@@ -9,6 +9,7 @@
 //! | `titlebar`     | `TitleBar.svelte`                                                      |
 //! | `toolbar`      | `Toolbar`, `ToolbarButton`, `ToolbarDivider`, `ToolbarSpacer`          |
 //! | `icons`        | Font Awesome icons                                                     |
+//! | `menu`         | rows of a pop-up menu, with the icons in a column                      |
 //! | `toast`        | transient notices                                                      |
 //! | `commands`     | `command-palette/registry.svelte.js` and `lib/fuzzy.js`                |
 //! | `palette`      | `CommandPalette.svelte`                                                |
@@ -32,6 +33,7 @@ pub mod dialog;
 pub mod file_dialog;
 pub mod fonts;
 pub mod icons;
+pub mod menu;
 pub mod not_ported;
 pub mod palette;
 pub mod panes;

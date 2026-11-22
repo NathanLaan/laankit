@@ -614,13 +614,16 @@ fn rename_field(
     }
 }
 
-/// A menu row: an icon, a label, and a shortcut.
+/// A menu row: an icon, a label, and a shortcut. The icons share a column, so
+/// the labels line up.
 fn menu_item(ui: &mut Ui, glyph: &str, label: &str, shortcut: Option<&str>) -> bool {
-    let text = match shortcut {
-        Some(s) => format!("{glyph}  {label}    {s}"),
-        None => format!("{glyph}  {label}"),
+    let label = match shortcut {
+        Some(s) => format!("{label}    {s}"),
+        None => label.to_string(),
     };
-    let clicked = ui.button(text).clicked();
+    let clicked = ui
+        .add(laankit_egui::menu::item(ui, glyph, &label, None))
+        .clicked();
     if clicked {
         ui.close();
     }

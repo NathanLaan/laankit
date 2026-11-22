@@ -1230,9 +1230,8 @@ impl EditorState {
     ) {
         let ctx = ui.ctx().clone();
         let item = |ui: &mut Ui, icon: &str, label: &str, shortcut: &str| {
-            let text = RichText::new(format!("{icon}  {label}"));
-            ui.add(egui::Button::new(text).shortcut_text(shortcut))
-                .clicked()
+            let row = laankit_egui::menu::item(ui, icon, label, None);
+            ui.add(row.shortcut_text(shortcut)).clicked()
         };
         if let Some((range, word, suggestions)) = self.menu_word.clone() {
             for s in suggestions {

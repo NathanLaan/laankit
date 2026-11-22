@@ -315,6 +315,26 @@ impl Gallery {
             });
         });
 
+        section(ui, "Menu", |ui| {
+            // Icons of different widths, to show that the labels line up.
+            let rows = [
+                (icons::FOLDER_OPEN, "Open in File System"),
+                (icons::EYE, "Preview"),
+                (icons::FILE_PDF, "Save to PDF"),
+                (icons::CIRCLE_PLAY, "Present"),
+                (icons::ARROWS_UP_DOWN_LEFT_RIGHT, "Move..."),
+                (icons::PEN, "Rename"),
+                (icons::TRASH, "Delete"),
+            ];
+            ui.allocate_ui(egui::vec2(220.0, 0.0), |ui| {
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                    for (glyph, label) in rows {
+                        let _ = ui.add(laankit_egui::menu::item(ui, glyph, label, None));
+                    }
+                });
+            });
+        });
+
         section(ui, "Toasts", |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Info").clicked() {

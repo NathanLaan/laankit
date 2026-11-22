@@ -352,10 +352,8 @@ impl SlidesPane {
 
 /// A context-menu row with a Font Awesome glyph; closes the menu when clicked.
 fn menu_item(ui: &mut Ui, glyph: &str, label: &str, enabled: bool) -> bool {
-    let text = RichText::new(format!("{glyph}  {label}")).size(13.0);
-    let clicked = ui
-        .add_enabled(enabled, egui::Button::new(text).frame(false))
-        .clicked();
+    let row = laankit_egui::menu::item(ui, glyph, label, Some(13.0)).frame(false);
+    let clicked = ui.add_enabled(enabled, row).clicked();
     if clicked {
         ui.close();
     }
