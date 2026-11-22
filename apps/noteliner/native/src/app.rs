@@ -52,7 +52,7 @@ use crate::spell;
 use crate::tabs::{NoteStash, Stashed, Tabs, HISTORY_BUDGET};
 use crate::views::attachments::{self, AttachmentAction};
 use crate::views::diagram::{self as diagram_view, ToolbarAction as DiagramToolbarAction};
-use crate::views::panes::{PaneAction, PaneStates};
+use crate::views::panes::{GitView, PaneAction, PaneStates};
 use crate::views::preview::{DeckProps, Preview, PreviewAction};
 use crate::views::sidebar::{self, SidebarAction, SidebarProps};
 use crate::views::tree::{ContextAction, FolderAction, Item, TreeAction, TreeState};
@@ -527,6 +527,11 @@ impl NoteLinerApp {
     }
 
     #[cfg(test)]
+    pub fn diagram_is_dirty_for_test(&self) -> bool {
+        self.diagram.is_dirty()
+    }
+
+    #[cfg(test)]
     pub fn diagram_editor(&self) -> &blockliner_egui::DiagramEditor {
         &self.diagram.editor
     }
@@ -654,6 +659,21 @@ impl NoteLinerApp {
     }
 
     #[cfg(test)]
+    pub fn hide_tag_for_test(&mut self, tag: &str) {
+        self.hidden_tags.insert(tag.to_string());
+    }
+
+    #[cfg(test)]
+    pub fn files_info_git_ready(&self) -> bool {
+        matches!(self.panes.files_info.git, GitView::Ready(_))
+    }
+
+    #[cfg(test)]
+    pub fn files_info_git_failed(&self) -> bool {
+        matches!(self.panes.files_info.git, GitView::Failed(_))
+    }
+
+    #[cfg(test)]
     pub fn push_mcp_confirm(&mut self, req: McpConfirm) {
         self.mcp_queue.push_back(req);
     }
@@ -727,7 +747,14 @@ impl NoteLinerApp {
                 index,
                 folders,
                 truncated,
-            } => self.project_opened(ctx, folder, index, folders, truncated),
+            } => {
+                // The last project's repository is not this one's.
+                self.panes.files_info.git = GitView::Hidden;
+                self.project_opened(ctx, folder, index, folders, truncated);
+                if self.panes.files_info.open {
+                    self.read_git();
+                }
+            }
             Event::OpenFailed(message) => {
                 self.opening = false;
                 self.toasts
@@ -1003,12 +1030,30 @@ impl NoteLinerApp {
             }
             Event::McpConfirm(req) => self.mcp_queue.push_back(req),
             Event::Update(status) => self.update = status,
-            Event::Exported { kind, result } => match result {
+            Event::Exported {
+                kind,
+                result,
+                warnings,
+            } => match result {
                 Ok(dir) => {
+                    if kind == ExportKind::Pptx {
+                        // What a slide lost is in the Log, and counted here.
+                        for w in &warnings {
+                            self.log_line(format!("Save to PowerPoint: {w}"));
+                        }
+                        self.toasts.info(match warnings.len() {
+                            0 => "Saved PowerPoint to Downloads".to_string(),
+                            1 => "Saved PowerPoint to Downloads. 1 part of a slide could not be saved in full: see the Log".to_string(),
+                            n => format!("Saved PowerPoint to Downloads. {n} parts of slides could not be saved in full: see the Log"),
+                        });
+                    }
+                    #[cfg(not(test))]
                     if let Err(e) = open::that_detached(&dir) {
                         self.toasts.info(format!("Saved to {}", dir.display()));
                         log::warn!("opening {}: {e}", dir.display());
                     }
+                    #[cfg(test)]
+                    let _ = dir;
                 }
                 Err(e) => {
                     let what = match kind {
@@ -1016,6 +1061,7 @@ impl NoteLinerApp {
                         ExportKind::Markdown => "Markdown",
                         ExportKind::Pdf => "PDF",
                         ExportKind::Mermaid => "Mermaid",
+                        ExportKind::Pptx => "PowerPoint",
                     };
                     self.toasts.error(format!("Save to {what} failed: {e}"));
                 }
@@ -1076,6 +1122,15 @@ impl NoteLinerApp {
                 self.panes.search.results_arrived(&query, &results)
             }
             Event::Backlinks { id, links } => self.panes.backlinks.arrived(&id, &links),
+            Event::GitInfo { folder, result } => {
+                // An answer for a project closed since is dropped.
+                if self.project.as_ref().is_some_and(|p| p.folder == folder) {
+                    self.panes.files_info.git = match result {
+                        Ok(info) => GitView::Ready(info),
+                        Err(e) => GitView::Failed(e.message()),
+                    };
+                }
+            }
             // `[[` completion is built from the index (as `wikilinkCompletions` is).
             Event::NoteNames(_) => {}
             Event::Error(message) => self.toasts.error(message),
@@ -1505,6 +1560,9 @@ impl NoteLinerApp {
         self.was_focused = focused;
         if !focused {
             return;
+        }
+        if regained && self.panes.files_info.open {
+            self.read_git();
         }
         if regained || now - self.last_check >= CHECK_SECS {
             self.last_check = now;
@@ -1943,12 +2001,23 @@ impl NoteLinerApp {
             return;
         };
         let (name, filename) = (e.name.clone(), e.filename.clone());
+        // A presentation is what has slides to save.
+        if kind == ExportKind::Pptx && !e.deck {
+            return;
+        }
         // The file on disk is what's exported: write a pending edit first.
         self.flush_active();
-        if kind == ExportKind::Pdf {
-            self.toasts.info(format!("Saving {name} as PDF…"));
+        match kind {
+            ExportKind::Pdf => self.toasts.info(format!("Saving {name} as PDF…")),
+            ExportKind::Pptx => self.toasts.info(format!("Saving {name} as PowerPoint…")),
+            _ => {}
         }
-        self.backend.export(kind, filename, name);
+        // The tests write to their own folder, not to Downloads.
+        #[cfg(test)]
+        let to = self.diagram_export_dir.clone();
+        #[cfg(not(test))]
+        let to = None;
+        self.backend.export(kind, filename, name, to);
     }
 
     // --- Diagrams ------------------------------------------------------------------
@@ -2543,6 +2612,7 @@ impl NoteLinerApp {
             }
             Act::Diagram(act) => self.edit_diagram(act),
             Act::ExportDiagram => self.open_diagram_export(),
+            Act::ExportPptx => self.export(ExportKind::Pptx, None),
             Act::ExportMermaid => {
                 if self.diagram_active() {
                     self.export(ExportKind::Mermaid, None);
@@ -2854,10 +2924,15 @@ impl NoteLinerApp {
                 let now = ctx.input(|i| i.time);
                 self.panes.search.set_query(arg, now - 1.0);
             }
+            "outline" => self.toggle(|l| l.show_outline = true),
             "tags" => self.toggle(|l| l.show_tags = true),
             "backlinks" => self.toggle(|l| l.show_backlinks = true),
             "attachments" => self.toggle(|l| l.show_attachments = true),
             "tag-filter" => self.panes.filter_open = true,
+            "files-info" => {
+                self.panes.files_info.open = true;
+                self.read_git();
+            }
             "tag-editor" => self.overlay = Some(Overlay::TagEditor(Default::default())),
             "mcp-walkthrough" => {
                 self.apply(ctx, Act::Settings);
@@ -3031,6 +3106,7 @@ impl NoteLinerApp {
             .map(|p| p.layout.clone())
             .unwrap_or_default();
         let is_deck = self.is_deck();
+        let is_diagram = self.diagram_active();
         let (can_undo, can_redo) = if self.diagram_active() {
             let v = self.diagram.editor.view();
             (v.can_undo, v.can_redo)
@@ -3111,7 +3187,12 @@ impl NoteLinerApp {
                     if b(
                         ui,
                         icons::LIST_OL,
-                        "Outline (Ctrl+Shift+O)",
+                        // A diagram has no headings: the pane lists its objects.
+                        if is_diagram {
+                            "Objects (Ctrl+Shift+O)"
+                        } else {
+                            "Outline (Ctrl+Shift+O)"
+                        },
                         l.show_outline,
                         false,
                     ) {
@@ -3311,6 +3392,10 @@ impl NoteLinerApp {
         let caret_line = self.editor.body_line();
         let active_slide = self.deck.active(caret_line.max(1));
         let is_deck = self.is_deck();
+        // The OBJECTS list, built from the diagram each frame.
+        let object_rows = self
+            .diagram_active()
+            .then(|| blockliner_egui::objects::objects(&self.diagram.editor.diagram));
         let Some(p) = self.project.as_mut() else {
             return;
         };
@@ -3351,7 +3436,13 @@ impl NoteLinerApp {
                 .frame(Frame::NONE.fill(pal.bg_surface))
                 .show(ui, |ui| {
                     let (parsed, pane, _) = self.deck.parts();
+                    let canvas = &self.diagram.editor.canvas;
                     let props = SidebarProps {
+                        objects: object_rows.as_deref().map(|rows| sidebar::DiagramObjects {
+                            rows,
+                            shapes: &canvas.selection,
+                            lines: &canvas.lines,
+                        }),
                         index: &p.index,
                         entries: &p.entries,
                         folders: &p.folders,
@@ -3693,6 +3784,7 @@ impl NoteLinerApp {
                     .set_prefs(json!({ "filesSortMode": mode.id() }));
             }
             SidebarAction::GoToLine(line) => self.editor.scroll_to_line(line),
+            SidebarAction::SelectObjects(sel) => self.diagram.editor.select(sel),
             SidebarAction::ClosePane(id) => self.toggle(|l| l.close_pane(&id)),
             // The layout is saved by `persist_layout`.
             SidebarAction::LayoutChanged => {}
@@ -3762,6 +3854,7 @@ impl NoteLinerApp {
                 }
             }
             PaneAction::FilterShowAll => self.hidden_tags.clear(),
+            PaneAction::FilesInfoRefresh => self.read_git(),
             PaneAction::FilterHideAll => {
                 if let Some(p) = &self.project {
                     self.hidden_tags.extend(model::all_tags(&p.index));
@@ -3769,6 +3862,24 @@ impl NoteLinerApp {
                 }
             }
         }
+    }
+
+    /// Reads the project's Git repository for Files Info, when it is one.
+    /// `git` runs only from here, so only while the panel is open.
+    fn read_git(&mut self) {
+        let Some(folder) = self.project.as_ref().map(|p| p.folder.clone()) else {
+            return;
+        };
+        let info = &mut self.panes.files_info;
+        if !noteliner_core::git::is_repo(&folder) {
+            info.git = GitView::Hidden;
+            return;
+        }
+        // The rows stay while a newer answer is on its way.
+        if !matches!(info.git, GitView::Ready(_)) {
+            info.git = GitView::Checking;
+        }
+        self.backend.git_info(folder);
     }
 
     /// The Attachments panel (`AttachmentPanel.svelte`).

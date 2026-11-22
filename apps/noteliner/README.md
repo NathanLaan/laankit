@@ -16,6 +16,7 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - Changes made by other programs (a file manager, a sync tool, Git used by hand) show up while the project is open
 - Tabs: each file you open gets a tab above the document, with its own undo history, cursor, and scroll. Undo and Redo on the left toolbar act on the active tab, and are off when it has nothing to undo. Ctrl+W closes a tab, Ctrl+Shift+W reopens the tab you closed last with its history, and Ctrl+Tab and Ctrl+Shift+Tab switch tabs. The tabs come back when you reopen the project
 - Diagrams: BlockLiner's diagram editor inside a project. A diagram is a `.mmd` file beside your notes, with BlockLiner's tools in the toolbar above it and a Properties panel to its right. Shapes can be moved in front of or behind one another (Move to Front, Move Up, Move Down, Move to Back). It can be tagged, linked with `[[wikilinks]]`, moved to another folder, and exported as PNG, SVG, or Mermaid
+- Outline and Objects: one pane (Ctrl+Shift+O) lists the open document's parts. In a note or a presentation it is titled Outline and lists the headings. In a diagram it is titled Objects and lists every shape, text object, and line. See Objects
 - Markdown editor with syntax highlighting, list editing, multiple cursors, folding, find/replace, and `[[wikilink]]` completion. It shows a note's whole file, with its frontmatter at the top
 - Live Markdown preview with math (`$…$`, `$$…$$`) typeset by Typst
 - Tags, backlinks, and full-text search panes
@@ -23,6 +24,7 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - Reusable note templates with `{{title}}`/`{{date}}` placeholder substitution
 - Presentations: author slides inside a note and present full screen, with a speaker view. A presentation has a slide theme for each NoteLiner theme, in the same colours. Help (F1, or the Help button on the left toolbar) is a window you can keep open beside your work, and its Presentation Formatting page lists what you can write on a slide
 - PDF and HTML export (PDF rendered in-process with Typst)
+- Save to PowerPoint: a presentation as a `.pptx` file you can edit in PowerPoint, LibreOffice Impress, Keynote, and Google Slides. See Save to PowerPoint
 - Deleted notes, folders, and attachments go to the system's trash
 - Optional MCP server to expose the open project to AI assistants over a local-only socket (see below)
 - A light, dark, or system mode in six colours, and keyboard shortcuts for every action
@@ -119,11 +121,83 @@ Quitting and closing the project do not stop to ask. If another program changed 
 
 A moved file is matched by its file name, and a renamed one by its kind and size, when exactly one file disappeared and one appeared. A file that can't be matched is a removed file and a new one: a note keeps the tags in its frontmatter, and a diagram loses its tags.
 
+## Objects
+
+With a diagram open, the Outline pane is the Objects pane. It lists the diagram's objects in three groups, each with its count. A click on a group's heading folds it, and a group with nothing in it is not shown.
+
+| Group | Holds | Order |
+|---|---|---|
+| Shapes | Every shape that is not a text object, notes included | Front to back |
+| Text | Text objects | Front to back |
+| Lines | Arrows and lines | The order they were made |
+
+- A shape's row shows the first line of its label. A shape with no label shows its kind, such as Rectangle, in a lighter colour.
+- A line's row shows what it joins, such as "Start to Approved?", and its label at the right. A line with one end on a shape shows "From Start" or "To Start", and a line with neither shows "Line" or "Arrow".
+- A shape that NoteLiner cannot edit, because it is declared inside a `subgraph` or another statement kept as written, is in a lighter colour, and its tooltip says so.
+
+| Action | Result |
+|---|---|
+| Click a row | Selects that object on the canvas. If part of it is out of view, the canvas moves to centre it, at the same zoom. |
+| Ctrl+click a row | Adds it to the selection, or takes it out. |
+| Shift+click a row | Selects from the last row you clicked to this one, within the group. |
+| Select on the canvas | Marks the rows, and scrolls the pane to the first of them. |
+
+Selecting from the pane is not an edit. It adds nothing to Undo, and the toolbar, the Properties panel, and Delete act on the selection as they do when you select on the canvas.
+
+The pane is shown or hidden, placed, and sized once for notes and diagrams. The Command Palette lists it as Toggle Outline, and also as Toggle Objects while a diagram is open.
+
+## Save to PowerPoint
+
+Save to PowerPoint writes a presentation to your Downloads folder as `<name>.pptx`, and opens the folder. It is in a presentation's right-click menu in the Files pane, below Save to PDF, and in the Command Palette as Save Presentation to PowerPoint. An unsaved edit is saved first. A file of the same name is replaced.
+
+The file has a slide for each slide of the presentation, in the same order, with the same aspect ratio and colours. Titles, text, lists, and tables are PowerPoint text and tables, so you can edit them. The slides are close to NoteLiner's and not identical: PowerPoint wraps text by its own rules, and it uses the fonts on the computer that opens the file. The file names Inter for text and JetBrains Mono for code, and a computer without them shows a substitute.
+
+| In NoteLiner | In the file |
+|---|---|
+| A slide | A slide. A slide marked `skip` and a `notes-only` slide are left out, as when you present. |
+| The slide theme | The background and colours of every slide, and the colours PowerPoint's colour pickers offer. |
+| `bg=` and `class=theme-…` on a slide | That slide's background and colours. |
+| The title | PowerPoint's title, on its band of the accent colour. |
+| Paragraphs and lists | Text with its bold, italic, strikethrough, underline, code, highlight, and links. A list keeps its bullets, numbers, and depth. A task item starts with ☐ or ☑. |
+| A quote | Text with a bar in the accent colour at its left. |
+| A code block | Text in the monospace font on the code background, in one colour. |
+| A table | A PowerPoint table. |
+| A picture | A picture inside the file, placed as the layout places it. PNG, JPEG, and GIF files go in as they are, and an SVG or WebP picture is turned into a PNG. |
+| A picture at a web address | Downloaded, with 10 seconds for each. |
+| A formula on its own line (`$$…$$`) | A picture of the formula in the slide's text colour. |
+| A formula inside a line of text (`$…$`) | Its source, in the monospace font. PowerPoint cannot hold a picture inside a line. |
+| A video | A box with the video's name and a link to it. |
+| Speaker notes | The slide's notes. |
+| Header and footer | Text at the top and bottom of each slide, with `{{name}}`, `{{date}}`, and the other placeholders filled in as they are on the day you save. |
+| Slide numbers | PowerPoint's slide number, which stays right when you reorder slides in PowerPoint. |
+
+A picture that can't be read or downloaded becomes a box with its alt text and address. The message that the file was saved says how many there were, and the Log lists each one with its slide.
+
+Save to PDF on a presentation still writes a document, not slides.
+
+## Files Info
+
+The info button in the Files pane's header opens a panel with the number of notes, presentations, and diagrams in the project, and the total. The counts are of the whole project, whatever the tag filter hides. Escape, a click outside the panel, or a second click on the button closes it.
+
+When the project folder is the top of a Git repository, the panel also shows a Git part. A project that is a folder inside a larger repository has none.
+
+| Row | Shows |
+|---|---|
+| Repository | The address of the remote named `origin`, or of the first remote. A user name, a password, or a token in the address is left out. Copy address puts it on the clipboard. |
+| Branch | The branch's name, or the commit when no branch is checked out. |
+| Status | "Up to date", or the number of uncommitted changes. A changed, added, removed, renamed, or untracked file is one change. |
+| Under Status | The commits to push and to pull, when there are any, as of your last fetch. |
+
+- The Git part needs the `git` program. Where it isn't installed, the panel says so, and the counts still show.
+- Two commands are run, `git status` and `git remote -v`, when the panel opens, when you press Refresh, and when the window regains the focus with the panel open. A command that takes more than five seconds is stopped.
+- Nothing is fetched, and `.git` is not written to.
+
 ## Using Git yourself
 
-NoteLiner runs no `git` command, keeps no history of a note's earlier versions, and does not sync.
+NoteLiner keeps no history of a note's earlier versions, and does not sync. It never commits, fetches, pulls, or pushes.
 
-- A project that is a Git repository opens as any folder does. NoteLiner doesn't read, change, or delete `.git`.
+- A project that is a Git repository opens as any folder does. NoteLiner doesn't change or delete `.git`.
+- Files Info reads the repository's status with `git`, and only while its panel is open. See Files Info.
 - Changes you make in NoteLiner show as uncommitted changes in that repository. You commit and push them yourself.
 - A pull, a checkout, or a merge while the project is open is picked up like any other change made outside NoteLiner.
 

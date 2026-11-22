@@ -42,6 +42,7 @@ Each app has its own backend crate: `noteliner-core`, `threadliner-core`, `pagel
 | Crate | What it does |
 |-------|--------------|
 | `noteliner-export` | In-process PDF export (Typst). |
+| `noteliner-pptx` | PowerPoint export: a presentation as an editable `.pptx`. |
 | `noteliner-slides` | Presentations. |
 | `pageliner-epub`   | EPUB parsing and reading state. |
 

@@ -47,6 +47,8 @@ pub enum Act {
     ExportDiagram,
     /// The diagram's `.mmd` file, copied to Downloads.
     ExportMermaid,
+    /// Save to PowerPoint, for the selected presentation.
+    ExportPptx,
     ToggleProperties,
     ToggleGrid,
     ToggleDimensions,
@@ -564,6 +566,15 @@ pub fn registry() -> Registry<Act, View> {
         .shortcut("Ctrl+Shift+V")
         .when(is_deck),
     );
+    r.register(
+        add(
+            "deck.exportPptx",
+            "Save Presentation to PowerPoint",
+            "Presentation",
+            Act::ExportPptx,
+        )
+        .when(is_deck),
+    );
     // Not in the Svelte build, which had no presenter: F5 as in most
     // presentation apps.
     r.register(
@@ -676,6 +687,17 @@ pub fn registry() -> Registry<Act, View> {
             "Ctrl+Shift+E",
         )
         .when(ready),
+    );
+    // In a diagram the Outline pane lists its objects: the same pane, under
+    // the name it has there.
+    r.register(
+        add(
+            "view.toggleObjects",
+            "Toggle Objects",
+            "View",
+            Act::ToggleOutline,
+        )
+        .when(is_diagram),
     );
     r.register(
         view(

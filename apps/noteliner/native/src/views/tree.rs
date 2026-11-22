@@ -614,13 +614,16 @@ fn rename_field(
     }
 }
 
-/// A menu row: an icon, a label, and a shortcut.
+/// A menu row: an icon, a label, and a shortcut. The icons share a column, so
+/// the labels line up.
 fn menu_item(ui: &mut Ui, glyph: &str, label: &str, shortcut: Option<&str>) -> bool {
-    let text = match shortcut {
-        Some(s) => format!("{glyph}  {label}    {s}"),
-        None => format!("{glyph}  {label}"),
+    let label = match shortcut {
+        Some(s) => format!("{label}    {s}"),
+        None => label.to_string(),
     };
-    let clicked = ui.button(text).clicked();
+    let clicked = ui
+        .add(laankit_egui::menu::item(ui, glyph, &label, None))
+        .clicked();
     if clicked {
         ui.close();
     }
@@ -695,6 +698,10 @@ fn context_menu(
         }
         if item(ui, icons::FILE_PDF, "Save to PDF", None) {
             act(ContextAction::Export(ExportKind::Pdf));
+        }
+        // A presentation's slides, as a file PowerPoint can edit.
+        if entry.deck && item(ui, icons::FILE_EXPORT, "Save to PowerPoint", None) {
+            act(ContextAction::Export(ExportKind::Pptx));
         }
         if item(ui, icons::FILE_LINES, "Save to Markdown", None) {
             act(ContextAction::Export(ExportKind::Markdown));

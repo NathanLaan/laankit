@@ -29,31 +29,31 @@ use crate::color;
 use crate::deck::{substitute, Block, BlockKind, DirValue, Layout, Presentation, Slide};
 
 /// `padding: 96px 120px` on `.slide-stage`.
-const PAD_Y: f32 = 96.0;
-const PAD_X: f32 = 120.0;
+pub const PAD_Y: f32 = 96.0;
+pub const PAD_X: f32 = 120.0;
 /// `gap: 48px` between the heading and the body, and between body blocks.
-const GAP: f32 = 48.0;
+pub const GAP: f32 = 48.0;
 /// `.slide-stage img { border-radius: 8px }`, in stage pixels.
-const IMAGE_RADIUS: f32 = 8.0;
+pub const IMAGE_RADIUS: f32 = 8.0;
 /// `.layout-split .slide-body { gap: 72px }` / the grid's column gap.
-const COLUMN_GAP: f32 = 72.0;
-const BAND_SIZE: f32 = 28.0;
-const BAND_PAD: f32 = 32.0;
-const RULE: f32 = 2.0;
-const PARAGRAPH_GAP: f32 = 24.0;
-const ITEM_GAP: f32 = 20.0;
-const LINE_HEIGHT: f32 = 1.4;
-const CODE_SIZE: f32 = 34.0;
-const CODE_PAD: f32 = 32.0;
-const TABLE_SIZE: f32 = 38.0;
-const CELL_PAD_Y: f32 = 20.0;
-const CELL_PAD_X: f32 = 24.0;
-const QUOTE_BAR: f32 = 8.0;
-const QUOTE_PAD: f32 = 40.0;
+pub const COLUMN_GAP: f32 = 72.0;
+pub const BAND_SIZE: f32 = 28.0;
+pub const BAND_PAD: f32 = 32.0;
+pub const RULE: f32 = 2.0;
+pub const PARAGRAPH_GAP: f32 = 24.0;
+pub const ITEM_GAP: f32 = 20.0;
+pub const LINE_HEIGHT: f32 = 1.4;
+pub const CODE_SIZE: f32 = 34.0;
+pub const CODE_PAD: f32 = 32.0;
+pub const TABLE_SIZE: f32 = 38.0;
+pub const CELL_PAD_Y: f32 = 20.0;
+pub const CELL_PAD_X: f32 = 24.0;
+pub const QUOTE_BAR: f32 = 8.0;
+pub const QUOTE_PAD: f32 = 40.0;
 /// Glyphs smaller than this aren't worth shaping (and size 0 isn't allowed).
 const MIN_FONT: f32 = 0.5;
 /// The space above and below a title on its band.
-const TITLE_PAD: f32 = 40.0;
+pub const TITLE_PAD: f32 = 40.0;
 /// What a task checkbox span is laid out as, whatever its state, so checked
 /// and unchecked boxes line up (the box is drawn over it; see [`decorations`]).
 const CHECKBOX_TEXT: &str = "[x]";
@@ -401,13 +401,7 @@ impl<'a> SlideView<'a> {
         };
         for block in self.slide.headings() {
             let level = block.level.unwrap_or(1).clamp(1, 6);
-            let (size, lh) = match level {
-                1 | 2 if hero => (132.0, 1.05),
-                1 => (104.0, 1.1),
-                2 => (80.0, 1.15),
-                3 => (60.0, 1.2),
-                _ => (48.0, 1.2),
-            };
+            let (size, lh) = title_size(level, hero);
             let spans = inline_spans(cx.ui, &block.text);
             let style = TextStyle {
                 size: size * cx.s,
@@ -541,13 +535,41 @@ struct BodyStyle {
     theme: SlideTheme,
 }
 
-fn body_style(layout: Layout, theme: &SlideTheme) -> BodyStyle {
-    let (size, color) = match layout {
+/// A title heading's size in stage pixels and its line height, by level.
+/// A hero slide's first two levels are larger.
+pub fn title_size(level: u8, hero: bool) -> (f32, f32) {
+    match level {
+        1 | 2 if hero => (132.0, 1.05),
+        1 => (104.0, 1.1),
+        2 => (80.0, 1.15),
+        3 => (60.0, 1.2),
+        _ => (48.0, 1.2),
+    }
+}
+
+/// A heading inside the body: its size in stage pixels and its line height.
+pub fn body_heading_size(level: u8) -> (f32, f32) {
+    let size = match level {
+        1 => 104.0,
+        2 => 80.0,
+        3 => 60.0,
+        _ => 48.0,
+    };
+    (size, 1.15)
+}
+
+/// The body text's size in stage pixels and its colour, by layout.
+pub fn body_text(layout: Layout, theme: &SlideTheme) -> (f32, Color32) {
+    match layout {
         Layout::Hero => (52.0, theme.muted),
         Layout::Grid => (38.0, theme.fg),
         Layout::Quote => (64.0, theme.fg),
         _ => (44.0, theme.fg),
-    };
+    }
+}
+
+fn body_style(layout: Layout, theme: &SlideTheme) -> BodyStyle {
+    let (size, color) = body_text(layout, theme);
     BodyStyle {
         text: TextStyle {
             size,
@@ -1162,13 +1184,8 @@ fn layout_rich_block(
         } => {
             let text_style = match kind {
                 TextKind::Heading(level) => TextStyle {
-                    size: match level {
-                        1 => 104.0,
-                        2 => 80.0,
-                        3 => 60.0,
-                        _ => 48.0,
-                    } * s,
-                    line_height: 1.15,
+                    size: body_heading_size(*level).0 * s,
+                    line_height: body_heading_size(*level).1,
                     weight: Some(fonts::SEMIBOLD),
                     color: style.theme.accent,
                     ..body

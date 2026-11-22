@@ -26,6 +26,7 @@ Each lives in `apps/<app>/native/` and is a Cargo package named `<app>-native`. 
 | `crates/laankit-richtext/`   | HTML/XHTML rendering (ThreadLiner articles, PageLiner EPUB). |
 | `crates/<app>-core/`         | Each app's UI-independent backend. |
 | `crates/noteliner-export/`   | In-process PDF export (Typst). |
+| `crates/noteliner-pptx/`     | PowerPoint export: a presentation as an editable `.pptx`. |
 | `crates/noteliner-slides/`   | Presentations. |
 | `crates/pageliner-epub/`     | EPUB parsing/state. |
 | `crates/blockliner-core/`    | The diagram model, Mermaid read/write, layout. |

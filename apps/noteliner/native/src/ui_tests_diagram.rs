@@ -705,3 +705,176 @@ fn a_diagram_save_sent_before_the_app_hears_of_a_change_is_refused() {
     assert!(mine.contains("Their Database") && !mine.contains("Their Queue"));
     assert_eq!(mine.matches("@shape").count(), 3);
 }
+
+/// Two boxes with a labelled arrow between them, and a third far off to
+/// the right and down.
+const FLOW: &str = concat!(
+    "flowchart LR\n",
+    "  api[\"API Gateway\"]\n",
+    "  db[(\"Orders\")]\n",
+    "  far[\"Far Away\"]\n",
+    "  api -->|reads| db\n",
+    "%% blockliner 1 grid=20\n",
+    "%% @shape api x=40 y=40 w=160 h=80\n",
+    "%% @shape db x=300 y=40 w=120 h=80\n",
+    "%% @shape far x=5000 y=3000 w=160 h=80\n",
+);
+
+/// The project with `FLOW` as the Map diagram, the diagram open, and the
+/// Outline pane shown.
+fn open_flow(tmp: &Path) -> (H, PathBuf) {
+    let project = tmp.join("notes");
+    std::fs::create_dir_all(&project).unwrap();
+    fixture(&project);
+    let file = project.join("map.mmd");
+    assert!(file.exists());
+    std::fs::write(&file, FLOW).unwrap();
+    let mut h = harness(Paths {
+        user_data: tmp.join("NoteLiner"),
+    });
+    h.run_steps(2);
+    h.state_mut().open(project.clone());
+    wait_for(&mut h, "the project", |a| a.entries().len() == 2);
+    open_diagram(&mut h, "Map");
+    act(&mut h, Act::ToggleOutline);
+    (h, file)
+}
+
+/// Folds the Shapes group, or opens it again.
+fn fold_shapes(h: &mut H) {
+    h.get_by_role_and_label(Role::Button, "Shapes (3)").click();
+    h.run_steps(2);
+}
+
+fn selection(h: &H) -> (Vec<String>, Vec<usize>) {
+    let c = &h.state().diagram_editor().canvas;
+    (c.selection.clone(), c.lines.clone())
+}
+
+#[test]
+fn the_outline_pane_lists_a_diagrams_objects_and_a_notes_headings() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _file) = open_flow(tmp.path());
+
+    assert!(h
+        .query_by_role_and_label(Role::Heading, "OBJECTS")
+        .is_some());
+    assert!(h
+        .query_by_role_and_label(Role::Heading, "OUTLINE")
+        .is_none());
+    for group in ["Shapes (3)", "Lines (1)"] {
+        assert!(
+            h.query_by_role_and_label(Role::Button, group).is_some(),
+            "{group}"
+        );
+    }
+    // No text object: no Text group.
+    assert!(h.query_by_label_contains("Text (").is_none());
+    // Front to back: the last one made is first.
+    for row in ["Far Away", "Orders", "API Gateway"] {
+        assert!(
+            h.query_by_role_and_label(Role::ListItem, row).is_some(),
+            "{row}"
+        );
+    }
+
+    // Folding a group hides its rows, and brings the lines up into the
+    // pane: only the rows in view are drawn.
+    fold_shapes(&mut h);
+    assert!(h
+        .query_by_role_and_label(Role::ListItem, "Orders")
+        .is_none());
+    assert!(h
+        .query_by_role_and_label(Role::ListItem, "API Gateway to Orders: reads")
+        .is_some());
+
+    // A note's tab: the same pane, with its headings.
+    open_note(&mut h, "Alpha");
+    h.run_steps(2);
+    assert!(h
+        .query_by_role_and_label(Role::Heading, "OUTLINE")
+        .is_some());
+    assert!(h
+        .query_by_role_and_label(Role::Heading, "OBJECTS")
+        .is_none());
+    assert!(h.query_by_label("No headings").is_some());
+}
+
+#[test]
+fn a_row_selects_on_the_canvas_and_is_not_an_edit() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, file) = open_flow(tmp.path());
+
+    h.get_by_role_and_label(Role::ListItem, "Orders").click();
+    h.run_steps(2);
+    assert_eq!(selection(&h), (vec!["db".to_string()], vec![]));
+
+    // Ctrl+click adds a line, and again takes it out.
+    fold_shapes(&mut h);
+    let line = "API Gateway to Orders: reads";
+    h.get_by_role_and_label(Role::ListItem, line)
+        .click_modifiers(Modifiers::COMMAND);
+    h.run_steps(2);
+    assert_eq!(selection(&h), (vec!["db".to_string()], vec![0]));
+    h.get_by_role_and_label(Role::ListItem, line)
+        .click_modifiers(Modifiers::COMMAND);
+    h.run_steps(2);
+    assert_eq!(selection(&h), (vec!["db".to_string()], vec![]));
+
+    // Shift+click: from the top row to the row two below it.
+    fold_shapes(&mut h);
+    h.get_by_role_and_label(Role::ListItem, "Far Away").click();
+    h.run_steps(2);
+    h.get_by_role_and_label(Role::ListItem, "API Gateway")
+        .click_modifiers(Modifiers::SHIFT);
+    h.run_steps(2);
+    assert_eq!(selection(&h).0, ["far", "db", "api"]);
+
+    // Nothing was edited: no undo step, and the file is as it was.
+    assert!(!h.state().diagram_editor().history.can_undo());
+    assert!(!h.state().diagram_is_dirty_for_test());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), FLOW);
+}
+
+#[test]
+fn a_row_brings_an_object_into_view_only_when_it_is_out_of_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _file) = open_flow(tmp.path());
+    let pan = |h: &H| h.state().diagram_editor().canvas.view.pan;
+    let start = pan(&h);
+
+    // In view: the canvas does not move.
+    h.get_by_role_and_label(Role::ListItem, "API Gateway")
+        .click();
+    h.run_steps(2);
+    assert_eq!(pan(&h), start);
+
+    // Far off: it is brought to the middle, at the same zoom.
+    h.get_by_role_and_label(Role::ListItem, "Far Away").click();
+    h.run_steps(2);
+    assert_ne!(pan(&h), start);
+    let seen = h.state().diagram_editor().canvas.visible();
+    let centre = (seen.x + seen.w / 2.0, seen.y + seen.h / 2.0);
+    assert!((centre.0 - 5080.0).abs() < 1.0 && (centre.1 - 3040.0).abs() < 1.0);
+    assert_eq!(h.state().diagram_editor().canvas.view.zoom, 1.0);
+}
+
+#[test]
+fn selecting_on_the_canvas_marks_the_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _file) = open_flow(tmp.path());
+    let marked = |h: &H, name: &str| {
+        h.get_by_role_and_label(Role::ListItem, name)
+            .accesskit_node()
+            .toggled()
+            == Some(egui::accesskit::Toggled::True)
+    };
+    assert!(!marked(&h, "API Gateway"));
+
+    // A click in the middle of the first box.
+    let p = at(&h, 120.0, 80.0);
+    drag(&mut h, p, p);
+    assert_eq!(selection(&h).0, ["api"]);
+    assert!(marked(&h, "API Gateway"));
+    assert!(!marked(&h, "Orders"));
+}

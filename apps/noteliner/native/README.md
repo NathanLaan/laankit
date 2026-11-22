@@ -59,6 +59,7 @@ The Help pages are `assets/help-pages.json` (loaded at build time with `include_
 | `diagram`        | `DiagramDoc`: `blockliner-egui`'s editor with the same autosave and status contract (see Diagrams)   |
 | `spell`          | Hunspell dictionary lookup, background loading, and the personal word list                           |
 | `deck`           | The open deck, parsed per edit, and the `noteliner-slides` widgets (pane, preview, presenter)       |
+| `pptx`           | Save to PowerPoint: reads a presentation's pictures, renders its formulas, and calls `noteliner-pptx` (see PowerPoint export) |
 | `views`          | `OpenScreen`, `StatusBar`, `LogPanel`; `views::tree` (`FileTree`), `views::sidebar` (`Sidebar`), `views::panes` (`SearchPane`, `BacklinksPane`, `TagsPane`, `TagFilterPopover`), `views::attachments` (`AttachmentPanel`), `views::preview` (`Preview`), `views::diagram` (the diagram toolbar and the Properties panel) |
 | `overlays`       | The dialogs: New Item (a note, presentation, diagram, or folder) / Duplicate, Move, the delete questions (a note, a folder, and deleting for good when the trash isn't available), the question for a note changed on disk under unsaved edits, Clear Tags, Remove Recent, Settings, Help, About, the Importing dialog, the Tag Editor (`overlays::tags`), Remove Attachment, and the MCP confirmation and walkthrough (`overlays::mcp`) |
 | `svg_colors`     | The SVG named colours for tag chips (`lib/svgColors.js`)                                            |
@@ -145,6 +146,12 @@ The webview builds used the system spell checker. The native build uses Hunspell
 ### PDF export
 
 `Backend::export(ExportKind::Pdf, …)` renders the note in-process with `noteliner-export` (Typst): a `LazyExporter` is built and warmed up on a background thread when the app starts, and each export runs on a blocking thread. The options match today's WebKit print (`export::pdf_document`): Letter, 0.5 in margins, the note's name as the title heading, images from `_attachments/` in the note's folder, wikilinks as styled text. The PDF goes to the Downloads folder, which then opens, like the HTML and Markdown exports.
+
+### PowerPoint export
+
+`Backend::export(ExportKind::Pptx, …)` saves a presentation as an editable `.pptx`. `src/pptx.rs` parses the deck, asks `noteliner_pptx::needs` what it shows, and gathers it: attachments from `_attachments/` in the note's folder, `data:` addresses, and pictures at web addresses (`reqwest`, 10 seconds and 50 MB for each). On a blocking thread, an SVG or WebP picture becomes a PNG, each display formula is typeset by the warm Typst exporter (`math_svg`) and saved as a PNG in the slide's text colour, and `noteliner_pptx::export` writes the file. See `crates/noteliner-pptx/README.md` for the file's contents and layout.
+
+The file goes to the Downloads folder, which then opens. What a slide lost (a picture that could not be read) is counted in the toast and listed in the Log.
 
 ## Parity with the Svelte build
 

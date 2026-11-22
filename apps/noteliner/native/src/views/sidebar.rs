@@ -44,6 +44,16 @@ pub enum SidebarAction {
     Slides(noteliner_slides::PaneAction),
     /// The SLIDES header's Present button.
     Present,
+    /// A row of the OBJECTS list: select these on the canvas.
+    SelectObjects(blockliner_egui::objects::Selection),
+}
+
+/// The open diagram, for the OBJECTS list.
+pub struct DiagramObjects<'a> {
+    pub rows: &'a [blockliner_egui::objects::ObjectRow],
+    /// The canvas's selection.
+    pub shapes: &'a [String],
+    pub lines: &'a [usize],
 }
 
 /// What the sidebar draws from.
@@ -70,6 +80,9 @@ pub struct SidebarProps<'a> {
     pub deck: Option<&'a Deck>,
     pub active_slide: Option<usize>,
     pub images: &'a dyn ImageSource,
+    /// The open diagram. With one open, the OUTLINE pane is the OBJECTS
+    /// list: a diagram has no headings.
+    pub objects: Option<DiagramObjects<'a>>,
 }
 
 const TITLES: [(&str, &str); 6] = [
@@ -110,7 +123,14 @@ pub fn show(
             // The SLIDES pane only exists for a deck (`slidesPaneVisible`).
             layout.pane_visible(id) && (*id != "slides" || props.is_deck)
         })
-        .map(|(id, title)| Pane::new(id, title).min_height(60.0))
+        .map(|(id, title)| {
+            let title = if *id == "outline" && props.objects.is_some() {
+                "OBJECTS"
+            } else {
+                title
+            };
+            Pane::new(id, title).min_height(60.0)
+        })
         .collect();
     if visible.is_empty() {
         return out;
@@ -147,6 +167,19 @@ pub fn show(
                     out.push(SidebarAction::Tree(a));
                 }
             }
+            "outline" if props.objects.is_some() => {
+                let o = props.objects.as_ref().unwrap();
+                let picked = blockliner_egui::objects::show(
+                    ui,
+                    &mut states.objects,
+                    o.rows,
+                    o.shapes,
+                    o.lines,
+                );
+                if let Some(sel) = picked {
+                    out.push(SidebarAction::SelectObjects(sel));
+                }
+            }
             "outline" => {
                 if let Some(line) = outline(ui, props.text, props.cursor_line) {
                     out.push(SidebarAction::GoToLine(line));
@@ -180,6 +213,12 @@ pub fn show(
                     sort_pick = Some(mode);
                 }
                 new_folder |= new_folder_button(ui);
+                pane_views::files_info_button(
+                    ui,
+                    &mut states.files_info,
+                    props.entries,
+                    &mut header_out,
+                );
             }
             "slides" => present |= present_button(ui),
             "tags" => pane_views::tags_header(

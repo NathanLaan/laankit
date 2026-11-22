@@ -453,6 +453,35 @@ impl Canvas {
         self.lines = lines;
     }
 
+    /// Selects exactly these shapes and lines from outside the canvas (the
+    /// Objects list): a label being edited is kept first, and a gesture
+    /// under way is dropped. `reveal` is brought into view if it is out of it.
+    pub fn select_from_list(
+        &mut self,
+        d: &mut Diagram,
+        shapes: Vec<String>,
+        lines: Vec<usize>,
+        reveal: Option<ModelRect>,
+    ) {
+        self.commit_label(d);
+        self.gesture = Gesture::Idle;
+        self.selection = shapes
+            .into_iter()
+            .filter(|id| d.shape(id).is_some())
+            .collect();
+        self.lines = lines
+            .into_iter()
+            .filter(|i| *i < d.connectors.len())
+            .collect();
+        if let Some(r) = reveal {
+            self.view.reveal(
+                self.rect.size(),
+                egui::pos2(r.x, r.y),
+                egui::pos2(r.x + r.w, r.y + r.h),
+            );
+        }
+    }
+
     /// Fills the rest of `ui`. `keys`: whether Space may start a pan (no
     /// dialog or text field has the keyboard).
     pub fn show(&mut self, ui: &mut Ui, d: &mut Diagram, tool: Tool, keys: bool) -> Output {

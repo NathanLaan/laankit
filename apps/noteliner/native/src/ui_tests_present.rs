@@ -377,3 +377,67 @@ fn presenting_on_a_chosen_display_is_remembered() {
     stop(&mut h);
     assert_eq!(h.state().remembered_display_for_test(), None);
 }
+
+/// Save to PowerPoint is a presentation's, not a note's. It writes a file
+/// with a slide for each slide and the notes, and a picture for a formula.
+#[test]
+fn save_to_powerpoint_writes_the_slides_and_notes() {
+    use std::io::Read;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let mut h = open_deck(tmp.path());
+    let out = tmp.path().join("exports");
+    h.state_mut().set_diagram_export_dir(out.clone());
+
+    h.get_by_role_and_label(Role::TreeItem, "Plain")
+        .click_secondary();
+    h.run_steps(3);
+    assert!(h.query_by_label_contains("Save to PDF").is_some());
+    assert!(h.query_by_label_contains("Save to PowerPoint").is_none());
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+
+    // A display formula, which Typst renders for the file.
+    let filename = h
+        .state()
+        .entries()
+        .iter()
+        .find(|e| e.name == "Talk")
+        .map(|e| e.filename.clone())
+        .unwrap();
+    let path = tmp.path().join("notes").join(&filename);
+    let raw = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, format!("{raw}\n## Three\n\n$$E = mc^2$$\n")).unwrap();
+
+    h.get_by_role_and_label(Role::TreeItem, "Talk")
+        .click_secondary();
+    h.run_steps(3);
+    h.get_by_label_contains("Save to PowerPoint").click();
+    let file = out.join("talk.pptx");
+    let wanted = file.clone();
+    wait_for(&mut h, "the PowerPoint file", move |_| wanted.exists());
+    wait_for(&mut h, "the toast", |a| {
+        a.toast_texts()
+            .iter()
+            .any(|t| t == "Saved PowerPoint to Downloads")
+    });
+
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(&file).unwrap()).unwrap();
+    let mut part = |name: &str| {
+        let mut text = String::new();
+        zip.by_name(name)
+            .unwrap_or_else(|_| panic!("no {name}"))
+            .read_to_string(&mut text)
+            .unwrap();
+        text
+    };
+    assert_eq!(part("ppt/presentation.xml").matches("<p:sldId ").count(), 3);
+    assert!(part("ppt/slides/slide1.xml").contains("<a:t>One</a:t>"));
+    assert!(part("ppt/notesSlides/notesSlide1.xml").contains("Speak slowly."));
+    let three = part("ppt/slides/slide3.xml");
+    assert!(
+        three.contains("<p:pic>") && three.contains("descr=\"E = mc^2\""),
+        "{three}"
+    );
+    assert!(zip.by_name("ppt/media/image1.png").is_ok());
+}

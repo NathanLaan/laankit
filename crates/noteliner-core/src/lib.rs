@@ -4,6 +4,7 @@
 
 pub mod export;
 pub mod frontmatter;
+pub mod git;
 pub mod import;
 pub mod links;
 pub mod mcp;

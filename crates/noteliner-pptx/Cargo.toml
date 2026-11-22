@@ -1,0 +1,18 @@
+[package]
+name = "noteliner-pptx"
+version = "0.1.0"
+description = "NoteLiner's PowerPoint export: a deck → an editable .pptx, written directly as Office Open XML."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+noteliner-slides.workspace = true
+laankit-richtext.workspace = true
+egui.workspace = true
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+roxmltree = "0.20"
+serde_json.workspace = true
+image.workspace = true

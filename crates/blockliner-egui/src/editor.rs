@@ -125,6 +125,13 @@ impl DiagramEditor {
         self.history = stash.history;
     }
 
+    /// The Objects list picked these: selects them on the canvas. It is not
+    /// an edit, so nothing is added to the undo history for it.
+    pub fn select(&mut self, sel: crate::objects::Selection) {
+        self.canvas
+            .select_from_list(&mut self.diagram, sel.shapes, sel.lines, sel.reveal);
+    }
+
     /// What the edit commands' `when`s read.
     pub fn view(&self) -> EditView {
         let d = &self.diagram;

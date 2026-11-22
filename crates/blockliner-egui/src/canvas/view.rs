@@ -49,6 +49,23 @@ impl View {
         self.pan = fixed.to_vec2() - (anchor - origin) / self.zoom;
     }
 
+    /// Brings the model rectangle `min`..`max` to the middle of a canvas of
+    /// `size` screen points, at the same zoom, when part of it is out of
+    /// view. One already in view, or one too big to fit that is partly in
+    /// view, leaves the pan alone. Returns whether the view moved.
+    pub fn reveal(&mut self, size: Vec2, min: Pos2, max: Pos2) -> bool {
+        let seen = size / self.zoom;
+        let (lo, hi) = (self.pan.to_pos2(), (self.pan + seen).to_pos2());
+        let inside = min.x >= lo.x && min.y >= lo.y && max.x <= hi.x && max.y <= hi.y;
+        let touches = min.x < hi.x && max.x > lo.x && min.y < hi.y && max.y > lo.y;
+        let too_big = max.x - min.x > seen.x || max.y - min.y > seen.y;
+        if inside || (too_big && touches) {
+            return false;
+        }
+        self.pan = (min.to_vec2() + max.to_vec2()) / 2.0 - seen / 2.0;
+        true
+    }
+
     /// The next step up (`dir > 0`) or down from the current zoom.
     pub fn step(&self, dir: i32) -> f32 {
         // A little slack, so a zoom a hair off a step still moves.
@@ -72,6 +89,28 @@ impl View {
 mod tests {
     use super::*;
     use egui::{pos2, vec2};
+
+    #[test]
+    fn reveal_moves_only_for_what_is_out_of_view() {
+        let mut v = View {
+            pan: vec2(0.0, 0.0),
+            zoom: 2.0,
+        };
+        // An 800 x 600 canvas at 200 % shows 400 x 300 of the diagram.
+        let size = vec2(800.0, 600.0);
+        assert!(!v.reveal(size, pos2(10.0, 10.0), pos2(110.0, 60.0)));
+        assert_eq!(v.pan, vec2(0.0, 0.0));
+        // Off to the right: centred, at the same zoom.
+        assert!(v.reveal(size, pos2(1000.0, 100.0), pos2(1100.0, 200.0)));
+        assert_eq!(v.pan, vec2(850.0, 0.0));
+        assert_eq!(v.zoom, 2.0);
+        // Partly in view: centred too.
+        assert!(v.reveal(size, pos2(800.0, 0.0), pos2(900.0, 50.0)));
+        // Bigger than the view and partly in it: left alone.
+        let pan = v.pan;
+        assert!(!v.reveal(size, pos2(0.0, 0.0), pos2(5000.0, 50.0)));
+        assert_eq!(v.pan, pan);
+    }
 
     #[test]
     fn maps_both_ways() {

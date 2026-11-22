@@ -48,6 +48,8 @@ pub enum PaneAction {
     FilterToggle(String),
     FilterShowAll,
     FilterHideAll,
+    /// Files Info opened, or its Refresh was pressed: read the repository.
+    FilesInfoRefresh,
 }
 
 /// The panes' view state, kept across frames.
@@ -58,6 +60,9 @@ pub struct PaneStates {
     pub tags: TagsState,
     /// The tag filter popover is open.
     pub filter_open: bool,
+    pub files_info: FilesInfoState,
+    /// The OBJECTS list of the open diagram.
+    pub objects: blockliner_egui::objects::ObjectsState,
 }
 
 // --- SEARCH -------------------------------------------------------------------
@@ -1029,5 +1034,219 @@ mod tests {
         assert_eq!(match_ranges("Rust and rust", "RUST"), [(0, 4), (9, 13)]);
         assert_eq!(match_ranges("Über über", "üb"), [(0, 3), (6, 9)]);
         assert!(match_ranges("abc", "").is_empty());
+    }
+}
+
+// --- FILES INFO ---------------------------------------------------------------
+
+/// The Git part of Files Info.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum GitView {
+    /// The project folder is not a repository: nothing is drawn.
+    #[default]
+    Hidden,
+    Checking,
+    Ready(noteliner_core::git::GitInfo),
+    Failed(String),
+}
+
+/// The Files Info panel.
+#[derive(Default)]
+pub struct FilesInfoState {
+    pub open: bool,
+    pub git: GitView,
+}
+
+/// The number of notes, presentations, and diagrams.
+pub fn file_counts(entries: &[Entry]) -> (usize, usize, usize) {
+    let diagrams = entries.iter().filter(|e| e.is_diagram()).count();
+    let decks = entries.iter().filter(|e| !e.is_diagram() && e.deck).count();
+    (entries.len() - diagrams - decks, decks, diagrams)
+}
+
+const FILES_INFO_WIDTH: f32 = 260.0;
+
+/// The FILES header's info button, and its panel while it is open.
+pub fn files_info_button(
+    ui: &mut Ui,
+    state: &mut FilesInfoState,
+    entries: &[Entry],
+    out: &mut Vec<PaneAction>,
+) {
+    let p = theme::palette(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(vec2(26.0, 20.0), Sense::hover());
+    let resp = panes::header_button(
+        ui,
+        &p,
+        Id::unique("noteliner-files-info-btn"),
+        rect,
+        icons::CIRCLE_INFO,
+        "Files info",
+    );
+    if resp.clicked() {
+        state.open = !state.open;
+        if state.open {
+            out.push(PaneAction::FilesInfoRefresh);
+        }
+    }
+    if state.open {
+        files_info_popover(ui, rect, state, entries, out);
+    }
+}
+
+fn files_info_popover(
+    ui: &Ui,
+    anchor: Rect,
+    state: &mut FilesInfoState,
+    entries: &[Entry],
+    out: &mut Vec<PaneAction>,
+) {
+    let p = theme::palette(ui.ctx());
+    let shape = theme::shape(ui.ctx());
+    // Under the button, and inside the window at either side.
+    let screen = ui.ctx().content_rect();
+    let left = anchor
+        .left()
+        .min(screen.right() - FILES_INFO_WIDTH - 10.0)
+        .max(screen.left() + 8.0);
+    let area = egui::Area::new(Id::unique("noteliner-files-info"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(pos2(left, anchor.bottom() + 4.0))
+        .show(ui.ctx(), |ui| {
+            egui::Frame::NONE
+                .fill(p.bg_surface)
+                .stroke(Stroke::new(1.0, p.border))
+                .corner_radius(shape.control())
+                .shadow(ui.visuals().popup_shadow)
+                .inner_margin(egui::Margin::symmetric(12, 10))
+                .show(ui, |ui| {
+                    ui.set_width(FILES_INFO_WIDTH - 24.0);
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    info_title(ui, &p, "Files Info");
+                    let (notes, decks, diagrams) = file_counts(entries);
+                    info_row(ui, &p, "Notes", &notes.to_string(), false);
+                    info_row(ui, &p, "Presentations", &decks.to_string(), false);
+                    info_row(ui, &p, "Diagrams", &diagrams.to_string(), false);
+                    info_row(ui, &p, "Total", &entries.len().to_string(), true);
+                    if state.git != GitView::Hidden {
+                        ui.add_space(6.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+                        git_part(ui, &p, &state.git, out);
+                    }
+                });
+        });
+    let escape = ui.input(|i| i.key_pressed(Key::Escape));
+    let clicked_outside = ui.input(|i| {
+        i.pointer.any_pressed()
+            && i.pointer
+                .interact_pos()
+                .is_some_and(|pos| !area.response.rect.contains(pos) && !anchor.contains(pos))
+    });
+    if escape || clicked_outside {
+        state.open = false;
+    }
+}
+
+fn info_title(ui: &mut Ui, p: &Palette, text: &str) {
+    ui.label(fonts::weight(
+        RichText::new(text).size(12.0).color(p.text_secondary),
+        fonts::SEMIBOLD,
+    ));
+    ui.add_space(4.0);
+}
+
+/// A name at the left and its value at the right, read out as one line.
+fn info_row(ui: &mut Ui, p: &Palette, label: &str, value: &str, strong: bool) {
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::hover());
+    resp.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{label}: {value}"))
+    });
+    let font = FontId::proportional(13.0);
+    ui.painter().text(
+        rect.left_center(),
+        Align2::LEFT_CENTER,
+        label,
+        font.clone(),
+        if strong {
+            p.text_primary
+        } else {
+            p.text_secondary
+        },
+    );
+    ui.painter().text(
+        rect.right_center(),
+        Align2::RIGHT_CENTER,
+        value,
+        font,
+        p.text_primary,
+    );
+}
+
+/// A name above its value, for a value too long to sit beside the name.
+fn info_block(ui: &mut Ui, p: &Palette, label: &str, value: &str) {
+    ui.add_space(4.0);
+    ui.label(RichText::new(label).size(11.0).color(p.text_muted));
+    ui.add(
+        egui::Label::new(RichText::new(value).size(13.0).color(p.text_primary))
+            .wrap_mode(egui::TextWrapMode::Wrap),
+    )
+    .widget_info(|| {
+        egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{label}: {value}"))
+    });
+}
+
+fn git_part(ui: &mut Ui, p: &Palette, git: &GitView, out: &mut Vec<PaneAction>) {
+    ui.horizontal(|ui| {
+        ui.label(fonts::weight(
+            RichText::new("Git").size(12.0).color(p.text_secondary),
+            fonts::SEMIBOLD,
+        ));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let (rect, _) = ui.allocate_exact_size(vec2(26.0, 20.0), Sense::hover());
+            let resp = panes::header_button(
+                ui,
+                p,
+                Id::unique("noteliner-files-info-refresh"),
+                rect,
+                icons::ROTATE,
+                "Refresh Git status",
+            );
+            if resp.clicked() && *git != GitView::Checking {
+                out.push(PaneAction::FilesInfoRefresh);
+            }
+        });
+    });
+    match git {
+        GitView::Hidden => {}
+        GitView::Checking => {
+            ui.label(RichText::new("Checking…").size(13.0).color(p.text_muted));
+        }
+        GitView::Failed(message) => {
+            ui.add(
+                egui::Label::new(RichText::new(message).size(13.0).color(p.text_muted))
+                    .wrap_mode(egui::TextWrapMode::Wrap),
+            );
+        }
+        GitView::Ready(info) => {
+            match &info.remote {
+                Some(url) => {
+                    info_block(ui, p, "Repository", url);
+                    if ui
+                        .button(RichText::new("Copy address").size(12.0))
+                        .clicked()
+                    {
+                        ui.ctx().copy_text(url.clone());
+                    }
+                }
+                None => info_block(ui, p, "Repository", "No remote"),
+            }
+            info_block(ui, p, "Branch", &info.branch.label());
+            info_block(ui, p, "Status", &info.status());
+            if let Some(sync) = info.sync() {
+                ui.label(RichText::new(sync).size(13.0).color(p.text_secondary))
+                    .on_hover_text("As of the last fetch. NoteLiner does not fetch.");
+            }
+        }
     }
 }
