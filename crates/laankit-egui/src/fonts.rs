@@ -469,9 +469,41 @@ fn choose(ctx: &egui::Context, change: impl FnOnce(&mut Chosen)) -> bool {
     if after == before {
         return false;
     }
-    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(CHOSEN_KEY), after));
+    // Read before the data is locked: the context has one lock.
+    let pass = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::unique(CHOSEN_KEY), after);
+        let rebuilt: &mut Rebuilt = d.get_temp_mut_or_default(egui::Id::unique(REBUILT_KEY));
+        rebuilt.count += 1;
+        rebuilt.pass = pass;
+    });
     ctx.set_fonts(definitions_for(after));
     true
+}
+
+const REBUILT_KEY: &str = "laankit-fonts-rebuilt";
+
+/// How many times the chosen fonts were rebuilt, and the frame of the last.
+#[derive(Clone, Copy, Default)]
+struct Rebuilt {
+    count: u64,
+    pass: u64,
+}
+
+/// A number that changes whenever text laid out earlier can no longer be
+/// drawn: for code that keeps laid-out text (a `Galley`) between frames.
+///
+/// Choosing a font rebuilds every font and the texture that holds their
+/// glyphs, at the start of the next frame. A galley laid out before that
+/// points at glyphs in the old texture, and draws as scrambled letters. So
+/// the number changes twice: when a font is chosen, and again on the next
+/// frame, when the new fonts are in use.
+pub fn generation(ctx: &egui::Context) -> u64 {
+    let rebuilt: Rebuilt = ctx
+        .data(|d| d.get_temp(egui::Id::unique(REBUILT_KEY)))
+        .unwrap_or_default();
+    let in_use = ctx.cumulative_pass_nr() > rebuilt.pass;
+    rebuilt.count * 2 + u64::from(in_use)
 }
 
 /// Sets the editor's font ([`editor_family`]). Call it after [`install`], at
@@ -979,6 +1011,57 @@ mod tests {
         set_previews(&ctx, a, false);
         step(&ctx);
         assert_eq!(width(&ctx, plex, SAMPLE), inter);
+    }
+
+    /// Every rebuild of the fonts changes the generation, on the frame it is
+    /// asked for and on the frame it takes effect, and nothing else does.
+    #[test]
+    fn the_generation_changes_with_every_rebuild() {
+        let ctx = ctx_with(EditorFont::Inter);
+        let step = |ctx: &egui::Context| {
+            let mut out = ctx.run_ui(Default::default(), |_| {});
+            out.textures_delta.clear();
+        };
+        step(&ctx);
+        let mut seen = vec![generation(&ctx)];
+        step(&ctx);
+        assert_eq!(generation(&ctx), seen[0], "an idle frame");
+        let list = egui::Id::unique("list");
+        let changes: [&dyn Fn(&egui::Context); 4] = [
+            &|c| {
+                let _ = install_editor_font(c, EditorFont::PlexMono);
+            },
+            &|c| {
+                let _ = install_diagram_font(c, EditorFont::SourceSerif);
+            },
+            // Opening and closing a list of fonts rebuilds them too.
+            &|c| set_previews(c, list, true),
+            &|c| set_previews(c, list, false),
+        ];
+        for change in changes {
+            // Chosen in the middle of a frame, as an app does.
+            let mut during = 0;
+            let mut out = ctx.run_ui(Default::default(), |ui| {
+                change(ui.ctx());
+                during = generation(ui.ctx());
+            });
+            out.textures_delta.clear();
+            assert!(!seen.contains(&during), "asked for");
+            seen.push(during);
+            let mut after = 0;
+            let mut out = ctx.run_ui(Default::default(), |ui| after = generation(ui.ctx()));
+            out.textures_delta.clear();
+            assert!(!seen.contains(&after), "in use");
+            seen.push(after);
+            step(&ctx);
+            let mut idle = 0;
+            let mut out = ctx.run_ui(Default::default(), |ui| idle = generation(ui.ctx()));
+            out.textures_delta.clear();
+            assert_eq!(idle, after);
+        }
+        // No change, no rebuild.
+        install_editor_font(&ctx, EditorFont::PlexMono);
+        assert_eq!(generation(&ctx), *seen.last().unwrap());
     }
 
     /// A diagram's shapes are sized for labels in Inter, so a diagram font

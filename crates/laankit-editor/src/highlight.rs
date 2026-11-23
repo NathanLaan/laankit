@@ -492,12 +492,16 @@ impl FontMetrics {
         // The chosen font, and what its glyphs measure: a font that was just
         // chosen is not in use until the next frame, and the sizes show which
         // one this frame's lines were laid out with.
+        // Any rebuild of the fonts (another font chosen anywhere in the
+        // app, or a list of fonts opened) replaces the glyph texture, and a
+        // line laid out before it would draw as scrambled letters.
         let mut key = 0xcbf2_9ce4_8422_2325_u64;
         let id = fonts::editor_font(ui.ctx()).id();
         let sizes = [row_h, char_w, digit_w, mono_w].map(f32::to_bits);
         for b in id
             .bytes()
             .chain(sizes.into_iter().flat_map(u32::to_le_bytes))
+            .chain(fonts::generation(ui.ctx()).to_le_bytes())
         {
             key = (key ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
         }

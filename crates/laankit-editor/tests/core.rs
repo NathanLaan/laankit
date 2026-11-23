@@ -514,8 +514,10 @@ fn changing_the_font_lays_every_line_out_once_and_keeps_the_place() {
         let first = h.state().editor.layout_stats().galleys_built;
         assert!(first > built, "{font:?}: the lines were not laid out again");
         let after = settle(&mut h);
+        // The lines on screen are laid out twice at most: on the frame the
+        // font is chosen and on the frame it comes into use.
         assert!(
-            after - built <= starts.len() as u64 + 1,
+            after - built <= starts.len() as u64 + 100,
             "{font:?}: {} layouts of {} lines",
             after - built,
             starts.len()
@@ -591,4 +593,39 @@ fn the_text_size_and_line_height_set_the_row_spacing() {
     assert_eq!(sels(&h), [(5, 5)]);
     type_text(&mut h, "x");
     assert_eq!(text(&h), "one\ntxwo\nthree\n");
+}
+
+/// Any rebuild of the fonts replaces the texture that holds the glyphs: a
+/// line laid out before it would draw as scrambled letters. So the lines are
+/// laid out again even when the editor's own font is the same, as when a
+/// list of fonts opens and closes, or the diagram font changes.
+#[test]
+fn a_font_rebuild_elsewhere_lays_the_lines_out_again() {
+    use laankit_egui::fonts::{self, EditorFont};
+    let mut h = harness("one\ntwo\nthree\n");
+    let built = |h: &Harness<'static, State>| h.state().editor.layout_stats().galleys_built;
+    h.run();
+    let mut before = built(&h);
+    h.run();
+    assert_eq!(built(&h), before, "an idle frame lays nothing out");
+    let list = egui::Id::unique("a list of fonts");
+    let rebuilds: [&dyn Fn(&egui::Context); 3] = [
+        &|c| fonts::set_previews(c, list, true),
+        &|c| fonts::set_previews(c, list, false),
+        &|c| {
+            let _ = fonts::install_diagram_font(c, EditorFont::SourceSerif);
+        },
+    ];
+    for (i, rebuild) in rebuilds.into_iter().enumerate() {
+        rebuild(&h.ctx);
+        h.run();
+        h.run();
+        assert!(built(&h) > before, "rebuild {i}: the old lines were kept");
+        before = built(&h);
+        h.run();
+        assert_eq!(built(&h), before, "rebuild {i}: laid out on an idle frame");
+        assert_eq!(fonts::editor_font(&h.ctx), EditorFont::Inter);
+    }
+    type_text(&mut h, "x");
+    assert_eq!(text(&h), "xone\ntwo\nthree\n");
 }
