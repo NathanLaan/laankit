@@ -25,8 +25,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use egui::text::{ByteIndex, LayoutJob, LayoutSection, TextWrapping};
-use egui::{Color32, FontFamily, FontId, Galley, Rect, Stroke, TextFormat, Ui};
-use laankit_egui::fonts::Style;
+use egui::{Color32, FontId, Galley, Rect, Stroke, TextFormat, Ui};
+use laankit_egui::fonts::{self, Style};
 use laankit_egui::theme::Palette;
 use syntect::parsing::SyntaxSet;
 
@@ -306,9 +306,10 @@ impl EditorColors {
     }
 
     fn format(&self, kind: Kind, size: f32, misspelled: bool) -> TextFormat {
-        let font = |style: Style| FontId::new(size, style.family());
-        let body = FontId::new(size, FontFamily::Proportional);
-        let mono = FontId::new(size, FontFamily::Monospace);
+        // The font chosen for the editor (`laankit_egui::fonts::EditorFont`).
+        let font = |style: Style| FontId::new(size, fonts::editor_family(style));
+        let body = font(Style::default());
+        let mono = font(Style::MONO);
         let plain = |font_id: FontId, color: Color32| TextFormat {
             font_id,
             color,
@@ -425,6 +426,10 @@ pub struct Look {
     /// Wrap width, rounded to whole points as epaint does (`u32::MAX`: no wrapping).
     pub wrap: u32,
     pub font_size_bits: u32,
+    /// The line height, or 0 for the font's own.
+    pub line_height_bits: u32,
+    /// The font the lines are drawn in ([`FontMetrics::key`]).
+    pub font: u64,
     pub colors: u64,
     /// Changes whenever the spell checker (or its on/off state) does.
     pub spell: u64,
@@ -439,19 +444,113 @@ impl Look {
                 u32::MAX
             },
             font_size_bits: opts.font_size.to_bits(),
+            line_height_bits: opts.line_height.map_or(0, f32::to_bits),
+            font: opts.font,
             colors: opts.colors.key(),
             spell: opts.spell.map_or(0, |(_, v)| v.wrapping_add(1)),
         }
     }
 }
 
-/// How lines are laid out: the colours, the font size and the spell checker.
+/// The sizes of the editor's font, measured from the fonts in use this
+/// frame. They follow the font chosen for the editor
+/// (`laankit_egui::fonts::install_editor_font`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FontMetrics {
+    /// The height of a row of text.
+    pub row_h: f32,
+    /// The average width of a character of prose.
+    pub char_w: f32,
+    /// The width of a digit in the line-number gutter.
+    pub digit_w: f32,
+    /// See [`Self::key`].
+    key: u64,
+}
+
+/// Line numbers are this much smaller than the text.
+pub const GUTTER_SCALE: f32 = 0.86;
+
+impl FontMetrics {
+    /// Prose with the usual mix of letters, spaces, and punctuation.
+    const SAMPLE: &'static str = "The quick brown fox jumps over the lazy dog, and 12 more follow.";
+
+    pub fn measure(ui: &Ui, size: f32) -> Self {
+        let body = fonts::editor_family(Style::default());
+        let mono = fonts::editor_family(Style::MONO);
+        let (row_h, char_w, digit_w, mono_w) = ui.fonts_mut(|f| {
+            let total: f32 = Self::SAMPLE
+                .chars()
+                .map(|c| f.glyph_width(&FontId::new(size, body.clone()), c))
+                .sum();
+            (
+                f.row_height(&FontId::new(size, body.clone())),
+                total / Self::SAMPLE.chars().count() as f32,
+                f.glyph_width(&FontId::new(size * GUTTER_SCALE, mono.clone()), '0'),
+                f.glyph_width(&FontId::new(size, mono.clone()), 'm'),
+            )
+        });
+        // The chosen font, and what its glyphs measure: a font that was just
+        // chosen is not in use until the next frame, and the sizes show which
+        // one this frame's lines were laid out with.
+        // Any rebuild of the fonts (another font chosen anywhere in the
+        // app, or a list of fonts opened) replaces the glyph texture, and a
+        // line laid out before it would draw as scrambled letters.
+        let mut key = 0xcbf2_9ce4_8422_2325_u64;
+        let id = fonts::editor_font(ui.ctx()).id();
+        let sizes = [row_h, char_w, digit_w, mono_w].map(f32::to_bits);
+        for b in id
+            .bytes()
+            .chain(sizes.into_iter().flat_map(u32::to_le_bytes))
+            .chain(fonts::generation(ui.ctx()).to_le_bytes())
+        {
+            key = (key ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
+        }
+        Self {
+            row_h,
+            char_w,
+            digit_w,
+            key,
+        }
+    }
+
+    /// Changes whenever the font the lines are drawn in does, for [`Look`].
+    pub fn key(&self) -> u64 {
+        self.key
+    }
+
+    /// The line-number font.
+    pub fn gutter_font(size: f32) -> FontId {
+        FontId::new(size * GUTTER_SCALE, fonts::editor_family(Style::MONO))
+    }
+
+    /// The width of the line-number gutter for a note of `lines` lines.
+    pub fn gutter_width(&self, lines: usize, min: f32) -> f32 {
+        let digits = lines.max(1).to_string().len() as f32;
+        min.max(digits * self.digit_w + 16.0)
+    }
+}
+
+/// How lines are laid out: the colours, the font and the spell checker.
 pub struct LayoutOptions<'a> {
     pub colors: &'a EditorColors,
     pub font_size: f32,
+    /// [`FontMetrics::key`].
+    pub font: u64,
+    /// The height of a row as a multiple of the font size (`None`: the
+    /// font's own).
+    pub line_height: Option<f32>,
     pub wrap: bool,
     /// The spell checker and a version number that changes with it.
     pub spell: Option<(&'a dyn SpellChecker, u64)>,
+}
+
+impl LayoutOptions<'_> {
+    /// The format of a run of `kind`, at the size and line height in use.
+    fn format(&self, kind: Kind, misspelled: bool) -> TextFormat {
+        let mut format = self.colors.format(kind, self.font_size, misspelled);
+        format.line_height = self.line_height.map(|h| h * self.font_size);
+        format
+    }
 }
 
 impl Highlighter {
@@ -817,7 +916,7 @@ pub(crate) fn merged_job(text: &str, opts: &LayoutOptions<'_>, look: Look) -> La
     push_section(
         &mut job.sections,
         0..text.len(),
-        opts.colors.format(Kind::Text, opts.font_size, false),
+        opts.format(Kind::Text, false),
     );
     job
 }
@@ -847,17 +946,12 @@ fn line_galley(
         push_section(
             &mut job.sections,
             span.range.clone(),
-            opts.colors
-                .format(span.kind, opts.font_size, span.misspelled),
+            opts.format(span.kind, span.misspelled),
         );
     }
     if line.is_empty() {
         // An empty line still needs a font for its row height.
-        push_section(
-            &mut job.sections,
-            0..0,
-            opts.colors.format(Kind::Text, opts.font_size, false),
-        );
+        push_section(&mut job.sections, 0..0, opts.format(Kind::Text, false));
     }
     ui.fonts_mut(|f| f.layout_job(job))
 }
@@ -1265,6 +1359,8 @@ mod tests {
         LayoutOptions {
             colors,
             font_size: 14.0,
+            font: 0,
+            line_height: None,
             wrap: true,
             spell: None,
         }
@@ -1307,6 +1403,93 @@ mod tests {
             scan_line("---", BlockState::Frontmatter, false).1,
             BlockState::Normal
         );
+    }
+
+    /// A context with `font` as the editor's font, after its first frame.
+    fn ctx_with(font: fonts::EditorFont) -> egui::Context {
+        let ctx = egui::Context::default();
+        fonts::install(&ctx);
+        fonts::install_editor_font(&ctx, font);
+        let mut out = ctx.run_ui(Default::default(), |_| {});
+        out.textures_delta.clear();
+        ctx
+    }
+
+    fn metrics(ctx: &egui::Context, size: f32) -> FontMetrics {
+        let mut found = None;
+        let mut out = ctx.run_ui(Default::default(), |ui| {
+            found = Some(FontMetrics::measure(ui, size));
+        });
+        out.textures_delta.clear();
+        found.unwrap()
+    }
+
+    #[test]
+    fn text_and_code_are_in_the_editors_families() {
+        let colors = EditorColors::from_palette(laankit_egui::theme::ThemeId::Midnight.palette());
+        let family = |kind: Kind| colors.format(kind, 14.0, false).font_id.family;
+        let body = fonts::editor_family(Style::default());
+        let mono = fonts::editor_family(Style::MONO);
+        for kind in [
+            Kind::Text,
+            Kind::Muted,
+            Kind::LinkText,
+            Kind::Url,
+            Kind::WikiLink,
+            Kind::ListMarker,
+            Kind::Task,
+        ] {
+            assert_eq!(family(kind), body, "{kind:?}");
+        }
+        for kind in [Kind::Code, Kind::CodeBlock, Kind::Frontmatter] {
+            assert_eq!(family(kind), mono, "{kind:?}");
+        }
+        assert_eq!(family(Kind::Strong), fonts::editor_family(Style::BOLD));
+        assert_eq!(family(Kind::Heading(2)), fonts::editor_family(Style::BOLD));
+        assert_eq!(family(Kind::Emphasis), fonts::editor_family(Style::ITALIC));
+        assert_eq!(family(Kind::Quote), fonts::editor_family(Style::ITALIC));
+    }
+
+    #[test]
+    fn metrics_follow_the_chosen_font() {
+        use fonts::EditorFont;
+        let inter = metrics(&ctx_with(EditorFont::Inter), 14.0);
+        // Close to the fixed factor the estimates used before (0.52 em).
+        assert!((inter.char_w / 14.0 - 0.52).abs() < 0.06, "{inter:?}");
+        let mut keys = vec![inter.key()];
+        for font in [
+            EditorFont::SourceSerif,
+            EditorFont::IaQuattro,
+            EditorFont::JetBrainsMono,
+            EditorFont::PlexMono,
+            EditorFont::IaDuo,
+        ] {
+            let ctx = ctx_with(font);
+            let m = metrics(&ctx, 14.0);
+            let id = FontId::new(14.0, fonts::editor_family(Style::default()));
+            assert_eq!(m.row_h, ctx.fonts_mut(|f| f.row_height(&id)), "{font:?}");
+            if font.kind() == fonts::FontKind::Monospace {
+                assert!(m.char_w > inter.char_w * 1.1, "{font:?}: {m:?}");
+            }
+            assert!(!keys.contains(&m.key()), "{font:?} has another font's key");
+            keys.push(m.key());
+            assert_eq!(m, metrics(&ctx, 14.0), "the same font measures the same");
+            assert_ne!(m.key(), metrics(&ctx, 16.0).key());
+        }
+    }
+
+    #[test]
+    fn the_gutter_is_as_wide_as_its_digits() {
+        let ctx = ctx_with(fonts::EditorFont::PlexMono);
+        let m = metrics(&ctx, 14.0);
+        let digit = ctx.fonts_mut(|f| f.glyph_width(&FontMetrics::gutter_font(14.0), '0'));
+        assert_eq!(m.digit_w, digit);
+        assert!(digit > 0.0);
+        assert_eq!(m.gutter_width(9, 10.0), digit + 16.0);
+        assert_eq!(m.gutter_width(12_345, 10.0), 5.0 * digit + 16.0);
+        assert_eq!(m.gutter_width(9, 44.0), 44.0, "never under the minimum");
+        // A larger size has a wider gutter.
+        assert!(metrics(&ctx, 20.0).gutter_width(12_345, 10.0) > m.gutter_width(12_345, 10.0));
     }
 
     #[test]

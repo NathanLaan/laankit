@@ -48,7 +48,7 @@ cargo run -p laankit-egui --example gallery
 | Module        | What it does                                                                                   |
 |---------------|------------------------------------------------------------------------------------------------|
 | `theme`       | Mode, theme, and colour (see Themes below), UI scale steps, egui `Visuals`                      |
-| `fonts`       | Bundled Inter / JetBrains Mono / Font Awesome; weights and italics; system-font fallback        |
+| `fonts`       | Bundled Inter / JetBrains Mono / Font Awesome; weights and italics; the editor and diagram font choices; system-font fallback |
 | `icons`       | Font Awesome codepoints, drawn in the icon font family                                          |
 | `window`      | Undecorated-window chrome: drag, double-click maximize, edge resize, caption buttons, rounded corners (`undecorated_rounded`, `corner_radius`) |
 | `titlebar`    | `TitleBar.svelte`: toolbar toggle, app actions, title, UI-scale dropdown, window controls       |
@@ -107,8 +107,12 @@ The Svelte builds use each platform's system UI font; the native builds bundle o
 | `fonts::MONO_ITALIC`       | JetBrains Mono NL 2.304 Italic         | 206 KB  |
 | `fonts::SERIF` (+ `_ITALIC`, `_BOLD`, `_BOLD_ITALIC`) | Source Serif 4.005 Regular, Italic, Bold, Bold Italic (books) | 893 KB |
 | `icons::FAMILY`            | Font Awesome Free 6.7.2 Solid          | 416 KB  |
+| `fonts::editor_family(style)` | The font chosen for the editor (`fonts::EditorFont`); Inter unless set | |
+| `fonts::diagram_family(style)` | The font chosen for diagram labels; Inter unless set | |
 
-About 4.2 MB in all, embedded with `include_bytes!`. Pick a face with a `fonts::Style` (`fonts::styled`, `fonts::bold`, `fonts::italic`, `fonts::weight` for `RichText`; `fonts::format` for `LayoutJob`s).
+`fonts::EditorFont` lists the fonts an app can offer for the editor: Inter, Source Serif 4, iA Writer Quattro S, JetBrains Mono NL, IBM Plex Mono 2.005, and iA Writer Duo S. Each has regular, bold, italic, and bold italic faces. The three added families and JetBrains Mono's bold italic are about 1.8 MB. `EditorFont::DIAGRAM` is the shorter list for diagram labels: the fonts about as wide as Inter, which a test measures. `fonts::install_editor_font` and `fonts::install_diagram_font` set the choice, and only the chosen fonts are registered with egui. `settings::font_select` is a select that draws each font's name in that font, and loads the others only while its list is open.
+
+About 5.9 MB in all, embedded with `include_bytes!`. Pick a face with a `fonts::Style` (`fonts::styled`, `fonts::bold`, `fonts::italic`, `fonts::weight` for `RichText`; `fonts::format` for `LayoutJob`s).
 
 Inter's `calt` feature is retagged `ss20` and JetBrains Mono NL is the no-ligatures build, both for the same reason: egui can't switch OpenType features off, and code should show `->` and `!=` as typed.
 
@@ -128,4 +132,4 @@ On Wayland a locked session or hidden window gets no frames, so the capture neve
 
 ## Licences
 
-Inter and JetBrains Mono are under the SIL Open Font License 1.1; Font Awesome Free's font is under the OFL 1.1 and its icons under CC BY 4.0. The licence files are in `assets/fonts/`. `window.rs` and `toast.rs` are adapted from ArtCraft's `artcraft-native` (MIT OR Apache-2.0). See the repository's `NOTICE`.
+Inter, JetBrains Mono, Source Serif, IBM Plex Mono, and the iA Writer fonts are under the SIL Open Font License 1.1; Font Awesome Free's font is under the OFL 1.1 and its icons under CC BY 4.0. The licence files are in `assets/fonts/`. `window.rs` and `toast.rs` are adapted from ArtCraft's `artcraft-native` (MIT OR Apache-2.0). See the repository's `NOTICE`.

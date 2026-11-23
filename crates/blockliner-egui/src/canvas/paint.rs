@@ -38,8 +38,7 @@ const DOT: f32 = 4.5;
 /// The limitation badge's text size, in screen points at any zoom.
 const BADGE_SIZE: f32 = 10.0;
 
-/// The bundled face for a style's label: Bold and/or Italic, else
-/// regular.
+/// The face for a style's label: Bold and/or Italic, else regular.
 pub fn face(style: &Style) -> fonts::Style {
     fonts::Style {
         weight: style.bold().then_some(fonts::BOLD),
@@ -48,12 +47,19 @@ pub fn face(style: &Style) -> fonts::Style {
     }
 }
 
+/// A label's font at `size`: `face` of the font chosen for diagrams
+/// (`laankit_egui::fonts::install_diagram_font`), which is Inter unless the
+/// app set another. The rest of the canvas is in the UI font.
+pub fn diagram_font(face: fonts::Style, size: f32) -> FontId {
+    FontId::new(size, fonts::diagram_family(face))
+}
+
 pub fn label_font(zoom: f32, style: &Style) -> FontId {
-    face(style).font(LABEL_SIZE * zoom)
+    diagram_font(face(style), LABEL_SIZE * zoom)
 }
 
 pub fn edge_label_font(zoom: f32, style: &Style) -> FontId {
-    face(style).font(EDGE_LABEL_SIZE * zoom)
+    diagram_font(face(style), EDGE_LABEL_SIZE * zoom)
 }
 
 pub fn screen_rect(view: View, origin: Pos2, r: &Rect) -> egui::Rect {

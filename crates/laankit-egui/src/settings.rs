@@ -14,7 +14,7 @@ use egui::{
 };
 
 use crate::commands::ShortcutEntry;
-use crate::fonts;
+use crate::fonts::{self, EditorFont, FontKind};
 use crate::icons;
 use crate::theme::{self, Colour, Look, Mode, Palette, ThemeState, SCALES};
 
@@ -503,6 +503,62 @@ pub fn select(
     picked.filter(|v| v != selected)
 }
 
+/// A full-width select of fonts, with each font's name drawn in that font.
+/// `fonts` are the ones offered; the list has a heading for each kind when
+/// it offers both. Returns the newly picked font.
+pub fn font_select(
+    ui: &mut Ui,
+    label: &str,
+    fonts: &[EditorFont],
+    selected: EditorFont,
+) -> Option<EditorFont> {
+    let p = theme::palette(ui.ctx());
+    let list = ui.scope_id().with(("font-select", label));
+    let mut picked = None;
+    let mut shown = false;
+    let kinds = [
+        (FontKind::Proportional, "Proportional"),
+        (FontKind::Monospace, "Monospace"),
+    ];
+    let both = kinds
+        .iter()
+        .all(|(k, _)| fonts.iter().any(|f| f.kind() == *k));
+    dropdown(ui, &p, label, selected.name(), |ui| {
+        shown = true;
+        for (kind, heading) in kinds {
+            if both {
+                let (rect, resp) =
+                    ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, heading));
+                ui.painter().text(
+                    pos2(rect.left() + 10.0, rect.center().y),
+                    Align2::LEFT_CENTER,
+                    heading,
+                    FontId::proportional(11.0),
+                    p.text_muted,
+                );
+            }
+            for &font in fonts.iter().filter(|f| f.kind() == kind) {
+                let face = FontId::new(theme::BODY_SIZE, font.preview_family());
+                let row = option_row(
+                    ui,
+                    font.name(),
+                    face,
+                    p.bg_surface,
+                    p.text_primary,
+                    font == selected,
+                );
+                if row.clicked() {
+                    picked = Some(font);
+                }
+            }
+        }
+    });
+    // The fonts that are not chosen are loaded only while the list shows.
+    fonts::set_previews(ui.ctx(), list, shown);
+    picked.filter(|f| *f != selected)
+}
+
 /// The tallest a select's list gets (ten rows) before it scrolls.
 const DROPDOWN_MAX_HEIGHT: f32 = 280.0;
 
@@ -574,6 +630,19 @@ fn dropdown(ui: &mut Ui, p: &Palette, label: &str, current: &str, options: impl 
 
 /// An option row filled with `fill` and labelled in `ink`.
 fn swatch_row(ui: &mut Ui, label: &str, fill: Color32, ink: Color32, selected: bool) -> Response {
+    let font = FontId::proportional(theme::BODY_SIZE);
+    option_row(ui, label, font, fill, ink, selected)
+}
+
+/// [`swatch_row`] with its label in `font`.
+fn option_row(
+    ui: &mut Ui,
+    label: &str,
+    font: FontId,
+    fill: Color32,
+    ink: Color32,
+    selected: bool,
+) -> Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::click());
     resp.widget_info(|| {
         egui::WidgetInfo::selected(egui::Role::ListBoxOption, true, selected, label)
@@ -591,7 +660,7 @@ fn swatch_row(ui: &mut Ui, label: &str, fill: Color32, ink: Color32, selected: b
         pos2(rect.left() + 10.0, rect.center().y),
         Align2::LEFT_CENTER,
         label,
-        FontId::proportional(theme::BODY_SIZE),
+        font,
         ink,
     );
     resp

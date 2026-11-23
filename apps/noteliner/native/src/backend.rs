@@ -35,6 +35,11 @@ use crate::config::Paths;
 /// `native-v*` tags.
 const UPDATE_REPO: &str = "NathanLaan/laankit";
 
+/// How often, and how far apart, the write of a removed note's unsaved edits
+/// is tried again after it fails.
+const RESTORE_TRIES: usize = 10;
+const RESTORE_WAIT: std::time::Duration = std::time::Duration::from_millis(200);
+
 /// `DEFAULT_PRESENTATION` in `lib/slides.js`: what "Presentation" seeds.
 pub fn default_presentation() -> Value {
     presentation_in(noteliner_slides::SlideTheme::DEFAULT_ID)
@@ -861,7 +866,17 @@ impl Backend {
                 }
                 _ => false,
             };
-            let r = ws.project.write_file(&filename, &content).await;
+            let mut r = ws.project.write_file(&filename, &content).await;
+            // Windows can refuse to create a file for a moment after another
+            // program removed one of the same name. These edits are nowhere
+            // else, so the write is tried again.
+            for _ in 0..RESTORE_TRIES {
+                if !restored || r.is_ok() {
+                    break;
+                }
+                tokio::time::sleep(RESTORE_WAIT).await;
+                r = ws.project.write_file(&filename, &content).await;
+            }
             if r.is_ok() {
                 core.stamp(&ws.project, &filename);
                 ws.scan_links(&id);

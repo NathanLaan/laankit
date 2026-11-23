@@ -6,7 +6,7 @@
 //! | `ui-preferences.json` | `customTitlebar`, `sidebarVisible`, `propertiesVisible`, `statusBarVisible`, `showGrid`, |
 //! |                       | `gridSize`, `lastProject` (a folder path; empty after Close Folder), `filesVisible`, |
 //! |                       | `openFiles` (the Files pane: paths), `openTabs` (paths, in tab order), `activeFile` (a path or empty), |
-//! |                       | `gridUnit` (`mm`, `cm`, `m`, `in` or `ft`: what one grid mark measures), `showDimensions`, |
+//! |                       | `gridUnit` (`mm`, `cm`, `m`, `in` or `ft`: what one grid mark measures), `showDimensions`, `diagramFont`, |
 //! |                       | `exportFormat` (`png`/`svg`), `exportGrid`, `exportScale` (1, 2 or 3)    |
 //!
 //! Diagrams live in the folder the user opens, not here.
@@ -17,6 +17,7 @@ use blockliner_core::model::DEFAULT_GRID;
 
 use crate::export::{self, Format};
 use crate::units::Unit;
+use laankit_egui::fonts::EditorFont;
 use serde_json::{json, Map, Value};
 
 /// Names the user-data folder.
@@ -44,6 +45,9 @@ pub struct Prefs {
     pub grid_unit: Unit,
     /// Each shape's width and height, drawn beside it.
     pub show_dimensions: bool,
+    /// The font of the labels in every diagram (`diagramFont`). It is not
+    /// saved in a diagram's file.
+    pub diagram_font: EditorFont,
     /// The folder open when BlockLiner last closed.
     pub last_project: Option<PathBuf>,
     /// The Files pane is showing.
@@ -109,6 +113,8 @@ impl Paths {
                 .and_then(|u| Unit::parse(&u))
                 .unwrap_or_default(),
             show_dimensions: flag("showDimensions"),
+            // An unknown name, or a font too wide to be offered, is Inter.
+            diagram_font: EditorFont::diagram_from_id(&text("diagramFont").unwrap_or_default()),
             last_project: text("lastProject").map(PathBuf::from),
             files_visible: flag("filesVisible"),
             open_files: m
@@ -212,6 +218,7 @@ mod tests {
                 grid_size: 20.0,
                 grid_unit: Unit::Cm,
                 show_dimensions: false,
+                diagram_font: EditorFont::Inter,
                 last_project: None,
                 files_visible: true,
                 open_files: None,
@@ -244,6 +251,17 @@ mod tests {
         let prefs = paths.prefs();
         assert!(!prefs.show_grid);
         assert_eq!(prefs.grid_size, 40.0);
+        // The diagram font is saved by its name. A name that is unknown, or
+        // of a font too wide for diagrams, is Inter.
+        assert_eq!(prefs.diagram_font, EditorFont::Inter);
+        paths
+            .set_prefs(&json!({ "diagramFont": "source-serif" }))
+            .unwrap();
+        assert_eq!(paths.prefs().diagram_font, EditorFont::SourceSerif);
+        for name in ["plex-mono", "papyrus", ""] {
+            paths.set_prefs(&json!({ "diagramFont": name })).unwrap();
+            assert_eq!(paths.prefs().diagram_font, EditorFont::Inter, "{name}");
+        }
     }
 
     #[test]

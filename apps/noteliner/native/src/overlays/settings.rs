@@ -7,13 +7,14 @@
 use blockliner_egui::units::Unit;
 use egui::RichText;
 use laankit_egui::dialog::{self, ButtonKind};
+use laankit_egui::fonts::EditorFont;
 use laankit_egui::settings::{self, SettingsShell, Tab};
 use laankit_egui::theme::ThemeState;
 use laankit_egui::{fonts, theme};
 use serde_json::{json, Value};
 
 use crate::backend::McpStatus;
-use crate::config::{Prefs, DIAGRAM_GRID_SIZES};
+use crate::config::{Prefs, DIAGRAM_GRID_SIZES, EDITOR_FONT_SIZES, EDITOR_LINE_HEIGHTS};
 
 const TABS: [Tab<'static>; 6] = [
     Tab {
@@ -51,6 +52,10 @@ pub struct SettingsState {
     pub project_folder: Option<String>,
     pub write_frontmatter: bool,
     pub spell_check: bool,
+    pub editor_font: EditorFont,
+    pub diagram_font: EditorFont,
+    pub editor_font_size: f32,
+    pub editor_line_height: Option<f32>,
     pub mcp_enabled: bool,
     pub mcp_confirm_writes: bool,
     pub mcp_disabled_tools: Vec<String>,
@@ -78,6 +83,10 @@ impl SettingsState {
             project_folder: None,
             write_frontmatter: prefs.write_frontmatter,
             spell_check: prefs.spell_check,
+            editor_font: prefs.editor_font,
+            diagram_font: prefs.diagram_font,
+            editor_font_size: prefs.editor_font_size,
+            editor_line_height: prefs.editor_line_height,
             mcp_enabled: prefs.mcp_enabled,
             mcp_confirm_writes: prefs.mcp_confirm_writes,
             mcp_disabled_tools: prefs.mcp_disabled_tools.clone(),
@@ -261,8 +270,59 @@ fn project_tab(ui: &mut egui::Ui, state: &mut SettingsState, out: &mut Vec<Setti
     );
 }
 
-/// The note editor. Spelling only, for now.
+/// The note editor: its font and spelling.
 fn editor_tab(ui: &mut egui::Ui, state: &mut SettingsState, out: &mut Vec<SettingsAction>) {
+    settings::setting_group(
+        ui,
+        "Font",
+        Some("The font of the editor, in every project. With a monospace font, code is in the same font, so tables and indented lists line up. Otherwise code is in JetBrains Mono."),
+        |ui| {
+            if let Some(font) =
+                settings::font_select(ui, "Editor font", &EditorFont::ALL, state.editor_font)
+            {
+                state.editor_font = font;
+                out.push(SettingsAction::SetPrefs(json!({ "editorFont": font.id() })));
+            }
+            ui.add_space(8.0);
+            dialog::field_label(ui, "Size");
+            let sizes: Vec<(String, String)> = EDITOR_FONT_SIZES
+                .iter()
+                .map(|s| (s.to_string(), format!("{s} px")))
+                .collect();
+            let sizes: Vec<(&str, &str)> =
+                sizes.iter().map(|(v, l)| (v.as_str(), l.as_str())).collect();
+            let current = state.editor_font_size.to_string();
+            if let Some(size) = settings::select(ui, "Editor font size", &sizes, &current)
+                .and_then(|v| v.parse::<f32>().ok())
+            {
+                state.editor_font_size = size;
+                // A whole number, so the file says `18`, not `18.0`.
+                out.push(SettingsAction::SetPrefs(
+                    json!({ "editorFontSize": size as i64 }),
+                ));
+            }
+            ui.add_space(8.0);
+            dialog::field_label(ui, "Line Height");
+            // "font" is the font's own line height, which is what a missing
+            // value means.
+            let mut heights = vec![("font".to_string(), "The font's own".to_string())];
+            heights.extend(EDITOR_LINE_HEIGHTS.iter().map(|h| (h.to_string(), h.to_string())));
+            let heights: Vec<(&str, &str)> = heights
+                .iter()
+                .map(|(v, l)| (v.as_str(), l.as_str()))
+                .collect();
+            let current = state
+                .editor_line_height
+                .map_or("font".to_string(), |h| h.to_string());
+            if let Some(picked) = settings::select(ui, "Editor line height", &heights, &current) {
+                state.editor_line_height = picked.parse::<f32>().ok();
+                // Parsed as written, so the file says `1.6`.
+                out.push(SettingsAction::SetPrefs(
+                    json!({ "editorLineHeight": picked.parse::<f64>().ok() }),
+                ));
+            }
+        },
+    );
     settings::setting_group(
         ui,
         "Editor",
@@ -340,6 +400,19 @@ fn diagrams_tab(ui: &mut egui::Ui, state: &mut SettingsState, out: &mut Vec<Sett
         ui.add_space(4.0);
         dialog::muted_text(ui, "Each shape's width and height, beside it.");
     });
+    settings::setting_group(
+        ui,
+        "Font",
+        Some("The font of the labels in every diagram you view, and in the PNG and SVG files you export. It is not saved in a diagram's file."),
+        |ui| {
+            if let Some(font) =
+                settings::font_select(ui, "Diagram font", &EditorFont::DIAGRAM, state.diagram_font)
+            {
+                state.diagram_font = font;
+                out.push(SettingsAction::SetPrefs(json!({ "diagramFont": font.id() })));
+            }
+        },
+    );
     settings::setting_group(ui, "Zoom", None, |ui| {
         dialog::muted_text(
             ui,

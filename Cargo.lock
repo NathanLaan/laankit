@@ -823,7 +823,7 @@ dependencies = [
 
 [[package]]
 name = "blockliner-native"
-version = "2.9.1"
+version = "2.10.0"
 dependencies = [
  "anyhow",
  "blockliner-core",
@@ -4467,7 +4467,7 @@ dependencies = [
 
 [[package]]
 name = "noteliner-native"
-version = "3.6.1"
+version = "3.7.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

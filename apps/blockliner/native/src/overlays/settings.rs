@@ -1,6 +1,7 @@
 //! Settings: the UI tab (theme, scale, window, canvas) and Keyboard Shortcuts.
 
 use laankit_egui::dialog;
+use laankit_egui::fonts::EditorFont;
 use laankit_egui::settings::{self, SettingsShell, Tab};
 use laankit_egui::theme::ThemeState;
 
@@ -28,6 +29,8 @@ pub struct SettingsState {
     pub grid_size: f32,
     pub grid_unit: Unit,
     pub show_dimensions: bool,
+    /// The font of diagram labels. Inter until the caller sets it.
+    pub diagram_font: EditorFont,
 }
 
 impl SettingsState {
@@ -48,6 +51,7 @@ impl SettingsState {
             grid_size,
             grid_unit,
             show_dimensions,
+            diagram_font: EditorFont::default(),
         }
     }
 }
@@ -63,6 +67,7 @@ pub enum SettingsAction {
     SetGridSize(f32),
     SetGridUnit(Unit),
     SetShowDimensions(bool),
+    SetDiagramFont(EditorFont),
 }
 
 pub fn show(
@@ -152,6 +157,19 @@ fn ui_tab(
             "Each shape's width and height, beside it. Toggle with Ctrl+Shift+D.",
         );
     });
+    settings::setting_group(
+        ui,
+        "Font",
+        Some("The font of the labels in every diagram you view, and in the PNG and SVG files you export. It is not saved in a diagram's file."),
+        |ui| {
+            if let Some(font) =
+                settings::font_select(ui, "Diagram font", &EditorFont::DIAGRAM, state.diagram_font)
+            {
+                state.diagram_font = font;
+                out.push(SettingsAction::SetDiagramFont(font));
+            }
+        },
+    );
     settings::setting_group(ui, "Window", None, |ui| {
         if settings::toggle_option(
             ui,

@@ -1,7 +1,7 @@
 //! Headless frame timings for the editor (the Phase 0 spike's benchmark,
 //! on the production widget).
 //!
-//! `cargo run --profile fast-release -p laankit-editor --example editor_bench -- [--sizes 1000,5000] [--accesskit] [--fences N] [--engine core|textedit]`
+//! `cargo run --profile fast-release -p laankit-editor --example editor_bench -- [--sizes 1000,5000] [--accesskit] [--fences N] [--engine core|textedit] [--font inter|source-serif|ia-quattro|jetbrains-mono|plex-mono|ia-duo]`
 //!
 //! `--fences N` puts N 200-line code fences (Rust, Python, JSON, shell) in
 //! each document and adds a column for typing inside one; the syntaxes are
@@ -21,6 +21,9 @@ use laankit_editor::{gen, Editor, EditorState, Engine};
 const SCREEN: Vec2 = vec2(1200.0, 800.0);
 const KEYSTROKES: usize = 60;
 const SCROLL_FRAMES: usize = 60;
+
+/// `--font`: the editor's font (Inter unless set).
+static FONT: std::sync::OnceLock<laankit_egui::fonts::EditorFont> = std::sync::OnceLock::new();
 
 #[derive(Default)]
 struct Stats(Vec<Duration>);
@@ -62,6 +65,7 @@ impl Bench {
     fn new(text: &str, accesskit: bool, engine: Engine) -> Self {
         let ctx = Context::default();
         laankit_egui::fonts::install(&ctx);
+        laankit_egui::fonts::install_editor_font(&ctx, FONT.get().copied().unwrap_or_default());
         laankit_egui::theme::ThemeState::default().apply(&ctx);
         if accesskit {
             ctx.enable_accesskit();
@@ -251,6 +255,10 @@ fn main() {
             }
             "--accesskit" => accesskit = true,
             "--fences" => fences = args.next().and_then(|n| n.parse().ok()).unwrap_or(4),
+            "--font" => {
+                let id = args.next().unwrap_or_default();
+                let _ = FONT.set(laankit_egui::fonts::EditorFont::from_id(&id));
+            }
             "--engine" => {
                 engine = match args.next().as_deref() {
                     Some("textedit") => Engine::TextEdit,

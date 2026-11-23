@@ -14,8 +14,8 @@ use std::sync::Arc;
 use egui::emath::TSTransform;
 use egui::text::{CCursor, CCursorRange};
 use egui::{
-    pos2, vec2, Align, Align2, Event, FontFamily, FontId, Galley, Key, Modifiers, PointerButton,
-    Pos2, Rect, Response, ScrollArea, Sense, Shape, Stroke, Ui, Vec2,
+    pos2, vec2, Align, Align2, Event, FontId, Galley, Key, Modifiers, PointerButton, Pos2, Rect,
+    Response, ScrollArea, Sense, Shape, Stroke, Ui, Vec2,
 };
 use laankit_egui::{icons, theme};
 
@@ -25,7 +25,7 @@ use super::selection::{Sel, Selections};
 use super::Drag;
 use crate::editor::{EditorEvent, GUTTER_MIN, PAD};
 use crate::highlight::{
-    cols_rect, link_at, merged_job, EditorColors, LayoutOptions, LinkTarget, Look,
+    cols_rect, link_at, merged_job, EditorColors, FontMetrics, LayoutOptions, LinkTarget, Look,
 };
 use crate::list_edits::renumber_after_edit;
 use crate::matching::{self, MAX_SELECTION_MATCHES};
@@ -47,9 +47,11 @@ const MAX_COMPLETIONS: usize = 50;
 pub(crate) struct Lay {
     pub colors: EditorColors,
     pub font_size: f32,
+    pub line_height: Option<f32>,
     pub wrap: bool,
     pub spell: Option<(Arc<dyn SpellChecker>, u64)>,
     pub look: Look,
+    pub metrics: FontMetrics,
     pub row_h: f32,
     pub wrap_w: f32,
     pub gutter: f32,
@@ -60,6 +62,8 @@ impl Lay {
         LayoutOptions {
             colors: &self.colors,
             font_size: self.font_size,
+            font: self.metrics.key(),
+            line_height: self.line_height,
             wrap: self.wrap,
             spell: self
                 .spell
@@ -74,12 +78,12 @@ impl Lay {
         if !self.wrap {
             return self.row_h;
         }
-        let w = len as f32 * self.font_size * 0.52;
+        let w = self.estimate_width(len);
         self.row_h * (w / self.wrap_w.max(1.0)).ceil().max(1.0)
     }
 
     fn estimate_width(&self, len: usize) -> f32 {
-        len as f32 * self.font_size * 0.52
+        len as f32 * self.metrics.char_w
     }
 }
 
@@ -139,7 +143,18 @@ impl EditorState {
         self.core.scroll_id = Some(scrolled.id);
         self.core.viewport_h = scrolled.inner_rect.height();
         let first = self.core.visible.start.min(self.core.tops.len() - 1);
-        self.core.anchor = Some((first, self.core.tops[first], self.version));
+        let top = self.core.tops[first];
+        self.core.anchor = match self.core.anchor {
+            // A shift too small to correct this frame is kept, so that small
+            // shifts frame after frame (lines above being measured a few at
+            // a time) add up to one that is corrected.
+            Some((line, old, version))
+                if line == first && version == self.version && (top - old).abs() <= 0.5 =>
+            {
+                Some((line, old, version))
+            }
+            _ => Some((first, top, self.version)),
+        };
         scrolled.inner
     }
 
@@ -147,10 +162,10 @@ impl EditorState {
     fn lay(&self, ui: &Ui, colors: &EditorColors) -> Lay {
         let font_size = self.prefs.font_size;
         let lines = self.lines();
+        let metrics = FontMetrics::measure(ui, font_size);
         let gutter = FOLD_W
             + if self.prefs.line_numbers {
-                let digits = lines.max(1).to_string().len() as f32;
-                GUTTER_MIN.max(digits * font_size * 0.62 + 16.0)
+                metrics.gutter_width(lines, GUTTER_MIN)
             } else {
                 0.0
             };
@@ -162,11 +177,14 @@ impl EditorState {
             .clone()
             .filter(|_| self.prefs.spell_check)
             .map(|c| (c, self.spell_version));
-        let row_h = ui.fonts_mut(|f| f.row_height(&FontId::proportional(font_size)));
+        let line_height = self.prefs.line_height;
+        let row_h = line_height.map_or(metrics.row_h, |h| h * font_size);
         let look = Look::new(
             &LayoutOptions {
                 colors,
                 font_size,
+                font: metrics.key(),
+                line_height,
                 wrap: self.prefs.wrap,
                 spell: spell
                     .as_ref()
@@ -177,9 +195,11 @@ impl EditorState {
         Lay {
             colors: *colors,
             font_size,
+            line_height,
             wrap: self.prefs.wrap,
             spell,
             look,
+            metrics,
             row_h,
             wrap_w,
             gutter,
@@ -1511,7 +1531,7 @@ impl EditorState {
             .pointer_hover_pos()
             .is_some_and(|p| gutter.contains(p));
         let active = self.line_col(self.core.sel.primary().head).0;
-        let font = FontId::new(self.prefs.font_size * 0.86, FontFamily::Monospace);
+        let font = FontMetrics::gutter_font(self.prefs.font_size);
         let mut toggle = None;
         for line in self.core.visible.clone() {
             if self.core.folds.hidden(line) {

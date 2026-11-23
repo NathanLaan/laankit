@@ -28,7 +28,6 @@ Status: **Open (2026-10-18).** What's left after the port to pure Rust (egui) an
 | Remove the TextEdit fallback engine | NoteLiner (`laankit-editor`) | One release after the IME and screen-reader checks (section 4) pass. Removes `LAANKIT_EDITOR_ENGINE=textedit`. | Medium |
 | Shift+arrow selection in rich text | All three (`laankit-richtext`) | Needs a keyboard caret in `RichView`. | Medium |
 | More code-fence languages (TypeScript, TOML, Svelte, PowerShell) | NoteLiner | Not in syntect's bundled set; a larger set (e.g. `two-face`) was deferred by decision. | Low |
-| Editor font choice | NoteLiner | Planned in [plan-editor-font.md](plan-editor-font.md) (draft for review). | Medium |
 | Help in its own window | ThreadLiner | Currently a dialog. | Low |
 | Sync status after a failed Sync Now | PageLiner | Only the error is shown today. | Low |
 | EPUB paging keys while a dialog is open | PageLiner | Arrow keys may still turn pages when the dialog has no text field (untested). | Low |

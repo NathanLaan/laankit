@@ -70,7 +70,7 @@ const BOUNDS_DEBOUNCE_SECS: f64 = 1.0;
 const CHECK_SECS: f64 = 3.0;
 /// eframe's own window-geometry key, which NoteLiner keeps blank (see `save`).
 const EFRAME_WINDOW_KEY: &str = "window";
-const DESCRIPTION: &str = "An outliner-style note-taking application built with Rust and egui.";
+const DESCRIPTION: &str = "Markdown notes, diagrams, and presentations in a plain folder of files.";
 const REPO_URL: &str = "https://github.com/NathanLaan/laankit/";
 
 /// `LAANKIT_OPEN` / `LAANKIT_PROJECT` / `LAANKIT_FILE`: what to open at
@@ -2396,6 +2396,8 @@ impl NoteLinerApp {
     /// Spell checking, the checker once loaded, and the `[[` completion list.
     fn update_editor_inputs(&mut self) {
         self.editor.set_spell_check(self.prefs.spell_check);
+        self.editor
+            .set_text_size(self.prefs.editor_font_size, self.prefs.editor_line_height);
         if self.spell_checker.is_none() {
             if let Some(Some(checker)) = self.spell.ready() {
                 self.editor.set_spell_checker(Some(
@@ -2689,6 +2691,14 @@ impl NoteLinerApp {
                 }
                 self.backend
                     .set_prefs(json!({ "spellCheckEnabled": self.prefs.spell_check }));
+            }
+            Act::EditorFont(font) => {
+                self.prefs.editor_font = font;
+                self.backend.set_prefs(json!({ "editorFont": font.id() }));
+            }
+            Act::DiagramFont(font) => {
+                self.prefs.diagram_font = font;
+                self.backend.set_prefs(json!({ "diagramFont": font.id() }));
             }
             Act::GoToLine => self.editor.go_to_line(),
             Act::ZoomIn => self.theme.zoom_in(),
@@ -2997,6 +3007,9 @@ impl NoteLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
+        // The fonts chosen in Settings. Nothing happens unless one changed.
+        fonts::install_editor_font(&ctx, self.prefs.editor_font);
+        fonts::install_diagram_font(&ctx, self.prefs.diagram_font);
         self.theme.follow_system(&ctx);
         #[cfg(test)]
         {
