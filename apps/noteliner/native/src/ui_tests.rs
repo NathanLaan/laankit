@@ -40,7 +40,9 @@ pub(crate) fn wait_for(
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-    panic!("timed out waiting for {what}");
+    // What the app said on the way is most of the reason.
+    let said = h.state().toast_texts();
+    panic!("timed out waiting for {what}; the app's messages: {said:?}");
 }
 
 /// Replaces the text of the `n`th single-line field.
