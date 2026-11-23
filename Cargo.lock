@@ -4467,7 +4467,7 @@ dependencies = [
 
 [[package]]
 name = "noteliner-native"
-version = "3.7.1"
+version = "3.7.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

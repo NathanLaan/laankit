@@ -689,6 +689,28 @@ fn changes_made_by_other_programs() {
     close(h);
 }
 
+/// Copy Path in a file's menu puts its full path on the clipboard.
+#[test]
+fn copy_path_copies_the_full_path_of_a_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project, _) = open(tmp.path(), notes, 2);
+    h.get_by_role_and_label(Role::TreeItem, "Alpha")
+        .click_secondary();
+    h.run_steps(3);
+    h.get_by_label_contains("Copy Path").click();
+    let mut copied = Vec::new();
+    for _ in 0..4 {
+        h.step();
+        for command in &h.output().platform_output.commands {
+            if let egui::OutputCommand::CopyText(text) = command {
+                copied.push(text.clone());
+            }
+        }
+    }
+    assert_eq!(copied, [project.join("alpha.md").display().to_string()]);
+    close(h);
+}
+
 /// Picks `name` in the New Item dialog's Folder list.
 fn pick_parent(h: &mut H, name: &str) {
     h.get_by_role_and_label(Role::ComboBox, "Folder").click();
