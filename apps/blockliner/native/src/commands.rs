@@ -7,6 +7,7 @@
 
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
+use laankit_egui::fonts::EditorFont;
 
 use blockliner_core::Order;
 use blockliner_egui::commands::{EditAct, EditCommand, When};
@@ -33,6 +34,8 @@ pub enum Act {
     Edit(EditAct),
     ToggleGrid,
     ToggleDimensions,
+    /// Sets the font of diagram labels.
+    DiagramFont(EditorFont),
     ToggleSidebar,
     ToggleProperties,
     ToggleStatusBar,
@@ -299,6 +302,11 @@ pub fn registry() -> Registry<Act, View> {
         .shortcut("Ctrl+Shift+D")
         .when(ready),
     );
+    for font in EditorFont::DIAGRAM {
+        let id = format!("view.diagramFont.{}", font.id());
+        let title = format!("Diagram Font: {}", font.name());
+        r.register(add(&id, &title, "View", Act::DiagramFont(font)).when(ready));
+    }
     r.register(
         add(
             "view.toggleSidebar",

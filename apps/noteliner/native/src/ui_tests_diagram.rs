@@ -878,3 +878,154 @@ fn selecting_on_the_canvas_marks_the_row() {
     assert!(marked(&h, "API Gateway"));
     assert!(!marked(&h, "Orders"));
 }
+
+/// The saved preferences, as JSON.
+fn saved_prefs(tmp: &Path) -> serde_json::Value {
+    let text = std::fs::read_to_string(tmp.join("NoteLiner/ui-preferences.json")).unwrap();
+    serde_json::from_str(&text).unwrap()
+}
+
+#[test]
+fn the_editor_font_is_chosen_in_settings_and_saved() {
+    use laankit_egui::fonts::{self, EditorFont};
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _project) = open_project(tmp.path());
+    open_note(&mut h, "Alpha");
+    assert_eq!(fonts::editor_font(&h.ctx), EditorFont::Inter);
+
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::Button, "Editor").click();
+    h.run_steps(3);
+    assert!(h.query_by_label("Check spelling").is_some());
+    h.get_by_role_and_label(Role::ComboBox, "Editor font")
+        .click();
+    h.run_steps(3);
+    // Every font, under a heading for each kind.
+    assert!(h.query_by_label("Proportional").is_some());
+    assert!(h.query_by_label("Monospace").is_some());
+    for font in EditorFont::ALL {
+        assert!(
+            h.query_by_role_and_label(Role::ListBoxOption, font.name())
+                .is_some(),
+            "{font:?}"
+        );
+    }
+    h.get_by_role_and_label(Role::ListBoxOption, "IBM Plex Mono")
+        .click();
+    h.run_steps(3);
+    assert_eq!(fonts::editor_font(&h.ctx), EditorFont::PlexMono);
+    let saved = saved_prefs(tmp.path());
+    assert_eq!(saved["editorFont"], "plex-mono");
+    // The other preferences are kept, and the diagram font is its own.
+    assert_eq!(saved["spellCheckEnabled"], true);
+    assert_eq!(fonts::diagram_font(&h.ctx), EditorFont::Inter);
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+
+    // The note is unchanged, and still editable.
+    assert_eq!(h.state().editor_text(), "Alpha text\n");
+
+    // The palette's commands set it too.
+    act(&mut h, Act::EditorFont(EditorFont::IaQuattro));
+    assert_eq!(fonts::editor_font(&h.ctx), EditorFont::IaQuattro);
+    assert_eq!(saved_prefs(tmp.path())["editorFont"], "ia-quattro");
+}
+
+#[test]
+fn the_diagram_font_changes_the_canvas_and_exports_but_no_file() {
+    use laankit_egui::fonts::{self, EditorFont};
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    let out = tmp.path().join("exports");
+    h.state_mut().set_diagram_export_dir(out.clone());
+    open_diagram(&mut h, "Map");
+    let file = std::fs::read_dir(&project)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.extension().is_some_and(|e| e == "mmd"))
+        .expect("the diagram's file");
+    let before = std::fs::read_to_string(&file).unwrap();
+
+    // Settings offers the fonts about as wide as Inter, and no others.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::Button, "Diagrams").click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::ComboBox, "Diagram font")
+        .scroll_to_me();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::ComboBox, "Diagram font")
+        .click();
+    h.run_steps(3);
+    assert!(h.query_by_label("IBM Plex Mono").is_none());
+    assert!(
+        h.query_by_label("Monospace").is_none(),
+        "one kind: no headings"
+    );
+    h.get_by_role_and_label(Role::ListBoxOption, "Source Serif 4")
+        .click();
+    h.run_steps(3);
+    assert_eq!(fonts::diagram_font(&h.ctx), EditorFont::SourceSerif);
+    assert_eq!(fonts::editor_font(&h.ctx), EditorFont::Inter);
+    assert_eq!(saved_prefs(tmp.path())["diagramFont"], "source-serif");
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+
+    // An export is in the font.
+    act(&mut h, Act::ExportDiagram);
+    h.get_by_label("SVG").click();
+    h.run_steps(2);
+    h.get_by_label("Export…").click();
+    h.run_steps(3);
+    let svg = std::fs::read_to_string(out.join("map.svg")).unwrap();
+    assert!(
+        svg.contains(r#"font-family="Source Serif 4, serif""#),
+        "{svg}"
+    );
+
+    // Looking at a diagram in another font does not change its file.
+    h.run_steps(60);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    h.run_steps(5);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+
+    act(&mut h, Act::DiagramFont(EditorFont::Inter));
+    assert_eq!(fonts::diagram_font(&h.ctx), EditorFont::Inter);
+    assert_eq!(saved_prefs(tmp.path())["diagramFont"], "inter");
+}
+
+#[test]
+fn the_editor_text_size_and_line_height_are_saved() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _project) = open_project(tmp.path());
+    open_note(&mut h, "Alpha");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::Button, "Editor").click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::ComboBox, "Editor font size")
+        .click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::ListBoxOption, "18 px")
+        .click();
+    h.run_steps(3);
+    assert_eq!(saved_prefs(tmp.path())["editorFontSize"], 18);
+    h.get_by_role_and_label(Role::ComboBox, "Editor line height")
+        .click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::ListBoxOption, "1.6").click();
+    h.run_steps(3);
+    assert_eq!(saved_prefs(tmp.path())["editorLineHeight"], 1.6);
+    // Back to the font's own line height.
+    h.get_by_role_and_label(Role::ComboBox, "Editor line height")
+        .click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::ListBoxOption, "The font's own")
+        .click();
+    h.run_steps(3);
+    assert!(saved_prefs(tmp.path())["editorLineHeight"].is_null());
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+    assert_eq!(h.state().editor_text(), "Alpha text\n");
+}

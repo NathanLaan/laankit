@@ -18,6 +18,8 @@ It is a pure-Rust desktop app built on [egui](https://github.com/emilk/egui) ove
 - Diagrams: BlockLiner's diagram editor inside a project. A diagram is a `.mmd` file beside your notes, with BlockLiner's tools in the toolbar above it and a Properties panel to its right. Shapes can be moved in front of or behind one another (Move to Front, Move Up, Move Down, Move to Back). It can be tagged, linked with `[[wikilinks]]`, moved to another folder, and exported as PNG, SVG, or Mermaid
 - Outline and Objects: one pane (Ctrl+Shift+O) lists the open document's parts. In a note or a presentation it is titled Outline and lists the headings. In a diagram it is titled Objects and lists every shape, text object, and line. See Objects
 - Markdown editor with syntax highlighting, list editing, multiple cursors, folding, find/replace, and `[[wikilink]]` completion. It shows a note's whole file, with its frontmatter at the top
+- Editor font: Settings, Editor has a list of six fonts for the editor, three proportional (Inter, Source Serif 4, and iA Writer Quattro) and three monospace (JetBrains Mono, IBM Plex Mono, and iA Writer Duo), with a text size from 12 to 20 px and a line height. With a monospace font, code is in the same font, so Markdown tables and indented lists line up. The choice applies to every project, and only to the editor
+- Diagram font: Settings, Diagrams has a font for the labels in every diagram you view, Inter or Source Serif 4. PNG and SVG exports use it too. It is a setting and is not saved in a diagram's file
 - Live Markdown preview with math (`$…$`, `$$…$$`) typeset by Typst
 - Tags, backlinks, and full-text search panes
 - File attachments (paste, drag-and-drop, or file picker) with image thumbnails

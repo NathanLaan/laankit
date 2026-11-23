@@ -14,6 +14,7 @@ use blockliner_core::Order;
 use blockliner_egui::commands::{EditAct, EditView, When};
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command, Registry, ShortcutEntry};
+use laankit_egui::fonts::EditorFont;
 use laankit_egui::theme::{Colour, Look, Mode};
 
 /// Everything a shortcut, button or palette entry can ask for.
@@ -88,6 +89,10 @@ pub enum Act {
     ToggleLog,
     ToggleStatusBar,
     ToggleSpellCheck,
+    /// Sets the editor's font.
+    EditorFont(EditorFont),
+    /// Sets the font of diagram labels.
+    DiagramFont(EditorFont),
     ZoomIn,
     ZoomOut,
     ZoomReset,
@@ -644,6 +649,17 @@ pub fn registry() -> Registry<Act, View> {
             .shortcut("Ctrl+Alt+G")
             .when(is_note),
     );
+
+    for font in EditorFont::ALL {
+        let id = format!("editor.font.{}", font.id());
+        let title = format!("Editor Font: {}", font.name());
+        r.register(add(&id, &title, "Editor", Act::EditorFont(font)).when(ready));
+    }
+    for font in EditorFont::DIAGRAM {
+        let id = format!("diagram.font.{}", font.id());
+        let title = format!("Diagram Font: {}", font.name());
+        r.register(add(&id, &title, "Diagram", Act::DiagramFont(font)).when(ready));
+    }
 
     // Tags: before View, so Ctrl+Shift++ adds a tag (with the TAGS pane
     // open) before zoom-in sees it.

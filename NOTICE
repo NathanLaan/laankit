@@ -19,6 +19,15 @@ Source Serif 4.005 (crates/laankit-egui/assets/fonts/SourceSerif4-*.ttf) — SIL
   1.1. Copyright 2014 - 2023 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
   https://github.com/adobe-fonts/source-serif
   License: crates/laankit-egui/assets/fonts/SourceSerif4-LICENSE.md
+iA Writer Quattro S and iA Writer Duo S (crates/laankit-egui/assets/fonts/iAWriter*.ttf),
+  unmodified — SIL Open Font License 1.1. Copyright (c) 2018 Information Architects Inc. with
+  Reserved Font Name "iA Writer"; based on IBM Plex, Copyright (c) 2017 IBM Corp. with Reserved
+  Font Name "Plex". https://github.com/iaolo/iA-Fonts
+  License: crates/laankit-egui/assets/fonts/iAWriter-LICENSE.md
+IBM Plex Mono 2.005 (crates/laankit-egui/assets/fonts/IBMPlexMono-*.ttf), unmodified — SIL Open
+  Font License 1.1. Copyright (c) 2017 IBM Corp. with Reserved Font Name "Plex".
+  https://github.com/IBM/plex
+  License: crates/laankit-egui/assets/fonts/IBMPlexMono-LICENSE.txt
 New Computer Modern Math (crates/noteliner-export/assets/fonts/NewCMMath-Regular.otf), unmodified,
   from typst-assets 0.15.1 — GUST Font License 1.0 (LaTeX Project Public License 1.3c or later).
   Copyright the NewComputerModern authors (Antonis Tsolomitis). https://ctan.org/pkg/newcomputermodern

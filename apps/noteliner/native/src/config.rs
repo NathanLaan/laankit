@@ -3,7 +3,7 @@
 //!
 //! | Path                   | Holds                                                                  |
 //! |------------------------|------------------------------------------------------------------------|
-//! | `ui-preferences.json`  | `customTitlebar`, `writeFrontmatter`, `mcp*`, `spellCheckEnabled`, `filesSortMode`, `commandRecents` |
+//! | `ui-preferences.json`  | `customTitlebar`, `writeFrontmatter`, `mcp*`, `spellCheckEnabled`, `editorFont`, `editorFontSize`, `editorLineHeight`, `diagramFont`, `filesSortMode`, `commandRecents` |
 //! | `recent-projects.json` | `[{ path, name, openedAt }]`, newest first, at most 5                  |
 //! | `window-state.json`    | Per project folder: the panel `layout`, window `bounds`, and `notices` |
 //! | `mcp-runtime.json`     | The running MCP server's socket (written by `noteliner_core::mcp`)     |
@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use blockliner_core::model::DEFAULT_GRID;
 use blockliner_egui::export::{self, Format};
 use blockliner_egui::units::Unit;
+use laankit_egui::fonts::EditorFont;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
@@ -39,6 +40,18 @@ pub struct Prefs {
     pub mcp_confirm_writes: bool,
     pub mcp_disabled_tools: Vec<String>,
     pub spell_check: bool,
+    /// The editor's font (`editorFont`), for every project.
+    pub editor_font: EditorFont,
+    /// The font of diagram labels (`diagramFont`), for every diagram you
+    /// view. It is not saved in a diagram's file.
+    pub diagram_font: EditorFont,
+    /// The editor's text size in pixels (`editorFontSize`), one of
+    /// [`EDITOR_FONT_SIZES`].
+    pub editor_font_size: f32,
+    /// The editor's line height as a multiple of the text size
+    /// (`editorLineHeight`), one of [`EDITOR_LINE_HEIGHTS`]. `None` is the
+    /// font's own.
+    pub editor_line_height: Option<f32>,
     pub files_sort_mode: String,
     pub command_recents: Vec<String>,
     /// Diagrams: whether the canvas grid shows (`diagramShowGrid`).
@@ -56,6 +69,13 @@ pub struct Prefs {
     pub present_display: Option<(String, [u32; 2])>,
 }
 
+/// The text sizes Settings offers for the editor, in pixels.
+pub const EDITOR_FONT_SIZES: [f32; 9] = [12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0];
+/// The editor's text size on a fresh install.
+pub const DEFAULT_EDITOR_FONT_SIZE: f32 = 14.0;
+/// The line heights Settings offers for the editor, besides the font's own.
+pub const EDITOR_LINE_HEIGHTS: [f32; 4] = [1.2, 1.4, 1.6, 1.8];
+
 /// The grid sizes Settings offers for new diagrams, as BlockLiner's.
 pub const DIAGRAM_GRID_SIZES: [f32; 3] = [10.0, 20.0, 40.0];
 
@@ -69,6 +89,10 @@ impl Default for Prefs {
             mcp_confirm_writes: false,
             mcp_disabled_tools: Vec::new(),
             spell_check: true,
+            editor_font: EditorFont::default(),
+            diagram_font: EditorFont::default(),
+            editor_font_size: DEFAULT_EDITOR_FONT_SIZE,
+            editor_line_height: None,
             files_sort_mode: "name-asc".into(),
             command_recents: Vec::new(),
             present_display: None,
@@ -147,6 +171,25 @@ impl Paths {
             mcp_disabled_tools: strings("mcpDisabledTools"),
             // `prefs?.spellCheckEnabled !== false`.
             spell_check: m.get("spellCheckEnabled") != Some(&Value::Bool(false)),
+            // An unknown name is Inter, as is a diagram font that is too
+            // wide to be offered.
+            editor_font: EditorFont::from_id(
+                m.get("editorFont").and_then(Value::as_str).unwrap_or(""),
+            ),
+            diagram_font: EditorFont::diagram_from_id(
+                m.get("diagramFont").and_then(Value::as_str).unwrap_or(""),
+            ),
+            editor_font_size: m
+                .get("editorFontSize")
+                .and_then(Value::as_f64)
+                .map(|s| s as f32)
+                .filter(|s| EDITOR_FONT_SIZES.contains(s))
+                .unwrap_or(DEFAULT_EDITOR_FONT_SIZE),
+            editor_line_height: m
+                .get("editorLineHeight")
+                .and_then(Value::as_f64)
+                .map(|h| h as f32)
+                .filter(|h| EDITOR_LINE_HEIGHTS.contains(h)),
             files_sort_mode: m
                 .get("filesSortMode")
                 .and_then(Value::as_str)
@@ -486,6 +529,53 @@ mod tests {
         let p = paths.prefs();
         assert!(!p.custom_titlebar && p.write_frontmatter && p.spell_check && !p.mcp_enabled);
         assert_eq!(p.files_sort_mode, "name-asc");
+    }
+
+    #[test]
+    fn fonts_are_saved_by_name_and_unknown_names_are_inter() {
+        let (_tmp, paths) = paths();
+        assert_eq!(paths.prefs().editor_font, EditorFont::Inter);
+        assert_eq!(paths.prefs().diagram_font, EditorFont::Inter);
+        laankit_core::json::write(&paths.ui_prefs(), &json!({ "zoom": 2 })).unwrap();
+        for font in EditorFont::ALL {
+            paths
+                .set_prefs(&json!({ "editorFont": font.id(), "diagramFont": font.id() }))
+                .unwrap();
+            let prefs = paths.prefs();
+            assert_eq!(prefs.editor_font, font);
+            // A font too wide for a diagram's shapes is not used there.
+            let diagram = if EditorFont::DIAGRAM.contains(&font) {
+                font
+            } else {
+                EditorFont::Inter
+            };
+            assert_eq!(prefs.diagram_font, diagram, "{font:?}");
+        }
+        // The size and line height: only the values Settings offers.
+        assert_eq!(paths.prefs().editor_font_size, 14.0);
+        assert_eq!(paths.prefs().editor_line_height, None);
+        paths
+            .set_prefs(&json!({ "editorFontSize": 18, "editorLineHeight": 1.6 }))
+            .unwrap();
+        assert_eq!(paths.prefs().editor_font_size, 18.0);
+        assert_eq!(paths.prefs().editor_line_height, Some(1.6));
+        paths
+            .set_prefs(&json!({ "editorFontSize": 99, "editorLineHeight": null }))
+            .unwrap();
+        assert_eq!(paths.prefs().editor_font_size, 14.0);
+        assert_eq!(paths.prefs().editor_line_height, None);
+        // The other keys in the file are kept.
+        let raw: Value =
+            serde_json::from_str(&std::fs::read_to_string(paths.ui_prefs()).unwrap()).unwrap();
+        assert_eq!(raw["zoom"], 2);
+        assert_eq!(raw["editorFont"], "ia-duo");
+        for bad in [json!("comic-sans"), json!(""), json!(7), Value::Null] {
+            paths
+                .set_prefs(&json!({ "editorFont": bad, "diagramFont": bad }))
+                .unwrap();
+            assert_eq!(paths.prefs().editor_font, EditorFont::Inter, "{bad}");
+            assert_eq!(paths.prefs().diagram_font, EditorFont::Inter, "{bad}");
+        }
     }
 
     #[test]

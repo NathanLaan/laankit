@@ -53,8 +53,11 @@ use laankit_editor::toolbar::{self, ToolbarAction, ToolbarProps};
 let mut state = EditorState::new("note-editor");      // unique among editors on screen
 state.set_text(ctx, markdown);                         // loads a note: clears undo, caret at 0
 state.set_link_targets(names_of_other_notes);          // what `[[` completes
-state.set_prefs(EditorPrefs { font_size: 14.0, line_numbers: true, wrap: true,
-                              spell_check: true, close_brackets: true });
+state.set_prefs(EditorPrefs { font_size: 14.0, line_height: None, line_numbers: true,
+                              wrap: true, spell_check: true, close_brackets: true,
+                              ..Default::default() });
+// The font is the context's, for every editor in the app (Inter unless set):
+laankit_egui::fonts::install_editor_font(ctx, EditorFont::PlexMono);
 
 // Every frame:
 let actions = toolbar::show(ui, &mut state, &ToolbarProps {

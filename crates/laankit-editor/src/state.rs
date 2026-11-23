@@ -24,6 +24,9 @@ pub const DEFAULT_FONT_SIZE: f32 = 14.0;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EditorPrefs {
     pub font_size: f32,
+    /// The height of a row as a multiple of the font size. `None` is the
+    /// font's own line height.
+    pub line_height: Option<f32>,
     /// The line-number gutter (CodeMirror `basicSetup`).
     pub line_numbers: bool,
     /// Soft wrap (`EditorView.lineWrapping`).
@@ -41,6 +44,7 @@ impl Default for EditorPrefs {
     fn default() -> Self {
         Self {
             font_size: DEFAULT_FONT_SIZE,
+            line_height: None,
             line_numbers: true,
             wrap: true,
             spell_check: true,
@@ -356,8 +360,14 @@ impl EditorState {
         self.reveal = None;
         // No fonts before the first frame: nothing is on screen to hold.
         if new_lines != old_lines && ctx.cumulative_pass_nr() > 0 {
-            let row =
-                ctx.fonts_mut(|f| f.row_height(&egui::FontId::proportional(self.prefs.font_size)));
+            let font = egui::FontId::new(
+                self.prefs.font_size,
+                laankit_egui::fonts::editor_family(Default::default()),
+            );
+            let row = match self.prefs.line_height {
+                Some(h) => h * self.prefs.font_size,
+                None => ctx.fonts_mut(|f| f.row_height(&font)),
+            };
             let dy = (new_lines as f32 - old_lines as f32) * row;
             let at = self.scroll_request.unwrap_or(self.scroll_offset);
             self.scroll_request = Some(egui::vec2(at.x, (at.y + dy).max(0.0)));

@@ -18,14 +18,14 @@ use std::sync::Arc;
 
 use egui::text::CCursor;
 use egui::{
-    pos2, vec2, Align, Align2, Color32, ColorImage, Event, FontFamily, FontId, Frame, Key, Margin,
-    Modifiers, Order, Pos2, Rect, Response, RichText, ScrollArea, Shape, Stroke, TextEdit, Ui,
+    pos2, vec2, Align, Align2, Color32, ColorImage, Event, Frame, Key, Margin, Modifiers, Order,
+    Pos2, Rect, Response, RichText, ScrollArea, Shape, Stroke, TextEdit, Ui,
 };
 use laankit_egui::{icons, theme};
 
 use crate::edits;
 use crate::find;
-use crate::highlight::{link_at, EditorColors, LayoutOptions, LinkTarget};
+use crate::highlight::{link_at, EditorColors, FontMetrics, LayoutOptions, LinkTarget};
 use crate::list_edits::{
     self, byte_at, chars_in, line_of, renumber_after_edit, to_ordered_list, to_unordered_list,
     with_renumbering, DocEdit,
@@ -717,9 +717,9 @@ impl EditorState {
     ) -> (Response, Option<usize>) {
         let ctx = ui.ctx().clone();
         let font_size = self.prefs.font_size;
+        let metrics = FontMetrics::measure(ui, font_size);
         let gutter = if self.prefs.line_numbers {
-            let digits = self.highlighter_line_count().max(1).to_string().len() as f32;
-            GUTTER_MIN.max(digits * font_size * 0.62 + 16.0)
+            metrics.gutter_width(self.highlighter_line_count(), GUTTER_MIN)
         } else {
             0.0
         };
@@ -739,6 +739,8 @@ impl EditorState {
         let opts = LayoutOptions {
             colors,
             font_size,
+            font: metrics.key(),
+            line_height: prefs.line_height,
             wrap: prefs.wrap,
             spell: checker
                 .as_deref()
@@ -1171,7 +1173,7 @@ impl EditorState {
         let rows = &galley.rows;
         let first_visible = rows.partition_point(|r| origin.y + r.rect().bottom() < clip.top());
         let active_line = self.highlighter.line_of_row(active_row);
-        let font = FontId::new(self.prefs.font_size * 0.86, FontFamily::Monospace);
+        let font = FontMetrics::gutter_font(self.prefs.font_size);
         let mut line = self.highlighter.line_of_row(first_visible);
         while line + 1 < line_rows.len() {
             let row = &rows[line_rows[line]];

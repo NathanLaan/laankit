@@ -35,8 +35,6 @@ const GRID_MINOR: &str = "#eef0f3";
 const GRID_MAJOR: &str = "#d9dde3";
 /// The default stroke width: the canvas's at 100 %, and Mermaid's.
 const STROKE: f32 = Weight::DEFAULT_PX;
-/// The UI font, as the bundled file names its family.
-const FONT: &str = "Inter, sans-serif";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Format {
@@ -121,9 +119,14 @@ pub fn write(path: &Path, bytes: &[u8]) -> Result<()> {
 pub fn svg(ctx: &egui::Context, d: &Diagram, scope: &Scope, grid: bool) -> String {
     let b = scope.bounds;
     let mut out = String::new();
+    // The font chosen for diagrams, as its files name the family, then a
+    // generic family for a computer that does not have it.
+    let font = fonts::diagram_font(ctx);
     let _ = writeln!(
         out,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="{x} {y} {w} {h}" font-family="{FONT}">"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="{x} {y} {w} {h}" font-family="{family}, {generic}">"#,
+        family = font.css_family(),
+        generic = font.css_generic(),
         x = num(b.x),
         y = num(b.y),
         w = num(b.w),
@@ -593,7 +596,7 @@ fn layout(
     size: f32,
     wrap: Option<f32>,
 ) -> Arc<egui::Galley> {
-    let font = face.font(size);
+    let font = crate::canvas::paint::diagram_font(face, size);
     let mut job = LayoutJob::simple(
         text.to_owned(),
         font,
@@ -687,6 +690,7 @@ pub fn png(svg: &str, scale: f32) -> Result<Vec<u8>> {
 }
 
 /// The bundled faces, so a PNG's text is the canvas's font on every system.
+/// They include every font offered for diagrams (`EditorFont::DIAGRAM`).
 fn fonts() -> Arc<usvg::fontdb::Database> {
     static FONTS: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
     FONTS
@@ -695,7 +699,13 @@ fn fonts() -> Arc<usvg::fontdb::Database> {
             for (_, bytes) in laankit_egui::fonts::bundled_faces() {
                 db.load_font_data(bytes.to_vec());
             }
+            for font in laankit_egui::fonts::EditorFont::DIAGRAM {
+                for (_, bytes) in font.faces() {
+                    db.load_font_data(bytes.to_vec());
+                }
+            }
             db.set_sans_serif_family("Inter");
+            db.set_serif_family("Source Serif 4");
             Arc::new(db)
         })
         .clone()

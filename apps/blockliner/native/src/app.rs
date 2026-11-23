@@ -19,6 +19,7 @@ use laankit_egui::commands::{Recents, Registry};
 use laankit_egui::diagnostics::{self, Screenshot};
 use laankit_egui::dialog::{self, Confirm};
 use laankit_egui::file_dialog::FileDialogs;
+use laankit_egui::fonts::EditorFont;
 use laankit_egui::palette::{CommandPalette, PaletteOutcome};
 use laankit_egui::panes::{self, Pane, PaneLayout};
 use laankit_egui::theme::{self, ThemeState};
@@ -106,6 +107,8 @@ pub struct BlockLinerApp {
     /// The sidebar's panes: their order and heights.
     panes: PaneLayout,
     status_bar_visible: bool,
+    /// The font of diagram labels, from Settings.
+    diagram_font: EditorFont,
     initialized: bool,
     backend: Backend,
     project: Option<Project>,
@@ -184,6 +187,7 @@ impl BlockLinerApp {
                 .and_then(|s| eframe::get_value(s, PANES_KEY))
                 .unwrap_or_else(default_panes),
             status_bar_visible: prefs.status_bar_visible,
+            diagram_font: prefs.diagram_font,
             initialized: false,
             backend: Backend::new(backend::SAVE_DELAY),
             project: None,
@@ -452,6 +456,12 @@ impl BlockLinerApp {
 
     // --- Commands ------------------------------------------------------------
 
+    /// Runs a command, as the palette does.
+    #[cfg(test)]
+    pub fn apply_for_test(&mut self, act: Act) {
+        self.apply(act);
+    }
+
     fn apply(&mut self, act: Act) {
         match act {
             Act::NewDiagram => {
@@ -533,6 +543,7 @@ impl BlockLinerApp {
             Act::Edit(act) => self.edit(act),
             Act::ToggleGrid => self.set_show_grid(!self.ed.canvas.show_grid),
             Act::ToggleDimensions => self.set_show_dimensions(!self.ed.canvas.show_dimensions),
+            Act::DiagramFont(font) => self.set_diagram_font(font),
             Act::ToggleStatusBar => {
                 self.status_bar_visible = !self.status_bar_visible;
                 self.set_prefs(json!({ "statusBarVisible": self.status_bar_visible }));
@@ -560,9 +571,14 @@ impl BlockLinerApp {
         self.set_prefs(json!({ "showDimensions": on }));
     }
 
+    fn set_diagram_font(&mut self, font: EditorFont) {
+        self.diagram_font = font;
+        self.set_prefs(json!({ "diagramFont": font.id() }));
+    }
+
     fn open_settings(&mut self) {
         let prefs = self.paths.prefs();
-        self.overlay = Some(Overlay::Settings(SettingsState::new(
+        let mut state = SettingsState::new(
             "ui",
             prefs.custom_titlebar,
             self.custom_titlebar,
@@ -570,7 +586,9 @@ impl BlockLinerApp {
             self.ed.diagram.grid,
             self.ed.canvas.unit,
             self.ed.canvas.show_dimensions,
-        )));
+        );
+        state.diagram_font = self.diagram_font;
+        self.overlay = Some(Overlay::Settings(state));
     }
 
     // --- The folder and its diagrams ------------------------------------------
@@ -1315,6 +1333,8 @@ impl BlockLinerApp {
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.init(&ctx);
+        // The font chosen in Settings. Nothing happens unless it changed.
+        fonts::install_diagram_font(&ctx, self.diagram_font);
         self.theme.follow_system(&ctx);
         self.ed.begin_frame(&ctx);
         self.backend_events();
@@ -1645,6 +1665,7 @@ impl BlockLinerApp {
                             self.set_prefs(json!({ "gridUnit": u.id() }));
                         }
                         SettingsAction::SetShowDimensions(on) => self.set_show_dimensions(on),
+                        SettingsAction::SetDiagramFont(font) => self.set_diagram_font(font),
                     }
                 }
             }

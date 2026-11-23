@@ -386,3 +386,148 @@ fn weights_and_bold_italic_labels_export() {
     assert_eq!(svg.matches("font-weight").count(), 2, "{svg}");
     export::png(&svg, 1.0).expect("resvg reads it");
 }
+
+// --- The diagram font ---------------------------------------------------------
+
+/// [`context`] with `font` as the diagram font.
+fn context_with(font: laankit_egui::fonts::EditorFont) -> egui::Context {
+    let ctx = context();
+    laankit_egui::fonts::install_diagram_font(&ctx, font);
+    // A font takes effect at the start of the next frame.
+    let mut out = ctx.run_ui(egui::RawInput::default(), |_| {});
+    out.textures_delta.clear();
+    ctx
+}
+
+#[test]
+fn labels_are_in_the_diagram_font_and_the_rest_is_not() {
+    use crate::canvas::paint;
+    use blockliner_core::style::Style;
+    use laankit_egui::fonts::{self, EditorFont};
+
+    let plain = Style::default();
+    assert_eq!(
+        paint::label_font(1.0, &plain).family,
+        fonts::diagram_family(fonts::Style::default())
+    );
+    assert_eq!(
+        paint::edge_label_font(2.0, &plain).family,
+        fonts::diagram_family(fonts::Style::default())
+    );
+    let mut bold_italic = Style::default();
+    bold_italic.set_bold(true);
+    bold_italic.set_italic(true);
+    assert_eq!(
+        paint::label_font(1.0, &bold_italic).family,
+        fonts::diagram_family(fonts::Style::BOLD_ITALIC)
+    );
+
+    // In Source Serif a label is laid out narrower, and the UI font is as
+    // it was.
+    let width = |ctx: &egui::Context, font: egui::FontId| {
+        ctx.fonts_mut(|f| {
+            f.layout_no_wrap("Authentication Service".into(), font, egui::Color32::WHITE)
+                .size()
+                .x
+        })
+    };
+    let inter = context_with(EditorFont::Inter);
+    let serif = context_with(EditorFont::SourceSerif);
+    let label = paint::label_font(1.0, &plain);
+    let ui = egui::FontId::proportional(13.0);
+    assert!(width(&serif, label.clone()) < width(&inter, label));
+    assert_eq!(width(&serif, ui.clone()), width(&inter, ui));
+}
+
+#[test]
+fn an_export_is_in_the_diagram_font() {
+    use laankit_egui::fonts::EditorFont;
+    let d = diagram();
+    let s = scope(&d, Objects::All).unwrap();
+    let inter = export::svg(&context_with(EditorFont::Inter), &d, &s, false);
+    let serif = export::svg(&context_with(EditorFont::SourceSerif), &d, &s, false);
+    assert!(
+        inter.contains(r#"font-family="Inter, sans-serif""#),
+        "{inter}"
+    );
+    assert!(
+        serif.contains(r#"font-family="Source Serif 4, serif""#),
+        "{serif}"
+    );
+    // The same shapes, and the same words.
+    assert_eq!(
+        inter.matches("<rect").count(),
+        serif.matches("<rect").count()
+    );
+    assert!(serif.contains(">Orders database</tspan>"), "{serif}");
+    // The picture is drawn in the font too: the bundled file is found by
+    // the family the SVG names.
+    let a = export::png(&inter, 1.0).unwrap();
+    let b = export::png(&serif, 1.0).unwrap();
+    assert_ne!(a, b, "the PNG is still in Inter");
+    // And not by a fallback: the same SVG naming a font that is not there
+    // is drawn in Inter, which looks different.
+    let missing = serif.replace("Source Serif 4, serif", "No Such Font, sans-serif");
+    assert_ne!(export::png(&missing, 1.0).unwrap(), b);
+}
+
+#[test]
+fn the_diagram_font_is_chosen_in_settings_and_saved() {
+    use laankit_egui::fonts::{self, EditorFont};
+    let (_tmp, paths, mut h) = harness();
+    h.run_steps(2);
+    two_shapes(&mut h);
+    h.run_steps(2);
+    let file = paths.prefs().last_project.unwrap().join("Diagram.mmd");
+    // The two shapes reach the file after the save delay.
+    let saved = |h: &mut egui_kittest::Harness<'static, crate::app::BlockLinerApp>| {
+        for _ in 0..200 {
+            h.run_steps(5);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            let text = std::fs::read_to_string(&file).unwrap();
+            if text.contains("@shape b") {
+                return text;
+            }
+        }
+        panic!("the diagram was not saved");
+    };
+    let before = saved(&mut h);
+    assert_eq!(fonts::diagram_font(&h.ctx), EditorFont::Inter);
+
+    h.set_size(egui::vec2(1280.0, 1400.0));
+    h.run_steps(2);
+    h.get_by_label("Settings").click();
+    h.run_steps(3);
+    h.get_by_role_and_label(egui::accesskit::Role::ComboBox, "Diagram font")
+        .click();
+    h.run_steps(2);
+    // Only the fonts about as wide as Inter are offered.
+    assert!(h.query_by_label("IBM Plex Mono").is_none());
+    assert!(h.query_by_label("iA Writer Quattro").is_none());
+    h.get_by_label("Source Serif 4").click();
+    h.run_steps(3);
+    assert_eq!(fonts::diagram_font(&h.ctx), EditorFont::SourceSerif);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(
+            &std::fs::read_to_string(paths.ui_prefs()).unwrap()
+        )
+        .unwrap()["diagramFont"],
+        "source-serif"
+    );
+    assert_eq!(paths.prefs().diagram_font, EditorFont::SourceSerif);
+    // The font is a setting, not part of the diagram: the file is as it was.
+    h.key_press(Key::Escape);
+    h.run_steps(2);
+    assert_eq!(saved(&mut h), before);
+    h.run_steps(40);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    h.run_steps(5);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+
+    // The palette's command sets it back.
+    h.state_mut()
+        .apply_for_test(crate::commands::Act::DiagramFont(EditorFont::Inter));
+    h.run_steps(2);
+    assert_eq!(fonts::diagram_font(&h.ctx), EditorFont::Inter);
+    assert_eq!(paths.prefs().diagram_font, EditorFont::Inter);
+}

@@ -87,7 +87,7 @@ The Help pages are `assets/help-pages.json` (loaded at build time with `include_
 - `go_to_line()`: opens the editor's Go to line bar (Ctrl+Alt+G, or "Go to Line" in the palette).
 - `view()` / `restore_view(anchor, head, scroll)`: the open note's caret and scroll, and putting them back (see below).
 
-`[[` completes the names of the other notes in the index (`wikilinkCompletions`). The editor's display matches the CodeMirror setup (14 px, line numbers, wrapping); only `spellCheckEnabled` is a preference.
+`[[` completes the names of the other notes in the index (`wikilinkCompletions`). The editor shows line numbers and wraps lines. Its preferences are `spellCheckEnabled`, `editorFont` (the name of a `laankit_egui::fonts::EditorFont`), `editorFontSize` (12 to 20), and `editorLineHeight` (1.2, 1.4, 1.6, or 1.8; missing means the font's own). `diagramFont` is the font of diagram labels. The app sets both fonts on the context every frame with `fonts::install_editor_font` and `fonts::install_diagram_font`, which do nothing unless a font changed.
 
 Reopening a project opens the tabs that were open and shows the active one, with its caret and scroll where they were (the editor plan's decision 3). Only the active note's place is remembered: the app keeps `lastFilePosition: { fileId, anchor, cursor, scrollX, scroll }` in the project's layout in `window-state.json` (the Tauri shape, plus this key, which the Svelte build ignores), updates it as the caret and scroll move, and saves it with the layout (debounced) and on close and quit. It's applied once the note has loaded, and ignored if the note is gone. Other notes open at the top, as in the Svelte build.
 

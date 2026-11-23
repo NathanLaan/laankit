@@ -445,6 +445,19 @@ impl NoteEditor {
         }
     }
 
+    /// The text size in pixels and the line height (a multiple of the size,
+    /// or `None` for the font's own), from Settings.
+    pub fn set_text_size(&mut self, font_size: f32, line_height: Option<f32>) {
+        let prefs = self.state.prefs();
+        if prefs.font_size != font_size || prefs.line_height != line_height {
+            self.state.set_prefs(EditorPrefs {
+                font_size,
+                line_height,
+                ..prefs
+            });
+        }
+    }
+
     pub fn set_spell_checker(&mut self, checker: Option<Arc<dyn SpellChecker>>) {
         self.state.set_spell_checker(checker);
     }

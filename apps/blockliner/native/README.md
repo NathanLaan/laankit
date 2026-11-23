@@ -100,7 +100,7 @@ The app (`apps/blockliner/native`):
 
 ### Export
 
-The diagram is drawn once, as SVG: fixed light colours, the canvas's font, corner radius, arrowheads, and label wrapping. A PNG is that SVG rasterised by `resvg` with the bundled fonts, so it looks the same on every system. The page is the exported objects plus two grid cells, aligned to the grid.
+The diagram is drawn once, as SVG: fixed light colours, the diagram font (the `diagramFont` preference, Inter or Source Serif 4), corner radius, arrowheads, and label wrapping. The SVG names the font's family and then a generic family. A PNG is that SVG rasterised by `resvg` with the bundled fonts, so it looks the same on every system. The page is the exported objects plus two grid cells, aligned to the grid.
 
 ## Tests
 
@@ -131,4 +131,4 @@ BLOCKLINER_BLESS=1 cargo test -p blockliner-native the_svg_matches   # rewrite t
 - The undecorated window on Windows and macOS.
 - Trackpad pan and pinch zoom on macOS.
 - Copy and paste through the system clipboard (Ctrl+C/X/V and the menu's Paste) on each platform, between two BlockLiner windows, and into and out of a text editor.
-- Exported SVGs in browsers and in Inkscape (text uses the Inter font when installed, else the system sans-serif).
+- Exported SVGs in browsers and in Inkscape (text uses the diagram font when installed, else the system sans-serif or serif).

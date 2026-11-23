@@ -460,3 +460,135 @@ fn an_empty_ime_event_does_not_swallow_a_key() {
     h.step();
     assert_eq!(text(&h), "abc");
 }
+
+/// The first line whose top is on screen, and that top.
+fn first_whole_line(h: &mut Harness<'static, State>, starts: &[usize]) -> (usize, f32) {
+    starts
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| Some((i, h.state_mut().editor.screen_rect_of(*c)?.top())))
+        .filter(|(_, top)| *top >= 0.0)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .expect("a line on screen")
+}
+
+/// The editor's font is the context's (`fonts::install_editor_font`). The
+/// tests share nothing: each harness has its own context.
+#[test]
+fn changing_the_font_lays_every_line_out_once_and_keeps_the_place() {
+    use laankit_egui::fonts::{self, EditorFont};
+    let doc: String = (1..=400)
+        .map(|i| format!("line {i} with some **bold** words and `code`\n"))
+        .collect();
+    let starts: Vec<usize> = doc
+        .split_inclusive('\n')
+        .scan(0, |at, l| {
+            let start = *at;
+            *at += l.chars().count();
+            Some(start)
+        })
+        .collect();
+    let mut h = harness(&doc);
+    let ctx = h.ctx.clone();
+    h.state_mut().editor.scroll_to_line(&ctx, 200);
+    h.run();
+    h.run();
+    cursor_to(&mut h, starts[205] + 3, starts[205] + 9);
+    let before_sel = sels(&h);
+    let (line, top) = first_whole_line(&mut h, &starts);
+    let x = at(&mut h, starts[line] + 20).x;
+    // Lines off screen are measured a few at a time on idle frames.
+    let settle = |h: &mut Harness<'static, State>| loop {
+        let built = h.state().editor.layout_stats().galleys_built;
+        h.run();
+        if h.state().editor.layout_stats().galleys_built == built {
+            return built;
+        }
+    };
+    let built = settle(&mut h);
+    let mut built = built;
+
+    for font in [EditorFont::PlexMono, EditorFont::SourceSerif] {
+        assert!(fonts::install_editor_font(&h.ctx, font));
+        h.run();
+        let first = h.state().editor.layout_stats().galleys_built;
+        assert!(first > built, "{font:?}: the lines were not laid out again");
+        let after = settle(&mut h);
+        assert!(
+            after - built <= starts.len() as u64 + 1,
+            "{font:?}: {} layouts of {} lines",
+            after - built,
+            starts.len()
+        );
+        built = after;
+        assert_eq!(text(&h), doc);
+        assert_eq!(sels(&h), before_sel, "{font:?}: the selection moved");
+        let (now_line, now_top) = first_whole_line(&mut h, &starts);
+        assert_eq!(now_line, line, "{font:?}: the view scrolled");
+        assert!((now_top - top).abs() < 3.0, "{font:?}: {top} to {now_top}");
+        assert_ne!(
+            at(&mut h, starts[line] + 20).x,
+            x,
+            "{font:?}: the text is still in the old font"
+        );
+    }
+}
+
+#[test]
+fn typing_goes_on_through_a_font_change() {
+    use laankit_egui::fonts::{self, EditorFont};
+    let mut h = harness("# Title\n\n");
+    cursor_to(&mut h, 9, 9);
+    type_text(&mut h, "one ");
+    for font in EditorFont::ALL {
+        fonts::install_editor_font(&h.ctx, font);
+        type_text(&mut h, font.id());
+        type_text(&mut h, " ");
+        // A click lands on the character it is over, in the new font.
+        let pos = at(&mut h, 2);
+        click(&mut h, pos, Modifiers::NONE);
+        assert_eq!(sels(&h), [(2, 2)], "{font:?}");
+        let end = text(&h).chars().count();
+        cursor_to(&mut h, end, end);
+    }
+    let typed = "# Title\n\none inter source-serif ia-quattro jetbrains-mono plex-mono ia-duo ";
+    assert_eq!(text(&h), typed);
+    key(&mut h, Key::Z, CMD);
+    assert!(
+        typed.starts_with(&text(&h)) && text(&h) != typed,
+        "undo still works"
+    );
+}
+
+#[test]
+fn the_text_size_and_line_height_set_the_row_spacing() {
+    let mut h = harness("one\ntwo\nthree\n");
+    let spacing = |h: &mut Harness<'static, State>| at(h, 4).y - at(h, 0).y;
+    let set = |h: &mut Harness<'static, State>, size: f32, line_height: Option<f32>| {
+        let mut prefs = h.state().editor.prefs();
+        prefs.font_size = size;
+        prefs.line_height = line_height;
+        h.state_mut().editor.set_prefs(prefs);
+        h.run();
+        h.run();
+    };
+    let at_14 = spacing(&mut h);
+    set(&mut h, 20.0, None);
+    let at_20 = spacing(&mut h);
+    assert!(at_20 > at_14 * 1.3, "{at_14} to {at_20}");
+    // A line height is a multiple of the size, whatever the font's own is.
+    for height in [1.2, 1.8] {
+        set(&mut h, 20.0, Some(height));
+        let rows = spacing(&mut h);
+        assert!((rows - 20.0 * height).abs() < 1.0, "{height}: {rows}");
+    }
+    set(&mut h, 14.0, None);
+    assert_eq!(spacing(&mut h), at_14);
+    // Typing and clicking still land where they should.
+    set(&mut h, 18.0, Some(1.6));
+    let pos = at(&mut h, 5);
+    click(&mut h, pos, Modifiers::NONE);
+    assert_eq!(sels(&h), [(5, 5)]);
+    type_text(&mut h, "x");
+    assert_eq!(text(&h), "one\ntxwo\nthree\n");
+}
