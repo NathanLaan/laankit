@@ -1067,3 +1067,56 @@ fn the_editor_text_size_and_line_height_are_saved() {
     h.run_steps(3);
     assert_eq!(h.state().editor_text(), "Alpha text\n");
 }
+
+/// Turns the wheel over the canvas with `modifiers` held.
+fn wheel(h: &mut H, modifiers: Modifiers) {
+    h.event(Event::ModifiersChanged(modifiers));
+    h.event(Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, 100.0),
+        source: egui::MouseWheelSource::Unknown,
+        phase: egui::TouchPhase::Move,
+        modifiers,
+    });
+    h.run_steps(20);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run_steps(2);
+}
+
+#[test]
+fn the_wheels_modifiers_zoom_the_canvas_or_the_interface_or_pan() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _) = open_project(tmp.path());
+    open_diagram(&mut h, "Map");
+    let zoom = |h: &H| h.state().diagram_editor().canvas.view.zoom;
+    let scale = |h: &H| h.ctx.pixels_per_point();
+    let spot = at(&h, 200.0, 150.0);
+    h.hover_at(spot);
+    h.run_steps(2);
+    let (zoom0, scale0) = (zoom(&h), scale(&h));
+
+    // Shift: the canvas pans sideways, and nothing zooms.
+    let pan = |h: &H| h.state().diagram_editor().canvas.view.pan;
+    let pan0 = pan(&h);
+    wheel(&mut h, Modifiers::SHIFT);
+    assert!(pan(&h).x != pan0.x, "{:?} from {pan0:?}", pan(&h));
+    assert_eq!(pan(&h).y, pan0.y);
+    assert_eq!((zoom(&h), scale(&h)), (zoom0, scale0));
+
+    // Alt: the canvas zooms in, and the interface stays.
+    wheel(&mut h, Modifiers::ALT);
+    let zoom1 = zoom(&h);
+    assert!(zoom1 > zoom0, "{zoom1} from {zoom0}");
+    assert_eq!(scale(&h), scale0);
+
+    // Ctrl+Shift: the canvas only, too.
+    wheel(&mut h, Modifiers::COMMAND | Modifiers::SHIFT);
+    let zoom2 = zoom(&h);
+    assert!(zoom2 > zoom1, "{zoom2} from {zoom1}");
+    assert_eq!(scale(&h), scale0);
+
+    // Ctrl alone: the interface only.
+    wheel(&mut h, Modifiers::COMMAND);
+    assert_eq!(zoom(&h), zoom2);
+    assert!(scale(&h) > scale0, "{} from {scale0}", scale(&h));
+}

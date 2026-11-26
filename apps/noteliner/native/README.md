@@ -126,7 +126,7 @@ While a diagram is the active tab:
 - The toolbar above the document shows BlockLiner's tools, Undo and Redo, the four stacking-order buttons (Move to Front, Move Up, Move Down, Move to Back), the grid, the dimension lines, the zoom, and the Properties and Export toggles.
 - The Properties panel is to the right of the canvas (Ctrl+I), where the preview is for a note.
 - BlockLiner's edit commands apply, with the same keys: the tool keys (V, R, O, and the rest), the digits, Delete, the arrow keys, Enter, Esc, Ctrl+Z, Ctrl+Shift+Z, Ctrl+A, Ctrl+B, Ctrl+] and Ctrl+[ (with Shift for the front and the back), and copy, cut, and paste. They are registered from `blockliner_egui::commands` and wait while a text field has the keyboard.
-- Ctrl+=, Ctrl+-, and Ctrl+0 zoom NoteLiner's interface, as always. Ctrl+Shift+=, Ctrl+Shift+-, and Ctrl+Shift+0 zoom the canvas.
+- Ctrl+=, Ctrl+-, and Ctrl+0 zoom NoteLiner's interface, as always. Ctrl+Shift+=, Ctrl+Shift+-, and Ctrl+Shift+0 zoom the canvas. So do Ctrl+Shift+MouseWheel and Alt+MouseWheel, about the pointer (`WheelZoom::CtrlShift`); Ctrl+MouseWheel zooms the interface, and Shift+MouseWheel pans the canvas sideways.
 - Export Diagram writes a PNG or an SVG to the Downloads folder, and Save Diagram to Mermaid copies the `.mmd` there.
 
 Settings has a Diagrams tab for the grid, the grid size of a new diagram, the unit of a grid mark, and the dimension lines. They are NoteLiner's own settings (`diagramShowGrid`, `diagramGridSize`, `diagramGridUnit`, `diagramShowDimensions`, and the `diagramExport*` keys in `ui-preferences.json`); BlockLiner's are separate. The layout keeps `showProperties` and `propertiesWidth`.

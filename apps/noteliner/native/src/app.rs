@@ -2998,9 +2998,16 @@ impl NoteLinerApp {
         }
     }
 
-    /// Ctrl+wheel steps the UI scale, at most once per cooldown.
+    /// Ctrl+wheel steps the UI scale, at most once per cooldown. With Shift
+    /// or Alt too, over a diagram, the wheel is the canvas's.
     fn wheel_zoom(&mut self, ctx: &egui::Context) {
-        let (zoom, now) = ctx.input(|i| (i.zoom_delta(), i.time));
+        let (zoom, now, canvas) = ctx.input(|i| {
+            let m = i.modifiers;
+            (i.zoom_delta(), i.time, m.shift || m.alt)
+        });
+        if canvas && self.diagram_active() {
+            return;
+        }
         if zoom == 1.0 || now - self.last_wheel_zoom < ZOOM_COOLDOWN_SECS {
             return;
         }

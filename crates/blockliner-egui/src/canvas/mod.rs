@@ -6,6 +6,7 @@
 //! | Wheel / trackpad scroll                 | Pans                                     |
 //! | Middle drag, or Space + drag            | Pans                                     |
 //! | Ctrl + wheel, pinch                     | Zooms about the pointer                  |
+//! | Ctrl+Shift + wheel, Alt + wheel (`WheelZoom::CtrlShift`) | Zoom about the pointer, in Ctrl + wheel's place |
 //! | Ctrl+= / Ctrl+- / Ctrl+0 (commands)     | Zooms about the centre                   |
 //! | Shape tool: drag, or click              | Creates a shape (click: default size)    |
 //! | Select: click, Shift+click              | Selects, toggles                         |
@@ -193,8 +194,22 @@ pub enum Swatch {
     Custom,
 }
 
+/// The modifier that makes the wheel zoom the canvas.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WheelZoom {
+    /// Ctrl + wheel zooms and Shift + wheel pans sideways.
+    #[default]
+    Ctrl,
+    /// Ctrl+Shift + wheel and Alt + wheel zoom, and Shift + wheel pans
+    /// sideways. Ctrl + wheel alone is left to the app (NoteLiner zooms its
+    /// interface with it).
+    CtrlShift,
+}
+
 pub struct Canvas {
     pub view: View,
+    /// Which modifier makes the wheel zoom.
+    pub wheel_zoom: WheelZoom,
     pub show_grid: bool,
     pub show_dimensions: bool,
     /// What one grid mark measures, for the dimension lines.
@@ -220,6 +235,7 @@ impl Canvas {
     pub fn new(show_grid: bool, show_dimensions: bool, unit: Unit) -> Self {
         Self {
             view: View::default(),
+            wheel_zoom: WheelZoom::default(),
             show_grid,
             show_dimensions,
             unit,
@@ -510,7 +526,18 @@ impl Canvas {
             self.view.pan_by(resp.drag_delta());
         }
         if let Some(hover) = resp.hover_pos() {
-            let (scroll, zoom) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta()));
+            let (mut scroll, mut zoom, ctrl) =
+                ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.modifiers.command));
+            if self.wheel_zoom == WheelZoom::CtrlShift {
+                if alt && scroll != Vec2::ZERO {
+                    // As egui turns a Ctrl + wheel into a zoom.
+                    let speed = ui.options(|o| o.input_options.scroll_zoom_speed);
+                    zoom = (speed * (scroll.x + scroll.y)).exp();
+                    scroll = Vec2::ZERO;
+                } else if ctrl && !shift && !alt {
+                    zoom = 1.0;
+                }
+            }
             if zoom != 1.0 {
                 self.view.zoom_at(rect.min, hover, self.view.zoom * zoom);
             } else if scroll != Vec2::ZERO {
