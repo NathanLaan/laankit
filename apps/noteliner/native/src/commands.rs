@@ -928,6 +928,11 @@ pub fn shortcut_list() -> Vec<ShortcutEntry> {
         ("Ctrl+Shift+8", "Unordered List", "Editor"),
         ("Ctrl+MouseWheelUp", "Zoom In", "View"),
         ("Ctrl+MouseWheelDown", "Zoom Out", "View"),
+        ("Ctrl+Shift+MouseWheelUp", "Zoom Canvas In", "Diagram"),
+        ("Ctrl+Shift+MouseWheelDown", "Zoom Canvas Out", "Diagram"),
+        ("Alt+MouseWheelUp", "Zoom Canvas In", "Diagram"),
+        ("Alt+MouseWheelDown", "Zoom Canvas Out", "Diagram"),
+        ("Shift+MouseWheel", "Pan Canvas Sideways", "Diagram"),
     ] {
         list.push(ShortcutEntry {
             keys: keys.into(),

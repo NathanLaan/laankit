@@ -30,6 +30,8 @@ const LEFT_PAD: f32 = 20.0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContextAction {
     OpenInFileSystem,
+    /// The file's full path, to the clipboard.
+    CopyPath,
     Preview,
     Export(ExportKind),
     /// The Export dialog for a diagram (PNG or SVG).
@@ -679,6 +681,9 @@ fn context_menu(
     let mut act = |a: ContextAction| out.push(TreeAction::Context(a, id.clone()));
     if item(ui, icons::FOLDER_OPEN, "Open in File System", None) {
         act(ContextAction::OpenInFileSystem);
+    }
+    if item(ui, icons::COPY, "Copy Path", None) {
+        act(ContextAction::CopyPath);
     }
     ui.separator();
     // A diagram has no preview, note exports or presentation.

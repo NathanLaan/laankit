@@ -121,6 +121,14 @@ pub(crate) fn click(h: &mut H, p: Pos2) {
 /// the wheel over the pane): in the 800-high test window the pane is
 /// shorter than its rows.
 pub(crate) fn pane_reset_style(h: &mut H) {
+    pane_scroll_down(h);
+    h.get_by_label("Reset Style").click();
+    h.run_steps(2);
+}
+
+/// Scrolls the Properties pane to its last rows (the alignment lists and
+/// Reset Style), with the wheel over it.
+pub(crate) fn pane_scroll_down(h: &mut H) {
     h.event(egui::Event::PointerMoved(egui::pos2(100.0, 600.0)));
     h.event(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
@@ -130,8 +138,6 @@ pub(crate) fn pane_reset_style(h: &mut H) {
         source: egui::MouseWheelSource::Unknown,
     });
     h.run_steps(4);
-    h.get_by_label("Reset Style").click();
-    h.run_steps(2);
 }
 
 pub(crate) fn two_shapes(h: &mut H) {

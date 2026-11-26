@@ -416,7 +416,7 @@ fn diagrams_tab(ui: &mut egui::Ui, state: &mut SettingsState, out: &mut Vec<Sett
     settings::setting_group(ui, "Zoom", None, |ui| {
         dialog::muted_text(
             ui,
-            "Ctrl+Shift+= / Ctrl+Shift+- / Ctrl+Shift+0 zoom the canvas. Ctrl+= / Ctrl+- / Ctrl+0 zoom NoteLiner's interface.",
+            "Ctrl+Shift+= / Ctrl+Shift+- / Ctrl+Shift+0, Ctrl+Shift+MouseWheel and Alt+MouseWheel zoom the canvas. Shift+MouseWheel pans it sideways. Ctrl+= / Ctrl+- / Ctrl+0 and Ctrl+MouseWheel zoom NoteLiner's interface.",
         );
     });
 }

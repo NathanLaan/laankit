@@ -220,7 +220,15 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
     let style = s.drawn_style();
     let w = stroke_px(&style);
     let inset = w / 2.0;
-    let fill = paint(style.fill.as_ref());
+    // The fill's opacity rides along with the fill colour: every filled
+    // element writes `fill={fill}`.
+    let alpha = style.fill_alpha();
+    let opacity = if alpha < 1.0 {
+        format!(r#" fill-opacity="{}""#, num(alpha))
+    } else {
+        String::new()
+    };
+    let fill = paint(style.fill.as_ref()).map(|f| format!("{f}{opacity}"));
     let ink = paint(style.stroke.as_ref());
     let body = |out: &mut String, radius: f32, fill: &str, stroke: &str| {
         let _ = write!(
@@ -239,7 +247,8 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
     let dash = dash_attrs(style.dash(), w);
     let ink = ink.map(|i| format!("{i}{dash}"));
     let (or_fill, or_ink) = (
-        fill.clone().unwrap_or_else(|| format!("\"{FILL}\"")),
+        fill.clone()
+            .unwrap_or_else(|| format!("\"{FILL}\"{opacity}")),
         ink.clone().unwrap_or_else(|| format!("\"{INK}\"{dash}")),
     );
     // The outline's rectangle, the stroke's middle inside the shape.
@@ -311,7 +320,10 @@ fn shape(out: &mut String, ctx: &egui::Context, s: &Shape) {
                 .as_ref()
                 .and_then(|c| c.rgba)
                 .filter(|c| c[3] == 255)
-                .map(|c| format!("\"{}\"", rgb_hex(blockliner_core::style::fold_shade(c))))
+                .map(|c| {
+                    let shade = rgb_hex(blockliner_core::style::fold_shade(c));
+                    format!("\"{shade}\"{opacity}")
+                })
                 .unwrap_or_else(|| or_fill.clone());
             let _ = write!(
                 out,

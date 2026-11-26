@@ -18,7 +18,7 @@
 //!   its view aside, and [`DiagramDoc::restore`] brings them back.
 
 use blockliner_core::Diagram;
-use blockliner_egui::canvas::Canvas;
+use blockliner_egui::canvas::{Canvas, WheelZoom};
 use blockliner_egui::editor::{self, DiagramEditor};
 use blockliner_egui::properties::PropertiesState;
 
@@ -215,11 +215,13 @@ pub struct DiagramDoc {
 
 impl DiagramDoc {
     pub fn new(prefs: &Prefs) -> Self {
-        let canvas = Canvas::new(
+        let mut canvas = Canvas::new(
             prefs.diagram_show_grid,
             prefs.diagram_show_dimensions,
             prefs.diagram_grid_unit,
         );
+        // Ctrl+wheel zooms NoteLiner's interface.
+        canvas.wheel_zoom = WheelZoom::CtrlShift;
         let mut doc = Self {
             editor: DiagramEditor::new(canvas, Diagram::new()),
             properties: PropertiesState::default(),

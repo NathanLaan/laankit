@@ -255,6 +255,8 @@ pub struct NoteLinerApp {
     /// The last change on disk the app handled for each file, by id, as the
     /// backend numbered it. Each save names it.
     seen: std::collections::HashMap<String, u64>,
+    /// Text for the clipboard, copied at the start of the next frame.
+    pending_copy: Option<String>,
     /// The time of the last frame, for edits made by tests.
     #[cfg(test)]
     test_time: f64,
@@ -334,6 +336,7 @@ impl NoteLinerApp {
             was_focused: true,
             pending_conflicts: Default::default(),
             seen: Default::default(),
+            pending_copy: None,
             #[cfg(test)]
             test_time: 0.0,
             mcp_running: false,
@@ -2759,6 +2762,15 @@ impl NoteLinerApp {
                     self.folder_action(FolderAction::OpenInFileSystem, folder);
                 }
             }
+            ContextAction::CopyPath => {
+                let Some(p) = &self.project else { return };
+                if let Some(e) = p.entry(&id) {
+                    // The path in the system's own form: the index keeps `/`.
+                    let mut path = p.folder.clone();
+                    path.extend(e.filename.split('/'));
+                    self.pending_copy = Some(path.display().to_string());
+                }
+            }
             ContextAction::Preview => self.toggle(|l| l.show_preview = !l.show_preview),
             ContextAction::Export(kind) => self.export(kind, Some(id)),
             ContextAction::ExportDiagram => {
@@ -2986,9 +2998,16 @@ impl NoteLinerApp {
         }
     }
 
-    /// Ctrl+wheel steps the UI scale, at most once per cooldown.
+    /// Ctrl+wheel steps the UI scale, at most once per cooldown. With Shift
+    /// or Alt too, over a diagram, the wheel is the canvas's.
     fn wheel_zoom(&mut self, ctx: &egui::Context) {
-        let (zoom, now) = ctx.input(|i| (i.zoom_delta(), i.time));
+        let (zoom, now, canvas) = ctx.input(|i| {
+            let m = i.modifiers;
+            (i.zoom_delta(), i.time, m.shift || m.alt)
+        });
+        if canvas && self.diagram_active() {
+            return;
+        }
         if zoom == 1.0 || now - self.last_wheel_zoom < ZOOM_COOLDOWN_SECS {
             return;
         }
@@ -3014,6 +3033,9 @@ impl NoteLinerApp {
         #[cfg(test)]
         {
             self.test_time = ctx.input(|i| i.time);
+        }
+        if let Some(text) = self.pending_copy.take() {
+            ctx.copy_text(text);
         }
         self.handle_events(&ctx);
         self.watch(&ctx);

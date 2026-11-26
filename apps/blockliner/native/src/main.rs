@@ -26,6 +26,8 @@ mod ui_tests_clipboard;
 #[cfg(test)]
 mod ui_tests_export;
 #[cfg(test)]
+mod ui_tests_fill_opacity;
+#[cfg(test)]
 mod ui_tests_history;
 #[cfg(test)]
 mod ui_tests_import;

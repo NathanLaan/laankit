@@ -454,6 +454,43 @@ fn changed_kinds_round_trip() {
 }
 
 #[test]
+fn a_fill_opacity_is_written_in_the_style_line_and_read_back() {
+    use blockliner_core::style::{Colour, Opacity};
+    let mut d = Diagram::default();
+    let mut api = Shape::new(
+        "api",
+        ShapeKind::Rect,
+        "API",
+        Rect::new(40.0, 40.0, 160.0, 60.0),
+    );
+    api.style.set_fill(Some(Colour::parse("#dbeafe")));
+    api.style.set_opacity(Some(Opacity::Preset(50)));
+    d.shapes.push(api);
+    let mut note = Shape::new(
+        "note_1",
+        ShapeKind::Note,
+        "Faint",
+        Rect::new(240.0, 40.0, 160.0, 80.0),
+    );
+    note.style.set_opacity(Some(Opacity::Preset(25)));
+    d.shapes.push(note);
+
+    let text = write(&d);
+    assert!(
+        text.contains("  style api fill:#dbeafe,stroke:#3b82f6,color:#111827,fill-opacity:0.5\n"),
+        "{text}"
+    );
+    // On top of the note's class, which has the yellow.
+    assert!(
+        text.contains("  style note_1 fill-opacity:0.25\n"),
+        "{text}"
+    );
+    let back = read(&text).unwrap();
+    assert_eq!(back.shapes, d.shapes);
+    assert_eq!(write(&back), text);
+}
+
+#[test]
 fn notes_are_written_with_their_class_and_read_back() {
     let mut d = Diagram::default();
     d.shapes.push(Shape::new(
