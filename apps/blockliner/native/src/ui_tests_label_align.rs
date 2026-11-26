@@ -19,9 +19,12 @@ fn align(h: &H, id: &str) -> LabelAlign {
     h.state().diagram().shape(id).unwrap().align
 }
 
+/// Shows the pane, scrolled down to its alignment lists: in the 800-high
+/// test window the pane is shorter than its rows.
 fn show_pane(h: &mut H) {
     h.key_press_modifiers(Modifiers::COMMAND, Key::I);
     h.run_steps(3);
+    crate::ui_tests::pane_scroll_down(h);
 }
 
 /// Opens the pane's `list` and picks `name`.

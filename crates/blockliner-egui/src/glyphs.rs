@@ -81,6 +81,8 @@ pub enum Glyph {
     Dash(Option<blockliner_core::style::Dash>),
     /// A stroke weight (`None`: the default), as a line that thick.
     Weight(Option<blockliner_core::style::Weight>),
+    /// A fill opacity (`None`: the default), as a square filled that much.
+    Opacity(Option<blockliner_core::style::Opacity>),
     /// "Aa" in Bold and/or Italic.
     Text {
         bold: bool,
@@ -134,6 +136,17 @@ pub fn paint_glyph(painter: &egui::Painter, glyph: &Glyph, c: Pos2, ink: Color32
                 .unwrap_or(Weight::DEFAULT_PX);
             let line = [c + vec2(-10.0, 0.0), c + vec2(10.0, 0.0)];
             painter.line_segment(line, Stroke::new(width.min(6.0), ink));
+        }
+        Glyph::Opacity(opacity) => {
+            let alpha = opacity.as_ref().and_then(|o| o.fraction()).unwrap_or(1.0);
+            let square = egui::Rect::from_center_size(c, vec2(14.0, 14.0));
+            painter.rect(
+                square,
+                2.0,
+                ink.gamma_multiply(alpha),
+                Stroke::new(1.2, ink),
+                egui::StrokeKind::Inside,
+            );
         }
         Glyph::Order(order) => paint_order_icon(painter, *order, c, ink),
         Glyph::HAlign(h) => {

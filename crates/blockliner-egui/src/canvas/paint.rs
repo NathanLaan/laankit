@@ -401,11 +401,13 @@ fn shape(
     editing: bool,
 ) {
     let style = s.drawn_style();
-    // The shape's own colours where it has them, else the theme's.
-    let fill = colour(style.fill.as_ref());
+    // The shape's own colours where it has them, else the theme's. The
+    // fill's opacity thins either; the stroke stays as it is.
+    let alpha = style.fill_alpha();
+    let fill = colour(style.fill.as_ref()).map(|c| c.gamma_multiply(alpha));
     let ink = colour(style.stroke.as_ref());
     let stroke = Stroke::new(stroke_width(&style, zoom), ink.unwrap_or(p.text_secondary));
-    let body = fill.unwrap_or(p.bg_surface);
+    let body = fill.unwrap_or(p.bg_surface.gamma_multiply(alpha));
     // A dashed or dotted shape is drawn without its stroke, then its
     // outline drawn over it in the pattern.
     let pattern = Pattern::of(style.dash().as_ref(), zoom, stroke.width);

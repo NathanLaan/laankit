@@ -240,6 +240,10 @@ impl DiagramEditor {
                 self.canvas
                     .style_selection(&mut self.diagram, true, |s| s.set_weight(weight.clone()));
             }
+            EditAct::FillOpacity(opacity) => {
+                self.canvas
+                    .style_selection(&mut self.diagram, false, |s| s.set_opacity(opacity.clone()));
+            }
             EditAct::TextWeight(bold) => {
                 self.canvas
                     .style_selection(&mut self.diagram, true, |s| s.set_bold(bold));
@@ -292,6 +296,7 @@ impl DiagramEditor {
             }
             PropertiesAction::StrokeStyle(d) => EditAct::StrokeStyle(d),
             PropertiesAction::StrokeWeight(w) => EditAct::StrokeWeight(w),
+            PropertiesAction::FillOpacity(o) => EditAct::FillOpacity(o),
             PropertiesAction::TextWeight(b) => EditAct::TextWeight(b),
             PropertiesAction::TextStyle(i) => EditAct::TextStyle(i),
             PropertiesAction::LabelAlign(h) => EditAct::AlignLabel(h),
@@ -506,6 +511,7 @@ impl DiagramEditor {
             MenuAction::Stroke(s) => EditAct::Stroke(s),
             MenuAction::StrokeStyle(d) => EditAct::StrokeStyle(d),
             MenuAction::StrokeWeight(w) => EditAct::StrokeWeight(w),
+            MenuAction::FillOpacity(o) => EditAct::FillOpacity(o),
             MenuAction::TextWeight(b) => EditAct::TextWeight(b),
             MenuAction::TextStyle(i) => EditAct::TextStyle(i),
             MenuAction::ResetStyle => EditAct::ResetStyle,

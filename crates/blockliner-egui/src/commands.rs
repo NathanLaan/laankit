@@ -6,7 +6,7 @@
 //! [`EditAct`] in its own action and maps each [`When`] to a predicate over
 //! its own view, then registers them with laankit-egui's registry.
 
-use blockliner_core::style::{Dash, Weight, PRESETS, WEIGHTS};
+use blockliner_core::style::{Dash, Opacity, Weight, OPACITIES, PRESETS, WEIGHTS};
 use blockliner_core::{HAlign, Order, ShapeKind, VAlign};
 use egui::{Key, Modifiers};
 use laankit_egui::commands::{Binding, Command};
@@ -59,6 +59,8 @@ pub enum EditAct {
     StrokeStyle(Option<Dash>),
     /// A weight (`None`: the default, 1px).
     StrokeWeight(Option<Weight>),
+    /// The selected shapes' fill opacity (`None`: the default, 100 %).
+    FillOpacity(Option<Opacity>),
     /// Bold (`true`) or Normal…
     TextWeight(bool),
     /// …Italic or Normal…
@@ -522,6 +524,21 @@ pub fn commands() -> Vec<EditCommand> {
                 EditAct::StrokeWeight(weight),
             )
             .when(stylable),
+        );
+    }
+    for opacity in OPACITIES {
+        let percent = match &opacity {
+            Some(Opacity::Preset(p)) => *p,
+            _ => Opacity::DEFAULT,
+        };
+        r.register(
+            add(
+                &format!("style.fillOpacity.{percent}"),
+                &format!("Fill Opacity: {}", Opacity::label(opacity.as_ref())),
+                "Style",
+                EditAct::FillOpacity(opacity),
+            )
+            .when(fillable),
         );
     }
     for (id, label, act) in [

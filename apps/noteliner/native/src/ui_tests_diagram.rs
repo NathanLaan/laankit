@@ -7,7 +7,9 @@
 //!   and a tool key typed into a text field doesn't draw;
 //! - a note tab and a diagram tab each keep their state, and the toolbar
 //!   follows the active tab;
-//! - Export writes an SVG.
+//! - Export writes an SVG;
+//! - a fill opacity set from the palette's command autosaves in the shape's
+//!   `style` line and is in the SVG export.
 //!
 //!
 
@@ -279,6 +281,42 @@ fn export_writes_an_svg() {
     assert!(!h.state().has_overlay());
     let svg = std::fs::read_to_string(out.join("map.svg")).unwrap();
     assert!(svg.contains("<svg") && svg.contains("API Gateway"), "{svg}");
+}
+
+#[test]
+fn a_fill_opacity_autosaves_and_exports() {
+    use blockliner_core::style::Opacity;
+    use blockliner_egui::EditAct;
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    let out = tmp.path().join("exports");
+    h.state_mut().set_diagram_export_dir(out.clone());
+    open_diagram(&mut h, "Map");
+
+    // The palette's command, on the one box.
+    act(&mut h, Act::Diagram(EditAct::SelectAll));
+    let half = Some(Opacity::Preset(50));
+    act(&mut h, Act::Diagram(EditAct::FillOpacity(half.clone())));
+    let d = &h.state().diagram_editor().diagram;
+    assert_eq!(d.shape("api").unwrap().style.opacity(), half);
+    wait_on_disk(
+        &mut h,
+        project.join("map.mmd"),
+        "  style api fill-opacity:0.5\n",
+    );
+
+    act(&mut h, Act::ExportDiagram);
+    h.get_by_label("SVG").click();
+    h.run_steps(2);
+    h.get_by_label("Export…").click();
+    h.run_steps(3);
+    let svg = std::fs::read_to_string(out.join("map.svg")).unwrap();
+    assert!(svg.contains(r#" fill-opacity="0.5" stroke="#), "{svg}");
+
+    // Undo takes it off again.
+    act(&mut h, Act::Diagram(EditAct::Undo));
+    let d = &h.state().diagram_editor().diagram;
+    assert_eq!(d.shape("api").unwrap().style.opacity(), None);
 }
 
 #[test]

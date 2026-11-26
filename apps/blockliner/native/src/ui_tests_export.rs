@@ -387,6 +387,56 @@ fn weights_and_bold_italic_labels_export() {
     export::png(&svg, 1.0).expect("resvg reads it");
 }
 
+#[test]
+fn fill_opacity_exports_on_the_fill_and_not_the_stroke() {
+    use blockliner_core::style::Opacity;
+    let ctx = context();
+    let mut d = Diagram::new();
+    let rect = |x| Rect::new(x, 40.0, 160.0, 80.0);
+    // The export's own fill, a preset fill, a note's and its fold, and a
+    // shape left opaque.
+    let mut plain = Shape::new("plain", ShapeKind::Rect, "Plain", rect(40.0));
+    plain.style.set_opacity(Some(Opacity::Preset(50)));
+    let mut blue = Shape::new("blue", ShapeKind::Circle, "Blue", rect(240.0));
+    blue.style.set_fill(Some(Colour::parse("#dbeafe")));
+    blue.style.set_opacity(Some(Opacity::Preset(25)));
+    let mut note = Shape::new("note", ShapeKind::Note, "Note", rect(440.0));
+    note.style.set_opacity(Some(Opacity::Preset(75)));
+    let solid = Shape::new("solid", ShapeKind::Rect, "Solid", rect(640.0));
+    d.shapes.extend([plain, blue, note, solid]);
+    let s = scope(&d, Objects::All).unwrap();
+    let svg = export::svg(&ctx, &d, &s, false);
+    assert!(
+        svg.contains(r##"fill="#f7f8fa" fill-opacity="0.5" stroke="#4b5563""##),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#dbeafe" fill-opacity="0.25" stroke="#3b82f6""##),
+        "{svg}"
+    );
+    // The note's body and its darker fold.
+    assert!(
+        svg.contains(r##"fill="#fef9c3" fill-opacity="0.75""##),
+        "{svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#e5e0b0" fill-opacity="0.75""##),
+        "{svg}"
+    );
+    assert_eq!(svg.matches("fill-opacity").count(), 4, "{svg}");
+    assert!(!svg.contains("stroke-opacity"), "{svg}");
+
+    // Half of the fill over the white page.
+    let png = export::png(&svg, 1.0).expect("resvg reads it");
+    let image = image::load_from_memory(&png).unwrap().to_rgba8();
+    let at = |x: f32, y: f32| {
+        let p = image.get_pixel((x - s.bounds.x) as u32, (y - s.bounds.y) as u32);
+        [p[0], p[1], p[2]]
+    };
+    assert_eq!(at(60.0, 60.0), [0xfb, 0xfb, 0xfc], "half of #f7f8fa");
+    assert_eq!(at(660.0, 60.0), [0xf7, 0xf8, 0xfa], "opaque");
+}
+
 // --- The diagram font ---------------------------------------------------------
 
 /// [`context`] with `font` as the diagram font.

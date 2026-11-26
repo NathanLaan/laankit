@@ -29,8 +29,8 @@ pub mod view;
 use blockliner_core::geometry::Handle;
 use blockliner_core::snap::snap_point;
 use blockliner_core::style::{
-    agreement, common, common_dash, preset_index, Agreement, Common, Dash, DashCommon, Style,
-    Weight, PRESETS, WEIGHTS,
+    agreement, common, common_dash, preset_index, Agreement, Common, Dash, DashCommon, Opacity,
+    Style, Weight, OPACITIES, PRESETS, WEIGHTS,
 };
 use blockliner_core::{
     Connector, ConnectorKind, Diagram, End, HAlign, Order, Point, Rect as ModelRect, ShapeKind,
@@ -83,6 +83,8 @@ pub enum MenuAction {
     RouteElbow,
     RouteStraight,
     Fill(Swatch),
+    /// The fill's opacity (`None`: the default, 100 %).
+    FillOpacity(Option<Opacity>),
     Stroke(Swatch),
     /// Solid (`None`), Dashed or Dotted.
     StrokeStyle(Option<Dash>),
@@ -157,6 +159,9 @@ impl SelectionKinds {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SelectionStyle {
     pub fill: Common,
+    /// The fills' opacity (`Same(None)`: all the default, 100 %), across
+    /// the shapes.
+    pub opacity: Agreement<Option<Opacity>>,
     pub stroke: Common,
     /// The stroke's dash, across the same shapes and lines.
     pub dash: DashCommon,
@@ -258,6 +263,7 @@ impl Canvas {
             .collect();
         SelectionStyle {
             fill: common(own.iter().map(|s| s.style.fill.as_ref())),
+            opacity: agreement(own.iter().map(|s| s.style.opacity())),
             stroke: common(
                 own.iter()
                     .map(|s| s.style.stroke.as_ref())
@@ -647,6 +653,22 @@ impl Canvas {
                             ui.close();
                         }
                     });
+                    // Fill Opacity ▸: 100 % … 0 %, the default among them.
+                    if !stroke {
+                        ui.menu_button("Fill Opacity", |ui| {
+                            for opacity in OPACITIES {
+                                let active = style.opacity == Agreement::Same(opacity.clone());
+                                let name = Opacity::label(opacity.as_ref());
+                                let glyph = crate::glyphs::Glyph::Opacity(opacity.clone());
+                                if crate::glyphs::icon_row(ui, glyph, &name, None, active, 190.0)
+                                    .clicked()
+                                {
+                                    picked = Some(MenuAction::FillOpacity(opacity));
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
                 }
                 // Stroke Style ▸: Solid, Dashed, Dotted, the selection's own
                 // ticked (none for Mixed or Custom).

@@ -1,8 +1,8 @@
 //! The Properties pane, last in the sidebar: what's selected, Change
 //! Shape (the selected shapes' kind) and Change Line (whether the selected
 //! lines have arrowheads), then Fill and Stroke (the current value, Default
-//! and the presets as swatches, a hex field), Stroke Style (solid, dashed or
-//! dotted), Stroke Weight (1px … 4px), Text Weight (Normal or Bold), Text
+//! and the presets as swatches, a hex field), with Fill Opacity (100 % … 0 %)
+//! between them, Stroke Style (solid, dashed or dotted), Stroke Weight (1px … 4px), Text Weight (Normal or Bold), Text
 //! Style (Normal or Italic), Label Alignment (Left, Center or Right) and
 //! Vertical Alignment (Top, Middle or Bottom), plus Reset Style.
 //!
@@ -12,7 +12,7 @@
 //! on its own, so one can be shared while the other is Mixed.
 
 use blockliner_core::style::{
-    Agreement, Colour, Common, Dash, DashCommon, Weight, PRESETS, WEIGHTS,
+    Agreement, Colour, Common, Dash, DashCommon, Opacity, Weight, OPACITIES, PRESETS, WEIGHTS,
 };
 use blockliner_core::{Diagram, HAlign, ShapeKind, VAlign};
 use egui::{pos2, vec2, Align2, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
@@ -47,6 +47,8 @@ pub enum PropertiesAction {
     StrokeStyle(Option<Dash>),
     /// Stroke Weight (`None`: the default, 1px).
     StrokeWeight(Option<Weight>),
+    /// Fill Opacity (`None`: the default, 100 %).
+    FillOpacity(Option<Opacity>),
     /// Text Weight: Bold (`true`) or Normal.
     TextWeight(bool),
     /// Text Style: Italic (`true`) or Normal.
@@ -225,6 +227,16 @@ fn contents(
                         out = Some(a);
                     }
                     ui.add_space(10.0);
+                    // Under Fill: how much of it shows.
+                    if !stroke {
+                        let picked = ui
+                            .add_enabled_ui(on, |ui| opacity_row(ui, &props.style.opacity))
+                            .inner;
+                        if let Some(opacity) = picked {
+                            out = Some(PropertiesAction::FillOpacity(opacity));
+                        }
+                        ui.add_space(10.0);
+                    }
                 }
                 if let Some(dash) = dash_row(ui, &props.style.dash) {
                     out = Some(PropertiesAction::StrokeStyle(dash));
@@ -381,6 +393,40 @@ fn weight_row(ui: &mut Ui, current: &Agreement<Option<Weight>>) -> Option<Option
         },
     );
     picked.filter(|w| *current != Agreement::Same(w.clone()))
+}
+
+/// Fill Opacity: 100 % … 0 %, with 100 % the default (or Mixed, or a
+/// hand-written Custom opacity). The opacity picked, unless they all
+/// already have it.
+fn opacity_row(ui: &mut Ui, current: &Agreement<Option<Opacity>>) -> Option<Option<Opacity>> {
+    dialog::field_label(ui, "Fill Opacity:");
+    let name = match current {
+        Agreement::Same(o) => Some(Opacity::label(o.as_ref())),
+        Agreement::None => Some(Opacity::label(None)),
+        Agreement::Mixed => None,
+    };
+    let shown = match current {
+        Agreement::Same(o) => Some(Glyph::Opacity(o.clone())),
+        Agreement::None => Some(Glyph::Opacity(None)),
+        Agreement::Mixed => None,
+    };
+    let mut picked = None;
+    kind_select(
+        ui,
+        "Fill Opacity",
+        shown.zip(name.as_deref()),
+        |ui, width| {
+            for opacity in OPACITIES {
+                let active = *current == Agreement::Same(opacity.clone());
+                let name = Opacity::label(opacity.as_ref());
+                let glyph = Glyph::Opacity(opacity.clone());
+                if crate::glyphs::icon_row(ui, glyph, &name, None, active, width).clicked() {
+                    picked = Some(opacity);
+                }
+            }
+        },
+    );
+    picked.filter(|o| *current != Agreement::Same(o.clone()))
 }
 
 /// Text Weight (`bold`: Normal or Bold) or Text Style (Normal or Italic)
@@ -706,6 +752,7 @@ mod tests {
             summary: String::new(),
             style: SelectionStyle {
                 fill: Common::None,
+                opacity: Agreement::None,
                 stroke: Common::None,
                 dash: DashCommon::None,
                 weight: Agreement::None,

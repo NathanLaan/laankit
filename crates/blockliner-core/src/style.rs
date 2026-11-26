@@ -1,6 +1,7 @@
 //! Shape and connector colours: a shape's Mermaid `style` line (`style api
 //! fill:#dbeafe,stroke:#3b82f6,color:#111827`) or an edge's `linkStyle`
-//! line, the preset swatches, and the label colour that reads on a fill.
+//! line, the preset swatches, the fill's opacity, and the label colour that
+//! reads on a fill.
 //!
 //! A colour keeps its text exactly as written, so a hand-written value
 //! BlockLiner can't draw (`rgb(…)`, an unusual name) is still written back
@@ -275,7 +276,13 @@ impl Style {
             }
         }
         if color_follows {
-            self.color = fill.as_ref().and_then(|f| f.rgba).map(contrast);
+            // A faint fill leaves the label to the theme.
+            let faint = self.faint();
+            self.color = fill
+                .as_ref()
+                .and_then(|f| f.rgba)
+                .filter(|_| !faint)
+                .map(contrast);
         }
         self.fill = fill;
     }
@@ -290,7 +297,13 @@ impl Style {
         self.fill = None;
         self.stroke = None;
         self.color = None;
-        for key in [DASH_KEY, WEIGHT_KEY, FONT_WEIGHT_KEY, FONT_STYLE_KEY] {
+        for key in [
+            DASH_KEY,
+            WEIGHT_KEY,
+            OPACITY_KEY,
+            FONT_WEIGHT_KEY,
+            FONT_STYLE_KEY,
+        ] {
             self.set_extra(key, None);
         }
     }
@@ -335,6 +348,51 @@ impl Style {
             }
         }
         self.set_extra(WEIGHT_KEY, weight.map(|w| w.value()));
+    }
+
+    /// The fill's opacity (`None`: the default, 100 %), from its
+    /// `fill-opacity`. A hand-written `1` or `100%` is the default too.
+    pub fn opacity(&self) -> Option<Opacity> {
+        self.get_extra(OPACITY_KEY)
+            .and_then(Opacity::parse)
+            .filter(|o| *o != Opacity::Preset(Opacity::DEFAULT))
+    }
+
+    /// A new fill opacity (`None` or 100 %: the default, not written). A
+    /// label colour that follows the fill goes when the fill turns faint
+    /// (under 50 %), so the theme's reads on what shows through, and comes
+    /// back when it is no longer faint.
+    pub fn set_opacity(&mut self, opacity: Option<Opacity>) {
+        let opacity = opacity.filter(|o| *o != Opacity::Preset(Opacity::DEFAULT));
+        if opacity.is_none() && self.opacity().is_none() {
+            // Already the default: a hand-written `1` stays as written.
+            if self
+                .get_extra(OPACITY_KEY)
+                .and_then(Opacity::parse)
+                .is_some()
+            {
+                return;
+            }
+        }
+        let was_faint = self.faint();
+        self.set_extra(OPACITY_KEY, opacity.map(|o| o.value()));
+        let follows = self.fill.as_ref().and_then(|f| f.rgba).map(contrast);
+        match (was_faint, self.faint()) {
+            (false, true) if self.color.is_some() && self.color == follows => self.color = None,
+            (true, false) if self.color.is_none() => self.color = follows,
+            _ => {}
+        }
+    }
+
+    /// How much of the fill shows, 0 to 1: its `fill-opacity`, or 1 when
+    /// it has none or one BlockLiner can't draw.
+    pub fn fill_alpha(&self) -> f32 {
+        self.opacity().and_then(|o| o.fraction()).unwrap_or(1.0)
+    }
+
+    /// The fill is under 50 % opaque: too faint to pick a label colour by.
+    fn faint(&self) -> bool {
+        self.fill_alpha() < Opacity::FAINT
     }
 
     /// The label is bold: `font-weight` is `bold`, `bolder` or 600–900.
@@ -394,12 +452,17 @@ impl Style {
     }
 
     /// The label colour to draw: the shape's own, else one that reads on
-    /// its fill, else `None` (the theme's).
+    /// its fill, else `None` (the theme's). A fill that is no fill
+    /// (`none`), or a faint one, is nothing to contrast with.
     pub fn label_rgba(&self) -> Option<[u8; 4]> {
         if let Some(c) = self.color.as_ref().and_then(|c| c.rgba) {
             return Some(c);
         }
-        let fill = self.fill.as_ref()?.rgba.filter(|f| f[3] > 0)?;
+        let fill = self
+            .fill
+            .as_ref()?
+            .rgba
+            .filter(|f| f[3] > 0 && !self.faint())?;
         contrast(fill).rgba
     }
 }
@@ -576,6 +639,92 @@ impl Weight {
             }
         }
     }
+}
+
+/// The property that holds a fill's opacity.
+pub const OPACITY_KEY: &str = "fill-opacity";
+
+/// A fill's opacity. The default, 100 %, is no opacity
+/// (`Option<Opacity>::None`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Opacity {
+    /// One of [`Opacity::PRESETS`], in percent.
+    Preset(u8),
+    /// Any other `fill-opacity`, kept exactly as written.
+    Custom(String),
+}
+
+/// The opacities offered, in order; `None` is the default, 100 %.
+pub const OPACITIES: [Option<Opacity>; 5] = [
+    None,
+    Some(Opacity::Preset(75)),
+    Some(Opacity::Preset(50)),
+    Some(Opacity::Preset(25)),
+    Some(Opacity::Preset(0)),
+];
+
+impl Opacity {
+    /// The presets, in percent.
+    pub const PRESETS: [u8; 5] = [100, 75, 50, 25, 0];
+    /// The default opacity, 100 %: an opaque fill.
+    pub const DEFAULT: u8 = 100;
+    /// Under this much, a fill is too faint to pick a label colour by.
+    pub const FAINT: f32 = 0.5;
+
+    /// A `fill-opacity` value (`0.5`, `50%`). `None` when empty.
+    pub fn parse(v: &str) -> Option<Self> {
+        let t = v.trim();
+        if t.is_empty() {
+            return None;
+        }
+        if let Some(f) = number(t) {
+            let percent = (f * 100.0).round();
+            if (f * 100.0 - percent).abs() < 1e-3 && (0.0..=100.0).contains(&percent) {
+                let percent = percent as u8;
+                if Self::PRESETS.contains(&percent) {
+                    return Some(Self::Preset(percent));
+                }
+            }
+        }
+        Some(Self::Custom(t.to_owned()))
+    }
+
+    /// As written in `fill-opacity`: `0.75`.
+    pub fn value(&self) -> String {
+        match self {
+            Self::Preset(p) => format!("{}", f32::from(*p) / 100.0),
+            Self::Custom(v) => v.clone(),
+        }
+    }
+
+    /// The menu and pane name: `75%`, `100% (Default)`, `Custom`.
+    pub fn label(opacity: Option<&Opacity>) -> String {
+        match opacity {
+            None => format!("{}% (Default)", Self::DEFAULT),
+            Some(Self::Preset(p)) if *p == Self::DEFAULT => Self::label(None),
+            Some(Self::Preset(p)) => format!("{p}%"),
+            Some(Self::Custom(_)) => "Custom".into(),
+        }
+    }
+
+    /// How much of the fill shows, 0 to 1: a preset's, or a Custom value's
+    /// when it is a number or a percentage (kept within 0 to 1, as CSS
+    /// does); else `None` (drawn opaque).
+    pub fn fraction(&self) -> Option<f32> {
+        match self {
+            Self::Preset(p) => Some(f32::from(*p) / 100.0),
+            Self::Custom(v) => number(v.trim()).map(|f| f.clamp(0.0, 1.0)),
+        }
+    }
+}
+
+/// `0.5` or `50%` as a fraction.
+fn number(t: &str) -> Option<f32> {
+    let f = match t.strip_suffix('%') {
+        Some(p) => p.trim().parse::<f32>().ok()? / 100.0,
+        None => t.parse::<f32>().ok()?,
+    };
+    f.is_finite().then_some(f)
 }
 
 /// What a selection's shapes and lines have in common, as [`common`] is
@@ -840,6 +989,99 @@ mod tests {
         // Reset Style removes it.
         s.reset();
         assert_eq!(s.props(), "");
+    }
+
+    #[test]
+    fn opacities() {
+        assert_eq!(Opacity::parse("0.5"), Some(Opacity::Preset(50)));
+        assert_eq!(Opacity::parse(" .75 "), Some(Opacity::Preset(75)));
+        assert_eq!(Opacity::parse("25%"), Some(Opacity::Preset(25)));
+        assert_eq!(Opacity::parse("0"), Some(Opacity::Preset(0)));
+        assert_eq!(Opacity::parse("1.0"), Some(Opacity::Preset(100)));
+        assert_eq!(Opacity::parse("0.4"), Some(Opacity::Custom("0.4".into())));
+        assert_eq!(Opacity::parse("2"), Some(Opacity::Custom("2".into())));
+        assert_eq!(
+            Opacity::parse("faint"),
+            Some(Opacity::Custom("faint".into()))
+        );
+        assert_eq!(Opacity::parse(""), None);
+        assert_eq!(Opacity::Preset(75).value(), "0.75");
+        assert_eq!(Opacity::Preset(50).value(), "0.5");
+        assert_eq!(Opacity::Preset(0).value(), "0");
+        assert_eq!(Opacity::Preset(25).fraction(), Some(0.25));
+        assert_eq!(Opacity::Custom("40%".into()).fraction(), Some(0.4));
+        assert_eq!(Opacity::Custom("2".into()).fraction(), Some(1.0));
+        assert_eq!(Opacity::Custom("faint".into()).fraction(), None);
+        let labels: Vec<String> = OPACITIES
+            .iter()
+            .map(|o| Opacity::label(o.as_ref()))
+            .collect();
+        assert_eq!(labels, ["100% (Default)", "75%", "50%", "25%", "0%"]);
+        assert_eq!(
+            Opacity::label(Some(&Opacity::Custom("0.4".into()))),
+            "Custom"
+        );
+
+        // In place, and the default never written.
+        let mut s = Style::parse("fill:#dbeafe,fill-opacity:0.6,stroke-width:2px").unwrap();
+        assert_eq!(s.opacity(), Some(Opacity::Custom("0.6".into())));
+        assert_eq!(s.fill_alpha(), 0.6);
+        s.set_opacity(Some(Opacity::Preset(75)));
+        assert_eq!(s.props(), "fill:#dbeafe,fill-opacity:0.75,stroke-width:2px");
+        s.set_opacity(Some(Opacity::Preset(100)));
+        assert_eq!(s.props(), "fill:#dbeafe,stroke-width:2px");
+        assert_eq!(s.fill_alpha(), 1.0);
+        // Without a fill of its own: the theme's fill, or a note's.
+        let mut s = Style::default();
+        s.set_opacity(Some(Opacity::Preset(25)));
+        assert_eq!(s.props(), "fill-opacity:0.25");
+        // A hand-written 1 is the default, and stays as written.
+        let mut s = Style::parse("fill-opacity:1").unwrap();
+        assert_eq!(s.opacity(), None);
+        s.set_opacity(None);
+        assert_eq!(s.props(), "fill-opacity:1");
+        // Reset Style removes it.
+        s.reset();
+        assert_eq!(s.props(), "");
+    }
+
+    #[test]
+    fn a_faint_fill_leaves_the_label_to_the_theme() {
+        let blue = Colour::parse(PRESETS[1].fill);
+        let mut s = Style::default();
+        s.set_fill(Some(blue.clone()));
+        assert_eq!(s.props(), "fill:#dbeafe,stroke:#3b82f6,color:#111827");
+        // 50 % and up: the label still contrasts with the fill.
+        s.set_opacity(Some(Opacity::Preset(50)));
+        assert_eq!(
+            s.props(),
+            "fill:#dbeafe,stroke:#3b82f6,color:#111827,fill-opacity:0.5"
+        );
+        // Under 50 %: the label colour that followed the fill goes…
+        s.set_opacity(Some(Opacity::Preset(25)));
+        assert_eq!(s.props(), "fill:#dbeafe,stroke:#3b82f6,fill-opacity:0.25");
+        assert_eq!(s.label_rgba(), None);
+        // …a fill picked meanwhile brings none…
+        s.set_fill(Colour::custom("#1e3a8a"));
+        assert_eq!(s.color, None);
+        // …and it comes back with the fill.
+        s.set_opacity(Some(Opacity::Preset(75)));
+        assert_eq!(s.color.as_ref().unwrap().text, LIGHT_TEXT);
+        s.set_opacity(Some(Opacity::Preset(0)));
+        assert_eq!(s.color, None);
+        s.set_opacity(None);
+        assert_eq!(s.props(), "fill:#1e3a8a,stroke:#3b82f6,color:#ffffff");
+
+        // A label colour set by hand is kept either way.
+        let mut s = Style::parse("fill:#dbeafe,color:#ff0000").unwrap();
+        s.set_opacity(Some(Opacity::Preset(25)));
+        s.set_opacity(None);
+        assert_eq!(s.color.as_ref().unwrap().text, "#ff0000");
+        // A hand-written faint fill without one: the theme's label.
+        let s = Style::parse("fill:#000,fill-opacity:0.2").unwrap();
+        assert_eq!(s.label_rgba(), None);
+        let s = Style::parse("fill:#000,fill-opacity:0.8").unwrap();
+        assert_eq!(s.label_rgba(), Some([255, 255, 255, 255]));
     }
 
     #[test]
