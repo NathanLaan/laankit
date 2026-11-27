@@ -10,7 +10,8 @@
 //! - Export writes an SVG;
 //! - a fill opacity set from the palette's command autosaves in the shape's
 //!   `style` line and is in the SVG export;
-//! - the Properties panel's Text field changes the selected shape's label.
+//! - the Properties panel's Text field changes the selected shape's label;
+//! - the toolbar's Canvas Zoom control lists the zoom steps.
 //!
 //!
 
@@ -89,6 +90,48 @@ fn open_note(h: &mut H, name: &str) {
     wait_for(h, name, move |a| {
         a.editor_file_id().as_deref() == Some(id.as_str())
     });
+}
+
+#[test]
+fn the_canvas_zoom_control_lists_the_steps() {
+    use blockliner_egui::EditAct;
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _project) = open_project(tmp.path());
+    open_diagram(&mut h, "Map");
+    let zoom = |h: &H| h.state().diagram_editor().canvas.view.zoom;
+    let shown = |h: &H| {
+        h.get_by_role_and_label(Role::ComboBox, "Canvas Zoom")
+            .value()
+            .unwrap_or_default()
+    };
+    let pick = |h: &mut H, step: &str| {
+        h.get_by_role_and_label(Role::ComboBox, "Canvas Zoom")
+            .click();
+        h.run_steps(3);
+        h.get_by_role_and_label(Role::MenuItemRadio, step).click();
+        h.run_steps(3);
+    };
+    assert_eq!((zoom(&h), shown(&h).as_str()), (1.0, "100%"));
+    assert!(h.query_by_label("300%").is_none(), "closed");
+
+    // A step from the list, and the control shows it.
+    pick(&mut h, "300%");
+    assert_eq!((zoom(&h), shown(&h).as_str()), (3.0, "300%"));
+    assert!(h.query_by_label("25%").is_none(), "closed again");
+    pick(&mut h, "25%");
+    assert_eq!((zoom(&h), shown(&h).as_str()), (0.25, "25%"));
+
+    // Between steps (as the wheel leaves it) the control shows the zoom as
+    // it is, and 100% in the list is the way back.
+    act(&mut h, Act::Diagram(EditAct::ZoomTo(1.37)));
+    assert_eq!(shown(&h), "137%");
+    pick(&mut h, "100%");
+    assert_eq!((zoom(&h), shown(&h).as_str()), (1.0, "100%"));
+
+    // The keys still step, and the control follows. Not an edit.
+    act(&mut h, Act::Diagram(EditAct::ZoomIn));
+    assert_eq!(shown(&h), "125%");
+    assert!(!h.state().diagram_editor().view().can_undo);
 }
 
 #[test]

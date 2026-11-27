@@ -352,8 +352,17 @@ fn units_and_dimension_lines_are_saved() {
     assert_eq!(prefs(&paths)["showDimensions"], false);
 }
 
+/// Opens the status bar's zoom control (showing `now`) and picks `step`.
+fn pick_zoom(h: &mut H, now: &str, step: &str) {
+    use egui::accesskit::Role;
+    h.get_by_role_and_label(Role::ComboBox, now).click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::MenuItemRadio, step).click();
+    h.run_steps(3);
+}
+
 #[test]
-fn the_zoom_readout_resets_to_100() {
+fn the_zoom_control_lists_the_steps() {
     let (_tmp, paths, mut h) = harness();
     h.run_steps(2);
     let zoom = |h: &H| h.state().canvas().view.zoom;
@@ -365,10 +374,11 @@ fn the_zoom_readout_resets_to_100() {
         h.run_steps(2);
     }
     assert_eq!(zoom(&h), 1.5);
-    h.get_by_label("Zoom 150%").click();
-    h.run_steps(2);
+    pick_zoom(&mut h, "Zoom 150%", "100%");
     assert_eq!(zoom(&h), 1.0);
     h.get_by_label("Zoom 100%");
+    // The list is closed again.
+    assert!(h.query_by_label("300%").is_none());
 
     // A view change, not an edit: nothing to undo, nothing saved.
     assert!(!h.state().can_undo());
@@ -376,10 +386,14 @@ fn the_zoom_readout_resets_to_100() {
     h.state().flush();
     assert_eq!(std::fs::read_to_string(&file).unwrap(), saved);
 
-    // At 100 % a click does nothing visible.
-    h.get_by_label("Zoom 100%").click();
-    h.run_steps(2);
+    // Any step, and the one the canvas is at changes nothing.
+    pick_zoom(&mut h, "Zoom 100%", "300%");
+    assert_eq!(zoom(&h), 3.0);
+    pick_zoom(&mut h, "Zoom 300%", "300%");
+    assert_eq!(zoom(&h), 3.0);
+    pick_zoom(&mut h, "Zoom 300%", "100%");
     assert_eq!(zoom(&h), 1.0);
+    assert!(!h.state().can_undo());
 
     // With the status bar hidden there's no readout; Ctrl+0 still works.
     h.key_press_modifiers(Modifiers::COMMAND, Key::Equals);

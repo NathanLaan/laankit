@@ -1291,11 +1291,16 @@ impl NoteLinerApp {
         self.link_key = None;
         for id in gone {
             // A removed note with unsaved edits is written again, so nothing
-            // typed is lost; any other tab of a removed file closes.
+            // typed is lost; any other tab of a removed file closes. A save
+            // with no answer yet counts as unsaved: the autosave may have
+            // sent it before or after the file went, so it is written again
+            // too, and the tab stays.
             let pending = if self.editor.file_id() == Some(id.as_str()) {
-                self.editor.flush()
+                let unsaved = self.editor.flush();
+                unsaved.or_else(|| self.editor.in_flight())
             } else if self.diagram.file_id() == Some(id.as_str()) {
-                self.diagram.flush()
+                let unsaved = self.diagram.flush();
+                unsaved.or_else(|| self.diagram.in_flight())
             } else {
                 None
             };

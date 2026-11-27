@@ -277,6 +277,7 @@ impl DiagramEditor {
             EditAct::ZoomIn => self.canvas.zoom_step(1),
             EditAct::ZoomOut => self.canvas.zoom_step(-1),
             EditAct::ZoomReset => self.canvas.zoom_reset(),
+            EditAct::ZoomTo(zoom) => self.canvas.zoom_to(zoom),
         }
         None
     }

@@ -83,6 +83,9 @@ pub enum EditAct {
     ZoomIn,
     ZoomOut,
     ZoomReset,
+    /// The canvas zoom to this (1.0 is 100 %), about the centre: a step
+    /// picked in the zoom control's list.
+    ZoomTo(f32),
 }
 
 /// What the edit commands' [`When`]s read: the open diagram's selection and

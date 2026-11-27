@@ -40,7 +40,7 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | Ctrl+Tab, Ctrl+Shift+Tab (or Ctrl+PageDown, Ctrl+PageUp) | Next tab, previous tab |
 | Ctrl+Shift+E | Export (PNG or SVG) |
 | Wheel, middle drag, Space + drag | Pan |
-| Ctrl + wheel, pinch, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom (Ctrl+0, or a click on the status bar's "Zoom" readout: back to 100 %) |
+| Ctrl + wheel, pinch, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom (Ctrl+0: back to 100%). The status bar's "Zoom" control opens a list of the zoom steps (10% to 600%) |
 | Ctrl+', Ctrl+E, Ctrl+I, Ctrl+J | Toggle the grid, the sidebar (the Project, Files, and Properties panes, resized with the dividers between them and reordered by dragging their headers; Toggle Files Pane is in the palette), the Properties pane (a Text field with the label of the selected shape or Mermaid edge, Change Shape and Change Line, then fill, stroke, stroke style, stroke weight, text weight and style, and label alignment of the selection; a line's stroke is its colour), the status bar |
 | Ctrl+Shift+D | Toggle dimension lines (each shape's width and height, in the unit Settings picks for one grid mark) |
 | Ctrl+B | Toggle Bold for the selection's labels (all Bold, or all Normal when they already are) |
