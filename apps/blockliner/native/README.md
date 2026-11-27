@@ -41,7 +41,7 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | Ctrl+Shift+E | Export (PNG or SVG) |
 | Wheel, middle drag, Space + drag | Pan |
 | Ctrl + wheel, pinch, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom (Ctrl+0, or a click on the status bar's "Zoom" readout: back to 100 %) |
-| Ctrl+', Ctrl+E, Ctrl+I, Ctrl+J | Toggle the grid, the sidebar (the Project, Files, and Properties panes, resized with the dividers between them and reordered by dragging their headers; Toggle Files Pane is in the palette), the Properties pane (Change Shape and Change Line, then fill, stroke, stroke style, stroke weight, text weight and style, and label alignment of the selection; a line's stroke is its colour), the status bar |
+| Ctrl+', Ctrl+E, Ctrl+I, Ctrl+J | Toggle the grid, the sidebar (the Project, Files, and Properties panes, resized with the dividers between them and reordered by dragging their headers; Toggle Files Pane is in the palette), the Properties pane (a Text field with the label of the selected shape or Mermaid edge, Change Shape and Change Line, then fill, stroke, stroke style, stroke weight, text weight and style, and label alignment of the selection; a line's stroke is its colour), the status bar |
 | Ctrl+Shift+D | Toggle dimension lines (each shape's width and height, in the unit Settings picks for one grid mark) |
 | Ctrl+B | Toggle Bold for the selection's labels (all Bold, or all Normal when they already are) |
 | Ctrl+], Ctrl+[, Ctrl+Shift+], Ctrl+Shift+[ | Move Up, Move Down, Move to Front, Move to Back: the selected shapes in the stacking order. Up and Down step over the nearest shape that overlaps them. Also in the toolbar's Order button, which opens the four as a list |
@@ -72,7 +72,7 @@ The package is `blockliner-native`; its binary is `blockliner`, the one the rele
 | `commands` | `EditAct` (the edit commands) and their registrations, which each app adds to its own registry |
 | `canvas`   | The grid, painting, dimension lines, pan and zoom, the tools and their gestures, and the label editor |
 | `tools`    | The tool buttons, the More Shapes list, the Order button, and the tools' keys                |
-| `properties` | The Properties pane: Change Shape and Change Line (Line, Arrow, Right-Angle Line, Right-Angle Arrow) lists, the selection's Fill and Stroke (Mixed when they differ), hex fields, the Fill Opacity, Stroke Style, Stroke Weight, Text Weight, Text Style, Label Alignment, and Vertical Alignment lists, Reset Style |
+| `properties` | The Properties pane: the Text field (the label of the selected shape or Mermaid edge), Change Shape and Change Line (Line, Arrow, Right-Angle Line, Right-Angle Arrow) lists, the selection's Fill and Stroke (Mixed when they differ), hex fields, the Fill Opacity, Stroke Style, Stroke Weight, Text Weight, Text Style, Label Alignment, and Vertical Alignment lists, Reset Style |
 | `glyphs`   | The icons in the lists: tools, stroke styles, weights, text styles, and stacking-order moves |
 | `export`   | The SVG writer (labels wrapped by egui, as on the canvas) and PNG through `resvg`            |
 | `dialogs`  | The Export and Custom colour dialogs                                                         |

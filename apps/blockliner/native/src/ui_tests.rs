@@ -126,6 +126,15 @@ pub(crate) fn pane_reset_style(h: &mut H) {
     h.run_steps(2);
 }
 
+/// The Properties pane's Text field, if the pane is showing: what it holds,
+/// and whether it's on (one shape or Mermaid edge selected).
+pub(crate) fn pane_text(h: &H) -> Option<(String, bool)> {
+    use egui_kittest::kittest::NodeT;
+    let node = h.query_by_role_and_label(egui::accesskit::Role::TextInput, "Text")?;
+    let on = !node.accesskit_node().is_disabled();
+    Some((node.value().unwrap_or_default(), on))
+}
+
 /// Scrolls the Properties pane to its last rows (the alignment lists and
 /// Reset Style), with the wheel over it.
 pub(crate) fn pane_scroll_down(h: &mut H) {

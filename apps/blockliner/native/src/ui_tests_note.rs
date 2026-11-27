@@ -73,10 +73,11 @@ fn click_for_a_note_and_name_it() {
         h.state().diagram().shape("retries").unwrap().label,
         "Retries"
     );
-    // The Properties pane names it.
+    // The Properties pane's Text field has its label.
     h.key_press_modifiers(Modifiers::COMMAND, Key::I);
     h.run_steps(3);
-    h.get_by_label("Note “Retries”");
+    let text = crate::ui_tests::pane_text(&h);
+    assert_eq!(text, Some(("Retries".to_owned(), true)));
     let text = write(h.state().diagram());
     assert!(
         text.contains("  retries[\"Retries\"]:::bl_note\n"),

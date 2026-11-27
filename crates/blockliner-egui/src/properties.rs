@@ -1,6 +1,5 @@
-//! The Properties pane, last in the sidebar: what's selected (or, where the
-//! app asks for it, a Text field with the selected shape's or edge's label),
-//! Change
+//! The Properties pane, last in the sidebar: a Text field with the selected
+//! shape's or edge's label, Change
 //! Shape (the selected shapes' kind) and Change Line (whether the selected
 //! lines have arrowheads), then Fill and Stroke (the current value, Default
 //! and the presets as swatches, a hex field), with Fill Opacity (100 % … 0 %)
@@ -111,41 +110,35 @@ struct HexField {
 pub struct PropertiesProps {
     /// "2 shapes, 1 line", "Rectangle “API Gateway”", "Nothing selected".
     pub summary: String,
-    /// The Text field, in place of the summary line; while it's off, the
-    /// summary is its placeholder.
-    pub text: Option<LabelField>,
+    /// The Text field; while it's off, the summary is its placeholder.
+    pub text: LabelField,
     pub style: SelectionStyle,
     pub kinds: SelectionKinds,
 }
 
 impl PropertiesProps {
+    /// `target` is `Canvas::label_target`.
     pub fn new(
         d: &Diagram,
         selection: &[String],
+        target: Option<LabelTarget>,
         style: SelectionStyle,
         kinds: SelectionKinds,
     ) -> Self {
-        Self {
-            summary: summary(d, selection, style.lines),
-            text: None,
-            style,
-            kinds,
-        }
-    }
-
-    /// Tops the pane with the Text field instead of the summary line.
-    /// `target` is `Canvas::label_target`.
-    pub fn with_text(mut self, d: &Diagram, target: Option<LabelTarget>) -> Self {
         let label = match &target {
             Some(LabelTarget::Shape(id)) => d.shape(id).map(|s| s.label.clone()),
             Some(LabelTarget::Line(i)) => d.connectors.get(*i).and_then(|c| c.label.clone()),
             None => None,
         };
-        self.text = Some(LabelField {
-            target,
-            label: label.unwrap_or_default(),
-        });
-        self
+        Self {
+            summary: summary(d, selection, style.lines),
+            text: LabelField {
+                target,
+                label: label.unwrap_or_default(),
+            },
+            style,
+            kinds,
+        }
     }
 
     /// Why the rows are off, if they are.
@@ -226,29 +219,16 @@ fn contents(
     state: &mut PropertiesState,
     props: &PropertiesProps,
 ) -> Option<PropertiesAction> {
-    let p = theme::palette(ui.ctx());
     let mut out = None;
     ui.add_space(10.0);
     ui.horizontal(|ui| {
         ui.add_space(16.0);
         ui.vertical(|ui| {
             ui.set_width((ui.available_width() - 16.0).max(80.0));
-            match &props.text {
-                Some(current) => {
-                    if let Some(a) = text_row(ui, &mut state.text, current, &props.summary) {
-                        out = Some(a);
-                    }
-                    ui.add_space(10.0);
-                }
-                None => {
-                    ui.label(
-                        RichText::new(&props.summary)
-                            .size(12.0)
-                            .color(p.text_secondary),
-                    );
-                    ui.add_space(8.0);
-                }
+            if let Some(a) = text_row(ui, &mut state.text, &props.text, &props.summary) {
+                out = Some(a);
             }
+            ui.add_space(10.0);
             let reason = props.reason();
             // Change Shape: also shown (off) for kept-statement shapes alone,
             // whose reason is below.
@@ -908,7 +888,7 @@ mod tests {
     fn reasons_and_notes() {
         let props = |shapes, lines, external: &[&str]| PropertiesProps {
             summary: String::new(),
-            text: None,
+            text: LabelField::default(),
             style: SelectionStyle {
                 fill: Common::None,
                 opacity: Agreement::None,
