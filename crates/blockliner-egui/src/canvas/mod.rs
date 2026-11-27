@@ -42,6 +42,7 @@ use laankit_egui::theme;
 
 use crate::units::Unit;
 
+pub use label::Target as LabelTarget;
 pub use tools::Tool;
 use tools::{Gesture, Hit, Mods};
 use view::View;

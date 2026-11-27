@@ -294,6 +294,10 @@ impl DiagramEditor {
                 self.apply_colour(Some(c), true);
                 return None;
             }
+            PropertiesAction::Text { target, text } => {
+                self.canvas.set_label(&mut self.diagram, &target, text);
+                return None;
+            }
             PropertiesAction::StrokeStyle(d) => EditAct::StrokeStyle(d),
             PropertiesAction::StrokeWeight(w) => EditAct::StrokeWeight(w),
             PropertiesAction::FillOpacity(o) => EditAct::FillOpacity(o),

@@ -3569,7 +3569,8 @@ impl NoteLinerApp {
                 &ed.canvas.selection,
                 ed.canvas.selected_style(&ed.diagram),
                 ed.canvas.selected_kinds(&ed.diagram),
-            );
+            )
+            .with_text(&ed.diagram, ed.canvas.label_target(&ed.diagram));
             let state = &mut self.diagram.properties;
             let resp = egui::Panel::right("noteliner-properties")
                 .resizable(true)

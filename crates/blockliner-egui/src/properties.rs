@@ -1,4 +1,6 @@
-//! The Properties pane, last in the sidebar: what's selected, Change
+//! The Properties pane, last in the sidebar: what's selected (or, where the
+//! app asks for it, a Text field with the selected shape's or edge's label),
+//! Change
 //! Shape (the selected shapes' kind) and Change Line (whether the selected
 //! lines have arrowheads), then Fill and Stroke (the current value, Default
 //! and the presets as swatches, a hex field), with Fill Opacity (100 % … 0 %)
@@ -15,13 +17,17 @@ use blockliner_core::style::{
     Agreement, Colour, Common, Dash, DashCommon, Opacity, Weight, OPACITIES, PRESETS, WEIGHTS,
 };
 use blockliner_core::{Diagram, HAlign, ShapeKind, VAlign};
-use egui::{pos2, vec2, Align2, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
+use egui::{
+    pos2, vec2, Align2, Event, FontId, Key, Margin, Rect, RichText, Sense, Stroke, StrokeKind,
+    TextEdit, Ui,
+};
 use laankit_egui::dialog::{self, ButtonKind};
 use laankit_egui::{icons, theme};
 
 use crate::canvas::paint::{self, SwatchLook};
 use crate::canvas::{
-    current_swatch, Agreed, SelectionKinds, SelectionStyle, Swatch, Tool, STROKE_STYLES,
+    current_swatch, Agreed, LabelTarget, SelectionKinds, SelectionStyle, Swatch, Tool,
+    STROKE_STYLES,
 };
 use crate::dialogs::colour::INVALID;
 use crate::glyphs::Glyph;
@@ -38,6 +44,11 @@ pub enum PropertiesAction {
     FillHex(Colour),
     StrokeHex(Colour),
     ResetStyle,
+    /// Text: this shape's or Mermaid edge's label becomes `text`.
+    Text {
+        target: LabelTarget,
+        text: String,
+    },
     /// Change Shape: the selected shapes become this kind.
     ChangeShape(ShapeKind),
     /// Change Line: the selected lines become what this line tool draws
@@ -59,11 +70,32 @@ pub enum PropertiesAction {
     LabelVerticalAlign(VAlign),
 }
 
-/// The pane's own state between frames: its two hex fields.
+/// The pane's own state between frames: its Text field and its two hex
+/// fields.
 #[derive(Default)]
 pub struct PropertiesState {
+    text: TextField,
     fill: HexField,
     stroke: HexField,
+}
+
+#[derive(Default)]
+struct TextField {
+    text: String,
+    /// What the field last showed; while the field isn't being typed in, a
+    /// different selection or label replaces the text. What's typed goes to
+    /// this target, which may no longer be the selection.
+    shown: Option<LabelField>,
+}
+
+/// The Text field: the label it shows and what it changes.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LabelField {
+    /// The single selected shape or Mermaid edge; `None` turns the field
+    /// off.
+    pub target: Option<LabelTarget>,
+    /// Its label now.
+    pub label: String,
 }
 
 #[derive(Default)]
@@ -79,6 +111,9 @@ struct HexField {
 pub struct PropertiesProps {
     /// "2 shapes, 1 line", "Rectangle “API Gateway”", "Nothing selected".
     pub summary: String,
+    /// The Text field, in place of the summary line; while it's off, the
+    /// summary is its placeholder.
+    pub text: Option<LabelField>,
     pub style: SelectionStyle,
     pub kinds: SelectionKinds,
 }
@@ -92,9 +127,25 @@ impl PropertiesProps {
     ) -> Self {
         Self {
             summary: summary(d, selection, style.lines),
+            text: None,
             style,
             kinds,
         }
+    }
+
+    /// Tops the pane with the Text field instead of the summary line.
+    /// `target` is `Canvas::label_target`.
+    pub fn with_text(mut self, d: &Diagram, target: Option<LabelTarget>) -> Self {
+        let label = match &target {
+            Some(LabelTarget::Shape(id)) => d.shape(id).map(|s| s.label.clone()),
+            Some(LabelTarget::Line(i)) => d.connectors.get(*i).and_then(|c| c.label.clone()),
+            None => None,
+        };
+        self.text = Some(LabelField {
+            target,
+            label: label.unwrap_or_default(),
+        });
+        self
     }
 
     /// Why the rows are off, if they are.
@@ -182,12 +233,22 @@ fn contents(
         ui.add_space(16.0);
         ui.vertical(|ui| {
             ui.set_width((ui.available_width() - 16.0).max(80.0));
-            ui.label(
-                egui::RichText::new(&props.summary)
-                    .size(12.0)
-                    .color(p.text_secondary),
-            );
-            ui.add_space(8.0);
+            match &props.text {
+                Some(current) => {
+                    if let Some(a) = text_row(ui, &mut state.text, current, &props.summary) {
+                        out = Some(a);
+                    }
+                    ui.add_space(10.0);
+                }
+                None => {
+                    ui.label(
+                        RichText::new(&props.summary)
+                            .size(12.0)
+                            .color(p.text_secondary),
+                    );
+                    ui.add_space(8.0);
+                }
+            }
             let reason = props.reason();
             // Change Shape: also shown (off) for kept-statement shapes alone,
             // whose reason is below.
@@ -248,10 +309,10 @@ fn contents(
                 ui.add_space(10.0);
                 // Text Weight and Text Style side by side: both are short.
                 ui.columns(2, |cols| {
-                    if let Some(bold) = text_row(&mut cols[0], true, &props.style.bold) {
+                    if let Some(bold) = text_style_row(&mut cols[0], true, &props.style.bold) {
                         out = Some(PropertiesAction::TextWeight(bold));
                     }
-                    if let Some(italic) = text_row(&mut cols[1], false, &props.style.italic) {
+                    if let Some(italic) = text_style_row(&mut cols[1], false, &props.style.italic) {
                         out = Some(PropertiesAction::TextStyle(italic));
                     }
                 });
@@ -289,6 +350,103 @@ fn contents(
             }
         });
     });
+    out
+}
+
+/// Text: the selected shape's or Mermaid edge's label in a field that grows
+/// with its lines. As when editing in place, Enter applies it and Shift+Enter
+/// adds a line; a click elsewhere applies it too, and Esc puts the label
+/// back. Off (with `hint`, what's selected) unless one such item is selected.
+fn text_row(
+    ui: &mut Ui,
+    field: &mut TextField,
+    current: &LabelField,
+    hint: &str,
+) -> Option<PropertiesAction> {
+    let p = theme::palette(ui.ctx());
+    dialog::field_label(ui, "Text");
+    let id = egui::Id::unique("blockliner-properties-text");
+    let on = current.target.is_some();
+
+    // Enter is ours, before the field makes a line of it.
+    let enter = ui.memory(|m| m.has_focus(id))
+        && ui.input_mut(|i| {
+            let before = i.events.len();
+            i.events.retain(|e| {
+                !matches!(
+                    e,
+                    Event::Key { key: Key::Enter, pressed: true, modifiers, .. }
+                        if !modifiers.shift
+                )
+            });
+            i.events.len() != before
+        });
+
+    let k = theme::shape(ui.ctx()).control_scale;
+    let edit = TextEdit::multiline(&mut field.text)
+        .id(id)
+        .hint_text(RichText::new(if on { "" } else { hint }).color(p.text_muted))
+        .desired_width(f32::INFINITY)
+        .desired_rows(1)
+        .margin(Margin::symmetric(
+            (12.0 * k).round() as i8,
+            (8.0 * k).round() as i8,
+        ))
+        .background_color(p.input_bg);
+    // The frame of `dialog::text_input`.
+    let resp = ui
+        .scope(|ui| {
+            let radius = theme::shape(ui.ctx()).round(6);
+            let focus = if theme::shape(ui.ctx()).modern {
+                2.0
+            } else {
+                1.0
+            };
+            let v = &mut ui.visuals_mut().widgets;
+            for w in [&mut v.inactive, &mut v.hovered, &mut v.active, &mut v.open] {
+                w.bg_stroke = Stroke::new(1.0, p.input_border);
+                w.corner_radius = radius;
+            }
+            ui.visuals_mut().selection.stroke = Stroke::new(focus, p.input_border_focus);
+            ui.add_enabled(on, edit)
+        })
+        .inner;
+    resp.widget_info(|| egui::WidgetInfo {
+        label: Some("Text".to_owned()),
+        ..egui::WidgetInfo::text_edit(on, "", &field.text, "")
+    });
+
+    let mut out = None;
+    let shown_label = field.shown.as_ref().map_or("", |s| s.label.as_str());
+    if enter {
+        resp.surrender_focus();
+    }
+    if enter || resp.lost_focus() {
+        // Esc took the focus. An app's own Esc command may have consumed
+        // the key press by now, so it's the key being down that tells.
+        if !enter && ui.input(|i| i.key_down(Key::Escape)) {
+            field.text = shown_label.to_owned();
+        } else if field.text != shown_label {
+            // To what the text was typed for, should the selection have
+            // moved on.
+            if let Some(target) = field.shown.as_ref().and_then(|s| s.target.clone()) {
+                let text = field.text.clone();
+                field.shown = Some(LabelField {
+                    target: Some(target.clone()),
+                    label: text.clone(),
+                });
+                out = Some(PropertiesAction::Text { target, text });
+                ui.ctx().request_repaint();
+            }
+        }
+    }
+    // Not being typed in: follow the selection and its label (from the next
+    // frame, when something was just applied).
+    if out.is_none() && !enter && !resp.has_focus() && field.shown.as_ref() != Some(current) {
+        field.text = current.label.clone();
+        field.shown = Some(current.clone());
+        ui.ctx().request_repaint();
+    }
     out
 }
 
@@ -432,7 +590,7 @@ fn opacity_row(ui: &mut Ui, current: &Agreement<Option<Opacity>>) -> Option<Opti
 /// Text Weight (`bold`: Normal or Bold) or Text Style (Normal or Italic)
 /// for the selected labels. `true` for Bold or Italic, unless they all
 /// already are.
-fn text_row(ui: &mut Ui, bold: bool, current: &Agreement<bool>) -> Option<bool> {
+fn text_style_row(ui: &mut Ui, bold: bool, current: &Agreement<bool>) -> Option<bool> {
     let (label, on) = if bold {
         ("Text Weight", "Bold")
     } else {
@@ -750,6 +908,7 @@ mod tests {
     fn reasons_and_notes() {
         let props = |shapes, lines, external: &[&str]| PropertiesProps {
             summary: String::new(),
+            text: None,
             style: SelectionStyle {
                 fill: Common::None,
                 opacity: Agreement::None,
