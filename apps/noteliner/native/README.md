@@ -123,8 +123,8 @@ A file whose name ends in `.mmd` is a diagram: a Mermaid flowchart in BlockLiner
 
 While a diagram is the active tab:
 
-- The toolbar above the document shows BlockLiner's tools, Undo and Redo, the four stacking-order buttons (Move to Front, Move Up, Move Down, Move to Back), the grid, the dimension lines, the zoom, and the Properties and Export toggles.
-- The Properties panel is to the right of the canvas (Ctrl+I), where the preview is for a note.
+- The toolbar above the document shows BlockLiner's tools, Undo and Redo, the four stacking-order buttons (Move to Front, Move Up, Move Down, Move to Back), the grid, and the dimension lines. On the right, where they stay in view when the buttons scroll, are the Canvas Zoom control and the Properties and Export toggles. The Canvas Zoom control shows the canvas zoom and opens a list of the zoom steps (10% to 600%).
+- The Properties panel is to the right of the canvas (Ctrl+I), where the preview is for a note. It starts with a Text field holding the label of the selected shape or Mermaid edge. Enter or a click elsewhere applies what you type, Shift+Enter adds a line, and Esc drops it. The field is off unless one shape or edge is selected.
 - BlockLiner's edit commands apply, with the same keys: the tool keys (V, R, O, and the rest), the digits, Delete, the arrow keys, Enter, Esc, Ctrl+Z, Ctrl+Shift+Z, Ctrl+A, Ctrl+B, Ctrl+] and Ctrl+[ (with Shift for the front and the back), and copy, cut, and paste. They are registered from `blockliner_egui::commands` and wait while a text field has the keyboard.
 - Ctrl+=, Ctrl+-, and Ctrl+0 zoom NoteLiner's interface, as always. Ctrl+Shift+=, Ctrl+Shift+-, and Ctrl+Shift+0 zoom the canvas. So do Ctrl+Shift+MouseWheel and Alt+MouseWheel, about the pointer (`WheelZoom::CtrlShift`); Ctrl+MouseWheel zooms the interface, and Shift+MouseWheel pans the canvas sideways.
 - Export Diagram writes a PNG or an SVG to the Downloads folder, and Save Diagram to Mermaid copies the `.mmd` there.

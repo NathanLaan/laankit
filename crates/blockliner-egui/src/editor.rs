@@ -277,6 +277,7 @@ impl DiagramEditor {
             EditAct::ZoomIn => self.canvas.zoom_step(1),
             EditAct::ZoomOut => self.canvas.zoom_step(-1),
             EditAct::ZoomReset => self.canvas.zoom_reset(),
+            EditAct::ZoomTo(zoom) => self.canvas.zoom_to(zoom),
         }
         None
     }
@@ -292,6 +293,10 @@ impl DiagramEditor {
             }
             PropertiesAction::StrokeHex(c) => {
                 self.apply_colour(Some(c), true);
+                return None;
+            }
+            PropertiesAction::Text { target, text } => {
+                self.canvas.set_label(&mut self.diagram, &target, text);
                 return None;
             }
             PropertiesAction::StrokeStyle(d) => EditAct::StrokeStyle(d),

@@ -1432,6 +1432,7 @@ impl BlockLinerApp {
         let props = PropertiesProps::new(
             &self.ed.diagram,
             &self.ed.canvas.selection,
+            self.ed.canvas.label_target(&self.ed.diagram),
             self.ed.canvas.selected_style(&self.ed.diagram),
             self.ed.canvas.selected_kinds(&self.ed.diagram),
         );

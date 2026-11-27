@@ -9,7 +9,9 @@
 //!   follows the active tab;
 //! - Export writes an SVG;
 //! - a fill opacity set from the palette's command autosaves in the shape's
-//!   `style` line and is in the SVG export.
+//!   `style` line and is in the SVG export;
+//! - the Properties panel's Text field changes the selected shape's label;
+//! - the toolbar's Canvas Zoom control lists the zoom steps.
 //!
 //!
 
@@ -90,6 +92,109 @@ fn open_note(h: &mut H, name: &str) {
     });
 }
 
+#[test]
+fn the_canvas_zoom_control_lists_the_steps() {
+    use blockliner_egui::EditAct;
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, _project) = open_project(tmp.path());
+    open_diagram(&mut h, "Map");
+    let zoom = |h: &H| h.state().diagram_editor().canvas.view.zoom;
+    let shown = |h: &H| {
+        h.get_by_role_and_label(Role::ComboBox, "Canvas Zoom")
+            .value()
+            .unwrap_or_default()
+    };
+    let pick = |h: &mut H, step: &str| {
+        h.get_by_role_and_label(Role::ComboBox, "Canvas Zoom")
+            .click();
+        h.run_steps(3);
+        h.get_by_role_and_label(Role::MenuItemRadio, step).click();
+        h.run_steps(3);
+    };
+    assert_eq!((zoom(&h), shown(&h).as_str()), (1.0, "100%"));
+    assert!(h.query_by_label("300%").is_none(), "closed");
+
+    // A step from the list, and the control shows it.
+    pick(&mut h, "300%");
+    assert_eq!((zoom(&h), shown(&h).as_str()), (3.0, "300%"));
+    assert!(h.query_by_label("25%").is_none(), "closed again");
+    pick(&mut h, "25%");
+    assert_eq!((zoom(&h), shown(&h).as_str()), (0.25, "25%"));
+
+    // Between steps (as the wheel leaves it) the control shows the zoom as
+    // it is, and 100% in the list is the way back.
+    act(&mut h, Act::Diagram(EditAct::ZoomTo(1.37)));
+    assert_eq!(shown(&h), "137%");
+    pick(&mut h, "100%");
+    assert_eq!((zoom(&h), shown(&h).as_str()), (1.0, "100%"));
+
+    // The keys still step, and the control follows. Not an edit.
+    act(&mut h, Act::Diagram(EditAct::ZoomIn));
+    assert_eq!(shown(&h), "125%");
+    assert!(!h.state().diagram_editor().view().can_undo);
+}
+
+#[test]
+fn the_properties_text_field_changes_a_shapes_label() {
+    use blockliner_egui::EditAct;
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut h, project) = open_project(tmp.path());
+    open_diagram(&mut h, "Map");
+    let label = |h: &H| {
+        let d = &h.state().diagram_editor().diagram;
+        d.shape("api").unwrap().label.clone()
+    };
+    let field = |h: &H| {
+        let node = h.get_by_role_and_label(Role::TextInput, "Text");
+        (
+            node.value().unwrap_or_default(),
+            node.accesskit_node().is_disabled(),
+        )
+    };
+
+    // Nothing selected: the field is off, and no summary line above it.
+    assert_eq!(field(&h), (String::new(), true));
+    assert!(h.query_by_label("Nothing selected").is_none());
+
+    // The one box: its label, in place of "Rectangle “API Gateway”".
+    act(&mut h, Act::Diagram(EditAct::SelectAll));
+    assert_eq!(field(&h), ("API Gateway".to_owned(), false));
+    assert!(h.query_by_label("Rectangle “API Gateway”").is_none());
+
+    // Typed at the end and applied with Enter; Shift+Enter adds a line.
+    h.get_by_role_and_label(Role::TextInput, "Text").focus();
+    h.run_steps(2);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::End);
+    h.event(Event::Text(" v2".into()));
+    h.run_steps(2);
+    assert_eq!(label(&h), "API Gateway", "not until it's applied");
+    h.key_press_modifiers(Modifiers::SHIFT, Key::Enter);
+    h.run_steps(2);
+    h.event(Event::Text("EU".into()));
+    h.run_steps(2);
+    h.key_press(Key::Enter);
+    h.run_steps(3);
+    assert_eq!(label(&h), "API Gateway v2\nEU");
+    assert_eq!(field(&h).0, "API Gateway v2\nEU");
+    assert_eq!(selection(&h).0, ["api"], "the id stays");
+    wait_on_disk(&mut h, project.join("map.mmd"), "API Gateway v2");
+
+    // One undo step, and the field follows.
+    act(&mut h, Act::Diagram(EditAct::Undo));
+    assert_eq!(label(&h), "API Gateway");
+    assert_eq!(field(&h).0, "API Gateway");
+
+    // Esc drops what was typed (and, as ever, clears the selection).
+    h.get_by_role_and_label(Role::TextInput, "Text").focus();
+    h.run_steps(2);
+    h.event(Event::Text("zz".into()));
+    h.run_steps(2);
+    h.key_press(Key::Escape);
+    h.run_steps(3);
+    assert_eq!(label(&h), "API Gateway");
+    assert_eq!(field(&h), (String::new(), true));
+}
+
 fn act(h: &mut H, act: Act) {
     let ctx = h.ctx.clone();
     h.state_mut().apply_for_test(&ctx, act);
@@ -166,7 +271,9 @@ fn new_diagram_opens_the_canvas_with_blockliners_tools() {
     // The document toolbar carries BlockLiner's tools; the note editor and
     // its preview toggle are gone.
     for label in ["Select", "Rectangle", "Arrow", "Text", "Note"] {
-        assert!(h.query_by_label(label).is_some(), "{label}");
+        // By role: the Properties panel has a Text field too.
+        let button = h.query_by_role_and_label(Role::Button, label);
+        assert!(button.is_some(), "{label}");
     }
     assert!(h.query_by_label("Show More Shapes").is_some());
     assert!(h.query_by_role(Role::MultilineTextInput).is_none());

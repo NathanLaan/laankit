@@ -457,8 +457,8 @@ pub struct StatusProps<'a> {
 }
 
 /// Tool on the left; pointer position (in grid cells), grid and its unit, canvas zoom and
-/// UI scale on the right. The zoom is a button back to 100 %:
-/// `Some(Act::Edit(EditAct::ZoomReset))` when clicked.
+/// UI scale on the right. The zoom opens the list of zoom steps:
+/// `Some(Act::Edit(EditAct::ZoomTo(..)))` when one is picked.
 pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
     let p = theme::palette(ui.ctx());
     let rect = ui.max_rect();
@@ -535,14 +535,15 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
         );
         let mut ink = p.text_muted;
         if *text == zoom {
-            // A button: a highlight on hover, back to 100 % on a click.
+            // The zoom control: a highlight on hover, the steps on a click.
             let resp = ui.interact(
                 at.expand2(vec2(6.0, 2.0)),
-                ui.scope_id().with("zoom-reset"),
+                ui.scope_id().with("zoom-control"),
                 Sense::click(),
             );
-            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &zoom));
-            if resp.hovered() {
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, &zoom));
+            let open = blockliner_egui::zoom::is_open(&resp);
+            if open || resp.hovered() {
                 painter.rect_filled(
                     resp.rect,
                     laankit_egui::theme::shape(ui.ctx()).round(4),
@@ -550,11 +551,12 @@ pub fn status_bar(ui: &mut Ui, props: &StatusProps<'_>) -> Option<Act> {
                 );
                 ink = p.text_primary;
             }
-            let resp = resp
-                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .on_hover_text("Reset zoom to 100% (Ctrl+0)");
-            if resp.clicked() {
-                out = Some(Act::Edit(EditAct::ZoomReset));
+            if let Some(step) = blockliner_egui::zoom::menu(&resp, props.zoom) {
+                out = Some(Act::Edit(EditAct::ZoomTo(step)));
+            }
+            let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+            if !open {
+                resp.on_hover_text("Canvas zoom (Ctrl+=, Ctrl+-, Ctrl+0)");
             }
         }
         painter.galley(at.min, galley, ink);

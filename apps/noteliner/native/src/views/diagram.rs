@@ -19,8 +19,10 @@ const BUTTON: f32 = 28.0;
 /// The most room the file name takes.
 const NAME_WIDTH: f32 = 160.0;
 /// The room the tools, Undo and Redo, the four order buttons, and the grid
-/// and zoom group take.
-const BUTTONS_WIDTH: f32 = 780.0;
+/// group take.
+const BUTTONS_WIDTH: f32 = 734.0;
+/// The canvas zoom control: room for "600%" and the chevron.
+const ZOOM_WIDTH: f32 = 60.0;
 
 /// What the toolbar shows.
 pub struct ToolbarProps<'a> {
@@ -64,7 +66,7 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps<'_>) -> Vec<ToolbarAction> {
         ui.set_min_height(HEIGHT - 8.0);
         ui.horizontal_centered(|ui| {
             // The right-hand group keeps its place; the rest scrolls.
-            let right = 3.0 * BUTTON + 2.0 * 4.0 + 12.0;
+            let right = 3.0 * BUTTON + 2.0 * 4.0 + 12.0 + ZOOM_WIDTH + 9.0 + 2.0 * 4.0;
             // The name gives way first when the window is narrow: the tab
             // above shows it too.
             if ui.available_width() >= NAME_WIDTH + 17.0 + BUTTONS_WIDTH + right {
@@ -136,9 +138,6 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps<'_>) -> Vec<ToolbarAction> {
                         ) {
                             out.push(ToolbarAction::ToggleDimensions);
                         }
-                        if zoom_readout(ui, props.zoom) {
-                            out.push(ToolbarAction::Edit(EditAct::ZoomReset));
-                        }
                     });
                 });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -160,6 +159,11 @@ pub fn toolbar(ui: &mut Ui, props: &ToolbarProps<'_>) -> Vec<ToolbarAction> {
                     true,
                 ) {
                     out.push(ToolbarAction::ToggleProperties);
+                }
+                divider(ui);
+                // Here, not with the buttons that scroll: always in view.
+                if let Some(zoom) = zoom_control(ui, props.zoom) {
+                    out.push(ToolbarAction::Edit(EditAct::ZoomTo(zoom)));
                 }
             });
         });
@@ -246,14 +250,19 @@ fn button_frame(
     (rect, color, response)
 }
 
-/// The zoom, as a percentage; a click resets it.
-fn zoom_readout(ui: &mut Ui, zoom: f32) -> bool {
+/// The canvas zoom control: the zoom as a percentage, opening the list of
+/// zoom steps. Returns the step picked.
+fn zoom_control(ui: &mut Ui, zoom: f32) -> Option<f32> {
     let p = theme::palette(ui.ctx());
-    let text = format!("{:.0}%", zoom * 100.0);
-    let (rect, response) = ui.allocate_exact_size(vec2(44.0, BUTTON), Sense::click());
-    response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Reset Canvas Zoom"));
-    if response.hovered() {
+    let text = blockliner_egui::zoom::label(zoom);
+    let (rect, response) = ui.allocate_exact_size(vec2(ZOOM_WIDTH, BUTTON), Sense::click());
+    response.widget_info(|| {
+        let mut info = egui::WidgetInfo::labeled(egui::Role::ComboBox, true, "Canvas Zoom");
+        info.current_text_value = Some(text.clone());
+        info
+    });
+    let open = blockliner_egui::zoom::is_open(&response);
+    if open || response.hovered() {
         ui.painter().rect_filled(
             rect,
             laankit_egui::theme::shape(ui.ctx()).control(),
@@ -261,15 +270,24 @@ fn zoom_readout(ui: &mut Ui, zoom: f32) -> bool {
         );
     }
     ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        text,
+        egui::pos2(rect.left() + 8.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        &text,
         egui::FontId::proportional(12.0),
         p.text_secondary,
     );
-    response
-        .on_hover_text("Reset Canvas Zoom (Ctrl+Shift+0)")
-        .clicked()
+    ui.painter().text(
+        egui::pos2(rect.right() - 7.0, rect.center().y),
+        egui::Align2::RIGHT_CENTER,
+        icons::CHEVRON_DOWN,
+        icons::font(9.0),
+        p.text_muted,
+    );
+    let picked = blockliner_egui::zoom::menu(&response, zoom);
+    if !open {
+        response.on_hover_text("Canvas Zoom (Ctrl+Shift+=, Ctrl+Shift+-, Ctrl+Shift+0)");
+    }
+    picked
 }
 
 /// The Properties panel, to the right of the canvas: a header with a close

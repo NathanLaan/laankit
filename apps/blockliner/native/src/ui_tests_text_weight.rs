@@ -37,6 +37,8 @@ fn select_all(h: &mut H) {
 
 /// Opens the pane's `list` (Text Weight or Text Style) and picks `name`.
 fn pane_pick(h: &mut H, list: &str, name: &str) {
+    // Below the fold in the test window.
+    crate::ui_tests::pane_scroll_down(h);
     h.get_by(|n| n.role() == Role::ComboBox && n.label().as_deref() == Some(list))
         .click();
     h.run_steps(3);

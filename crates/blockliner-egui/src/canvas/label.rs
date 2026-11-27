@@ -16,7 +16,7 @@ use super::{paint, pos, Canvas};
 
 /// What a label edit changes.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) enum Target {
+pub enum Target {
     Shape(String),
     /// A connector, by index.
     Line(usize),
@@ -83,6 +83,46 @@ impl Canvas {
             }
             (None, Some(&i)) => self.edit_line_label(d, i),
             (None, None) => false,
+        }
+    }
+
+    /// The single selected item whose label can be edited
+    /// ([`Canvas::can_edit_label`]), for the Properties pane's Text field.
+    pub fn label_target(&self, d: &Diagram) -> Option<Target> {
+        if !self.can_edit_label(d) {
+            return None;
+        }
+        match (self.selection.first(), self.lines.first()) {
+            (Some(id), _) => Some(Target::Shape(id.clone())),
+            (None, Some(&i)) => Some(Target::Line(i)),
+            (None, None) => None,
+        }
+    }
+
+    /// Sets `target`'s label, as an edit in place would, whatever is
+    /// selected now. An edit in place of the same label is dropped. `false`
+    /// when there's no such shape or Mermaid edge, or nothing changed.
+    pub fn set_label(&mut self, d: &mut Diagram, target: &Target, text: String) -> bool {
+        if self.label.as_ref().is_some_and(|e| e.target == *target) {
+            self.label = None;
+        }
+        match target {
+            Target::Shape(id) => match d.shape_mut(id).filter(|s| !s.external) {
+                Some(shape) if shape.label != text => {
+                    shape.label = text;
+                    true
+                }
+                _ => false,
+            },
+            Target::Line(i) => match d.connectors.get_mut(*i).filter(|c| c.is_edge()) {
+                Some(c) => {
+                    let label = Some(text).filter(|t| !t.trim().is_empty());
+                    let changed = c.label != label;
+                    c.label = label;
+                    changed
+                }
+                None => false,
+            },
         }
     }
 

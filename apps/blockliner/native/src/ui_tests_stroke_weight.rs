@@ -41,6 +41,8 @@ fn select_all(h: &mut H) {
 
 /// Opens the pane's Stroke Weight list and picks `name` in it.
 fn pane_pick(h: &mut H, name: &str) {
+    // Below the fold in the test window.
+    crate::ui_tests::pane_scroll_down(h);
     h.get_by(|n| n.role() == Role::ComboBox && n.label().as_deref() == Some("Stroke Weight"))
         .click();
     h.run_steps(3);

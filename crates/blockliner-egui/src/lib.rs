@@ -25,6 +25,7 @@ pub mod objects;
 pub mod properties;
 pub mod tools;
 pub mod units;
+pub mod zoom;
 
 pub use commands::{EditAct, EditView};
 pub use editor::DiagramEditor;

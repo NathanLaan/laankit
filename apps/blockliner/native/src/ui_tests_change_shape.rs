@@ -126,7 +126,8 @@ fn the_pane_changes_a_shape_keeping_everything_else() {
     );
     let text = write(h.state().diagram());
     assert!(text.contains("\n  a{\"A\"}\n"), "{text}");
-    h.get_by_label("Diamond “A”");
+    let text = crate::ui_tests::pane_text(&h);
+    assert_eq!(text, Some(("A".to_owned(), true)));
 
     // One undo step brings the rectangle back.
     undo(&mut h);

@@ -283,32 +283,34 @@ impl Core {
     fn write_pending(&self) -> bool {
         let _w = self.writing.lock().unwrap();
         // Still pending while it's written, so `is_saving` stays true until
-        // the file is on disk.
+        // the file is on disk and its event is sent.
         let Some((path, text)) = self.pending.lock().unwrap().clone() else {
             return true;
         };
         let result = laankit_core::json::write_string(&path, &text);
-        {
-            let mut pending = self.pending.lock().unwrap();
-            if pending.as_ref() == Some(&(path.clone(), text.clone())) {
-                *pending = None;
-            }
-        }
         let written = result.is_ok();
         let event = match result {
             Ok(()) => {
                 if let Some(watched) = self.open.lock().unwrap().get_mut(&path) {
                     watched.mtime = mtime(&path);
-                    watched.text = text;
+                    watched.text = text.clone();
                 }
-                Event::Saved(path)
+                Event::Saved(path.clone())
             }
             Err(e) => Event::SaveFailed {
-                path,
+                path: path.clone(),
                 message: format!("{e:#}"),
             },
         };
+        // The event goes out before the edit stops pending, so whoever sees
+        // `is_saving` turn false finds the event waiting.
         let _ = self.tx.lock().unwrap().send(event);
+        {
+            let mut pending = self.pending.lock().unwrap();
+            if pending.as_ref() == Some(&(path, text)) {
+                *pending = None;
+            }
+        }
         if let Some(ctx) = self.ctx.lock().unwrap().as_ref() {
             ctx.request_repaint();
         }

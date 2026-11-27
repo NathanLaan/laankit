@@ -42,6 +42,7 @@ use laankit_egui::theme;
 
 use crate::units::Unit;
 
+pub use label::Target as LabelTarget;
 pub use tools::Tool;
 use tools::{Gesture, Hit, Mods};
 use view::View;
@@ -459,7 +460,12 @@ impl Canvas {
 
     /// Back to 100 %, about the centre.
     pub fn zoom_reset(&mut self) {
-        self.view.zoom_at(self.rect.min, self.rect.center(), 1.0);
+        self.zoom_to(1.0);
+    }
+
+    /// To `zoom` (clamped to the steps' range), about the centre.
+    pub fn zoom_to(&mut self, zoom: f32) {
+        self.view.zoom_at(self.rect.min, self.rect.center(), zoom);
     }
 
     /// The part of the diagram on screen, in model coordinates (as of last

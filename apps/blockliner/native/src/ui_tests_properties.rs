@@ -11,7 +11,7 @@ use egui::{Key, Modifiers};
 use egui_kittest::kittest::Queryable;
 
 use crate::overlays::colour::INVALID;
-use crate::ui_tests::{at, click, harness, two_shapes, H};
+use crate::ui_tests::{at, click, harness, pane_text, two_shapes, H};
 
 fn fill(h: &H, id: &str) -> Option<String> {
     let s = h.state().diagram().shape(id).unwrap();
@@ -27,26 +27,23 @@ fn show_pane(h: &mut H) {
 fn show_and_hide_with_the_button_and_ctrl_i() {
     let (_tmp, paths, mut h) = harness();
     h.run_steps(2);
-    assert!(
-        h.query_by_label("Nothing selected").is_none(),
-        "sidebar hidden"
-    );
+    assert!(pane_text(&h).is_none(), "sidebar hidden");
 
     // Ctrl+I shows the pane, and the sidebar it lives in.
     show_pane(&mut h);
-    h.get_by_label("Nothing selected");
+    assert_eq!(pane_text(&h), Some((String::new(), false)));
     let prefs = paths.prefs();
     assert!(prefs.properties_visible && prefs.sidebar_visible);
 
     // The toolbar button hides it again (the diagram list stays).
     h.get_by_label("Properties").click();
     h.run_steps(3);
-    assert!(h.query_by_label("Nothing selected").is_none());
+    assert!(pane_text(&h).is_none());
     assert!(!paths.prefs().properties_visible);
     assert!(paths.prefs().sidebar_visible);
 
     show_pane(&mut h);
-    h.get_by_label("Nothing selected");
+    assert_eq!(pane_text(&h), Some((String::new(), false)));
     // Nothing selected: the rows are off and say why.
     h.get_by_label("Select shapes or lines to change their colours.");
     h.get_by_label("Fill: Blue").click();
@@ -67,7 +64,8 @@ fn a_mixed_fill_becomes_one_with_a_swatch() {
     h.run_steps(2);
     show_pane(&mut h);
 
-    h.get_by_label("2 shapes");
+    // Two shapes: the Text field is off.
+    assert_eq!(pane_text(&h), Some((String::new(), false)));
     // a is blue, b the default: both rows are Mixed.
     h.get_by_label("Current fill: Mixed");
     h.get_by_label("Current stroke: Mixed");
@@ -96,13 +94,13 @@ fn hex_values_are_applied_or_refused() {
     click(&mut h, at(150.0, 120.0));
     h.run_steps(2);
     show_pane(&mut h);
-    h.get_by_label("Rectangle “A”");
+    assert_eq!(pane_text(&h), Some(("A".to_owned(), true)));
     h.get_by_label("Current fill: Default");
 
-    // The first text field is Fill's.
+    // The text field after Text is Fill's.
     let focus = |h: &H| {
         h.get_all_by_role(egui::accesskit::Role::TextInput)
-            .next()
+            .nth(1)
             .unwrap()
             .focus();
     };
@@ -143,7 +141,8 @@ fn lines_alone_take_a_stroke() {
     h.run_steps(2);
     assert_eq!(h.state().selected_lines(), [0]);
     show_pane(&mut h);
-    h.get_by_label("1 line");
+    // A Mermaid edge with no label yet: the Text field is on and empty.
+    assert_eq!(pane_text(&h), Some((String::new(), true)));
     assert!(h.query_by_label_contains("stroke colour only").is_none());
     // Fill is off; Stroke colours the line.
     h.get_by_label("Fill: Blue").click();
